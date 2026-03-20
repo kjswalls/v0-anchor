@@ -465,7 +465,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         'rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
-        isCurrentBucket && 'border-solid ring-2 ring-primary/30 shadow-lg shadow-primary/10'
+        isCurrentBucket && 'ring-4 ring-primary/30 shadow-[0_0_25px_-3px] shadow-primary/30'
       )}
     >
       {/* Header */}
