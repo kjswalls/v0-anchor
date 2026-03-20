@@ -111,20 +111,14 @@ export default function PlannerPage() {
     setManageCategoriesOpen(true);
   };
 
-  // Render without DndContext on server to avoid hydration mismatch
+  // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
     return (
       <div className="h-screen flex flex-col bg-background">
-        <TopNav onAddClick={handleAddFromTopNav} onManageCategories={handleManageCategories} />
+        <div className="h-14 border-b border-border bg-card" />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} />
-          <main className="flex-1 flex flex-col bg-background overflow-hidden">
-            <Timeline 
-              onTaskClick={handleTaskClick} 
-              onHabitClick={handleHabitClick} 
-              onAddClick={handleAddFromTimeline}
-            />
-          </main>
+          <div className="w-80 border-r border-border bg-sidebar" />
+          <main className="flex-1 bg-background" />
         </div>
       </div>
     );
