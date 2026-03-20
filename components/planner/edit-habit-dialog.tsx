@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Trash2, Flame, RotateCcw } from 'lucide-react';
+import { Trash2, Flame, RotateCcw, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -30,9 +30,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Habit, HabitGroup, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditHabitDialogProps {
@@ -42,7 +47,7 @@ interface EditHabitDialogProps {
 }
 
 export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogProps) {
-  const { updateHabit, deleteHabit, scheduleHabit, resetHabitStreak, habitGroups } = usePlannerStore();
+  const { updateHabit, deleteHabit, scheduleHabit, resetHabitStreak, habitGroups, addHabitGroup } = usePlannerStore();
   
   const [title, setTitle] = useState('');
   const [group, setGroup] = useState<HabitGroup>('wellness');
@@ -52,6 +57,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [timesPerDay, setTimesPerDay] = useState<string>('1');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  
+  // New group state
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupEmoji, setNewGroupEmoji] = useState('');
 
   useEffect(() => {
     if (habit) {
@@ -62,6 +72,9 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       setRepeatFrequency(habit.repeatFrequency);
       setRepeatDays(habit.repeatDays || []);
       setTimesPerDay(habit.timesPerDay?.toString() || '1');
+      setShowNewGroup(false);
+      setNewGroupName('');
+      setNewGroupEmoji('');
     }
   }, [habit]);
 
@@ -70,6 +83,16 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       setRepeatDays(repeatDays.filter((d) => d !== day));
     } else {
       setRepeatDays([...repeatDays, day].sort());
+    }
+  };
+
+  const handleAddNewGroup = () => {
+    if (newGroupName.trim()) {
+      addHabitGroup(newGroupName.trim(), newGroupEmoji || '');
+      setGroup(newGroupName.trim().toLowerCase());
+      setShowNewGroup(false);
+      setNewGroupName('');
+      setNewGroupEmoji('');
     }
   };
 
@@ -155,18 +178,66 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Group</Label>
-                <Select value={group} onValueChange={(v) => setGroup(v as HabitGroup)}>
-                  <SelectTrigger className="bg-background border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {habitGroups.map((g) => (
-                      <SelectItem key={g.name} value={g.name}>
-                        <span>{g.emoji} <span className="capitalize">{g.name}</span></span>
+                {showNewGroup ? (
+                  <div className="flex gap-1">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
+                          <span>{newGroupEmoji || '+'}</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2">
+                        <div className="grid grid-cols-6 gap-1">
+                          {EMOJI_OPTIONS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              className={cn(
+                                'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
+                                newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
+                              )}
+                              onClick={() => setNewGroupEmoji(emoji)}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <Input
+                      placeholder="Name"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      className="bg-background border-border flex-1"
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                    />
+                    <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Select value={group} onValueChange={(v) => {
+                    if (v === '__new__') {
+                      setShowNewGroup(true);
+                    } else {
+                      setGroup(v as HabitGroup);
+                    }
+                  }}>
+                    <SelectTrigger className="bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {habitGroups.map((g) => (
+                        <SelectItem key={g.name} value={g.name}>
+                          <span>{g.emoji} <span className="capitalize">{g.name}</span></span>
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="__new__" className="text-primary">
+                        <Plus className="h-3 w-3 inline mr-1" />
+                        New Group
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               <div className="space-y-2">

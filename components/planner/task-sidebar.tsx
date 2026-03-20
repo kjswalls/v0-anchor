@@ -64,6 +64,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
         {...listeners}
         className="mt-0.5 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none"
         onClick={(e) => e.stopPropagation()}
+        suppressHydrationWarning
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>

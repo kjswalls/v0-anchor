@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings2 } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings2, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { ViewMode } from '@/lib/planner-types';
 import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 
 interface TopNavProps {
   onAddClick: () => void;
@@ -17,9 +19,10 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, searchQuery, setSearchQuery } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   // Avoid hydration mismatch by only rendering date after mount
   useEffect(() => {
@@ -29,6 +32,11 @@ export function TopNav({ onAddClick, onManageCategories }: TopNavProps) {
   const goToToday = () => setSelectedDate(new Date());
   const goPrevious = () => setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
   const goNext = () => setSelectedDate(addDays(selectedDate, viewMode === 'week' ? 7 : 1));
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setShowSearch(false);
+  };
 
   return (
     <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
@@ -87,6 +95,42 @@ export function TopNav({ onAddClick, onManageCategories }: TopNavProps) {
       </div>
       
       <div className="flex items-center gap-3">
+        {/* Search */}
+        <div className={cn(
+          'flex items-center transition-all duration-200',
+          showSearch ? 'w-64' : 'w-8'
+        )}>
+          {showSearch ? (
+            <div className="relative w-full">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search tasks & habits..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 pl-8 pr-8 text-sm bg-background border-border"
+                autoFocus
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleClearSearch}
+                className="absolute right-0 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowSearch(true)}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
         <ToggleGroup
           type="single"
           value={viewMode}

@@ -29,21 +29,21 @@ const bucketConfig: Record<TimeBucket, {
   morning: {
     icon: Sunrise,
     label: 'Morning',
-    timeRange: '5am – 12pm',
+    timeRange: '5am - 12pm',
     bgClass: 'bg-morning/20',
     borderClass: 'border-morning/40',
   },
   afternoon: {
     icon: Sun,
     label: 'Afternoon',
-    timeRange: '12pm – 5pm',
+    timeRange: '12pm - 5pm',
     bgClass: 'bg-afternoon/20',
     borderClass: 'border-afternoon/40',
   },
   evening: {
     icon: Moon,
     label: 'Evening',
-    timeRange: '5pm – 12am',
+    timeRange: '5pm - 12am',
     bgClass: 'bg-evening/20',
     borderClass: 'border-evening/40',
   },
@@ -94,6 +94,7 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         {...listeners}
         className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none"
         onClick={(e) => e.stopPropagation()}
+        suppressHydrationWarning
       >
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
@@ -167,15 +168,16 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
   );
 }
 
-// Habit card component - narrower width, taller height with fire icon
+// Habit card component - wider with gradient background and large emoji
 interface HabitCardProps {
   habit: Habit;
   onClick: () => void;
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor } = usePlannerStore();
   const groupEmoji = getHabitGroupEmoji(habit.group);
+  const groupColor = getHabitGroupColor(habit.group);
 
   const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
     switch (currentStatus) {
@@ -189,24 +191,25 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
     <div
       onClick={onClick}
       className={cn(
-        'group flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 transition-all cursor-pointer min-w-[100px] max-w-[140px]',
-        'bg-gradient-to-b from-card to-muted/20 border-border/60 hover:border-border',
+        'group relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer w-[180px] min-h-[72px] overflow-hidden',
+        'border-border/60 hover:border-border',
         habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
       )}
+      style={{
+        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
+      }}
     >
-      {/* Group emoji and streak */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-base">{groupEmoji}</span>
-        {habit.streak > 0 && (
-          <div className="flex items-center gap-0.5 bg-orange-500/10 px-1.5 py-0.5 rounded-md">
-            <Flame className="h-3 w-3 text-orange-500" />
-            <span className="text-xs font-semibold text-orange-500">{habit.streak}</span>
-          </div>
-        )}
-      </div>
+      {/* Large background emoji */}
+      <span 
+        className="absolute -right-2 -bottom-2 text-6xl opacity-[0.08] select-none pointer-events-none"
+        style={{ lineHeight: 1 }}
+      >
+        {groupEmoji}
+      </span>
       
-      {/* Checkbox and title */}
-      <div className="flex items-center gap-2">
+      {/* Content */}
+      <div className="relative z-10 flex items-center gap-3 w-full">
+        {/* Checkbox */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -222,23 +225,33 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           {habit.status === 'done' && <Check className="h-3 w-3 text-primary-foreground" />}
           {habit.status === 'skipped' && <Minus className="h-2.5 w-2.5 text-muted-foreground" />}
         </button>
-      </div>
-      
-      <span
-        className={cn(
-          'text-xs font-medium text-foreground text-center leading-tight',
-          (habit.status === 'done' || habit.status === 'skipped') && 'line-through text-muted-foreground'
+        
+        <div className="flex-1 min-w-0">
+          <span
+            className={cn(
+              'text-sm font-medium text-foreground leading-tight line-clamp-2',
+              (habit.status === 'done' || habit.status === 'skipped') && 'line-through text-muted-foreground'
+            )}
+          >
+            {habit.title}
+          </span>
+          
+          {/* Times per day progress */}
+          {habit.timesPerDay && habit.timesPerDay > 1 && (
+            <span className="text-[10px] text-muted-foreground block mt-0.5">
+              {habit.currentDayCount || 0}/{habit.timesPerDay} today
+            </span>
+          )}
+        </div>
+        
+        {/* Streak badge */}
+        {habit.streak > 0 && (
+          <div className="flex items-center gap-0.5 bg-orange-500/15 px-1.5 py-0.5 rounded-md flex-shrink-0">
+            <Flame className="h-3 w-3 text-orange-500" />
+            <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">{habit.streak}</span>
+          </div>
         )}
-      >
-        {habit.title}
-      </span>
-      
-      {/* Times per day progress */}
-      {habit.timesPerDay && habit.timesPerDay > 1 && (
-        <span className="text-[10px] text-muted-foreground">
-          {habit.currentDayCount || 0}/{habit.timesPerDay}
-        </span>
-      )}
+      </div>
     </div>
   );
 }
@@ -489,17 +502,26 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
-  const { tasks, habits, selectedDate } = usePlannerStore();
+  const { tasks, habits, selectedDate, searchQuery } = usePlannerStore();
 
-  // Filter tasks by selected date
+  // Filter tasks by selected date and search query
   const tasksForDate = useMemo(() => {
     return tasks.filter((task) => {
       // If no start date, show in sidebar only (not on timeline)
       if (!task.startDate) return false;
       // Check if task's start date matches selected date
-      return isSameDay(new Date(task.startDate), selectedDate);
+      const matchesDate = isSameDay(new Date(task.startDate), selectedDate);
+      // Check search query
+      const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesDate && matchesSearch;
     });
-  }, [tasks, selectedDate]);
+  }, [tasks, selectedDate, searchQuery]);
+
+  // Filter habits by search query
+  const filteredHabits = useMemo(() => {
+    if (!searchQuery) return habits;
+    return habits.filter(h => h.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [habits, searchQuery]);
 
   const scheduledTasksByBucket = useMemo(() => {
     const grouped: Record<TimeBucket, Task[]> = {
@@ -535,7 +557,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
       evening: [],
     };
 
-    habits
+    filteredHabits
       .filter((habit) => habit.timeBucket)
       .sort((a, b) => {
         if (a.startTime && b.startTime) {
@@ -550,11 +572,18 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
       });
 
     return grouped;
-  }, [habits]);
+  }, [filteredHabits]);
 
   return (
     <ScrollArea className="flex-1 h-full">
       <div className="p-6 space-y-4 max-w-2xl mx-auto pb-20">
+        {/* Search results indicator */}
+        {searchQuery && (
+          <div className="text-sm text-muted-foreground mb-2">
+            Showing results for "{searchQuery}"
+          </div>
+        )}
+        
         {/* Anytime bucket pinned at top */}
         <TimelineBucket 
           bucket="anytime" 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Trash2 } from 'lucide-react';
+import { CalendarIcon, Trash2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditTaskDialogProps {
@@ -39,7 +39,7 @@ interface EditTaskDialogProps {
 }
 
 export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps) {
-  const { updateTask, deleteTask, scheduleTask, unscheduleTask, projects } = usePlannerStore();
+  const { updateTask, deleteTask, scheduleTask, unscheduleTask, projects, addProject } = usePlannerStore();
   
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority | 'none'>('none');
@@ -50,6 +50,11 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   const [startTime, setStartTime] = useState<string>('');
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('none');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  
+  // New project state
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectEmoji, setNewProjectEmoji] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -62,6 +67,9 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setStartTime(task.startTime || '');
       setRepeatFrequency(task.repeatFrequency || 'none');
       setRepeatDays(task.repeatDays || []);
+      setShowNewProject(false);
+      setNewProjectName('');
+      setNewProjectEmoji('');
     }
   }, [task]);
 
@@ -70,6 +78,16 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setRepeatDays(repeatDays.filter((d) => d !== day));
     } else {
       setRepeatDays([...repeatDays, day].sort());
+    }
+  };
+
+  const handleAddNewProject = () => {
+    if (newProjectName.trim()) {
+      addProject(newProjectName.trim(), newProjectEmoji || '');
+      setProject(newProjectName.trim());
+      setShowNewProject(false);
+      setNewProjectName('');
+      setNewProjectEmoji('');
     }
   };
 
@@ -145,19 +163,67 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
             
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">Project</Label>
-              <Select value={project} onValueChange={setProject}>
-                <SelectTrigger className="bg-background border-border">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.name} value={p.name}>
-                      {p.emoji} {p.name}
+              {showNewProject ? (
+                <div className="flex gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
+                        <span>{newProjectEmoji || '+'}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2">
+                      <div className="grid grid-cols-6 gap-1">
+                        {EMOJI_OPTIONS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            className={cn(
+                              'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
+                              newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
+                            )}
+                            onClick={() => setNewProjectEmoji(emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Input
+                    placeholder="Name"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    className="bg-background border-border flex-1"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                  />
+                  <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <Select value={project} onValueChange={(v) => {
+                  if (v === '__new__') {
+                    setShowNewProject(true);
+                  } else {
+                    setProject(v);
+                  }
+                }}>
+                  <SelectTrigger className="bg-background border-border">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {projects.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.emoji} {p.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary">
+                      <Plus className="h-3 w-3 inline mr-1" />
+                      New Project
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
           

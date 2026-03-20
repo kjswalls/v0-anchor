@@ -15,7 +15,7 @@ import type {
   Project,
   HabitGroupType,
 } from './planner-types';
-import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS } from './planner-types';
+import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, TIME_BUCKET_RANGES } from './planner-types';
 
 interface PlannerStore {
   tasks: Task[];
@@ -26,6 +26,7 @@ interface PlannerStore {
   filters: FilterState;
   projects: Project[];
   habitGroups: HabitGroupType[];
+  searchQuery: string;
   
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
@@ -50,23 +51,42 @@ interface PlannerStore {
   setGroupBy: (groupBy: GroupBy) => void;
   setFilters: (filters: FilterState) => void;
   clearFilters: () => void;
+  setSearchQuery: (query: string) => void;
   
   // Project actions
   addProject: (name: string, emoji: string) => void;
   updateProject: (name: string, updates: Partial<Project>) => void;
   removeProject: (name: string) => void;
   getProjectEmoji: (name: string) => string;
+  getProjectColor: (name: string) => string;
   
   // Habit group actions
-  addHabitGroup: (name: string, emoji: string) => void;
+  addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (name: string, updates: Partial<HabitGroupType>) => void;
   removeHabitGroup: (name: string) => void;
   getHabitGroupEmoji: (name: string) => string;
+  getHabitGroupColor: (name: string) => string;
+  
+  // Cleanup orphaned references
+  cleanupOrphanedReferences: () => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const getDateString = (date: Date) => date.toISOString().split('T')[0];
+
+// Get appropriate bucket for a given time
+const getBucketForTime = (time: string): TimeBucket => {
+  const hour = parseInt(time.split(':')[0]);
+  if (hour >= TIME_BUCKET_RANGES.morning.start && hour < TIME_BUCKET_RANGES.morning.end) {
+    return 'morning';
+  } else if (hour >= TIME_BUCKET_RANGES.afternoon.start && hour < TIME_BUCKET_RANGES.afternoon.end) {
+    return 'afternoon';
+  } else if (hour >= TIME_BUCKET_RANGES.evening.start || hour < 5) {
+    return 'evening';
+  }
+  return 'anytime';
+};
 
 // Sample data for demonstration
 const today = new Date();
@@ -206,13 +226,24 @@ export const usePlannerStore = create<PlannerStore>()(
       filters: {},
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
+      searchQuery: '',
       
       addTask: (taskData) => {
+        // Auto-correct bucket based on start time
+        let timeBucket = taskData.timeBucket;
+        if (taskData.startTime && timeBucket && timeBucket !== 'anytime') {
+          const correctBucket = getBucketForTime(taskData.startTime);
+          if (correctBucket !== timeBucket) {
+            timeBucket = correctBucket;
+          }
+        }
+        
         const task: Task = {
           ...taskData,
+          timeBucket,
           id: generateId(),
           status: 'pending',
-          isScheduled: !!taskData.timeBucket,
+          isScheduled: !!timeBucket,
           order: get().tasks.length,
         };
         set((state) => ({ tasks: [...state.tasks, task] }));
@@ -220,7 +251,24 @@ export const usePlannerStore = create<PlannerStore>()(
       
       updateTask: (id, updates) => {
         set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+          tasks: state.tasks.map((t) => {
+            if (t.id !== id) return t;
+            
+            let newUpdates = { ...updates };
+            
+            // Auto-correct bucket if start time changes
+            if (updates.startTime && (t.timeBucket || updates.timeBucket)) {
+              const bucket = updates.timeBucket || t.timeBucket;
+              if (bucket && bucket !== 'anytime') {
+                const correctBucket = getBucketForTime(updates.startTime);
+                if (correctBucket !== bucket) {
+                  newUpdates.timeBucket = correctBucket;
+                }
+              }
+            }
+            
+            return { ...t, ...newUpdates };
+          }),
         }));
       },
       
@@ -241,10 +289,19 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       scheduleTask: (id, bucket, time) => {
+        // Auto-correct bucket based on time
+        let finalBucket = bucket;
+        if (time && bucket !== 'anytime') {
+          const correctBucket = getBucketForTime(time);
+          if (correctBucket !== bucket) {
+            finalBucket = correctBucket;
+          }
+        }
+        
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
-              ? { ...t, isScheduled: true, timeBucket: bucket, startTime: time }
+              ? { ...t, isScheduled: true, timeBucket: finalBucket, startTime: time }
               : t
           ),
         }));
@@ -270,8 +327,18 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       addHabit: (habitData) => {
+        // Auto-correct bucket based on start time
+        let timeBucket = habitData.timeBucket;
+        if (habitData.startTime && timeBucket && timeBucket !== 'anytime') {
+          const correctBucket = getBucketForTime(habitData.startTime);
+          if (correctBucket !== timeBucket) {
+            timeBucket = correctBucket;
+          }
+        }
+        
         const habit: Habit = {
           ...habitData,
+          timeBucket,
           id: generateId(),
           streak: 0,
           status: 'pending',
@@ -283,7 +350,24 @@ export const usePlannerStore = create<PlannerStore>()(
       
       updateHabit: (id, updates) => {
         set((state) => ({
-          habits: state.habits.map((h) => (h.id === id ? { ...h, ...updates } : h)),
+          habits: state.habits.map((h) => {
+            if (h.id !== id) return h;
+            
+            let newUpdates = { ...updates };
+            
+            // Auto-correct bucket if start time changes
+            if (updates.startTime && (h.timeBucket || updates.timeBucket)) {
+              const bucket = updates.timeBucket || h.timeBucket;
+              if (bucket && bucket !== 'anytime') {
+                const correctBucket = getBucketForTime(updates.startTime);
+                if (correctBucket !== bucket) {
+                  newUpdates.timeBucket = correctBucket;
+                }
+              }
+            }
+            
+            return { ...h, ...newUpdates };
+          }),
         }));
       },
       
@@ -322,10 +406,19 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       scheduleHabit: (id, bucket, time) => {
+        // Auto-correct bucket based on time
+        let finalBucket = bucket;
+        if (time && bucket !== 'anytime') {
+          const correctBucket = getBucketForTime(time);
+          if (correctBucket !== bucket) {
+            finalBucket = correctBucket;
+          }
+        }
+        
         set((state) => ({
           habits: state.habits.map((h) =>
             h.id === id
-              ? { ...h, timeBucket: bucket, startTime: time }
+              ? { ...h, timeBucket: finalBucket, startTime: time }
               : h
           ),
         }));
@@ -346,6 +439,7 @@ export const usePlannerStore = create<PlannerStore>()(
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilters: (filters) => set({ filters }),
       clearFilters: () => set({ filters: {} }),
+      setSearchQuery: (searchQuery) => set({ searchQuery }),
       
       addProject: (name, emoji) => {
         set((state) => ({
@@ -375,15 +469,22 @@ export const usePlannerStore = create<PlannerStore>()(
 
       getProjectEmoji: (name) => {
         const project = get().projects.find((p) => p.name === name);
-        return project?.emoji || '📋';
+        return project?.emoji || '';
+      },
+
+      getProjectColor: (name) => {
+        // Generate consistent color from project name
+        const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        const hues = [200, 150, 280, 30, 340]; // blue, teal, purple, orange, pink
+        return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
       },
       
-      addHabitGroup: (name, emoji) => {
+      addHabitGroup: (name, emoji, color) => {
         const normalized = name.toLowerCase();
         set((state) => ({
           habitGroups: state.habitGroups.some((g) => g.name === normalized)
             ? state.habitGroups
-            : [...state.habitGroups, { name: normalized, emoji }],
+            : [...state.habitGroups, { name: normalized, emoji, color }],
         }));
       },
 
@@ -400,9 +501,11 @@ export const usePlannerStore = create<PlannerStore>()(
         const normalized = name.toLowerCase();
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.name !== normalized),
-          // Move habits to 'personal' group
+          // Move habits to first available group or 'personal'
           habits: state.habits.map((h) => 
-            h.group === normalized ? { ...h, group: 'personal' } : h
+            h.group === normalized 
+              ? { ...h, group: state.habitGroups.find(g => g.name !== normalized)?.name || 'personal' } 
+              : h
           ),
         }));
       },
@@ -410,7 +513,44 @@ export const usePlannerStore = create<PlannerStore>()(
       getHabitGroupEmoji: (name) => {
         const normalized = name.toLowerCase();
         const group = get().habitGroups.find((g) => g.name === normalized);
-        return group?.emoji || '⭐';
+        return group?.emoji || '';
+      },
+
+      getHabitGroupColor: (name) => {
+        const normalized = name.toLowerCase();
+        const group = get().habitGroups.find((g) => g.name === normalized);
+        if (group?.color) return group.color;
+        
+        // Generate consistent color from group name
+        const colorMap: Record<string, string> = {
+          wellness: 'oklch(0.7 0.15 160)',
+          work: 'oklch(0.65 0.15 250)',
+          personal: 'oklch(0.7 0.15 320)',
+        };
+        if (colorMap[normalized]) return colorMap[normalized];
+        
+        const hash = normalized.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        const hues = [160, 250, 320, 30, 200]; // teal, blue, pink, orange, cyan
+        return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
+      },
+      
+      cleanupOrphanedReferences: () => {
+        const state = get();
+        const projectNames = new Set(state.projects.map(p => p.name));
+        const groupNames = new Set(state.habitGroups.map(g => g.name));
+        
+        set({
+          tasks: state.tasks.map(t => 
+            t.project && !projectNames.has(t.project) 
+              ? { ...t, project: undefined } 
+              : t
+          ),
+          habits: state.habits.map(h => 
+            !groupNames.has(h.group) 
+              ? { ...h, group: state.habitGroups[0]?.name || 'personal' } 
+              : h
+          ),
+        });
       },
     }),
     {
@@ -422,6 +562,12 @@ export const usePlannerStore = create<PlannerStore>()(
         habitGroups: state.habitGroups,
         groupBy: state.groupBy,
       }),
+      onRehydrateStorage: () => (state) => {
+        // After rehydrating, clean up orphaned references
+        if (state) {
+          setTimeout(() => state.cleanupOrphanedReferences(), 0);
+        }
+      },
     }
   )
 );
