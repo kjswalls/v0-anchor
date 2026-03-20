@@ -213,13 +213,13 @@ export function TopNav({ onAddClick, onManageCategories, onTaskClick, onHabitCli
               
               {/* Search Results Dropdown */}
               {showResults && searchQuery.trim() && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg z-50">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden">
                   {!hasResults ? (
                     <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                       No tasks or habits found
                     </div>
                   ) : (
-                    <ScrollArea className="max-h-80">
+                    <div className="max-h-80 overflow-y-auto">
                       <div className="py-1">
                         {/* Tasks Section */}
                         {searchResults.tasks.length > 0 && (
@@ -292,7 +292,7 @@ export function TopNav({ onAddClick, onManageCategories, onTaskClick, onHabitCli
                           </div>
                         )}
                       </div>
-                    </ScrollArea>
+                    </div>
                   )}
                 </div>
               )}
