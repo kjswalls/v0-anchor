@@ -26,8 +26,6 @@ interface PlannerStore {
   filters: FilterState;
   projects: Project[];
   habitGroups: HabitGroupType[];
-  searchQuery: string;
-  
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
@@ -51,7 +49,6 @@ interface PlannerStore {
   setGroupBy: (groupBy: GroupBy) => void;
   setFilters: (filters: FilterState) => void;
   clearFilters: () => void;
-  setSearchQuery: (query: string) => void;
   
   // Project actions
   addProject: (name: string, emoji: string) => void;
@@ -226,7 +223,6 @@ export const usePlannerStore = create<PlannerStore>()(
       filters: {},
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
-      searchQuery: '',
       
       addTask: (taskData) => {
         // Auto-correct bucket based on start time
@@ -439,7 +435,6 @@ export const usePlannerStore = create<PlannerStore>()(
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilters: (filters) => set({ filters }),
       clearFilters: () => set({ filters: {} }),
-      setSearchQuery: (searchQuery) => set({ searchQuery }),
       
       addProject: (name, emoji) => {
         set((state) => ({

@@ -133,7 +133,12 @@ export default function PlannerPage() {
       onDragEnd={handleDragEnd}
     >
       <div className="h-screen flex flex-col bg-background">
-        <TopNav onAddClick={handleAddFromTopNav} onManageCategories={handleManageCategories} />
+        <TopNav 
+          onAddClick={handleAddFromTopNav} 
+          onManageCategories={handleManageCategories}
+          onTaskClick={handleTaskClick}
+          onHabitClick={handleHabitClick}
+        />
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
