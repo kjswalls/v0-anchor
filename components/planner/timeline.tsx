@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, Minus, Flame, GripVertical, Plus, Repeat } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -214,7 +214,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           'border-border/40 bg-muted/30 hover:bg-muted/50'
         )}
       >
-        <Minus className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0" />
+        <SkipForward className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0" />
         <span className="text-xs text-muted-foreground/70 flex-1 truncate">
           {habit.title}
         </span>
@@ -227,7 +227,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             toggleHabitStatus(habit.id, 'pending');
           }}
         >
-          Undo
+          Unskip
         </Button>
       </div>
     );
@@ -303,12 +303,12 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           </div>
         )}
 
-        {/* Skip button - only show for pending habits */}
+        {/* Skip button - always visible for pending habits */}
         {habit.status === 'pending' && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation();
               toggleHabitStatus(habit.id, 'skipped');
