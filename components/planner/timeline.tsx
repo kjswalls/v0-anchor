@@ -184,6 +184,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 }
 
 // Habit card component - full-width with gradient background and large emoji
+// Skipped habits are compact with an undo button
 interface HabitCardProps {
   habit: Habit;
   onClick: () => void;
@@ -194,7 +195,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
-  // Simple toggle: pending <-> done. Skipped is set via context menu or edit dialog.
+  // Simple toggle: pending <-> done
   const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
     switch (currentStatus) {
       case 'pending': return 'done';
@@ -203,6 +204,36 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
     }
   };
 
+  // Skipped state - compact card
+  if (habit.status === 'skipped') {
+    return (
+      <div
+        onClick={onClick}
+        className={cn(
+          'group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all cursor-pointer w-full overflow-hidden',
+          'border-border/40 bg-muted/30 hover:bg-muted/50'
+        )}
+      >
+        <Minus className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0" />
+        <span className="text-xs text-muted-foreground/70 flex-1 truncate">
+          {habit.title}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleHabitStatus(habit.id, 'pending');
+          }}
+        >
+          Undo
+        </Button>
+      </div>
+    );
+  }
+
+  // Normal state (pending or done)
   return (
     <div
       onClick={onClick}
@@ -234,12 +265,10 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           className={cn(
             'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0',
             habit.status === 'done' && 'bg-primary border-primary',
-            habit.status === 'skipped' && 'bg-muted border-muted-foreground/30',
             habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
           )}
         >
           {habit.status === 'done' && <Check className="h-3 w-3 text-primary-foreground" />}
-          {habit.status === 'skipped' && <Minus className="h-2.5 w-2.5 text-muted-foreground" />}
         </button>
         
         <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -272,6 +301,21 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             <Flame className="h-3.5 w-3.5 text-orange-500" />
             <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">{habit.streak}</span>
           </div>
+        )}
+
+        {/* Skip button - only show for pending habits */}
+        {habit.status === 'pending' && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleHabitStatus(habit.id, 'skipped');
+            }}
+          >
+            Skip
+          </Button>
         )}
       </div>
     </div>
