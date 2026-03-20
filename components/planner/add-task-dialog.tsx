@@ -35,11 +35,13 @@ import { cn } from '@/lib/utils';
 interface AddTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultTab?: 'task' | 'habit';
+  defaultBucket?: TimeBucket;
 }
 
-export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
-  const { addTask, addHabit, projects } = usePlannerStore();
-  const [activeTab, setActiveTab] = useState<'task' | 'habit'>('task');
+export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket }: AddTaskDialogProps) {
+  const { addTask, addHabit, projects, habitGroups, scheduleTask, scheduleHabit } = usePlannerStore();
+  const [activeTab, setActiveTab] = useState<'task' | 'habit'>(defaultTab);
   
   // Task state
   const [taskTitle, setTaskTitle] = useState('');
@@ -47,11 +49,13 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
   const [taskProject, setTaskProject] = useState<string>('');
   const [taskDueDate, setTaskDueDate] = useState<Date | undefined>();
   const [taskDuration, setTaskDuration] = useState<string>('30');
+  const [taskRepeatFrequency, setTaskRepeatFrequency] = useState<RepeatFrequency>('none');
+  const [taskRepeatDays, setTaskRepeatDays] = useState<number[]>([]);
   
   // Habit state
   const [habitTitle, setHabitTitle] = useState('');
-  const [habitGroup, setHabitGroup] = useState<HabitGroup>('wellness');
-  const [habitTimeBucket, setHabitTimeBucket] = useState<TimeBucket>('anytime');
+  const [habitGroup, setHabitGroup] = useState<HabitGroup>(habitGroups[0] || 'personal');
+  const [habitTimeBucket, setHabitTimeBucket] = useState<TimeBucket>(defaultBucket || 'anytime');
   const [habitScheduledTime, setHabitScheduledTime] = useState<string>('');
   const [habitRepeatFrequency, setHabitRepeatFrequency] = useState<RepeatFrequency>('daily');
   const [habitRepeatDays, setHabitRepeatDays] = useState<number[]>([]);
@@ -63,16 +67,26 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
     setTaskProject('');
     setTaskDueDate(undefined);
     setTaskDuration('30');
+    setTaskRepeatFrequency('none');
+    setTaskRepeatDays([]);
     setHabitTitle('');
-    setHabitGroup('wellness');
-    setHabitTimeBucket('anytime');
+    setHabitGroup(habitGroups[0] || 'personal');
+    setHabitTimeBucket(defaultBucket || 'anytime');
     setHabitScheduledTime('');
     setHabitRepeatFrequency('daily');
     setHabitRepeatDays([]);
     setHabitTimesPerDay('1');
   };
 
-  const toggleDay = (day: number) => {
+  const toggleTaskDay = (day: number) => {
+    if (taskRepeatDays.includes(day)) {
+      setTaskRepeatDays(taskRepeatDays.filter((d) => d !== day));
+    } else {
+      setTaskRepeatDays([...taskRepeatDays, day].sort());
+    }
+  };
+
+  const toggleHabitDay = (day: number) => {
     if (habitRepeatDays.includes(day)) {
       setHabitRepeatDays(habitRepeatDays.filter((d) => d !== day));
     } else {
@@ -89,7 +103,18 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
       project: taskProject || undefined,
       dueDate: taskDueDate,
       duration: taskDuration ? parseInt(taskDuration) : undefined,
+      repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
+      repeatDays: taskRepeatFrequency === 'custom' ? taskRepeatDays : undefined,
     });
+
+    // If a default bucket was provided, schedule the task
+    if (defaultBucket) {
+      // We need to get the task ID from the store after it's added
+      const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
+      if (newTaskId) {
+        scheduleTask(newTaskId, defaultBucket);
+      }
+    }
     
     resetForm();
     onOpenChange(false);
@@ -210,6 +235,45 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
                 />
               </div>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Repeat</Label>
+              <Select value={taskRepeatFrequency} onValueChange={(v) => setTaskRepeatFrequency(v as RepeatFrequency)}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(REPEAT_FREQUENCY_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {taskRepeatFrequency === 'custom' && (
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Select days</Label>
+                <div className="flex gap-1">
+                  {WEEKDAY_LABELS.map((day, index) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleTaskDay(index)}
+                      className={cn(
+                        'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
+                        taskRepeatDays.includes(index)
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      )}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
             <Button onClick={handleAddTask} className="w-full mt-4">
               Add Task
@@ -236,9 +300,11 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="wellness">Wellness</SelectItem>
-                    <SelectItem value="work">Work</SelectItem>
-                    <SelectItem value="personal">Personal</SelectItem>
+                    {habitGroups.map((group) => (
+                      <SelectItem key={group} value={group}>
+                        <span className="capitalize">{group}</span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -263,11 +329,13 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(REPEAT_FREQUENCY_LABELS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
+                  {Object.entries(REPEAT_FREQUENCY_LABELS)
+                    .filter(([value]) => value !== 'none')
+                    .map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
@@ -280,7 +348,7 @@ export function AddTaskDialog({ open, onOpenChange }: AddTaskDialogProps) {
                     <button
                       key={day}
                       type="button"
-                      onClick={() => toggleDay(index)}
+                      onClick={() => toggleHabitDay(index)}
                       className={cn(
                         'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
                         habitRepeatDays.includes(index)

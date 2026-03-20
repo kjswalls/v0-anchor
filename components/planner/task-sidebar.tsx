@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight } from 'lucide-react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -260,9 +260,10 @@ function FilterButton() {
 
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;
+  onAddClick: () => void;
 }
 
-export function TaskSidebar({ onTaskClick }: TaskSidebarProps) {
+export function TaskSidebar({ onTaskClick, onAddClick }: TaskSidebarProps) {
   const { tasks, groupBy, setGroupBy, filters, setFilters } = usePlannerStore();
   
   const { isOver, setNodeRef: setDroppableRef } = useDroppable({
@@ -325,9 +326,19 @@ export function TaskSidebar({ onTaskClick }: TaskSidebarProps) {
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-foreground">Tasks</h2>
-          <span className="text-xs text-muted-foreground">
-            {unscheduledTasks.length} unscheduled
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {unscheduledTasks.length} unscheduled
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onAddClick}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">

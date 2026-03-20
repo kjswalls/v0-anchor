@@ -2,11 +2,11 @@ export type Priority = 'low' | 'medium' | 'high';
 export type TimeBucket = 'anytime' | 'morning' | 'afternoon' | 'evening';
 export type TaskStatus = 'pending' | 'completed' | 'cancelled';
 export type HabitStatus = 'pending' | 'done' | 'skipped';
-export type HabitGroup = 'wellness' | 'work' | 'personal';
+export type HabitGroup = 'wellness' | 'work' | 'personal' | string;
 export type ViewMode = 'day' | 'week';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
 export type FilterType = 'project' | 'priority' | 'dueDate' | 'repeat' | 'status';
-export type RepeatFrequency = 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
 
 export interface Task {
   id: string;
@@ -19,7 +19,9 @@ export interface Task {
   scheduledTime?: string; // HH:mm format
   duration?: number; // in minutes
   isScheduled: boolean;
-  repeat?: 'daily' | 'weekly' | 'monthly';
+  // Repeat configuration (same as habits)
+  repeatFrequency?: RepeatFrequency;
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
   order: number;
 }
 
@@ -55,6 +57,7 @@ export interface PlannerState {
   groupBy: GroupBy;
   filters: FilterState;
   projects: string[];
+  habitGroups: string[];
 }
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
@@ -70,13 +73,16 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   high: 'High',
 };
 
-export const HABIT_GROUP_LABELS: Record<HabitGroup, string> = {
+export const DEFAULT_HABIT_GROUPS = ['wellness', 'work', 'personal'];
+
+export const HABIT_GROUP_LABELS: Record<string, string> = {
   wellness: 'Wellness',
   work: 'Work',
   personal: 'Personal',
 };
 
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
+  none: 'No repeat',
   daily: 'Every day',
   weekly: 'Once a week',
   weekdays: 'Weekdays only',

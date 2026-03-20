@@ -24,6 +24,7 @@ interface PlannerStore {
   groupBy: GroupBy;
   filters: FilterState;
   projects: string[];
+  habitGroups: string[];
   
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
@@ -51,6 +52,10 @@ interface PlannerStore {
   // Project actions
   addProject: (name: string) => void;
   removeProject: (name: string) => void;
+  
+  // Habit group actions
+  addHabitGroup: (name: string) => void;
+  removeHabitGroup: (name: string) => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -69,6 +74,7 @@ const initialTasks: Task[] = [
     timeBucket: 'morning',
     scheduledTime: '09:00',
     duration: 60,
+    repeatFrequency: 'weekdays',
     order: 0,
   },
   {
@@ -186,6 +192,7 @@ export const usePlannerStore = create<PlannerStore>()(
       groupBy: 'none',
       filters: {},
       projects: ['Work', 'Wellness', 'Personal'],
+      habitGroups: ['wellness', 'work', 'personal'],
       
       addTask: (taskData) => {
         const task: Task = {
@@ -328,6 +335,30 @@ export const usePlannerStore = create<PlannerStore>()(
       removeProject: (name) => {
         set((state) => ({
           projects: state.projects.filter((p) => p !== name),
+          // Also remove project from tasks
+          tasks: state.tasks.map((t) => 
+            t.project === name ? { ...t, project: undefined } : t
+          ),
+        }));
+      },
+      
+      addHabitGroup: (name) => {
+        const normalized = name.toLowerCase();
+        set((state) => ({
+          habitGroups: state.habitGroups.includes(normalized)
+            ? state.habitGroups
+            : [...state.habitGroups, normalized],
+        }));
+      },
+      
+      removeHabitGroup: (name) => {
+        const normalized = name.toLowerCase();
+        set((state) => ({
+          habitGroups: state.habitGroups.filter((g) => g !== normalized),
+          // Move habits to 'personal' group
+          habits: state.habits.map((h) => 
+            h.group === normalized ? { ...h, group: 'personal' } : h
+          ),
         }));
       },
     }),
@@ -337,6 +368,7 @@ export const usePlannerStore = create<PlannerStore>()(
         tasks: state.tasks,
         habits: state.habits,
         projects: state.projects,
+        habitGroups: state.habitGroups,
         groupBy: state.groupBy,
       }),
     }

@@ -1,7 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -9,13 +10,21 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { ViewMode } from '@/lib/planner-types';
 import { useTheme } from 'next-themes';
-import { AddTaskDialog } from './add-task-dialog';
-import { useState } from 'react';
 
-export function TopNav() {
+interface TopNavProps {
+  onAddClick: () => void;
+  onManageCategories: () => void;
+}
+
+export function TopNav({ onAddClick, onManageCategories }: TopNavProps) {
   const { selectedDate, setSelectedDate, viewMode, setViewMode } = usePlannerStore();
   const { theme, setTheme } = useTheme();
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid hydration mismatch by only rendering date after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const goToToday = () => setSelectedDate(new Date());
   const goPrevious = () => setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
@@ -43,7 +52,7 @@ export function TopNav() {
                 className="h-8 px-3 text-sm font-medium text-foreground hover:bg-secondary"
               >
                 <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-                {format(selectedDate, 'EEEE, MMMM d')}
+                {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="w-32" />}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
@@ -69,7 +78,7 @@ export function TopNav() {
             variant="outline"
             size="sm"
             onClick={goToToday}
-            disabled={isToday(selectedDate)}
+            disabled={mounted && isToday(selectedDate)}
             className="h-8 px-3 text-sm ml-2"
           >
             Today
@@ -106,18 +115,26 @@ export function TopNav() {
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onManageCategories}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title="Manage Projects & Groups"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
         
         <Button
           size="sm"
-          onClick={() => setAddDialogOpen(true)}
+          onClick={onAddClick}
           className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4 mr-1" />
           Add
         </Button>
       </div>
-      
-      <AddTaskDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
     </header>
   );
 }

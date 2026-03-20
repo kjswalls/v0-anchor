@@ -32,7 +32,7 @@ interface EditHabitDialogProps {
 }
 
 export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogProps) {
-  const { updateHabit, deleteHabit, scheduleHabit } = usePlannerStore();
+  const { updateHabit, deleteHabit, scheduleHabit, habitGroups } = usePlannerStore();
   
   const [title, setTitle] = useState('');
   const [group, setGroup] = useState<HabitGroup>('wellness');
@@ -120,9 +120,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wellness">Wellness</SelectItem>
-                  <SelectItem value="work">Work</SelectItem>
-                  <SelectItem value="personal">Personal</SelectItem>
+                  {habitGroups.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      <span className="capitalize">{g}</span>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

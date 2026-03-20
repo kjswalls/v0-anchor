@@ -6,6 +6,8 @@ import { TaskSidebar } from '@/components/planner/task-sidebar';
 import { Timeline } from '@/components/planner/timeline';
 import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
+import { AddTaskDialog } from '@/components/planner/add-task-dialog';
+import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
@@ -37,6 +39,10 @@ export default function PlannerPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addDialogTab, setAddDialogTab] = useState<'task' | 'habit'>('task');
+  const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
+  const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -78,6 +84,28 @@ export default function PlannerPage() {
     setEditingHabit(habit);
   };
 
+  const handleAddFromTopNav = () => {
+    setAddDialogTab('task');
+    setAddDialogBucket(undefined);
+    setAddDialogOpen(true);
+  };
+
+  const handleAddFromSidebar = () => {
+    setAddDialogTab('task');
+    setAddDialogBucket(undefined);
+    setAddDialogOpen(true);
+  };
+
+  const handleAddFromTimeline = (bucket: TimeBucket, type: 'task' | 'habit') => {
+    setAddDialogTab(type);
+    setAddDialogBucket(bucket);
+    setAddDialogOpen(true);
+  };
+
+  const handleManageCategories = () => {
+    setManageCategoriesOpen(true);
+  };
+
   return (
     <DndContext
       sensors={sensors}
@@ -86,11 +114,15 @@ export default function PlannerPage() {
       onDragEnd={handleDragEnd}
     >
       <div className="h-screen flex flex-col bg-background">
-        <TopNav />
+        <TopNav onAddClick={handleAddFromTopNav} onManageCategories={handleManageCategories} />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} />
+          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
-            <Timeline onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} />
+            <Timeline 
+              onTaskClick={handleTaskClick} 
+              onHabitClick={handleHabitClick} 
+              onAddClick={handleAddFromTimeline}
+            />
           </main>
         </div>
       </div>
@@ -98,6 +130,13 @@ export default function PlannerPage() {
       <DragOverlay>
         {activeTask && <DraggableTaskOverlay title={activeTask.title} />}
       </DragOverlay>
+      
+      <AddTaskDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        defaultTab={addDialogTab}
+        defaultBucket={addDialogBucket}
+      />
       
       <EditTaskDialog
         task={editingTask}
@@ -109,6 +148,11 @@ export default function PlannerPage() {
         habit={editingHabit}
         open={!!editingHabit}
         onOpenChange={(open) => !open && setEditingHabit(null)}
+      />
+
+      <ManageCategoriesDialog
+        open={manageCategoriesOpen}
+        onOpenChange={setManageCategoriesOpen}
       />
     </DndContext>
   );

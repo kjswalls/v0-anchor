@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, Minus, Flame, GripVertical } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, Minus, Flame, GripVertical, Plus, ListTodo, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -54,37 +54,47 @@ const priorityDots: Record<Priority, string> = {
   low: 'bg-priority-low',
 };
 
-const groupColors: Record<HabitGroup, { bg: string; text: string; border: string }> = {
-  wellness: {
-    bg: 'bg-habit-wellness/10',
-    text: 'text-habit-wellness',
-    border: 'border-habit-wellness/30',
-  },
-  work: {
-    bg: 'bg-habit-work/10',
-    text: 'text-habit-work',
-    border: 'border-habit-work/30',
-  },
-  personal: {
-    bg: 'bg-habit-personal/10',
-    text: 'text-habit-personal',
-    border: 'border-habit-personal/30',
-  },
+const getGroupColor = (group: string): { bg: string; text: string; border: string; left: string } => {
+  const colors: Record<string, { bg: string; text: string; border: string; left: string }> = {
+    wellness: {
+      bg: 'bg-habit-wellness/10',
+      text: 'text-habit-wellness',
+      border: 'border-habit-wellness/30',
+      left: 'border-l-habit-wellness',
+    },
+    work: {
+      bg: 'bg-habit-work/10',
+      text: 'text-habit-work',
+      border: 'border-habit-work/30',
+      left: 'border-l-habit-work',
+    },
+    personal: {
+      bg: 'bg-habit-personal/10',
+      text: 'text-habit-personal',
+      border: 'border-habit-personal/30',
+      left: 'border-l-habit-personal',
+    },
+  };
+  return colors[group] || colors.personal;
 };
 
-const projectColors: Record<string, string> = {
-  Work: 'border-l-habit-work bg-habit-work/5',
-  Wellness: 'border-l-habit-wellness bg-habit-wellness/5',
-  Personal: 'border-l-habit-personal bg-habit-personal/5',
+const getProjectColor = (project?: string): string => {
+  const colors: Record<string, string> = {
+    Work: 'border-l-habit-work bg-habit-work/5',
+    Wellness: 'border-l-habit-wellness bg-habit-wellness/5',
+    Personal: 'border-l-habit-personal bg-habit-personal/5',
+  };
+  return colors[project || ''] || 'border-l-muted bg-muted/30';
 };
 
-interface ScheduledTaskCardProps {
+// Task card component
+interface TaskCardProps {
   task: Task;
   onClick: () => void;
   compact?: boolean;
 }
 
-function ScheduledTaskCard({ task, onClick, compact = false }: ScheduledTaskCardProps) {
+function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
   const { toggleTaskStatus, unscheduleTask } = usePlannerStore();
   const {
     attributes,
@@ -97,8 +107,6 @@ function ScheduledTaskCard({ task, onClick, compact = false }: ScheduledTaskCard
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
   } : undefined;
-
-  const durationHeight = compact ? 32 : (task.duration ? Math.max(task.duration / 15 * 16, 48) : 48);
 
   return (
     <div
@@ -178,6 +186,9 @@ function ScheduledTaskCard({ task, onClick, compact = false }: ScheduledTaskCard
                 {task.duration}m
               </span>
             )}
+            {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+              <Repeat className="h-3 w-3 text-muted-foreground" />
+            )}
           </div>
         )}
       </div>
@@ -185,15 +196,15 @@ function ScheduledTaskCard({ task, onClick, compact = false }: ScheduledTaskCard
   );
 }
 
+// Habit card component - shorter and taller with fire icon
 interface HabitCardProps {
   habit: Habit;
   onClick: () => void;
-  compact?: boolean;
 }
 
-function HabitCard({ habit, onClick, compact = false }: HabitCardProps) {
+function HabitCard({ habit, onClick }: HabitCardProps) {
   const { toggleHabitStatus } = usePlannerStore();
-  const colors = groupColors[habit.group];
+  const colors = getGroupColor(habit.group);
 
   const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
     switch (currentStatus) {
@@ -207,7 +218,7 @@ function HabitCard({ habit, onClick, compact = false }: HabitCardProps) {
     <div
       onClick={onClick}
       className={cn(
-        'group flex items-center gap-2 px-3 py-2 rounded-lg border transition-all cursor-pointer',
+        'group flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 transition-all cursor-pointer',
         colors.bg,
         colors.border,
         habit.status === 'done' && 'ring-1 ring-primary/20'
@@ -229,174 +240,185 @@ function HabitCard({ habit, onClick, compact = false }: HabitCardProps) {
         {habit.status === 'skipped' && <Minus className="h-2.5 w-2.5 text-muted-foreground" />}
       </button>
       
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 flex items-center gap-2">
         <span
           className={cn(
-            'text-sm font-medium text-foreground',
+            'text-sm font-medium text-foreground truncate',
             (habit.status === 'done' || habit.status === 'skipped') && 'line-through text-muted-foreground'
           )}
         >
           {habit.title}
         </span>
-        {!compact && habit.timesPerDay && habit.timesPerDay > 1 && (
-          <span className="text-xs text-muted-foreground ml-2">
+        {habit.timesPerDay && habit.timesPerDay > 1 && (
+          <span className="text-xs text-muted-foreground">
             {habit.currentDayCount || 0}/{habit.timesPerDay}
           </span>
         )}
       </div>
       
+      {/* Fire icon for streak */}
       {habit.streak > 0 && (
-        <div className="flex items-center gap-0.5">
-          <Flame className="h-3 w-3 text-orange-500" />
-          <span className="text-xs font-medium text-orange-500">{habit.streak}</span>
+        <div className="flex items-center gap-0.5 bg-orange-500/10 px-1.5 py-0.5 rounded-md">
+          <Flame className="h-3.5 w-3.5 text-orange-500" />
+          <span className="text-xs font-semibold text-orange-500">{habit.streak}</span>
         </div>
       )}
     </div>
   );
 }
 
-// Hourly grid for time-specific buckets
+// Truncated hourly grid with gaps between clusters
 interface HourlyGridProps {
   bucket: TimeBucket;
-  tasks: Task[];
-  habits: Habit[];
+  scheduledTasks: Task[];
+  scheduledHabits: Habit[];
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
 }
 
-function HourlyGrid({ bucket, tasks, habits, onTaskClick, onHabitClick }: HourlyGridProps) {
+function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick }: HourlyGridProps) {
   const range = TIME_BUCKET_RANGES[bucket];
-  const hours = [];
   
-  for (let h = range.start; h < range.end; h++) {
-    hours.push(h);
-  }
-
-  // Tasks with specific times
-  const timedTasks = tasks.filter((t) => t.scheduledTime);
-  const untimedTasks = tasks.filter((t) => !t.scheduledTime);
-  
-  // Habits with specific times
-  const timedHabits = habits.filter((h) => h.scheduledTime);
-  const untimedHabits = habits.filter((h) => !h.scheduledTime);
-
   // Group items by hour
   const itemsByHour: Record<number, { tasks: Task[]; habits: Habit[] }> = {};
-  hours.forEach((h) => {
-    itemsByHour[h] = { tasks: [], habits: [] };
-  });
-
-  timedTasks.forEach((task) => {
-    const hour = parseInt(task.scheduledTime!.split(':')[0]);
-    if (itemsByHour[hour]) {
+  
+  scheduledTasks.forEach((task) => {
+    if (task.scheduledTime) {
+      const hour = parseInt(task.scheduledTime.split(':')[0]);
+      if (!itemsByHour[hour]) itemsByHour[hour] = { tasks: [], habits: [] };
       itemsByHour[hour].tasks.push(task);
     }
   });
 
-  timedHabits.forEach((habit) => {
-    const hour = parseInt(habit.scheduledTime!.split(':')[0]);
-    if (itemsByHour[hour]) {
+  scheduledHabits.forEach((habit) => {
+    if (habit.scheduledTime) {
+      const hour = parseInt(habit.scheduledTime.split(':')[0]);
+      if (!itemsByHour[hour]) itemsByHour[hour] = { tasks: [], habits: [] };
       itemsByHour[hour].habits.push(habit);
     }
   });
 
-  // Check if there are any timed items
-  const hasTimedItems = timedTasks.length > 0 || timedHabits.length > 0;
+  // Find hours that have items
+  const hoursWithItems = Object.keys(itemsByHour)
+    .map(Number)
+    .filter((h) => h >= range.start && h < range.end)
+    .sort((a, b) => a - b);
 
-  // Group untimed items by project/group
-  const projectGroups: Record<string, { tasks: Task[]; habits: Habit[] }> = {};
-  
-  untimedTasks.forEach((task) => {
-    const project = task.project || 'Other';
-    if (!projectGroups[project]) projectGroups[project] = { tasks: [], habits: [] };
-    projectGroups[project].tasks.push(task);
+  if (hoursWithItems.length === 0) return null;
+
+  // Find clusters (consecutive hours with items)
+  const clusters: number[][] = [];
+  let currentCluster: number[] = [];
+
+  hoursWithItems.forEach((hour, index) => {
+    if (currentCluster.length === 0) {
+      currentCluster.push(hour);
+    } else {
+      const lastHour = currentCluster[currentCluster.length - 1];
+      if (hour - lastHour <= 2) {
+        // Include hours up to this one
+        for (let h = lastHour + 1; h <= hour; h++) {
+          currentCluster.push(h);
+        }
+      } else {
+        clusters.push([...currentCluster]);
+        currentCluster = [hour];
+      }
+    }
+    
+    if (index === hoursWithItems.length - 1) {
+      clusters.push(currentCluster);
+    }
   });
 
-  untimedHabits.forEach((habit) => {
-    // Map habit group to project name for visual consistency
-    const groupName = habit.group.charAt(0).toUpperCase() + habit.group.slice(1);
-    if (!projectGroups[groupName]) projectGroups[groupName] = { tasks: [], habits: [] };
-    projectGroups[groupName].habits.push(habit);
-  });
+  const formatHour = (hour: number) => {
+    if (hour === 0) return '12am';
+    if (hour < 12) return `${hour}am`;
+    if (hour === 12) return '12pm';
+    return `${hour - 12}pm`;
+  };
 
   return (
-    <div className="space-y-3">
-      {/* Untimed items section - pinned at top */}
-      {(untimedTasks.length > 0 || untimedHabits.length > 0) && (
-        <div className="space-y-2">
-          {Object.entries(projectGroups).map(([projectName, items]) => (
-            <div
-              key={projectName}
-              className={cn(
-                'rounded-lg border-l-4 p-2',
-                projectColors[projectName] || 'border-l-muted bg-muted/30'
-              )}
-            >
-              <div className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                {projectName}
-              </div>
-              <div className="space-y-1.5">
-                {items.habits.map((habit) => (
-                  <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} compact />
-                ))}
-                {items.tasks.map((task) => (
-                  <ScheduledTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} compact />
-                ))}
-              </div>
+    <div className="space-y-4">
+      {clusters.map((cluster, clusterIndex) => (
+        <div key={clusterIndex}>
+          {clusterIndex > 0 && (
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+              <div className="flex-1 h-px bg-border" />
+              <span>...</span>
+              <div className="flex-1 h-px bg-border" />
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Hourly grid for timed items */}
-      {hasTimedItems && (
-        <div className="border-t border-border/50 pt-3">
-          <div className="text-xs font-medium text-muted-foreground mb-2">Scheduled</div>
+          )}
           <div className="space-y-0.5">
-            {hours.map((hour) => {
-              const hourItems = itemsByHour[hour];
+            {cluster.map((hour) => {
+              const hourItems = itemsByHour[hour] || { tasks: [], habits: [] };
               const hasItems = hourItems.tasks.length > 0 || hourItems.habits.length > 0;
-              
-              if (!hasItems) return null;
               
               return (
                 <div key={hour} className="flex gap-3">
-                  <div className="w-12 text-xs text-muted-foreground pt-2 text-right">
-                    {hour === 0 ? '12am' : hour < 12 ? `${hour}am` : hour === 12 ? '12pm' : `${hour - 12}pm`}
+                  <div className="w-12 text-xs text-muted-foreground pt-2 text-right tabular-nums">
+                    {formatHour(hour)}
                   </div>
-                  <div className="flex-1 space-y-1.5 py-1 border-l border-border/30 pl-3">
-                    {hourItems.habits.map((habit) => (
-                      <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} compact />
-                    ))}
-                    {hourItems.tasks.map((task) => (
-                      <ScheduledTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} compact />
-                    ))}
+                  <div className="flex-1 border-l border-border/30 pl-3 min-h-[32px]">
+                    {hasItems && (
+                      <div className="space-y-1.5 py-1">
+                        {hourItems.habits.map((habit) => (
+                          <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                        ))}
+                        {hourItems.tasks.map((task) => (
+                          <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} compact />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      )}
+      ))}
     </div>
   );
 }
 
+// Timeline bucket component
 interface TimelineBucketProps {
   bucket: TimeBucket;
   tasks: Task[];
   habits: Habit[];
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
-function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick }: TimelineBucketProps) {
+function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
   
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
 
+  // Separate into untimed and scheduled
+  const untimedTasks = tasks.filter((t) => !t.scheduledTime);
+  const scheduledTasks = tasks.filter((t) => t.scheduledTime);
+  const untimedHabits = habits.filter((h) => !h.scheduledTime);
+  const scheduledHabits = habits.filter((h) => h.scheduledTime);
+
   const totalItems = tasks.length + habits.length;
+
+  // Group untimed items by project/group
+  const untimedTasksByProject: Record<string, Task[]> = {};
+  untimedTasks.forEach((task) => {
+    const project = task.project || 'Other';
+    if (!untimedTasksByProject[project]) untimedTasksByProject[project] = [];
+    untimedTasksByProject[project].push(task);
+  });
+
+  const untimedHabitsByGroup: Record<string, Habit[]> = {};
+  untimedHabits.forEach((habit) => {
+    const group = habit.group.charAt(0).toUpperCase() + habit.group.slice(1);
+    if (!untimedHabitsByGroup[group]) untimedHabitsByGroup[group] = [];
+    untimedHabitsByGroup[group].push(habit);
+  });
 
   return (
     <div
@@ -407,45 +429,124 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick }: Ti
         isOver && 'border-solid border-primary bg-primary/5'
       )}
     >
-      <div className={cn('px-4 py-3 rounded-t-lg', config.bgClass)}>
+      {/* Header */}
+      <div className={cn('px-4 py-3 rounded-t-lg flex items-center justify-between', config.bgClass)}>
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-medium text-foreground">{config.label}</h3>
           <span className="text-xs text-muted-foreground">{config.timeRange}</span>
           {totalItems > 0 && (
-            <Badge variant="secondary" className="text-xs h-5 px-1.5 ml-auto">
+            <Badge variant="secondary" className="text-xs h-5 px-1.5">
               {totalItems}
             </Badge>
           )}
         </div>
+        
+        {/* Add buttons */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onAddClick(bucket, 'task')}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Task
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onAddClick(bucket, 'habit')}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Habit
+          </Button>
+        </div>
       </div>
       
-      <div className="p-3">
+      {/* Content */}
+      <div className="p-3 space-y-4">
         {totalItems > 0 ? (
-          bucket === 'anytime' ? (
-            // Anytime bucket - simple list
-            <div className="space-y-2">
-              {habits.map((habit) => (
-                <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-              ))}
-              {tasks.map((task) => (
-                <ScheduledTaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-              ))}
-            </div>
-          ) : (
-            // Timed buckets - show hourly grid
-            <HourlyGrid
-              bucket={bucket}
-              tasks={tasks}
-              habits={habits}
-              onTaskClick={onTaskClick}
-              onHabitClick={onHabitClick}
-            />
-          )
+          <>
+            {/* Untimed Habits Section */}
+            {untimedHabits.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Repeat className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Habits</span>
+                </div>
+                {Object.entries(untimedHabitsByGroup).map(([groupName, groupHabits]) => (
+                  <div
+                    key={groupName}
+                    className={cn(
+                      'rounded-lg border-l-4 p-2',
+                      getGroupColor(groupName.toLowerCase()).left,
+                      getGroupColor(groupName.toLowerCase()).bg
+                    )}
+                  >
+                    <div className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                      {groupName}
+                    </div>
+                    <div className="space-y-1.5">
+                      {groupHabits.map((habit) => (
+                        <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Untimed Tasks Section */}
+            {untimedTasks.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <ListTodo className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tasks</span>
+                </div>
+                {Object.entries(untimedTasksByProject).map(([projectName, projectTasks]) => (
+                  <div
+                    key={projectName}
+                    className={cn(
+                      'rounded-lg border-l-4 p-2',
+                      getProjectColor(projectName)
+                    )}
+                  >
+                    <div className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                      {projectName}
+                    </div>
+                    <div className="space-y-1.5">
+                      {projectTasks.map((task) => (
+                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} compact />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Scheduled Section (hourly grid) */}
+            {(scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scheduled</span>
+                </div>
+                <HourlyGrid
+                  bucket={bucket}
+                  scheduledTasks={scheduledTasks}
+                  scheduledHabits={scheduledHabits}
+                  onTaskClick={onTaskClick}
+                  onHabitClick={onHabitClick}
+                />
+              </div>
+            )}
+          </>
         ) : (
           <div className="py-6 text-center">
             <p className="text-sm text-muted-foreground/70">
-              Drag tasks here to schedule
+              Drag tasks here or use + buttons above
             </p>
           </div>
         )}
@@ -457,9 +558,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick }: Ti
 interface TimelineProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
-export function Timeline({ onTaskClick, onHabitClick }: TimelineProps) {
+export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
   const { tasks, habits } = usePlannerStore();
 
   const scheduledTasks = useMemo(() => {
@@ -513,14 +615,15 @@ export function Timeline({ onTaskClick, onHabitClick }: TimelineProps) {
   }, [habits]);
 
   return (
-    <ScrollArea className="flex-1">
-      <div className="p-6 space-y-4 max-w-2xl mx-auto">
+    <ScrollArea className="flex-1 h-full">
+      <div className="p-6 space-y-4 max-w-2xl mx-auto pb-20">
         <TimelineBucket
           bucket="anytime"
           tasks={scheduledTasks.anytime}
           habits={scheduledHabits.anytime}
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
+          onAddClick={onAddClick}
         />
         <TimelineBucket
           bucket="morning"
@@ -528,6 +631,7 @@ export function Timeline({ onTaskClick, onHabitClick }: TimelineProps) {
           habits={scheduledHabits.morning}
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
+          onAddClick={onAddClick}
         />
         <TimelineBucket
           bucket="afternoon"
@@ -535,6 +639,7 @@ export function Timeline({ onTaskClick, onHabitClick }: TimelineProps) {
           habits={scheduledHabits.afternoon}
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
+          onAddClick={onAddClick}
         />
         <TimelineBucket
           bucket="evening"
@@ -542,6 +647,7 @@ export function Timeline({ onTaskClick, onHabitClick }: TimelineProps) {
           habits={scheduledHabits.evening}
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
+          onAddClick={onAddClick}
         />
       </div>
     </ScrollArea>

@@ -28,7 +28,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Priority, TimeBucket } from '@/lib/planner-types';
+import type { Task, Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditTaskDialogProps {
@@ -47,6 +48,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   const [duration, setDuration] = useState<string>('30');
   const [timeBucket, setTimeBucket] = useState<TimeBucket | 'none'>('none');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('none');
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
 
   useEffect(() => {
     if (task) {
@@ -57,8 +60,18 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setDuration(task.duration?.toString() || '30');
       setTimeBucket(task.timeBucket || 'none');
       setScheduledTime(task.scheduledTime || '');
+      setRepeatFrequency(task.repeatFrequency || 'none');
+      setRepeatDays(task.repeatDays || []);
     }
   }, [task]);
+
+  const toggleDay = (day: number) => {
+    if (repeatDays.includes(day)) {
+      setRepeatDays(repeatDays.filter((d) => d !== day));
+    } else {
+      setRepeatDays([...repeatDays, day].sort());
+    }
+  };
 
   const handleSave = () => {
     if (!task || !title.trim()) return;
@@ -70,6 +83,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       dueDate,
       duration: duration ? parseInt(duration) : undefined,
       scheduledTime: scheduledTime || undefined,
+      repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
+      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
     });
 
     // Handle scheduling
@@ -184,6 +199,45 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm text-muted-foreground">Repeat</Label>
+            <Select value={repeatFrequency} onValueChange={(v) => setRepeatFrequency(v as RepeatFrequency)}>
+              <SelectTrigger className="bg-background border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(REPEAT_FREQUENCY_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {repeatFrequency === 'custom' && (
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Select days</Label>
+              <div className="flex gap-1">
+                {WEEKDAY_LABELS.map((day, index) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(index)}
+                    className={cn(
+                      'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
+                      repeatDays.includes(index)
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    )}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
