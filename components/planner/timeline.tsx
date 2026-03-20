@@ -576,7 +576,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
 
   return (
     <ScrollArea className="flex-1 h-full">
-      <div className="p-6 space-y-4 max-w-2xl mx-auto pb-20">
+      <div className="p-6 space-y-4 max-w-4xl mx-auto pb-20">
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">

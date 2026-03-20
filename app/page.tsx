@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
 import { Timeline } from '@/components/planner/timeline';
@@ -36,6 +36,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 
 export default function PlannerPage() {
   const { tasks, scheduleTask, unscheduleTask } = usePlannerStore();
+  const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
@@ -43,6 +44,10 @@ export default function PlannerPage() {
   const [addDialogTab, setAddDialogTab] = useState<'task' | 'habit'>('task');
   const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -105,6 +110,25 @@ export default function PlannerPage() {
   const handleManageCategories = () => {
     setManageCategoriesOpen(true);
   };
+
+  // Render without DndContext on server to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <TopNav onAddClick={handleAddFromTopNav} onManageCategories={handleManageCategories} />
+        <div className="flex-1 flex overflow-hidden">
+          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} />
+          <main className="flex-1 flex flex-col bg-background overflow-hidden">
+            <Timeline 
+              onTaskClick={handleTaskClick} 
+              onHabitClick={handleHabitClick} 
+              onAddClick={handleAddFromTimeline}
+            />
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <DndContext
