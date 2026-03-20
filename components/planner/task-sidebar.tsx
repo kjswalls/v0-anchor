@@ -182,64 +182,100 @@ function FilterButton() {
         <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Filter by</div>
         
         {/* Project submenu */}
-        <Popover open={activeSubmenu === 'project'} onOpenChange={(open) => setActiveSubmenu(open ? 'project' : null)}>
-          <PopoverTrigger asChild>
-            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
-              <span>Project</span>
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent side="right" align="start" className="w-36 p-1" sideOffset={4}>
-            {projects.map((project) => (
-              <button
-                key={project.name}
-                className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm"
-                onClick={() => handleSelectProject(project.name)}
-              >
-                {project.emoji} {project.name}
+        <div 
+          onMouseEnter={() => setActiveSubmenu('project')}
+          onMouseLeave={() => setActiveSubmenu(null)}
+        >
+          <Popover open={activeSubmenu === 'project'}>
+            <PopoverTrigger asChild>
+              <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+                <span>Project</span>
+                <ChevronRight className="h-3 w-3" />
               </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+            </PopoverTrigger>
+            <PopoverContent 
+              side="right" 
+              align="start" 
+              className="w-36 p-1" 
+              sideOffset={4}
+              onMouseEnter={() => setActiveSubmenu('project')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              {projects.map((project) => (
+                <button
+                  key={project.name}
+                  className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm"
+                  onClick={() => handleSelectProject(project.name)}
+                >
+                  {project.emoji} {project.name}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        </div>
 
         {/* Priority submenu */}
-        <Popover open={activeSubmenu === 'priority'} onOpenChange={(open) => setActiveSubmenu(open ? 'priority' : null)}>
-          <PopoverTrigger asChild>
-            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
-              <span>Priority</span>
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent side="right" align="start" className="w-28 p-1" sideOffset={4}>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>
-              High
-            </button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('medium')}>
-              Medium
-            </button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('low')}>
-              Low
-            </button>
-          </PopoverContent>
-        </Popover>
+        <div 
+          onMouseEnter={() => setActiveSubmenu('priority')}
+          onMouseLeave={() => setActiveSubmenu(null)}
+        >
+          <Popover open={activeSubmenu === 'priority'}>
+            <PopoverTrigger asChild>
+              <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+                <span>Priority</span>
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent 
+              side="right" 
+              align="start" 
+              className="w-28 p-1" 
+              sideOffset={4}
+              onMouseEnter={() => setActiveSubmenu('priority')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>
+                High
+              </button>
+              <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('medium')}>
+                Medium
+              </button>
+              <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('low')}>
+                Low
+              </button>
+            </PopoverContent>
+          </Popover>
+        </div>
 
         {/* Status submenu */}
-        <Popover open={activeSubmenu === 'status'} onOpenChange={(open) => setActiveSubmenu(open ? 'status' : null)}>
-          <PopoverTrigger asChild>
-            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
-              <span>Status</span>
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent side="right" align="start" className="w-28 p-1" sideOffset={4}>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>
-              Pending
-            </button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('completed')}>
-              Completed
-            </button>
-          </PopoverContent>
-        </Popover>
+        <div 
+          onMouseEnter={() => setActiveSubmenu('status')}
+          onMouseLeave={() => setActiveSubmenu(null)}
+        >
+          <Popover open={activeSubmenu === 'status'}>
+            <PopoverTrigger asChild>
+              <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+                <span>Status</span>
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent 
+              side="right" 
+              align="start" 
+              className="w-28 p-1" 
+              sideOffset={4}
+              onMouseEnter={() => setActiveSubmenu('status')}
+              onMouseLeave={() => setActiveSubmenu(null)}
+            >
+              <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>
+                Pending
+              </button>
+              <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('completed')}>
+                Completed
+              </button>
+            </PopoverContent>
+          </Popover>
+        </div>
         
         {hasActiveFilters && (
           <>
