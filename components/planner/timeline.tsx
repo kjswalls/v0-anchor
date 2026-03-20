@@ -194,10 +194,11 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
+  // Simple toggle: pending <-> done. Skipped is set via context menu or edit dialog.
   const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
     switch (currentStatus) {
       case 'pending': return 'done';
-      case 'done': return 'skipped';
+      case 'done': return 'pending';
       case 'skipped': return 'pending';
     }
   };
@@ -245,7 +246,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           <span
             className={cn(
               'text-sm font-medium text-foreground leading-tight line-clamp-2',
-              (habit.status === 'done' || habit.status === 'skipped') && 'line-through text-muted-foreground'
+              habit.status === 'done' && 'line-through text-muted-foreground'
             )}
           >
             {habit.title}
