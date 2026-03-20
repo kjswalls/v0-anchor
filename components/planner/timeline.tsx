@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -441,9 +441,10 @@ interface TimelineBucketProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
   onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
+  isCurrentBucket?: boolean;
 }
 
-function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick }: TimelineBucketProps) {
+function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
   
@@ -463,7 +464,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       className={cn(
         'rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
-        isOver && 'border-solid border-primary bg-primary/5'
+        isOver && 'border-solid border-primary bg-primary/5',
+        isCurrentBucket && 'border-solid ring-2 ring-primary/30 shadow-lg shadow-primary/10'
       )}
     >
       {/* Header */}
@@ -574,7 +576,43 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
-  const { tasks, habits, selectedDate, searchQuery } = usePlannerStore();
+  const { tasks, habits, selectedDate } = usePlannerStore();
+  const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Determine current time bucket and update every minute
+  useEffect(() => {
+    setMounted(true);
+    
+    const updateCurrentBucket = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      
+      // Only show glow if viewing today
+      const isToday = isSameDay(now, selectedDate);
+      if (!isToday) {
+        setCurrentBucket(null);
+        return;
+      }
+      
+      // Determine bucket based on hour
+      if (hour >= 5 && hour < 12) {
+        setCurrentBucket('morning');
+      } else if (hour >= 12 && hour < 17) {
+        setCurrentBucket('afternoon');
+      } else if (hour >= 17 || hour < 5) {
+        setCurrentBucket('evening');
+      }
+    };
+
+    updateCurrentBucket();
+    const interval = setInterval(updateCurrentBucket, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, [selectedDate]);
+
+  // Avoid using searchQuery from store - it's been removed
+  const searchQuery = '';
 
   // Filter tasks by selected date and search query
   const tasksForDate = useMemo(() => {
@@ -674,6 +712,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
+          isCurrentBucket={mounted && currentBucket === 'morning'}
         />
         <TimelineBucket 
           bucket="afternoon" 
@@ -682,6 +721,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
+          isCurrentBucket={mounted && currentBucket === 'afternoon'}
         />
         <TimelineBucket 
           bucket="evening" 
@@ -690,6 +730,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onTaskClick={onTaskClick}
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
+          isCurrentBucket={mounted && currentBucket === 'evening'}
         />
       </div>
     </ScrollArea>
