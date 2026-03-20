@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings2, Search, X, CheckCircle2, Flame } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, FolderOpen, Search, X, CheckCircle2, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -17,11 +17,12 @@ import { cn } from '@/lib/utils';
 interface TopNavProps {
   onAddClick: () => void;
   onManageCategories: () => void;
+  onOpenSettings: () => void;
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
 }
 
-export function TopNav({ onAddClick, onManageCategories, onTaskClick, onHabitClick }: TopNavProps) {
+export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
   const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -345,7 +346,17 @@ export function TopNav({ onAddClick, onManageCategories, onTaskClick, onHabitCli
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           title="Manage Projects & Groups"
         >
-          <Settings2 className="h-4 w-4" />
+          <FolderOpen className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenSettings}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title="Settings"
+        >
+          <Settings className="h-4 w-4" />
         </Button>
         
         <Button

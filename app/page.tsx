@@ -8,6 +8,7 @@ import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
+import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
@@ -44,6 +45,7 @@ export default function PlannerPage() {
   const [addDialogTab, setAddDialogTab] = useState<'task' | 'habit'>('task');
   const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   
   useEffect(() => {
     setMounted(true);
@@ -111,6 +113,10 @@ export default function PlannerPage() {
     setManageCategoriesOpen(true);
   };
 
+  const handleOpenSettings = () => {
+    setSettingsOpen(true);
+  };
+
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
     return (
@@ -136,6 +142,7 @@ export default function PlannerPage() {
         <TopNav 
           onAddClick={handleAddFromTopNav} 
           onManageCategories={handleManageCategories}
+          onOpenSettings={handleOpenSettings}
           onTaskClick={handleTaskClick}
           onHabitClick={handleHabitClick}
         />
@@ -177,6 +184,11 @@ export default function PlannerPage() {
       <ManageCategoriesDialog
         open={manageCategoriesOpen}
         onOpenChange={setManageCategoriesOpen}
+      />
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
       />
     </DndContext>
   );
