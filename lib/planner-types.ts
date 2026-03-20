@@ -2,24 +2,34 @@ export type Priority = 'low' | 'medium' | 'high';
 export type TimeBucket = 'anytime' | 'morning' | 'afternoon' | 'evening';
 export type TaskStatus = 'pending' | 'completed' | 'cancelled';
 export type HabitStatus = 'pending' | 'done' | 'skipped';
-export type HabitGroup = 'wellness' | 'work' | 'personal' | string;
+export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
-export type FilterType = 'project' | 'priority' | 'dueDate' | 'repeat' | 'status';
+export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
 export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+
+export interface Project {
+  name: string;
+  emoji: string;
+}
+
+export interface HabitGroupType {
+  name: string;
+  emoji: string;
+}
 
 export interface Task {
   id: string;
   title: string;
   priority?: Priority;
   project?: string;
-  dueDate?: Date;
+  startDate?: Date; // Changed from dueDate - determines which day this shows on
   status: TaskStatus;
   timeBucket?: TimeBucket;
-  scheduledTime?: string; // HH:mm format
+  startTime?: string; // Renamed from scheduledTime - HH:mm format
   duration?: number; // in minutes
   isScheduled: boolean;
-  // Repeat configuration (same as habits)
+  // Repeat configuration
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
   order: number;
@@ -33,7 +43,7 @@ export interface Habit {
   status: HabitStatus;
   completedDates: string[]; // ISO date strings
   timeBucket?: TimeBucket;
-  scheduledTime?: string; // HH:mm format
+  startTime?: string; // Renamed from scheduledTime - HH:mm format
   // Repeat configuration
   repeatFrequency: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
@@ -44,7 +54,7 @@ export interface Habit {
 export interface FilterState {
   project?: string;
   priority?: Priority;
-  dueDate?: 'today' | 'week' | 'overdue' | 'none';
+  startDate?: 'today' | 'week' | 'overdue' | 'none';
   repeat?: boolean;
   status?: TaskStatus;
 }
@@ -56,8 +66,8 @@ export interface PlannerState {
   viewMode: ViewMode;
   groupBy: GroupBy;
   filters: FilterState;
-  projects: string[];
-  habitGroups: string[];
+  projects: Project[];
+  habitGroups: HabitGroupType[];
 }
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
@@ -73,13 +83,17 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   high: 'High',
 };
 
-export const DEFAULT_HABIT_GROUPS = ['wellness', 'work', 'personal'];
+export const DEFAULT_PROJECTS: Project[] = [
+  { name: 'Work', emoji: '💼' },
+  { name: 'Wellness', emoji: '🧘' },
+  { name: 'Personal', emoji: '🏠' },
+];
 
-export const HABIT_GROUP_LABELS: Record<string, string> = {
-  wellness: 'Wellness',
-  work: 'Work',
-  personal: 'Personal',
-};
+export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
+  { name: 'wellness', emoji: '💚' },
+  { name: 'work', emoji: '💼' },
+  { name: 'personal', emoji: '⭐' },
+];
 
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
   none: 'No repeat',
@@ -91,3 +105,9 @@ export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
 };
 
 export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export const EMOJI_OPTIONS = [
+  '💼', '🧘', '🏠', '📚', '💪', '🎯', '🌟', '⭐', '💚', '❤️',
+  '🔥', '✨', '🎨', '🎵', '🏃', '🧠', '💡', '📝', '🎮', '🍎',
+  '☕', '🌱', '🔔', '📊', '🛠️', '🎓', '💰', '🌈', '🚀', '🎁',
+];

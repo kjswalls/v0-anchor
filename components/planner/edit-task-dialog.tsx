@@ -44,10 +44,10 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority | 'none'>('none');
   const [project, setProject] = useState<string>('none');
-  const [dueDate, setDueDate] = useState<Date | undefined>();
+  const [startDate, setStartDate] = useState<Date | undefined>();
   const [duration, setDuration] = useState<string>('30');
   const [timeBucket, setTimeBucket] = useState<TimeBucket | 'none'>('none');
-  const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('');
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('none');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
 
@@ -56,10 +56,10 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setTitle(task.title);
       setPriority(task.priority || 'none');
       setProject(task.project || 'none');
-      setDueDate(task.dueDate ? new Date(task.dueDate) : undefined);
+      setStartDate(task.startDate ? new Date(task.startDate) : undefined);
       setDuration(task.duration?.toString() || '30');
       setTimeBucket(task.timeBucket || 'none');
-      setScheduledTime(task.scheduledTime || '');
+      setStartTime(task.startTime || '');
       setRepeatFrequency(task.repeatFrequency || 'none');
       setRepeatDays(task.repeatDays || []);
     }
@@ -80,20 +80,20 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       title: title.trim(),
       priority: priority === 'none' ? undefined : priority,
       project: project === 'none' ? undefined : project,
-      dueDate,
+      startDate,
       duration: duration ? parseInt(duration) : undefined,
-      scheduledTime: scheduledTime || undefined,
+      startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
       repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
     });
 
     // Handle scheduling
     if (timeBucket !== 'none' && timeBucket !== task.timeBucket) {
-      scheduleTask(task.id, timeBucket, scheduledTime || undefined);
+      scheduleTask(task.id, timeBucket, startTime || undefined);
     } else if (timeBucket === 'none' && task.isScheduled) {
       unscheduleTask(task.id);
-    } else if (task.isScheduled && scheduledTime !== task.scheduledTime) {
-      updateTask(task.id, { scheduledTime: scheduledTime || undefined });
+    } else if (task.isScheduled && startTime !== task.startTime) {
+      updateTask(task.id, { startTime: startTime || undefined });
     }
     
     onOpenChange(false);
@@ -107,7 +107,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card">
+      <DialogContent className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-foreground">Edit Task</DialogTitle>
           <DialogDescription className="sr-only">
@@ -152,8 +152,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   {projects.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
+                    <SelectItem key={p.name} value={p.name}>
+                      {p.emoji} {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -163,25 +163,25 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Due Date</Label>
+              <Label className="text-sm text-muted-foreground">Start Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
                       'w-full justify-start text-left font-normal bg-background border-border',
-                      !dueDate && 'text-muted-foreground'
+                      !startDate && 'text-muted-foreground'
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dueDate ? format(dueDate, 'MMM d') : 'Pick a date'}
+                    {startDate ? format(startDate, 'MMM d') : 'Pick a date'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={dueDate}
-                    onSelect={setDueDate}
+                    selected={startDate}
+                    onSelect={setStartDate}
                     initialFocus
                   />
                 </PopoverContent>
@@ -196,6 +196,35 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
                 className="bg-background border-border"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Time Bucket</Label>
+              <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Unscheduled" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unscheduled</SelectItem>
+                  <SelectItem value="anytime">Anytime</SelectItem>
+                  <SelectItem value="morning">Morning</SelectItem>
+                  <SelectItem value="afternoon">Afternoon</SelectItem>
+                  <SelectItem value="evening">Evening</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Start Time</Label>
+              <Input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="bg-background border-border"
+                disabled={timeBucket === 'none' || timeBucket === 'anytime'}
               />
             </div>
           </div>
@@ -238,35 +267,6 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               </div>
             </div>
           )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Time Bucket</Label>
-              <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
-                <SelectTrigger className="bg-background border-border">
-                  <SelectValue placeholder="Unscheduled" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unscheduled</SelectItem>
-                  <SelectItem value="anytime">Anytime</SelectItem>
-                  <SelectItem value="morning">Morning</SelectItem>
-                  <SelectItem value="afternoon">Afternoon</SelectItem>
-                  <SelectItem value="evening">Evening</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Specific Time</Label>
-              <Input
-                type="time"
-                value={scheduledTime}
-                onChange={(e) => setScheduledTime(e.target.value)}
-                className="bg-background border-border"
-                disabled={timeBucket === 'none' || timeBucket === 'anytime'}
-              />
-            </div>
-          </div>
         </div>
         
         <DialogFooter className="flex justify-between">

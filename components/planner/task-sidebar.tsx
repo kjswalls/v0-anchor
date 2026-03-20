@@ -34,7 +34,8 @@ interface TaskItemProps {
 }
 
 function TaskItem({ task, onClick }: TaskItemProps) {
-  const { toggleTaskStatus, deleteTask } = usePlannerStore();
+  const { toggleTaskStatus, deleteTask, getProjectEmoji } = usePlannerStore();
+  const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const {
     attributes,
     listeners,
@@ -102,9 +103,10 @@ function TaskItem({ task, onClick }: TaskItemProps) {
             </span>
           )}
           {task.project && (
-            <Badge variant="secondary" className="text-xs h-5 px-1.5 font-normal">
+            <span className="text-xs text-muted-foreground flex items-center gap-0.5">
+              {projectEmoji && <span>{projectEmoji}</span>}
               {task.project}
-            </Badge>
+            </span>
           )}
           {task.duration && (
             <span className="text-xs text-muted-foreground">
@@ -131,7 +133,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
 
 // Filter popover with nested popovers for submenus
 function FilterButton() {
-  const { filters, setFilters, clearFilters, projects } = usePlannerStore();
+  const { filters, setFilters, clearFilters, projects, getProjectEmoji } = usePlannerStore();
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   
@@ -189,11 +191,11 @@ function FilterButton() {
           <PopoverContent side="right" align="start" className="w-36 p-1" sideOffset={4}>
             {projects.map((project) => (
               <button
-                key={project}
+                key={project.name}
                 className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm"
-                onClick={() => handleSelectProject(project)}
+                onClick={() => handleSelectProject(project.name)}
               >
-                {project}
+                {project.emoji} {project.name}
               </button>
             ))}
           </PopoverContent>
