@@ -55,7 +55,7 @@ const priorityDots: Record<Priority, string> = {
   low: 'bg-priority-low',
 };
 
-// Task card component - full width, compact height
+// Task card component - limited width with two-row layout
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
@@ -78,34 +78,42 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
 
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
 
+  const priorityLabels: Record<Priority, string> = {
+    high: 'High',
+    medium: 'Med',
+    low: 'Low',
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       onClick={onClick}
       className={cn(
-        'group relative flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full',
+        'group relative flex gap-2 px-3 py-2.5 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-[280px] min-h-[64px]',
         task.status === 'completed' && 'opacity-60',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
     >
+      {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
-        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none"
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none self-start mt-0.5"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
       
+      {/* Checkbox */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+          'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
@@ -116,47 +124,57 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         )}
       </button>
 
-      {/* Project emoji */}
-      {projectEmoji && (
-        <span className="text-sm flex-shrink-0">{projectEmoji}</span>
-      )}
-      
-      <div className="flex-1 min-w-0 flex items-center gap-2">
-        <p
-          className={cn(
-            'text-sm text-foreground leading-tight truncate',
-            task.status === 'completed' && 'line-through text-muted-foreground'
+      {/* Content */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1">
+        {/* Title row */}
+        <div className="flex items-start gap-1.5">
+          {projectEmoji && (
+            <span className="text-sm flex-shrink-0">{projectEmoji}</span>
           )}
-        >
-          {task.title}
-        </p>
-        
-        {!compact && (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {task.startTime && (
-              <span className="text-xs text-muted-foreground font-medium">
-                {task.startTime}
-              </span>
+          <p
+            className={cn(
+              'text-sm text-foreground leading-tight line-clamp-2',
+              task.status === 'completed' && 'line-through text-muted-foreground'
             )}
-            {task.priority && (
-              <span className={cn('w-1.5 h-1.5 rounded-full', priorityDots[task.priority])} />
+          >
+            {task.title}
+          </p>
+        </div>
+        
+        {/* Meta row - duration, priority, time */}
+        {!compact && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {task.startTime && (
+              <span className="font-medium">{task.startTime}</span>
             )}
             {task.duration && (
-              <span className="text-xs text-muted-foreground">
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-3 w-3" />
                 {task.duration}m
               </span>
             )}
+            {task.priority && (
+              <span className={cn(
+                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+                task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
+              )}>
+                {priorityLabels[task.priority]}
+              </span>
+            )}
             {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-              <Repeat className="h-3 w-3 text-muted-foreground" />
+              <Repeat className="h-3 w-3" />
             )}
           </div>
         )}
       </div>
       
+      {/* Unschedule button */}
       <Button
         variant="ghost"
         size="icon"
-        className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0"
+        className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start"
         onClick={(e) => {
           e.stopPropagation();
           unscheduleTask(task.id);
@@ -350,10 +368,14 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
                     ))}
                   </div>
                 )}
-                {/* Tasks - full width each */}
-                {items.tasks.map((task) => (
-                  <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} compact />
-                ))}
+                {/* Tasks - side by side */}
+                {items.tasks.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {items.tasks.map((task) => (
+                      <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -451,13 +473,15 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                   </div>
                 )}
                 
-                {/* Untimed Tasks - full width */}
+                {/* Untimed Tasks */}
                 {untimedTasks.length > 0 && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Tasks</span>
-                    {untimedTasks.map((task) => (
-                      <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                    ))}
+                    <div className="flex flex-wrap gap-2">
+                      {untimedTasks.map((task) => (
+                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>

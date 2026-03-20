@@ -126,6 +126,7 @@ export default function PlannerPage() {
 
   return (
     <DndContext
+      id="planner-dnd"
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
