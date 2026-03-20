@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
-import { HabitsSection } from '@/components/planner/habits-section';
 import { Timeline } from '@/components/planner/timeline';
+import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
+import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
   DndContext,
   closestCenter,
@@ -32,8 +33,10 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, scheduleTask } = usePlannerStore();
+  const { tasks, scheduleTask, unscheduleTask } = usePlannerStore();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -55,12 +58,24 @@ export default function PlannerPage() {
     
     if (over) {
       const taskId = active.id as string;
-      const bucket = over.id as string;
+      const target = over.id as string;
       
-      if (['anytime', 'morning', 'afternoon', 'evening'].includes(bucket)) {
-        scheduleTask(taskId, bucket as TimeBucket);
+      // Check if dropping on a time bucket
+      if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
+        scheduleTask(taskId, target as TimeBucket);
+      } else if (target === 'sidebar') {
+        // Dropped back on sidebar - unschedule
+        unscheduleTask(taskId);
       }
     }
+  };
+
+  const handleTaskClick = (task: Task) => {
+    setEditingTask(task);
+  };
+
+  const handleHabitClick = (habit: Habit) => {
+    setEditingHabit(habit);
   };
 
   return (
@@ -73,10 +88,9 @@ export default function PlannerPage() {
       <div className="h-screen flex flex-col bg-background">
         <TopNav />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar />
+          <TaskSidebar onTaskClick={handleTaskClick} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
-            <HabitsSection />
-            <Timeline />
+            <Timeline onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} />
           </main>
         </div>
       </div>
@@ -84,6 +98,18 @@ export default function PlannerPage() {
       <DragOverlay>
         {activeTask && <DraggableTaskOverlay title={activeTask.title} />}
       </DragOverlay>
+      
+      <EditTaskDialog
+        task={editingTask}
+        open={!!editingTask}
+        onOpenChange={(open) => !open && setEditingTask(null)}
+      />
+      
+      <EditHabitDialog
+        habit={editingHabit}
+        open={!!editingHabit}
+        onOpenChange={(open) => !open && setEditingHabit(null)}
+      />
     </DndContext>
   );
 }

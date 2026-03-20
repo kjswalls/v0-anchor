@@ -6,6 +6,7 @@ export type HabitGroup = 'wellness' | 'work' | 'personal';
 export type ViewMode = 'day' | 'week';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
 export type FilterType = 'project' | 'priority' | 'dueDate' | 'repeat' | 'status';
+export type RepeatFrequency = 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
 
 export interface Task {
   id: string;
@@ -29,6 +30,13 @@ export interface Habit {
   streak: number;
   status: HabitStatus;
   completedDates: string[]; // ISO date strings
+  timeBucket?: TimeBucket;
+  scheduledTime?: string; // HH:mm format
+  // Repeat configuration
+  repeatFrequency: RepeatFrequency;
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  timesPerDay?: number; // for habits that need to be done multiple times
+  currentDayCount?: number; // how many times completed today
 }
 
 export interface FilterState {
@@ -67,3 +75,13 @@ export const HABIT_GROUP_LABELS: Record<HabitGroup, string> = {
   work: 'Work',
   personal: 'Personal',
 };
+
+export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
+  daily: 'Every day',
+  weekly: 'Once a week',
+  weekdays: 'Weekdays only',
+  weekends: 'Weekends only',
+  custom: 'Custom days',
+};
+
+export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

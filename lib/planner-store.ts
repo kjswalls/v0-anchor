@@ -13,6 +13,7 @@ import type {
   TaskStatus,
   HabitStatus,
   HabitGroup,
+  RepeatFrequency,
 } from './planner-types';
 
 interface PlannerStore {
@@ -34,10 +35,11 @@ interface PlannerStore {
   reorderTasks: (taskIds: string[]) => void;
   
   // Habit actions
-  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates'>) => void;
+  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'currentDayCount'>) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus) => void;
+  scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
   
   // View actions
   setSelectedDate: (date: Date) => void;
@@ -97,6 +99,7 @@ const initialTasks: Task[] = [
     status: 'pending',
     isScheduled: true,
     timeBucket: 'afternoon',
+    scheduledTime: '14:00',
     duration: 30,
     order: 3,
   },
@@ -128,6 +131,11 @@ const initialHabits: Habit[] = [
     streak: 12,
     status: 'pending',
     completedDates: [],
+    timeBucket: 'morning',
+    scheduledTime: '07:00',
+    repeatFrequency: 'daily',
+    timesPerDay: 1,
+    currentDayCount: 0,
   },
   {
     id: 'h2',
@@ -136,6 +144,10 @@ const initialHabits: Habit[] = [
     streak: 5,
     status: 'done',
     completedDates: [getDateString(new Date())],
+    timeBucket: 'anytime',
+    repeatFrequency: 'daily',
+    timesPerDay: 8,
+    currentDayCount: 3,
   },
   {
     id: 'h3',
@@ -144,6 +156,11 @@ const initialHabits: Habit[] = [
     streak: 8,
     status: 'pending',
     completedDates: [],
+    timeBucket: 'morning',
+    scheduledTime: '09:30',
+    repeatFrequency: 'weekdays',
+    timesPerDay: 1,
+    currentDayCount: 0,
   },
   {
     id: 'h4',
@@ -152,6 +169,10 @@ const initialHabits: Habit[] = [
     streak: 3,
     status: 'pending',
     completedDates: [],
+    timeBucket: 'evening',
+    repeatFrequency: 'daily',
+    timesPerDay: 1,
+    currentDayCount: 0,
   },
 ];
 
@@ -235,6 +256,7 @@ export const usePlannerStore = create<PlannerStore>()(
           streak: 0,
           status: 'pending',
           completedDates: [],
+          currentDayCount: 0,
         };
         set((state) => ({ habits: [...state.habits, habit] }));
       },
@@ -276,6 +298,16 @@ export const usePlannerStore = create<PlannerStore>()(
               streak: newStreak,
             };
           }),
+        }));
+      },
+      
+      scheduleHabit: (id, bucket, time) => {
+        set((state) => ({
+          habits: state.habits.map((h) =>
+            h.id === id
+              ? { ...h, timeBucket: bucket, scheduledTime: time }
+              : h
+          ),
         }));
       },
       

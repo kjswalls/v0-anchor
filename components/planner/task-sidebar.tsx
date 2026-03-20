@@ -1,27 +1,26 @@
 'use client';
 
-import { useMemo } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, GroupBy, Priority } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const priorityDots: Record<Priority, string> = {
   high: 'bg-priority-high',
@@ -31,9 +30,10 @@ const priorityDots: Record<Priority, string> = {
 
 interface TaskItemProps {
   task: Task;
+  onClick: () => void;
 }
 
-function TaskItem({ task }: TaskItemProps) {
+function TaskItem({ task, onClick }: TaskItemProps) {
   const { toggleTaskStatus, deleteTask } = usePlannerStore();
   const {
     attributes,
@@ -52,21 +52,26 @@ function TaskItem({ task }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group flex items-start gap-2 p-3 rounded-lg bg-card border border-border/50 hover:border-border transition-all',
+        'group flex items-start gap-2 p-3 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer',
         isDragging && 'opacity-50 shadow-lg z-50',
         task.status === 'completed' && 'opacity-60'
       )}
+      onClick={onClick}
     >
       <button
         {...attributes}
         {...listeners}
         className="mt-0.5 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none"
+        onClick={(e) => e.stopPropagation()}
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
       
       <button
-        onClick={() => toggleTaskStatus(task.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleTaskStatus(task.id);
+        }}
         className={cn(
           'mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
           task.status === 'completed'
@@ -113,7 +118,10 @@ function TaskItem({ task }: TaskItemProps) {
         variant="ghost"
         size="icon"
         className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-        onClick={() => deleteTask(task.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          deleteTask(task.id);
+        }}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
@@ -121,8 +129,145 @@ function TaskItem({ task }: TaskItemProps) {
   );
 }
 
-export function TaskSidebar() {
-  const { tasks, groupBy, setGroupBy, filters, setFilters, clearFilters, projects } = usePlannerStore();
+// Filter popover with nested popovers for submenus
+function FilterButton() {
+  const { filters, setFilters, clearFilters, projects } = usePlannerStore();
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  
+  const hasActiveFilters = Object.keys(filters).length > 0;
+
+  const handleSelectProject = (project: string) => {
+    setFilters({ ...filters, project });
+    setActiveSubmenu(null);
+    setFilterOpen(false);
+  };
+
+  const handleSelectPriority = (priority: Priority) => {
+    setFilters({ ...filters, priority });
+    setActiveSubmenu(null);
+    setFilterOpen(false);
+  };
+
+  const handleSelectStatus = (status: 'pending' | 'completed') => {
+    setFilters({ ...filters, status });
+    setActiveSubmenu(null);
+    setFilterOpen(false);
+  };
+
+  return (
+    <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'h-7 px-2 text-xs',
+            hasActiveFilters && 'border-primary text-primary'
+          )}
+        >
+          <Filter className="h-3.5 w-3.5 mr-1" />
+          Filter
+          {hasActiveFilters && (
+            <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+              {Object.keys(filters).length}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-48 p-1">
+        <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Filter by</div>
+        
+        {/* Project submenu */}
+        <Popover open={activeSubmenu === 'project'} onOpenChange={(open) => setActiveSubmenu(open ? 'project' : null)}>
+          <PopoverTrigger asChild>
+            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+              <span>Project</span>
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="right" align="start" className="w-36 p-1" sideOffset={4}>
+            {projects.map((project) => (
+              <button
+                key={project}
+                className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm"
+                onClick={() => handleSelectProject(project)}
+              >
+                {project}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+
+        {/* Priority submenu */}
+        <Popover open={activeSubmenu === 'priority'} onOpenChange={(open) => setActiveSubmenu(open ? 'priority' : null)}>
+          <PopoverTrigger asChild>
+            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+              <span>Priority</span>
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="right" align="start" className="w-28 p-1" sideOffset={4}>
+            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>
+              High
+            </button>
+            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('medium')}>
+              Medium
+            </button>
+            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('low')}>
+              Low
+            </button>
+          </PopoverContent>
+        </Popover>
+
+        {/* Status submenu */}
+        <Popover open={activeSubmenu === 'status'} onOpenChange={(open) => setActiveSubmenu(open ? 'status' : null)}>
+          <PopoverTrigger asChild>
+            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm">
+              <span>Status</span>
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="right" align="start" className="w-28 p-1" sideOffset={4}>
+            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>
+              Pending
+            </button>
+            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('completed')}>
+              Completed
+            </button>
+          </PopoverContent>
+        </Popover>
+        
+        {hasActiveFilters && (
+          <>
+            <div className="h-px bg-border my-1" />
+            <button
+              className="w-full flex items-center px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
+              onClick={() => {
+                clearFilters();
+                setFilterOpen(false);
+              }}
+            >
+              <X className="h-3 w-3 mr-1" />
+              Clear filters
+            </button>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+interface TaskSidebarProps {
+  onTaskClick: (task: Task) => void;
+}
+
+export function TaskSidebar({ onTaskClick }: TaskSidebarProps) {
+  const { tasks, groupBy, setGroupBy, filters, setFilters } = usePlannerStore();
+  
+  const { isOver, setNodeRef: setDroppableRef } = useDroppable({
+    id: 'sidebar',
+  });
 
   // Filter unscheduled tasks
   const unscheduledTasks = useMemo(() => {
@@ -170,7 +315,13 @@ export function TaskSidebar() {
   const hasActiveFilters = Object.keys(filters).length > 0;
 
   return (
-    <aside className="w-80 border-r border-border bg-sidebar flex flex-col h-full">
+    <aside 
+      ref={setDroppableRef}
+      className={cn(
+        'w-80 border-r border-border bg-sidebar flex flex-col h-full transition-colors',
+        isOver && 'bg-primary/5 border-primary'
+      )}
+    >
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-foreground">Tasks</h2>
@@ -180,82 +331,7 @@ export function TaskSidebar() {
         </div>
         
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  'h-7 px-2 text-xs',
-                  hasActiveFilters && 'border-primary text-primary'
-                )}
-              >
-                <Filter className="h-3.5 w-3.5 mr-1" />
-                Filter
-                {hasActiveFilters && (
-                  <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
-                    {Object.keys(filters).length}
-                  </span>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel className="text-xs">Filter by</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="text-xs">Project</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {projects.map((project) => (
-                    <DropdownMenuItem
-                      key={project}
-                      className="text-xs"
-                      onClick={() => setFilters({ ...filters, project })}
-                    >
-                      {project}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="text-xs">Priority</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem className="text-xs" onClick={() => setFilters({ ...filters, priority: 'high' })}>
-                    High
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-xs" onClick={() => setFilters({ ...filters, priority: 'medium' })}>
-                    Medium
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-xs" onClick={() => setFilters({ ...filters, priority: 'low' })}>
-                    Low
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger className="text-xs">Status</DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem className="text-xs" onClick={() => setFilters({ ...filters, status: 'pending' })}>
-                    Pending
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-xs" onClick={() => setFilters({ ...filters, status: 'completed' })}>
-                    Completed
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-              
-              {hasActiveFilters && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-xs text-destructive" onClick={clearFilters}>
-                    <X className="h-3 w-3 mr-1" />
-                    Clear filters
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <FilterButton />
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -320,7 +396,7 @@ export function TaskSidebar() {
               )}
               <div className="space-y-2">
                 {groupTasks.map((task) => (
-                  <TaskItem key={task.id} task={task} />
+                  <TaskItem key={task.id} task={task} onClick={() => onTaskClick(task)} />
                 ))}
               </div>
             </div>
