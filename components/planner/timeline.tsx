@@ -55,14 +55,13 @@ const priorityDots: Record<Priority, string> = {
   low: 'bg-priority-low',
 };
 
-// Task card component - limited width with two-row layout
+// Task card component - full-width with two-row layout
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
-  compact?: boolean;
 }
 
-function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
+function TaskCard({ task, onClick }: TaskCardProps) {
   const { toggleTaskStatus, unscheduleTask, getProjectEmoji } = usePlannerStore();
   const {
     attributes,
@@ -90,7 +89,7 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
       style={style}
       onClick={onClick}
       className={cn(
-        'group relative flex gap-2 px-3 py-2.5 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-[280px] min-h-[64px]',
+        'group relative flex gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full min-h-[72px]',
         task.status === 'completed' && 'opacity-60',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
@@ -103,7 +102,7 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
-        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
       </button>
       
       {/* Checkbox */}
@@ -113,14 +112,14 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5',
+          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
         )}
       >
         {task.status === 'completed' && (
-          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+          <Check className="h-3 w-3 text-primary-foreground" />
         )}
       </button>
 
@@ -129,11 +128,11 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         {/* Title row */}
         <div className="flex items-start gap-1.5">
           {projectEmoji && (
-            <span className="text-sm flex-shrink-0">{projectEmoji}</span>
+            <span className="text-base flex-shrink-0">{projectEmoji}</span>
           )}
           <p
             className={cn(
-              'text-sm text-foreground leading-tight line-clamp-2',
+              'text-sm font-medium text-foreground leading-tight line-clamp-2',
               task.status === 'completed' && 'line-through text-muted-foreground'
             )}
           >
@@ -142,32 +141,30 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
         </div>
         
         {/* Meta row - duration, priority, time */}
-        {!compact && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {task.startTime && (
-              <span className="font-medium">{task.startTime}</span>
-            )}
-            {task.duration && (
-              <span className="flex items-center gap-0.5">
-                <Clock className="h-3 w-3" />
-                {task.duration}m
-              </span>
-            )}
-            {task.priority && (
-              <span className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-                task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
-              )}>
-                {priorityLabels[task.priority]}
-              </span>
-            )}
-            {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-              <Repeat className="h-3 w-3" />
-            )}
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {task.startTime && (
+            <span className="font-medium">{task.startTime}</span>
+          )}
+          {task.duration && (
+            <span className="flex items-center gap-0.5">
+              <Clock className="h-3 w-3" />
+              {task.duration}m
+            </span>
+          )}
+          {task.priority && (
+            <span className={cn(
+              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+              task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
+            )}>
+              {priorityLabels[task.priority]}
+            </span>
+          )}
+          {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+            <Repeat className="h-3 w-3" />
+          )}
+        </div>
       </div>
       
       {/* Unschedule button */}
@@ -186,7 +183,7 @@ function TaskCard({ task, onClick, compact = false }: TaskCardProps) {
   );
 }
 
-// Habit card component - wider with gradient background and large emoji
+// Habit card component - full-width with gradient background and large emoji
 interface HabitCardProps {
   habit: Habit;
   onClick: () => void;
@@ -209,7 +206,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
     <div
       onClick={onClick}
       className={cn(
-        'group relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer w-[180px] min-h-[72px] overflow-hidden',
+        'group relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
         'border-border/60 hover:border-border',
         habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
       )}
@@ -219,7 +216,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
     >
       {/* Large background emoji */}
       <span 
-        className="absolute -right-2 -bottom-2 text-6xl opacity-[0.08] select-none pointer-events-none"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.1] select-none pointer-events-none"
         style={{ lineHeight: 1 }}
       >
         {groupEmoji}
@@ -244,7 +241,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           {habit.status === 'skipped' && <Minus className="h-2.5 w-2.5 text-muted-foreground" />}
         </button>
         
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
           <span
             className={cn(
               'text-sm font-medium text-foreground leading-tight line-clamp-2',
@@ -254,18 +251,24 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             {habit.title}
           </span>
           
-          {/* Times per day progress */}
-          {habit.timesPerDay && habit.timesPerDay > 1 && (
-            <span className="text-[10px] text-muted-foreground block mt-0.5">
-              {habit.currentDayCount || 0}/{habit.timesPerDay} today
-            </span>
-          )}
+          {/* Meta row - times per day, start time */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {habit.startTime && (
+              <span className="font-medium">{habit.startTime}</span>
+            )}
+            {habit.timesPerDay && habit.timesPerDay > 1 && (
+              <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
+            )}
+            {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
+              <Repeat className="h-3 w-3" />
+            )}
+          </div>
         </div>
         
         {/* Streak badge */}
         {habit.streak > 0 && (
-          <div className="flex items-center gap-0.5 bg-orange-500/15 px-1.5 py-0.5 rounded-md flex-shrink-0">
-            <Flame className="h-3 w-3 text-orange-500" />
+          <div className="flex items-center gap-0.5 bg-orange-500/15 px-2 py-1 rounded-md flex-shrink-0">
+            <Flame className="h-3.5 w-3.5 text-orange-500" />
             <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">{habit.streak}</span>
           </div>
         )}
@@ -360,17 +363,17 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
             </div>
             <div className="flex-1 border-l border-border/30 pl-3 py-1">
               <div className="space-y-1.5">
-                {/* Habits row - side by side */}
+                {/* Habits */}
                 {items.habits.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
                     {items.habits.map((habit) => (
                       <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
                     ))}
                   </div>
                 )}
-                {/* Tasks - side by side */}
+                {/* Tasks */}
                 {items.tasks.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
                     {items.tasks.map((task) => (
                       <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                     ))}
@@ -461,11 +464,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             {/* Untimed Section */}
             {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
               <div className="space-y-3">
-                {/* Untimed Habits - side by side */}
+                {/* Untimed Habits */}
                 {untimedHabits.length > 0 && (
                   <div className="space-y-2">
                     <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Habits</span>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {untimedHabits.map((habit) => (
                         <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
                       ))}
@@ -477,7 +480,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                 {untimedTasks.length > 0 && (
                   <div className="space-y-2">
                     <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Tasks</span>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {untimedTasks.map((task) => (
                         <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                       ))}
