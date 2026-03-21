@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, FolderOpen, Search, X, CheckCircle2, Flame } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, FolderOpen, Search, X, CheckCircle2, Flame, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -23,7 +23,7 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -171,10 +171,41 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             size="sm"
             onClick={goToToday}
             disabled={mounted && isToday(selectedDate)}
-            className="h-8 px-3 text-sm ml-2"
+            className="h-8 px-3 text-sm ml-2 relative"
           >
+            {mounted && isToday(selectedDate) && (
+              <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
+            )}
             Today
           </Button>
+
+          {/* Timeline Filter */}
+          <div className="flex items-center gap-1 ml-4 px-2 py-1 rounded-lg bg-secondary">
+            <Button
+              variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('all')}
+            >
+              All
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('tasks')}
+            >
+              Tasks
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('habits')}
+            >
+              Habits
+            </Button>
+          </div>
         </div>
       </div>
       

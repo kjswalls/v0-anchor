@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus } from 'lucide-react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -53,7 +53,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group flex items-start gap-2 p-3 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer',
+        'group flex items-start gap-2 p-3 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full',
         isDragging && 'opacity-50 shadow-lg z-50',
         task.status === 'completed' && 'opacity-60'
       )}
@@ -137,6 +137,7 @@ function FilterButton() {
   const { filters, setFilters, clearFilters, projects, getProjectEmoji } = usePlannerStore();
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
+  const [submenuTimeoutId, setSubmenuTimeoutId] = useState<NodeJS.Timeout | null>(null);
   
   const hasActiveFilters = Object.keys(filters).length > 0;
 
@@ -156,6 +157,21 @@ function FilterButton() {
     setFilters({ ...filters, status });
     setActiveSubmenu(null);
     setFilterOpen(false);
+  };
+
+  const handleMouseEnter = (submenu: string) => {
+    if (submenuTimeoutId) {
+      clearTimeout(submenuTimeoutId);
+      setSubmenuTimeoutId(null);
+    }
+    setActiveSubmenu(submenu);
+  };
+
+  const handleMouseLeave = () => {
+    const timeoutId = setTimeout(() => {
+      setActiveSubmenu(null);
+    }, 150);
+    setSubmenuTimeoutId(timeoutId);
   };
 
   return (
@@ -183,8 +199,8 @@ function FilterButton() {
         
         {/* Project submenu */}
         <div 
-          onMouseEnter={() => setActiveSubmenu('project')}
-          onMouseLeave={() => setActiveSubmenu(null)}
+          onMouseEnter={() => handleMouseEnter('project')}
+          onMouseLeave={handleMouseLeave}
         >
           <Popover open={activeSubmenu === 'project'}>
             <PopoverTrigger asChild>
@@ -198,8 +214,8 @@ function FilterButton() {
               align="start" 
               className="w-36 p-1" 
               sideOffset={4}
-              onMouseEnter={() => setActiveSubmenu('project')}
-              onMouseLeave={() => setActiveSubmenu(null)}
+              onMouseEnter={() => handleMouseEnter('project')}
+              onMouseLeave={handleMouseLeave}
             >
               {projects.map((project) => (
                 <button
@@ -216,8 +232,8 @@ function FilterButton() {
 
         {/* Priority submenu */}
         <div 
-          onMouseEnter={() => setActiveSubmenu('priority')}
-          onMouseLeave={() => setActiveSubmenu(null)}
+          onMouseEnter={() => handleMouseEnter('priority')}
+          onMouseLeave={handleMouseLeave}
         >
           <Popover open={activeSubmenu === 'priority'}>
             <PopoverTrigger asChild>
@@ -231,8 +247,8 @@ function FilterButton() {
               align="start" 
               className="w-28 p-1" 
               sideOffset={4}
-              onMouseEnter={() => setActiveSubmenu('priority')}
-              onMouseLeave={() => setActiveSubmenu(null)}
+              onMouseEnter={() => handleMouseEnter('priority')}
+              onMouseLeave={handleMouseLeave}
             >
               <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>
                 High
@@ -249,8 +265,8 @@ function FilterButton() {
 
         {/* Status submenu */}
         <div 
-          onMouseEnter={() => setActiveSubmenu('status')}
-          onMouseLeave={() => setActiveSubmenu(null)}
+          onMouseEnter={() => handleMouseEnter('status')}
+          onMouseLeave={handleMouseLeave}
         >
           <Popover open={activeSubmenu === 'status'}>
             <PopoverTrigger asChild>
@@ -264,8 +280,8 @@ function FilterButton() {
               align="start" 
               className="w-28 p-1" 
               sideOffset={4}
-              onMouseEnter={() => setActiveSubmenu('status')}
-              onMouseLeave={() => setActiveSubmenu(null)}
+              onMouseEnter={() => handleMouseEnter('status')}
+              onMouseLeave={handleMouseLeave}
             >
               <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>
                 Pending
@@ -300,9 +316,10 @@ function FilterButton() {
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;
   onAddClick: () => void;
+  onManageCategories: () => void;
 }
 
-export function TaskSidebar({ onTaskClick, onAddClick }: TaskSidebarProps) {
+export function TaskSidebar({ onTaskClick, onAddClick, onManageCategories }: TaskSidebarProps) {
   const { tasks, groupBy, setGroupBy, filters, setFilters } = usePlannerStore();
   
   const { isOver, setNodeRef: setDroppableRef } = useDroppable({
@@ -365,7 +382,16 @@ export function TaskSidebar({ onTaskClick, onAddClick }: TaskSidebarProps) {
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-foreground">Tasks</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={onManageCategories}
+              title="Manage Projects & Groups"
+            >
+              <FolderOpen className="h-4 w-4" />
+            </Button>
             <span className="text-xs text-muted-foreground">
               {unscheduledTasks.length} unscheduled
             </span>

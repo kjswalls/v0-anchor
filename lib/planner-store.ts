@@ -26,6 +26,7 @@ interface PlannerStore {
   filters: FilterState;
   projects: Project[];
   habitGroups: HabitGroupType[];
+  timelineItemFilter: 'all' | 'tasks' | 'habits';
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
@@ -39,7 +40,7 @@ interface PlannerStore {
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'currentDayCount'>) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
-  toggleHabitStatus: (id: string, status: HabitStatus) => void;
+  toggleHabitStatus: (id: string, status: HabitStatus, count?: number) => void;
   scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
   resetHabitStreak: (id: string) => void;
   
@@ -49,6 +50,7 @@ interface PlannerStore {
   setGroupBy: (groupBy: GroupBy) => void;
   setFilters: (filters: FilterState) => void;
   clearFilters: () => void;
+  setTimelineItemFilter: (filter: 'all' | 'tasks' | 'habits') => void;
   
   // Project actions
   addProject: (name: string, emoji: string) => void;
@@ -223,6 +225,7 @@ export const usePlannerStore = create<PlannerStore>()(
       filters: {},
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
+      timelineItemFilter: 'all' as const,
       
       addTask: (taskData) => {
         // Auto-correct bucket based on start time
@@ -373,7 +376,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
       },
       
-      toggleHabitStatus: (id, status) => {
+      toggleHabitStatus: (id, status, count) => {
         const today = getDateString(new Date());
         set((state) => ({
           habits: state.habits.map((h) => {
@@ -382,6 +385,7 @@ export const usePlannerStore = create<PlannerStore>()(
             const wasCompleted = h.completedDates.includes(today);
             let newCompletedDates = [...h.completedDates];
             let newStreak = h.streak;
+            let newCurrentDayCount = count !== undefined ? count : h.currentDayCount || 0;
             
             if (status === 'done' && !wasCompleted) {
               newCompletedDates.push(today);
@@ -396,6 +400,7 @@ export const usePlannerStore = create<PlannerStore>()(
               status,
               completedDates: newCompletedDates,
               streak: newStreak,
+              currentDayCount: newCurrentDayCount,
             };
           }),
         }));
@@ -435,6 +440,7 @@ export const usePlannerStore = create<PlannerStore>()(
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilters: (filters) => set({ filters }),
       clearFilters: () => set({ filters: {} }),
+      setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
       
       addProject: (name, emoji) => {
         set((state) => ({

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -82,7 +82,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
   const [language, setLanguage] = useState('en');
   const [timeFormat, setTimeFormat] = useState('12h');
-  const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [habitReminders, setHabitReminders] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
@@ -90,6 +89,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [compactMode, setCompactMode] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [weekStartDay, setWeekStartDay] = useState('sunday');
+  const [theme, setTheme] = useState('system');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -139,19 +140,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </SelectContent>
                 </Select>
               </SettingRow>
-
-              <SettingRow label="Week starts on" description="First day of the week">
-                <Select value={weekStartDay} onValueChange={setWeekStartDay}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sunday">Sunday</SelectItem>
-                    <SelectItem value="monday">Monday</SelectItem>
-                    <SelectItem value="saturday">Saturday</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
             </SettingsSection>
 
             {/* Notifications */}
@@ -196,6 +184,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Appearance" 
               icon={<Palette className="h-4 w-4" />}
             >
+              <SettingRow label="Theme" description="Choose your preferred theme">
+                <Select value={theme} onValueChange={setTheme}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectItem value="system">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
               <SettingRow label="Compact mode" description="Reduce spacing for more content">
                 <Switch 
                   checked={compactMode} 
@@ -223,6 +224,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Calendar" 
               icon={<Calendar className="h-4 w-4" />}
             >
+              <SettingRow label="Week starts on" description="First day of the week">
+                <Select value={weekStartDay} onValueChange={setWeekStartDay}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sunday">Sunday</SelectItem>
+                    <SelectItem value="monday">Monday</SelectItem>
+                    <SelectItem value="saturday">Saturday</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
               <SettingRow label="Default view" description="View shown when app opens">
                 <Select defaultValue="day">
                   <SelectTrigger className="w-32 h-8 text-xs">

@@ -55,7 +55,7 @@ const priorityDots: Record<Priority, string> = {
   low: 'bg-priority-low',
 };
 
-// Task card component - full-width with two-row layout
+// Task card component - with background emoji style (no gradient)
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
@@ -89,16 +89,26 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       style={style}
       onClick={onClick}
       className={cn(
-        'group relative flex gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full min-h-[72px]',
+        'group relative flex gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
         task.status === 'completed' && 'opacity-60',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
     >
+      {/* Large background emoji */}
+      {projectEmoji && (
+        <span 
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+          style={{ lineHeight: 1 }}
+        >
+          {projectEmoji}
+        </span>
+      )}
+      
       {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
-        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none self-start mt-0.5"
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none self-start mt-0.5 relative z-10"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
@@ -112,7 +122,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5',
+          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5 relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
@@ -124,20 +134,20 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       </button>
 
       {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col gap-1">
-        {/* Title row */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1 relative z-10">
+        {/* Title row with emoji at end */}
         <div className="flex items-start gap-1.5">
-          {projectEmoji && (
-            <span className="text-base flex-shrink-0">{projectEmoji}</span>
-          )}
           <p
             className={cn(
-              'text-sm font-medium text-foreground leading-tight line-clamp-2',
+              'text-sm font-medium text-foreground leading-tight line-clamp-2 flex-1',
               task.status === 'completed' && 'line-through text-muted-foreground'
             )}
           >
             {task.title}
           </p>
+          {projectEmoji && (
+            <span className="text-base flex-shrink-0 mt-0.5">{projectEmoji}</span>
+          )}
         </div>
         
         {/* Meta row - duration, priority, time */}
@@ -171,7 +181,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       <Button
         variant="ghost"
         size="icon"
-        className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start"
+        className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start relative z-10"
         onClick={(e) => {
           e.stopPropagation();
           unscheduleTask(task.id);
@@ -183,7 +193,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
   );
 }
 
-// Habit card component - full-width with gradient background and large emoji
+// Habit card component - with carbon fiber pattern background
 // Skipped habits are compact with an undo button
 interface HabitCardProps {
   habit: Habit;
@@ -195,12 +205,27 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
-  // Simple toggle: pending <-> done
-  const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
-    switch (currentStatus) {
-      case 'pending': return 'done';
-      case 'done': return 'pending';
-      case 'skipped': return 'pending';
+  // Simple toggle: pending <-> done, or handle multi-complete
+  const handleClick = () => {
+    if (habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending') {
+      // For multi-complete habits, increment count
+      const newCount = (habit.currentDayCount || 0) + 1;
+      if (newCount >= habit.timesPerDay) {
+        toggleHabitStatus(habit.id, 'done');
+      } else {
+        // Update count in store - need to implement this
+        toggleHabitStatus(habit.id, 'pending', newCount);
+      }
+    } else {
+      // Regular toggle
+      const getNextStatus = (currentStatus: HabitStatus): HabitStatus => {
+        switch (currentStatus) {
+          case 'pending': return 'done';
+          case 'done': return 'pending';
+          case 'skipped': return 'pending';
+        }
+      };
+      toggleHabitStatus(habit.id, getNextStatus(habit.status));
     }
   };
 
@@ -244,6 +269,23 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       )}
       style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
+        backgroundImage: `
+          repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 2px,
+            rgba(255, 255, 255, 0.02) 2px,
+            rgba(255, 255, 255, 0.02) 4px
+          ),
+          repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.02) 2px,
+            rgba(0, 0, 0, 0.02) 4px
+          ),
+          linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)
+        `,
       }}
     >
       {/* Large background emoji */}
@@ -260,15 +302,20 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleHabitStatus(habit.id, getNextStatus(habit.status));
+            handleClick();
           }}
           className={cn(
-            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0',
+            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
             habit.status === 'done' && 'bg-primary border-primary',
             habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
           )}
         >
-          {habit.status === 'done' && <Check className="h-3 w-3 text-primary-foreground" />}
+          {habit.status === 'done' && (
+            <Check className="h-3 w-3 text-primary-foreground animate-in fade-in duration-200" />
+          )}
+          {habit.status === 'pending' && habit.timesPerDay && habit.timesPerDay > 1 && habit.currentDayCount && habit.currentDayCount > 0 && (
+            <span className="text-xs font-bold text-primary animate-in scale-in duration-300">{habit.currentDayCount}</span>
+          )}
         </button>
         
         <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -510,30 +557,35 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           <>
             {/* Untimed Section */}
             {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
-              <div className="space-y-3">
-                {/* Untimed Habits */}
-                {untimedHabits.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Habits</span>
-                    <div className="space-y-2">
-                      {untimedHabits.map((habit) => (
-                        <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                      ))}
-                    </div>
+              <div className="flex gap-3">
+                <div className="w-12 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="space-y-3">
+                    {/* Untimed Habits */}
+                    {untimedHabits.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Habits</span>
+                        <div className="space-y-2">
+                          {untimedHabits.map((habit) => (
+                            <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Untimed Tasks */}
+                    {untimedTasks.length > 0 && (
+                      <div className="space-y-2">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Tasks</span>
+                        <div className="space-y-2">
+                          {untimedTasks.map((task) => (
+                            <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-                
-                {/* Untimed Tasks */}
-                {untimedTasks.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Tasks</span>
-                    <div className="space-y-2">
-                      {untimedTasks.map((task) => (
-                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -576,9 +628,13 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
-  const { tasks, habits, selectedDate } = usePlannerStore();
+  const { tasks, habits, selectedDate, timelineItemFilter } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // Filter tasks and habits based on timeline filter
+  const filteredTasks = timelineItemFilter === 'habits' ? [] : tasks;
+  const filteredHabits = timelineItemFilter === 'tasks' ? [] : habits;
 
   // Determine current time bucket and update every minute
   useEffect(() => {
@@ -616,7 +672,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
 
   // Filter tasks by selected date and search query
   const tasksForDate = useMemo(() => {
-    return tasks.filter((task) => {
+    return filteredTasks.filter((task) => {
       // If no start date, show in sidebar only (not on timeline)
       if (!task.startDate) return false;
       // Check if task's start date matches selected date
@@ -625,13 +681,13 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
       const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesDate && matchesSearch;
     });
-  }, [tasks, selectedDate, searchQuery]);
+  }, [filteredTasks, selectedDate, searchQuery]);
 
   // Filter habits by search query
-  const filteredHabits = useMemo(() => {
-    if (!searchQuery) return habits;
-    return habits.filter(h => h.title.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [habits, searchQuery]);
+  const filteredHabitsForDate = useMemo(() => {
+    if (!searchQuery) return filteredHabits;
+    return filteredHabits.filter(h => h.title.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [filteredHabits, searchQuery]);
 
   const scheduledTasksByBucket = useMemo(() => {
     const grouped: Record<TimeBucket, Task[]> = {
@@ -667,7 +723,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
       evening: [],
     };
 
-    filteredHabits
+    filteredHabitsForDate
       .filter((habit) => habit.timeBucket)
       .sort((a, b) => {
         if (a.startTime && b.startTime) {
@@ -682,7 +738,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
       });
 
     return grouped;
-  }, [filteredHabits]);
+  }, [filteredHabitsForDate]);
 
   return (
     <ScrollArea className="flex-1 h-full">
