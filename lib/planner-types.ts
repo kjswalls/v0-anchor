@@ -91,9 +91,9 @@ export const DEFAULT_PROJECTS: Project[] = [
 ];
 
 export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
-  { name: 'wellness', emoji: '💚' },
-  { name: 'work', emoji: '💼' },
-  { name: 'personal', emoji: '⭐' },
+  { name: 'Wellness', emoji: '💚' },
+  { name: 'Work', emoji: '💼' },
+  { name: 'Personal', emoji: '⭐' },
 ];
 
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {

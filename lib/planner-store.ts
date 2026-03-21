@@ -209,7 +209,7 @@ const initialHabits: Habit[] = [
   {
     id: 'h4',
     title: 'Journal',
-    group: 'personal',
+    group: 'Personal',
     streak: 3,
     status: 'pending',
     completedDates: [],
@@ -494,9 +494,9 @@ export const usePlannerStore = create<PlannerStore>()(
       addHabitGroup: (name, emoji, color) => {
         const normalized = name.toLowerCase();
         set((state) => ({
-          habitGroups: state.habitGroups.some((g) => g.name === normalized)
+          habitGroups: state.habitGroups.some((g) => g.name.toLowerCase() === normalized)
             ? state.habitGroups
-            : [...state.habitGroups, { name: normalized, emoji, color }],
+            : [...state.habitGroups, { name, emoji, color }],
         }));
       },
 
@@ -504,7 +504,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const normalized = name.toLowerCase();
         set((state) => ({
           habitGroups: state.habitGroups.map((g) =>
-            g.name === normalized ? { ...g, ...updates } : g
+            g.name.toLowerCase() === normalized ? { ...g, ...updates } : g
           ),
         }));
       },
@@ -512,11 +512,11 @@ export const usePlannerStore = create<PlannerStore>()(
       removeHabitGroup: (name) => {
         const normalized = name.toLowerCase();
         set((state) => ({
-          habitGroups: state.habitGroups.filter((g) => g.name !== normalized),
-          // Move habits to first available group or 'personal'
+          habitGroups: state.habitGroups.filter((g) => g.name.toLowerCase() !== normalized),
+          // Move habits to first available group or 'Personal'
           habits: state.habits.map((h) => 
-            h.group === normalized 
-              ? { ...h, group: state.habitGroups.find(g => g.name !== normalized)?.name || 'personal' } 
+            h.group.toLowerCase() === normalized 
+              ? { ...h, group: state.habitGroups.find(g => g.name.toLowerCase() !== normalized)?.name || 'Personal' } 
               : h
           ),
         }));
@@ -524,13 +524,13 @@ export const usePlannerStore = create<PlannerStore>()(
 
       getHabitGroupEmoji: (name) => {
         const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name === normalized);
+        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
         return group?.emoji || '';
       },
 
       getHabitGroupColor: (name) => {
         const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name === normalized);
+        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
         if (group?.color) return group.color;
         
         // Generate consistent color from group name
@@ -559,7 +559,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ),
           habits: state.habits.map(h => 
             !groupNames.has(h.group) 
-              ? { ...h, group: state.habitGroups[0]?.name || 'personal' } 
+              ? { ...h, group: state.habitGroups[0]?.name || 'Personal' } 
               : h
           ),
         });
