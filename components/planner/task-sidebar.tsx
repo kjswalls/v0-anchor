@@ -429,28 +429,9 @@ export function TaskSidebar({ onTaskClick, onAddClick, onManageCategories }: Tas
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-foreground">Tasks</h2>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground mr-1">
-              {unscheduledTasks.length} unscheduled
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onManageCategories}
-              title="Manage Projects & Groups"
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={onAddClick}
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            {unscheduledTasks.length} unscheduled
+          </span>
         </div>
         
         <div className="flex items-center gap-2">
@@ -472,6 +453,27 @@ export function TaskSidebar({ onTaskClick, onAddClick, onManageCategories }: Tas
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <div className="flex items-center gap-1 ml-auto">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onManageCategories}
+              title="Manage Projects & Groups"
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onAddClick}
+              title="Add task"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         
         {hasActiveFilters && (
