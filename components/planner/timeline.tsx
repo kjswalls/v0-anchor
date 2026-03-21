@@ -1277,7 +1277,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
     prev.setDate(prev.getDate() - 1);
     setSelectedDate(prev);
     // Reset after animation
-    setTimeout(() => setSlideDirection(null), 300);
+    setTimeout(() => setSlideDirection(null), 600);
   };
 
   const goToNextDay = () => {
@@ -1286,7 +1286,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
     next.setDate(next.getDate() + 1);
     setSelectedDate(next);
     // Reset after animation
-    setTimeout(() => setSlideDirection(null), 300);
+    setTimeout(() => setSlideDirection(null), 600);
   };
 
   // Compute tasks for prev/next days to drive skeleton item counts
