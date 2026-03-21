@@ -123,7 +123,22 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   high: 'High',
 };
 
+export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
+  none: 'No repeat',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  weekdays: 'Weekdays',
+  weekends: 'Weekends',
+  custom: 'Custom',
+};
+
 export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export const EMOJI_OPTIONS = [
+  '✨', '🎯', '📚', '💼', '🏃', '💪', '🧠', '❤️',
+  '🎨', '🎵', '🌍', '🚀', '⚡', '🔥', '💎', '🎁',
+  '📖', '🏆', '🌟', '💡', '🎭', '🌺', '🍎', '☕',
+];
 
 export const DEFAULT_PROJECTS: Project[] = [
   {
