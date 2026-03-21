@@ -656,21 +656,51 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
               Move all
             </Button>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {availableTasks.slice(0, 5).map((task) => (
               <div
                 key={task.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded bg-muted/50 text-xs group/preview"
+                onClick={() => onTaskClick(task)}
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors group/preview"
               >
-                <span className="flex-1 truncate text-muted-foreground">{task.title}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{task.title}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                    {task.timeBucket && !task.startTime && (
+                      <span className="capitalize">{task.timeBucket}</span>
+                    )}
+                    {task.startTime && (
+                      <span className="font-medium">{task.startTime}</span>
+                    )}
+                    {task.duration && (
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="h-3 w-3" />
+                        {task.duration}m
+                      </span>
+                    )}
+                    {task.priority && (
+                      <span className={cn(
+                        'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                        task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+                        task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+                        task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                      )}>
+                        {task.priority === 'high' ? 'High' : task.priority === 'medium' ? 'Med' : 'Low'}
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 w-5 p-0 opacity-0 group-hover/preview:opacity-100 text-muted-foreground hover:text-primary"
-                  onClick={() => moveTaskToProjectBlock(task.id)}
+                  className="h-6 w-6 p-0 opacity-0 group-hover/preview:opacity-100 text-muted-foreground hover:text-primary flex-shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTaskToProjectBlock(task.id);
+                  }}
                   title="Move to block"
                 >
-                  <ArrowRight className="h-3 w-3" />
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
             ))}
