@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen } from 'lucide-react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen, Clock, Repeat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -32,10 +32,10 @@ import type { Task, GroupBy, Priority } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
-const priorityDots: Record<Priority, string> = {
-  high: 'bg-priority-high',
-  medium: 'bg-priority-medium',
-  low: 'bg-priority-low',
+const priorityLabels: Record<Priority, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
 };
 
 interface TaskItemProps {
@@ -109,23 +109,31 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           {task.title}
         </p>
         
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          {task.priority && (
-            <span className={cn('flex items-center gap-1')}>
-              <span className={cn('w-1.5 h-1.5 rounded-full', priorityDots[task.priority])} />
-              <span className="text-xs text-muted-foreground capitalize">{task.priority}</span>
-            </span>
-          )}
-          {task.project && (
-            <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-              {projectEmoji && <span>{projectEmoji}</span>}
-              {task.project}
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-muted-foreground">
+          {projectEmoji && task.project && (
+            <span className="flex items-center gap-1 leading-none">
+              <span className="text-sm">{projectEmoji}</span>
+              <span>{task.project}</span>
             </span>
           )}
           {task.duration && (
-            <span className="text-xs text-muted-foreground">
+            <span className="flex items-center gap-0.5">
+              <Clock className="h-3 w-3" />
               {task.duration}m
             </span>
+          )}
+          {task.priority && (
+            <span className={cn(
+              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+              task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+            )}>
+              {priorityLabels[task.priority]}
+            </span>
+          )}
+          {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+            <Repeat className="h-3 w-3" />
           )}
         </div>
       </div>
