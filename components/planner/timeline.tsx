@@ -1130,10 +1130,9 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, navDirection, setNavDirection } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
   
   // Filter tasks and habits based on timeline filter
   const filteredTasks = timelineItemFilter === 'habits' ? [] : tasks;
@@ -1272,21 +1271,19 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   }, [filteredHabitsForDate]);
 
   const goToPreviousDay = () => {
-    setSlideDirection('right'); // Content slides right (coming from left)
+    setNavDirection('right');
     const prev = new Date(selectedDate);
     prev.setDate(prev.getDate() - 1);
     setSelectedDate(prev);
-    // Reset after animation
-    setTimeout(() => setSlideDirection(null), 600);
+    setTimeout(() => setNavDirection(null), 600);
   };
 
   const goToNextDay = () => {
-    setSlideDirection('left'); // Content slides left (coming from right)
+    setNavDirection('left');
     const next = new Date(selectedDate);
     next.setDate(next.getDate() + 1);
     setSelectedDate(next);
-    // Reset after animation
-    setTimeout(() => setSlideDirection(null), 600);
+    setTimeout(() => setNavDirection(null), 600);
   };
 
   // Compute tasks for prev/next days to drive skeleton item counts
@@ -1336,7 +1333,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         {/* Fade mask toward the right edge */}
         <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
-        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+        <div
+          key={`prev-${selectedDate.toISOString()}`}
+          className={cn(
+            'flex flex-col w-full h-full justify-center',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+            navDirection === 'right' && 'animate-slide-in-from-left'
+          )}
+        >
           {bucketOrder.map((b) => {
             const cfg = bucketConfig[b];
             const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
@@ -1360,11 +1364,11 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
 
       <ScrollArea className="flex-1 h-full overflow-hidden">
         <div 
-          key={`${selectedDate.toISOString()}-${slideDirection}`}
+          key={`${selectedDate.toISOString()}-${navDirection}`}
           className={cn(
             'max-w-3xl mx-auto pb-20',
             compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4',
-            slideDirection && 'animate-slide-in-from-' + (slideDirection === 'left' ? 'right' : 'left')
+            navDirection && 'animate-slide-in-from-' + (navDirection === 'left' ? 'right' : 'left')
           )}
         >
         {/* Search results indicator */}
@@ -1435,7 +1439,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         {/* Fade mask toward the left edge */}
         <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
-        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+        <div
+          key={`next-${selectedDate.toISOString()}`}
+          className={cn(
+            'flex flex-col w-full h-full justify-center',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+            navDirection === 'left' && 'animate-slide-in-from-right'
+          )}
+        >
           {bucketOrder.map((b) => {
             const cfg = bucketConfig[b];
             const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);

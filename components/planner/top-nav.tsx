@@ -23,7 +23,7 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -106,8 +106,16 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   }, []);
 
   const goToToday = () => setSelectedDate(new Date());
-  const goPrevious = () => setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
-  const goNext = () => setSelectedDate(addDays(selectedDate, viewMode === 'week' ? 7 : 1));
+  const goPrevious = () => {
+    setNavDirection('right');
+    setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
+    setTimeout(() => setNavDirection(null), 600);
+  };
+  const goNext = () => {
+    setNavDirection('left');
+    setSelectedDate(addDays(selectedDate, viewMode === 'week' ? 7 : 1));
+    setTimeout(() => setNavDirection(null), 600);
+  };
 
   const handleClearSearch = () => {
     setSearchQuery('');

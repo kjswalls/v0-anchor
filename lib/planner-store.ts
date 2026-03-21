@@ -29,6 +29,8 @@ interface PlannerStore {
   timelineItemFilter: 'all' | 'tasks' | 'habits';
   compactMode: boolean;
   setCompactMode: (compact: boolean) => void;
+  navDirection: 'left' | 'right' | null;
+  setNavDirection: (direction: 'left' | 'right' | null) => void;
   chillMode: boolean;
   setChillMode: (chill: boolean) => void;
   showCurrentTimeIndicator: boolean;
@@ -288,6 +290,8 @@ export const usePlannerStore = create<PlannerStore>()(
       timelineItemFilter: 'all' as const,
       compactMode: false,
       setCompactMode: (compact) => set({ compactMode: compact }),
+      navDirection: null,
+      setNavDirection: (direction) => set({ navDirection: direction }),
       chillMode: false,
       setChillMode: (chill) => set({ chillMode: chill }),
       showCurrentTimeIndicator: false,
