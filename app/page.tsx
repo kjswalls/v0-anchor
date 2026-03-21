@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -126,11 +126,11 @@ export default function PlannerPage() {
           scheduleHabit(itemId, bucket, dropTime);
         }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket without specific time
+        // Dropping on bucket without specific time - assign to bucket but keep unscheduled
         if (itemType === 'task') {
-          scheduleTask(itemId, target as TimeBucket);
+          assignTaskToBucket(itemId, target as TimeBucket);
         } else if (itemType === 'habit') {
-          scheduleHabit(itemId, target as TimeBucket);
+          assignHabitToBucket(itemId, target as TimeBucket);
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule

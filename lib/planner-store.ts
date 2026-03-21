@@ -43,6 +43,7 @@ interface PlannerStore {
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
   scheduleTask: (id: string, bucket: TimeBucket, time?: string) => void;
+  assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
   reorderTasks: (taskIds: string[]) => void;
   
@@ -52,6 +53,7 @@ interface PlannerStore {
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus, count?: number) => void;
   scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
+  assignHabitToBucket: (id: string, bucket: TimeBucket) => void;
   resetHabitStreak: (id: string) => void;
   
   // View actions
@@ -373,6 +375,16 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
       },
       
+      assignTaskToBucket: (id, bucket) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id
+              ? { ...t, isScheduled: false, timeBucket: bucket, startTime: undefined }
+              : t
+          ),
+        }));
+      },
+      
       unscheduleTask: (id) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
@@ -487,6 +499,16 @@ export const usePlannerStore = create<PlannerStore>()(
           habits: state.habits.map((h) =>
             h.id === id
               ? { ...h, timeBucket: finalBucket, startTime: time }
+              : h
+          ),
+        }));
+      },
+      
+      assignHabitToBucket: (id, bucket) => {
+        set((state) => ({
+          habits: state.habits.map((h) =>
+            h.id === id
+              ? { ...h, timeBucket: bucket, startTime: undefined }
               : h
           ),
         }));
