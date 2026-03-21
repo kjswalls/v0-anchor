@@ -1075,16 +1075,21 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
             {/* Scheduled Section (hourly grid) */}
             {(scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
-<HourlyGrid
-  bucket={bucket}
-  scheduledTasks={scheduledTasks}
-  scheduledHabits={scheduledHabits}
-  onTaskClick={onTaskClick}
-  onHabitClick={onHabitClick}
-  isCurrentBucket={isCurrentBucket}
-  recurringProjects={recurringProjects}
-  activeId={activeId}
-/>
+              <HourlyGrid
+                bucket={bucket}
+                scheduledTasks={scheduledTasks}
+                scheduledHabits={scheduledHabits}
+                onTaskClick={onTaskClick}
+                onHabitClick={onHabitClick}
+                isCurrentBucket={isCurrentBucket}
+                recurringProjects={recurringProjects}
+                activeId={activeId}
+              />
+            )}
+            
+            {/* Empty bucket drop zone when dragging */}
+            {scheduledTasks.length === 0 && scheduledHabits.length === 0 && bucket !== 'anytime' && activeId && (
+              <EmptyBucketDropZone bucket={bucket} isActive={true} />
             )}
           </>
         ) : (
