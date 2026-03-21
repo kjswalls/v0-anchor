@@ -274,6 +274,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
               const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
               const isAfterSunset = currentMinutes >= sunsetMins;
+              console.log("[v0] Current time:", now.toLocaleTimeString(), "currentMinutes:", currentMinutes, "sunsetTime:", sunsetTime, "sunsetMins:", sunsetMins, "isAfterSunset:", isAfterSunset);
               return isAfterSunset ? (
                 <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
               ) : (
