@@ -157,8 +157,11 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
           {/* Meta row - emoji, duration, priority, time */}
           <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
-            {projectEmoji && (
-              <span className="text-sm leading-none">{projectEmoji}</span>
+            {projectEmoji && task.project && (
+              <span className="flex items-center gap-1 leading-none">
+                <span className="text-sm">{projectEmoji}</span>
+                <span>{task.project}</span>
+              </span>
             )}
             {task.startTime && (
               <span className="font-medium">{task.startTime}</span>
@@ -381,8 +384,14 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             {habit.title}
           </span>
           
-          {/* Meta row - times per day, start time */}
+          {/* Meta row - group, times per day, start time */}
           <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
+            {habit.group && (
+              <span className="flex items-center gap-1 leading-none">
+                {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
+                <span>{habit.group}</span>
+              </span>
+            )}
             {habit.startTime && (
               <span className="font-medium">{habit.startTime}</span>
             )}
