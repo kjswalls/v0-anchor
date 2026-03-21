@@ -67,7 +67,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group relative flex items-start gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
+        'group relative flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
         isDragging && 'opacity-50 shadow-lg z-50',
         task.status === 'completed' && 'opacity-60'
       )}
@@ -88,7 +88,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       <button
         {...attributes}
         {...listeners}
-        className="mt-0.5 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none relative z-10"
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none relative z-10 flex-shrink-0"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
@@ -101,7 +101,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
@@ -202,7 +202,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
   return (
     <div
       className={cn(
-        'group flex items-start gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer w-full overflow-hidden relative',
+        'group flex items-center gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer w-full overflow-hidden relative',
         'border-border/60 hover:border-border',
         habit.status === 'done' && 'opacity-70'
       )}
@@ -220,7 +220,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
 
       {/* Status circle */}
       <div className={cn(
-        'mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+        'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
         habit.status === 'done' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
       )}>
         {habit.status === 'done' && <Check className="h-2.5 w-2.5 text-primary-foreground" />}

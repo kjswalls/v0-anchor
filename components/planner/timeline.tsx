@@ -148,8 +148,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             toggleTaskStatus(task.id);
           }}
           className={cn(
-            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
-            compactMode ? 'self-center' : 'self-start mt-0.5',
+            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 self-center',
             task.status === 'completed'
               ? 'bg-primary border-primary'
               : 'border-muted-foreground/40 hover:border-primary'
