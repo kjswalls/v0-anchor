@@ -1362,7 +1362,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         </div>
       </button>
 
-      <ScrollArea className="flex-1 h-full overflow-hidden [&_[data-radix-scroll-area-viewport]]:scrollbar-hide">
+      <ScrollArea className="flex-1 h-full overflow-hidden scrollbar-hide">
         <div 
           key={`${selectedDate.toISOString()}-${navDirection}`}
           className={cn(
