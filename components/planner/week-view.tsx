@@ -95,8 +95,8 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
   return (
     <div className={cn('flex-1 h-full flex flex-col', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
       <div className={cn(
-        'p-4 flex flex-col',
-        compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
+        'flex-1 flex flex-col mx-auto w-full max-w-5xl px-4',
+        compactMode ? 'space-y-2 py-4' : 'gap-2 min-h-0 py-4'
       )}>
         {/* Week header with day names and dates */}
         <div className="grid grid-cols-8 gap-1 flex-shrink-0">
