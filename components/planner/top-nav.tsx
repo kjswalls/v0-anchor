@@ -29,10 +29,46 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
+  const [sunsetTime, setSunsetTime] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Fetch sunset time on mount
+  useEffect(() => {
+    const fetchSunsetTime = async () => {
+      try {
+        // Get user's geolocation (default to New York if not available)
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            async (position) => {
+              const { latitude, longitude } = position.coords;
+              const response = await fetch(
+                `https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&formatted=0`
+              );
+              const data = await response.json();
+              if (data.results?.sunset) {
+                const sunsetDate = new Date(data.results.sunset);
+                setSunsetTime(sunsetDate.toISOString().split('T')[1].substring(0, 5));
+              }
+            },
+            () => {
+              // Fallback: use default sunset time of 18:00 if geolocation fails
+              setSunsetTime('18:00');
+            }
+          );
+        } else {
+          setSunsetTime('18:00');
+        }
+      } catch (error) {
+        // Fallback to default if API fails
+        setSunsetTime('18:00');
+      }
+    };
+    
+    fetchSunsetTime();
   }, []);
 
   // Close search results when clicking outside
@@ -190,8 +226,10 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             className="h-8 px-3 text-sm ml-2 relative"
           >
             {mounted && isToday(selectedDate) && (() => {
-              const hour = new Date().getHours();
-              const isNight = hour < 6 || hour >= 20;
+              const now = new Date();
+              const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
+                                  now.getMinutes().toString().padStart(2, '0');
+              const isNight = sunsetTime ? currentTime >= sunsetTime : now.getHours() < 6 || now.getHours() >= 20;
               return isNight ? (
                 <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
               ) : (
