@@ -1130,9 +1130,10 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right' | null>(null);
   
   // Filter tasks and habits based on timeline filter
   const filteredTasks = timelineItemFilter === 'habits' ? [] : tasks;
@@ -1271,15 +1272,21 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   }, [filteredHabitsForDate]);
 
   const goToPreviousDay = () => {
+    setSlideDirection('right'); // Content slides right (coming from left)
     const prev = new Date(selectedDate);
     prev.setDate(prev.getDate() - 1);
     setSelectedDate(prev);
+    // Reset after animation
+    setTimeout(() => setSlideDirection(null), 300);
   };
 
   const goToNextDay = () => {
+    setSlideDirection('left'); // Content slides left (coming from right)
     const next = new Date(selectedDate);
     next.setDate(next.getDate() + 1);
     setSelectedDate(next);
+    // Reset after animation
+    setTimeout(() => setSlideDirection(null), 300);
   };
 
   // Compute tasks for prev/next days to drive skeleton item counts
@@ -1351,8 +1358,15 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         </div>
       </button>
 
-      <ScrollArea className="flex-1 h-full">
-        <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
+      <ScrollArea className="flex-1 h-full overflow-hidden">
+        <div 
+          className={cn(
+            'max-w-3xl mx-auto pb-20 transition-all duration-300 ease-out',
+            compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4',
+            slideDirection === 'left' && 'animate-slide-in-from-right',
+            slideDirection === 'right' && 'animate-slide-in-from-left'
+          )}
+        >
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">
