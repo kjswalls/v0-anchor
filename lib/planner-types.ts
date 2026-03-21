@@ -82,10 +82,21 @@ export interface PlannerState {
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
   anytime: { start: 0, end: 24, label: 'Anytime' },
-  morning: { start: 5, end: 12, label: 'Morning' },
+  morning: { start: 0, end: 12, label: 'Morning' },
   afternoon: { start: 12, end: 17, label: 'Afternoon' },
   evening: { start: 17, end: 24, label: 'Evening' },
 };
+
+export function formatBucketHour(hour: number): string {
+  const h = hour % 24;
+  if (h === 0) return '12am';
+  if (h === 12) return '12pm';
+  return h < 12 ? `${h}am` : `${h - 12}pm`;
+}
+
+export function formatBucketRange(range: { start: number; end: number }): string {
+  return `${formatBucketHour(range.start)} - ${formatBucketHour(range.end)}`;
+}
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',

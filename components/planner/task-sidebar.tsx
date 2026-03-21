@@ -477,9 +477,10 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
   // Check if any filters are active
   const hasActiveFilters = !!(filters.status || filters.priority || filters.project);
 
-  // Filter unscheduled tasks
+  // Filter unscheduled tasks (exclude tasks assigned to buckets - they show in the bucket's untimed section)
   const unscheduledTasks = tasks.filter((task) => {
     if (task.isScheduled) return false;
+    if (task.timeBucket) return false; // Task is assigned to a bucket, show it there instead
     
     // Apply filters
     if (filters.status && filters.status !== task.status) return false;
