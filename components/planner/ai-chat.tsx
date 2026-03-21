@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MessageCircle, Send, X, Sparkles } from 'lucide-react';
+import { Send, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -85,7 +85,7 @@ export function AIChat() {
             'transition-transform hover:scale-105'
           )}
         >
-          <MessageCircle className="h-5 w-5" />
+          <Sparkles className="h-5 w-5" />
         </Button>
       )}
     </div>
