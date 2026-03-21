@@ -88,7 +88,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
         compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
       )}>
         {/* Item visibility toggle */}
-        <div className="flex justify-center flex-shrink-0">
+        <div className="flex justify-center flex-shrink-0 mb-4">
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
             <Button
               variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
