@@ -442,7 +442,7 @@ function FilterButton() {
   );
 }
 
-// ─── Main Sidebar ─────────────────────────────────────────────────────────────
+// ─── Main Sidebar ────────────────��────────────────────────────────────────────
 
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;
@@ -453,94 +453,19 @@ interface TaskSidebarProps {
 }
 
 export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: TaskSidebarProps) {
-  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode } = usePlannerStore();
+  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode, timelineItemFilter } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [isHovered, setIsHovered] = useState(false);
-  const [habitGroupBy, setHabitGroupBy] = useState<'group' | 'status' | 'repeat' | 'bucket' | 'none'>('group');
-  const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'pending' | 'done' | 'skipped'>('all');
-  
-  const { isOver, setNodeRef: setDroppableRef } = useDroppable({ id: 'sidebar' });
-
-  // Unscheduled tasks (filtered)
-  const unscheduledTasks = useMemo(() => {
-    return tasks
-      .filter((task) => !task.isScheduled)
-      .filter((task) => {
-        if (filters.project && task.project !== filters.project) return false;
-        if (filters.priority && task.priority !== filters.priority) return false;
-        if (filters.status && task.status !== filters.status) return false;
-        return true;
-      })
-      .sort((a, b) => a.order - b.order);
-  }, [tasks, filters]);
-
-  // Group tasks
-  const groupedTasks = useMemo(() => {
-    if (groupBy === 'none') return { 'All Tasks': unscheduledTasks };
-    const groups: Record<string, Task[]> = {};
-    unscheduledTasks.forEach((task) => {
-      let key: string;
-      switch (groupBy) {
-        case 'project': key = task.project || 'No Project'; break;
-        case 'priority': key = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'No Priority'; break;
-        case 'status': key = task.status.charAt(0).toUpperCase() + task.status.slice(1); break;
-        default: key = 'All Tasks';
-      }
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(task);
-    });
-    return groups;
-  }, [unscheduledTasks, groupBy]);
-
-  // Filter + group habits
-  const filteredHabits = useMemo(() => {
-    return habits.filter((h) => habitStatusFilter === 'all' || h.status === habitStatusFilter);
-  }, [habits, habitStatusFilter]);
-
-  const groupedHabits = useMemo(() => {
-    const groups: Record<string, Habit[]> = {};
-
-    const addTo = (key: string, habit: Habit) => {
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(habit);
-    };
-
-    filteredHabits.forEach((habit) => {
-      switch (habitGroupBy) {
-        case 'group':
-          addTo(habit.group || 'Other', habit);
-          break;
-        case 'status': {
-          const labels: Record<string, string> = { pending: 'Pending', done: 'Done', skipped: 'Skipped' };
-          addTo(labels[habit.status] || habit.status, habit);
-          break;
-        }
-        case 'repeat':
-          addTo(REPEAT_FREQUENCY_LABELS[habit.repeatFrequency] || 'No repeat', habit);
-          break;
-        case 'bucket':
-          addTo(habit.timeBucket ? habit.timeBucket.charAt(0).toUpperCase() + habit.timeBucket.slice(1) : 'Anytime', habit);
-          break;
-        case 'none':
-          addTo('All Habits', habit);
-          break;
-      }
-    });
-
-    if (habitGroupBy === 'group') {
-      // Preserve habitGroups order
-      const ordered: Record<string, Habit[]> = {};
-      habitGroups.forEach((g) => { if (groups[g.name]) ordered[g.name] = groups[g.name]; });
-      Object.keys(groups).forEach((key) => { if (!ordered[key]) ordered[key] = groups[key]; });
-      return ordered;
-    }
-
-    return groups;
-  }, [filteredHabits, habitGroupBy, habitGroups]);
-
-  const hasActiveFilters = Object.keys(filters).length > 0;
-
   const showControls = !chillMode || isHovered;
+
+  // Auto-switch tab when filter changes to show only available items
+  useEffect(() => {
+    if (timelineItemFilter === 'tasks') {
+      setActiveTab('tasks');
+    } else if (timelineItemFilter === 'habits') {
+      setActiveTab('habits');
+    }
+  }, [timelineItemFilter]);
 
   return (
     <aside 
@@ -554,30 +479,34 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     >
       {/* Tab switcher */}
       <div className="flex border-b border-border">
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors',
-            activeTab === 'tasks'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('tasks')}
-        >
-          Tasks
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
-        </button>
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors',
-            activeTab === 'habits'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('habits')}
-        >
-          Habits
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
-        </button>
+        {timelineItemFilter !== 'habits' && (
+          <button
+            className={cn(
+              'flex-1 py-3 text-base font-medium transition-colors',
+              activeTab === 'tasks'
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('tasks')}
+          >
+            Tasks
+            <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
+          </button>
+        )}
+        {timelineItemFilter !== 'tasks' && (
+          <button
+            className={cn(
+              'flex-1 py-3 text-base font-medium transition-colors',
+              activeTab === 'habits'
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('habits')}
+          >
+            Habits
+            <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
+          </button>
+        )}
       </div>
 
       {/* Tasks pane */}
