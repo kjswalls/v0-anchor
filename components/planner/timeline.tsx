@@ -137,9 +137,9 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       </button>
 
       {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col gap-1 relative z-10">
+      <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
         {/* Title row — no emoji here */}
-        <div className="flex items-start">
+        <div className={compactMode ? 'flex items-center' : 'flex items-start'}>
           <p
             className={cn(
               'font-medium text-foreground leading-tight line-clamp-2 flex-1',
@@ -152,7 +152,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         </div>
         
         {/* Meta row - emoji, duration, priority, time */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
           {projectEmoji && (
             <span className="text-sm leading-none">{projectEmoji}</span>
           )}
@@ -355,7 +355,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           </button>
         )}
         
-        <div className="flex-1 min-w-0 flex flex-col gap-1">
+        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
           <span
             className={cn(
               'font-medium text-foreground leading-tight line-clamp-2',
@@ -367,7 +367,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           </span>
           
           {/* Meta row - times per day, start time */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
             {habit.startTime && (
               <span className="font-medium">{habit.startTime}</span>
             )}
