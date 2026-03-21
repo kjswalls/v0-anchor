@@ -472,6 +472,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     id: 'sidebar',
   });
 
+  // Check if any filters are active
+  const hasActiveFilters = !!(filters.status || filters.priority || filters.project);
+
   // Filter unscheduled tasks
   const unscheduledTasks = tasks.filter((task) => {
     if (task.isScheduled) return false;
