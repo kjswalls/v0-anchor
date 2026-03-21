@@ -14,8 +14,9 @@ import type {
   RepeatFrequency,
   Project,
   HabitGroupType,
+  ConfigurableBucketRanges,
 } from './planner-types';
-import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, TIME_BUCKET_RANGES } from './planner-types';
+import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, DEFAULT_BUCKET_RANGES } from './planner-types';
 
 interface PlannerStore {
   tasks: Task[];
@@ -33,6 +34,8 @@ interface PlannerStore {
   setChillMode: (chill: boolean) => void;
   showCurrentTimeIndicator: boolean;
   setShowCurrentTimeIndicator: (show: boolean) => void;
+  bucketRanges: ConfigurableBucketRanges;
+  setBucketRanges: (ranges: ConfigurableBucketRanges) => void;
   /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
@@ -133,15 +136,14 @@ const saveToHistory = (state: HistoryState) => {
 };
 
 // Get appropriate bucket for a given time
-const getBucketForTime = (time: string): TimeBucket => {
+const getBucketForTime = (time: string, ranges = DEFAULT_BUCKET_RANGES): TimeBucket => {
   const hour = parseInt(time.split(':')[0]);
-  if (hour >= TIME_BUCKET_RANGES.morning.start && hour < TIME_BUCKET_RANGES.morning.end) {
-    return 'morning';
-  } else if (hour >= TIME_BUCKET_RANGES.afternoon.start && hour < TIME_BUCKET_RANGES.afternoon.end) {
-    return 'afternoon';
-  } else if (hour >= TIME_BUCKET_RANGES.evening.start || hour < 5) {
-    return 'evening';
-  }
+  const { morning, afternoon, evening } = ranges;
+  if (hour >= morning.start && hour < morning.end) return 'morning';
+  if (hour >= afternoon.start && hour < afternoon.end) return 'afternoon';
+  // Evening can wrap midnight (end > 24)
+  const eveningEndNorm = evening.end % 24;
+  if (hour >= evening.start || (evening.end > 24 && hour < eveningEndNorm)) return 'evening';
   return 'anytime';
 };
 
@@ -290,6 +292,8 @@ export const usePlannerStore = create<PlannerStore>()(
       setChillMode: (chill) => set({ chillMode: chill }),
       showCurrentTimeIndicator: true,
       setShowCurrentTimeIndicator: (show) => set({ showCurrentTimeIndicator: show }),
+      bucketRanges: DEFAULT_BUCKET_RANGES,
+      setBucketRanges: (ranges) => set({ bucketRanges: ranges }),
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),

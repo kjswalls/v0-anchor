@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket, Priority, HabitStatus, Project } from '@/lib/planner-types';
-import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay } from 'date-fns';
@@ -25,35 +25,30 @@ import { isSameDay } from 'date-fns';
 const bucketConfig: Record<TimeBucket, {
   icon: typeof Clock;
   label: string;
-  timeRange: string;
   bgClass: string;
   borderClass: string;
 }> = {
   anytime: {
     icon: Sparkles,
     label: 'Anytime',
-    timeRange: 'Flexible',
     bgClass: 'bg-anytime/30',
     borderClass: 'border-anytime/50',
   },
   morning: {
     icon: Sunrise,
     label: 'Morning',
-    timeRange: '5am - 12pm',
     bgClass: 'bg-morning/20',
     borderClass: 'border-morning/40',
   },
   afternoon: {
     icon: Sun,
     label: 'Afternoon',
-    timeRange: '12pm - 5pm',
     bgClass: 'bg-afternoon/20',
     borderClass: 'border-afternoon/40',
   },
   evening: {
     icon: Moon,
     label: 'Evening',
-    timeRange: '5pm - 12am',
     bgClass: 'bg-evening/20',
     borderClass: 'border-evening/40',
   },
@@ -692,61 +687,66 @@ function EmptyBucketDropZone({ bucket, isActive }: EmptyBucketDropZoneProps) {
 export function inferDropTime(
   bucket: TimeBucket,
   position: 'empty' | 'before' | 'after',
-  referenceTime?: string
+  referenceTime?: string,
+  customRanges?: { morning: { start: number; end: number }; afternoon: { start: number; end: number }; evening: { start: number; end: number } }
 ): string {
   const now = new Date();
-  const ranges: Record<TimeBucket, { start: number; end: number }> = {
+  const ranges = {
     anytime: { start: 0, end: 24 },
-    morning: { start: 5, end: 12 },
-    afternoon: { start: 12, end: 17 },
-    evening: { start: 17, end: 24 },
+    morning: customRanges?.morning ?? { start: 5, end: 12 },
+    afternoon: customRanges?.afternoon ?? { start: 12, end: 18 },
+    evening: customRanges?.evening ?? { start: 18, end: 30 },
   };
   const range = ranges[bucket];
+  // Normalise end for time arithmetic (mod 24 for display)
+  const endNorm = range.end % 24;
   
   if (position === 'empty') {
-    // Use current time if within bucket, otherwise bucket start
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    if (currentHour >= range.start && currentHour < range.end) {
+    // For overnight buckets (end > 24), check if hour is after start OR before end%24
+    const inBucket = range.end > 24
+      ? (currentHour >= range.start || currentHour < endNorm)
+      : (currentHour >= range.start && currentHour < range.end);
+    if (inBucket) {
       return `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
     }
-    return `${String(range.start).padStart(2, '0')}:00`;
+    return `${String(range.start % 24).padStart(2, '0')}:00`;
   }
   
   if (!referenceTime) {
-    return `${String(range.start).padStart(2, '0')}:00`;
+    return `${String(range.start % 24).padStart(2, '0')}:00`;
   }
   
   const [refHour, refMinute] = referenceTime.split(':').map(Number);
   
   if (position === 'before') {
-    // 30 minutes before reference, but not before bucket start
     let newMinute = refMinute - 30;
     let newHour = refHour;
     if (newMinute < 0) {
       newMinute += 60;
       newHour -= 1;
     }
-    if (newHour < range.start) {
-      newHour = range.start;
+    if (newHour < range.start % 24) {
+      newHour = range.start % 24;
       newMinute = 0;
     }
     return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
   }
   
   // position === 'after'
-  // 30 minutes after reference, but not after bucket end
   let newMinute = refMinute + 30;
   let newHour = refHour;
   if (newMinute >= 60) {
     newMinute -= 60;
     newHour += 1;
   }
-  if (newHour >= range.end) {
-    newHour = range.end - 1;
+  const afterEnd = endNorm === 0 ? 24 : endNorm;
+  if (newHour >= afterEnd && range.end <= 24) {
+    newHour = afterEnd - 1;
     newMinute = 30;
   }
-  return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
+  return `${String(newHour % 24).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
 }
 
 interface HourlyGridProps {
@@ -761,9 +761,9 @@ interface HourlyGridProps {
 }
 
 function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [], activeId }: HourlyGridProps) {
-  const { compactMode, showCurrentTimeIndicator } = usePlannerStore();
+  const { compactMode, showCurrentTimeIndicator, bucketRanges } = usePlannerStore();
   const isDragging = !!activeId;
-  const range = TIME_BUCKET_RANGES[bucket];
+  const range = bucket === 'anytime' ? { start: 0, end: 24 } : bucketRanges[bucket as keyof typeof bucketRanges];
   
   // Current time tracking for the glow indicator
   const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
@@ -947,10 +947,11 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode } = usePlannerStore();
+  const { compactMode, chillMode, bucketRanges } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
+  const timeRangeLabel = bucket === 'anytime' ? 'Flexible' : formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges]);
 
   // Separate into untimed and scheduled
   const untimedTasks = tasks.filter((t) => !t.startTime);
@@ -981,7 +982,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{timeRangeLabel}</span>
           {totalItems > 0 && (
             <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
               {totalItems}

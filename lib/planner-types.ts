@@ -80,14 +80,41 @@ export interface PlannerState {
   habitGroups: HabitGroupType[];
 }
 
-export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
-  anytime: { start: 0, end: 24, label: 'Anytime' },
-  morning: { start: 5, end: 12, label: 'Morning' },
-  afternoon: { start: 12, end: 17, label: 'Afternoon' },
-  evening: { start: 17, end: 24, label: 'Evening' },
+export type BucketRange = { start: number; end: number };
+export type ConfigurableBucketRanges = {
+  morning: BucketRange;
+  afternoon: BucketRange;
+  evening: BucketRange;
 };
 
-export const PRIORITY_LABELS: Record<Priority, string> = {
+export const DEFAULT_BUCKET_RANGES: ConfigurableBucketRanges = {
+  morning: { start: 5, end: 12 },
+  afternoon: { start: 12, end: 18 },
+  evening: { start: 18, end: 30 }, // 30 = 6am next day (crosses midnight)
+};
+
+export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
+  anytime: { start: 0, end: 24, label: 'Anytime' },
+  morning: { start: DEFAULT_BUCKET_RANGES.morning.start, end: DEFAULT_BUCKET_RANGES.morning.end, label: 'Morning' },
+  afternoon: { start: DEFAULT_BUCKET_RANGES.afternoon.start, end: DEFAULT_BUCKET_RANGES.afternoon.end, label: 'Afternoon' },
+  evening: { start: DEFAULT_BUCKET_RANGES.evening.start, end: DEFAULT_BUCKET_RANGES.evening.end, label: 'Evening' },
+};
+
+/** Format hour (0-47) to display string like "6pm", "12am" */
+export function formatBucketHour(h: number): string {
+  const normalized = h % 24;
+  if (normalized === 0) return '12am';
+  if (normalized === 12) return '12pm';
+  if (normalized < 12) return `${normalized}am`;
+  return `${normalized - 12}pm`;
+}
+
+/** Format a BucketRange to a label string like "6am - 12pm" */
+export function formatBucketRange(range: BucketRange): string {
+  return `${formatBucketHour(range.start)} - ${formatBucketHour(range.end)}`;
+}
+
+export const BUCKET_HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i); // 0-24
   low: 'Low',
   medium: 'Medium',
   high: 'High',

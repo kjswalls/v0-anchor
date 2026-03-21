@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
+import { formatBucketHour, BUCKET_HOUR_OPTIONS, type ConfigurableBucketRanges } from '@/lib/planner-types';
 import {
   Dialog,
   DialogContent,
@@ -191,7 +192,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
-  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
+  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, bucketRanges, setBucketRanges } = usePlannerStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -400,6 +401,50 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </SelectContent>
                 </Select>
               </SettingRow>
+
+              {/* Bucket time ranges */}
+              {(['morning', 'afternoon', 'evening'] as const).map((b) => (
+                <SettingRow
+                  key={b}
+                  label={`${b.charAt(0).toUpperCase() + b.slice(1)} hours`}
+                  description={`Time range for the ${b} bucket`}
+                >
+                  <div className="flex items-center gap-1">
+                    <Select
+                      value={String(bucketRanges[b].start)}
+                      onValueChange={(v) =>
+                        setBucketRanges({ ...bucketRanges, [b]: { ...bucketRanges[b], start: Number(v) } })
+                      }
+                    >
+                      <SelectTrigger className="w-20 h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BUCKET_HOUR_OPTIONS.map((h) => (
+                          <SelectItem key={h} value={String(h)}>{formatBucketHour(h)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">to</span>
+                    <Select
+                      value={String(bucketRanges[b].end)}
+                      onValueChange={(v) =>
+                        setBucketRanges({ ...bucketRanges, [b]: { ...bucketRanges[b], end: Number(v) } })
+                      }
+                    >
+                      <SelectTrigger className="w-20 h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Allow up to 30 (= 6am next day) for evening */}
+                        {(b === 'evening' ? [...BUCKET_HOUR_OPTIONS, 25, 26, 27, 28, 29, 30] : BUCKET_HOUR_OPTIONS).map((h) => (
+                          <SelectItem key={h} value={String(h)}>{formatBucketHour(h)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </SettingRow>
+              ))}
             </SettingsSection>
           </div>
         </div>

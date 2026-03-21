@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
-import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame } from 'lucide-react';
 
@@ -15,22 +15,15 @@ interface WeekViewProps {
 
 const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
 
-const bucketLabels: Record<TimeBucket, string> = {
+const bucketLabels: Record<string, string> = {
   anytime: 'Anytime',
   morning: 'Morning',
   afternoon: 'Afternoon',
   evening: 'Evening',
 };
 
-const bucketTimes: Record<TimeBucket, string> = {
-  anytime: '',
-  morning: '6am - 12pm',
-  afternoon: '12pm - 6pm',
-  evening: '6pm - 12am',
-};
-
 export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, bucketRanges } = usePlannerStore();
 
   // Track current time for the indicator
   const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
@@ -127,20 +120,23 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
 
         {/* Time buckets grid */}
         {TIME_BUCKETS.map((bucket) => {
-          // Compute current-time indicator for this bucket row
-          const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
-            anytime: { start: 0, end: 24 },
-            morning: { start: 5, end: 12 },
-            afternoon: { start: 12, end: 17 },
-            evening: { start: 17, end: 24 },
-          };
-          const range = bucketRanges[bucket];
+          // Use store bucket ranges (supports overnight ranges like evening end=30)
+          const range = bucketRanges[bucket as keyof typeof bucketRanges];
+          const endNorm = range.end % 24;
           const isCurrentBucketRow = showCurrentTimeIndicator &&
             currentTime !== null &&
-            currentTime.hour >= range.start &&
-            currentTime.hour < range.end;
+            (range.end > 24
+              ? (currentTime.hour >= range.start || currentTime.hour < endNorm)
+              : (currentTime.hour >= range.start && currentTime.hour < range.end));
+          // Effective duration in hours (handles overnight)
+          const durationHours = range.end > 24 ? (range.end - range.start) : (range.end - range.start);
+          const elapsedHours = currentTime
+            ? (currentTime.hour >= range.start
+                ? currentTime.hour - range.start
+                : currentTime.hour + 24 - range.start)
+            : 0;
           const minuteProgress = currentTime
-            ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
+            ? (elapsedHours * 60 + currentTime.minute) / (durationHours * 60)
             : 0;
 
           return (
@@ -157,7 +153,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                 {bucketLabels[bucket]}
               </span>
               <span className="text-[10px] text-muted-foreground/60">
-                {bucketTimes[bucket]}
+                {formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges])}
               </span>
             </div>
             

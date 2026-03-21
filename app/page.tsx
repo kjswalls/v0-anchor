@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, bucketRanges } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -102,7 +102,7 @@ export default function PlannerPage() {
         
         let dropTime: string;
         if (position === 'empty') {
-          dropTime = inferDropTime(bucket, 'empty');
+          dropTime = inferDropTime(bucket, 'empty', undefined, bucketRanges);
         } else {
           // Get reference item's time
           const refItemType = parts[3];
@@ -117,7 +117,7 @@ export default function PlannerPage() {
             refTime = refHabit?.startTime;
           }
           
-          dropTime = inferDropTime(bucket, position, refTime);
+          dropTime = inferDropTime(bucket, position, refTime, bucketRanges);
         }
         
         if (itemType === 'task') {
