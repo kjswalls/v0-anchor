@@ -672,14 +672,22 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex--;
         const prevState = historyStack[historyIndex];
         
+        const restoredTasks = JSON.parse(JSON.stringify(prevState.tasks));
+        const restoredHabits = JSON.parse(JSON.stringify(prevState.habits));
+        const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
+        const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
+        
         set({
-          tasks: JSON.parse(JSON.stringify(prevState.tasks)),
-          habits: JSON.parse(JSON.stringify(prevState.habits)),
-          projects: JSON.parse(JSON.stringify(prevState.projects)),
-          habitGroups: JSON.parse(JSON.stringify(prevState.habitGroups)),
+          tasks: restoredTasks,
+          habits: restoredHabits,
+          projects: restoredProjects,
+          habitGroups: restoredGroups,
           canUndo: historyIndex > 0,
           canRedo: true,
         });
+        
+        // Update the baseline for the subscriber so it doesn't think this is a new change
+        updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
         
         isUndoRedoAction = false;
       },
@@ -691,14 +699,22 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex++;
         const nextState = historyStack[historyIndex];
         
+        const restoredTasks = JSON.parse(JSON.stringify(nextState.tasks));
+        const restoredHabits = JSON.parse(JSON.stringify(nextState.habits));
+        const restoredProjects = JSON.parse(JSON.stringify(nextState.projects));
+        const restoredGroups = JSON.parse(JSON.stringify(nextState.habitGroups));
+        
         set({
-          tasks: JSON.parse(JSON.stringify(nextState.tasks)),
-          habits: JSON.parse(JSON.stringify(nextState.habits)),
-          projects: JSON.parse(JSON.stringify(nextState.projects)),
-          habitGroups: JSON.parse(JSON.stringify(nextState.habitGroups)),
+          tasks: restoredTasks,
+          habits: restoredHabits,
+          projects: restoredProjects,
+          habitGroups: restoredGroups,
           canUndo: true,
           canRedo: historyIndex < historyStack.length - 1,
         });
+        
+        // Update the baseline for the subscriber so it doesn't think this is a new change
+        updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
         
         isUndoRedoAction = false;
       },
@@ -734,6 +750,11 @@ export const usePlannerStore = create<PlannerStore>()(
 // Subscribe to changes and save to history
 let prevStateJson: string | null = null;
 let isUpdatingUndoRedo = false;
+
+// Function to update baseline from undo/redo actions
+const updatePrevStateBaseline = (state: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] }) => {
+  prevStateJson = JSON.stringify(state);
+};
 
 usePlannerStore.subscribe((state) => {
   if (isUndoRedoAction || isUpdatingUndoRedo) return;
