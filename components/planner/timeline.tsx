@@ -1337,7 +1337,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         style={{ left: 'calc(50% - 31rem)' }}
       >
         {/* Chevron hint — gradient fades toward the time buckets (right side) */}
-        <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none bg-gradient-to-r from-muted/0 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none bg-gradient-to-r from-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />
         </div>
         {/* Fade mask toward the right edge */}
@@ -1444,7 +1444,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         style={{ left: 'calc(50% + 24rem)' }}
       >
         {/* Chevron hint — gradient fades toward the time buckets (left side) */}
-        <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none bg-gradient-to-l from-muted/0 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none bg-gradient-to-l from-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
         {/* Fade mask toward the left edge */}
