@@ -544,28 +544,36 @@ interface ProjectBlockProps {
   project: Project;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  activeId?: string | null;
 }
 
-function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
-  const { compactMode, moveTaskToProjectBlock, moveTaskOutOfProjectBlock, toggleTaskStatus, getProjectColor } = usePlannerStore();
+function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
+  const { compactMode, moveTaskOutOfProjectBlock, toggleTaskStatus, getProjectColor, tasks: allTasks } = usePlannerStore();
   
-  // Tasks that are inside the project block vs those with their own start times
+  // Tasks that are inside the project block
   const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
-  const tasksOutsideBlock = tasks.filter((t) => !t.inProjectBlock && t.startTime);
   
-  if (tasksInBlock.length === 0 && tasksOutsideBlock.length === 0 && tasks.length === 0) {
-    return null;
-  }
-
   const projectColor = getProjectColor(project.name);
+  
+  // Set up droppable - ID format: projectblock:ProjectName
+  const dropId = `projectblock:${project.name}`;
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  // Check if the currently dragged item can be dropped here
+  // Only allow tasks that belong to this project
+  const draggedTask = activeId ? allTasks.find(t => t.id === activeId) : null;
+  const canAcceptDrop = draggedTask && draggedTask.project === project.name;
 
   return (
     <div 
+      ref={setNodeRef}
       className={cn(
-        'rounded-lg border-2 border-dashed overflow-hidden',
-        compactMode ? 'p-2' : 'p-3'
+        'rounded-lg border-2 overflow-hidden transition-all mb-3',
+        compactMode ? 'p-2' : 'p-3',
+        isOver && canAcceptDrop ? 'border-solid border-primary bg-primary/10' : 'border-dashed',
+        isOver && !canAcceptDrop && 'border-destructive/50 bg-destructive/5'
       )}
-      style={{ borderColor: projectColor }}
+      style={{ borderColor: isOver ? undefined : projectColor }}
     >
       {/* Project block header */}
       <div className="flex items-center gap-2 mb-2">
@@ -633,9 +641,18 @@ function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground text-center py-2">
-          No tasks in this block yet
-        </p>
+        <div className={cn(
+          'text-xs text-muted-foreground text-center py-3 rounded-lg border border-dashed border-border/50',
+          isOver && canAcceptDrop && 'border-primary bg-primary/5'
+        )}>
+          {isOver && canAcceptDrop ? (
+            <span className="text-primary">Drop to add to block</span>
+          ) : isOver && !canAcceptDrop ? (
+            <span className="text-destructive/70">Only {project.name} tasks allowed</span>
+          ) : (
+            <span>Drop {project.name} tasks here</span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -969,6 +986,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const totalItems = tasks.length + habits.length;
   const hasScheduled = scheduledTasks.length > 0 || scheduledHabits.length > 0;
   const hasUntimed = untimedTasks.length > 0 || untimedHabits.length > 0;
+  const hasProjectBlocks = recurringProjects.some((p) => p.timeBucket === bucket);
 
   return (
     <div
@@ -1065,10 +1083,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       </div>
 
       {/* Scheduled section — separate from the unscheduled drop zone */}
-      {(hasScheduled || (activeId && hasUntimed)) && (
+      {(hasScheduled || hasProjectBlocks || (activeId && hasUntimed)) && (
         <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3', !hasUntimed && (compactMode ? 'pt-2' : 'pt-3'))}>
           {/* Divider */}
-          {hasUntimed && hasScheduled && bucket !== 'anytime' && (
+          {hasUntimed && (hasScheduled || hasProjectBlocks) && bucket !== 'anytime' && (
             <div className={cn('flex items-center gap-2', compactMode ? 'py-1 mt-1' : 'py-1 mt-3')}>
               <div className="flex-1 h-px bg-border" />
               <Clock className="h-3 w-3 text-muted-foreground/50" />
@@ -1087,6 +1105,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                   project={project}
                   tasks={projectTasks}
                   onTaskClick={onTaskClick}
+                  activeId={activeId}
                 />
               );
             })}
@@ -1114,8 +1133,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         </div>
       )}
 
-      {/* Completely empty bucket */}
-      {totalItems === 0 && (
+      {/* Completely empty bucket - only show if no project blocks either */}
+      {totalItems === 0 && !hasProjectBlocks && (
         <div className={cn('text-center', compactMode ? 'p-2' : 'p-3')}>
           {activeId && bucket !== 'anytime' ? (
             <EmptyBucketDropZone bucket={bucket} isActive={true} />

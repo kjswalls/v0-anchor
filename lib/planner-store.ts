@@ -605,6 +605,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       moveTaskToProjectBlock: (taskId) => {
+        const selectedDate = get().selectedDate;
         set((state) => {
           const task = state.tasks.find((t) => t.id === taskId);
           if (!task || !task.project) return state;
@@ -622,6 +623,7 @@ export const usePlannerStore = create<PlannerStore>()(
                     startTime: undefined, // Clear start time when in project block
                     timeBucket: project.timeBucket,
                     isScheduled: true,
+                    startDate: t.startDate || selectedDate, // Ensure startDate is set
                   }
                 : t
             ),
