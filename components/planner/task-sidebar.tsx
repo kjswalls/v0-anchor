@@ -442,7 +442,7 @@ function FilterButton() {
   );
 }
 
-// ─── Main Sidebar ────────────────���────────────────────────────────────────────
+// ─── Main Sidebar ────────────────��────────────────────────────────────────────
 
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;

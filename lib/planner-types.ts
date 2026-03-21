@@ -11,11 +11,12 @@ export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weeken
 export interface Project {
   name: string;
   emoji: string;
+  // Optional scheduling for project time blocks
   repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[];
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
   timeBucket?: TimeBucket;
-  startTime?: string;
-  duration?: number;
+  startTime?: string; // HH:mm format
+  duration?: number; // in minutes
 }
 
 export interface HabitGroupType {
@@ -29,17 +30,19 @@ export interface Task {
   title: string;
   priority?: Priority;
   project?: string;
-  startDate?: Date;
+  startDate?: Date; // Changed from dueDate - determines which day this shows on
   status: TaskStatus;
   timeBucket?: TimeBucket;
-  startTime?: string;
-  duration?: number;
+  startTime?: string; // Renamed from scheduledTime - HH:mm format
+  duration?: number; // in minutes
   isScheduled: boolean;
+  // Repeat configuration
   repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[];
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
   order: number;
-  inProjectBlock?: boolean;
-  previousStartTime?: string;
+  // Project block tracking
+  inProjectBlock?: boolean; // Whether task is inside its project's time block
+  previousStartTime?: string; // Stored start time before moving into project block
 }
 
 export interface Habit {
@@ -48,13 +51,14 @@ export interface Habit {
   group: HabitGroup;
   streak: number;
   status: HabitStatus;
-  completedDates: string[];
+  completedDates: string[]; // ISO date strings
   timeBucket?: TimeBucket;
-  startTime?: string;
+  startTime?: string; // Renamed from scheduledTime - HH:mm format
+  // Repeat configuration
   repeatFrequency: RepeatFrequency;
-  repeatDays?: number[];
-  timesPerDay?: number;
-  currentDayCount?: number;
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  timesPerDay?: number; // for habits that need to be done multiple times
+  currentDayCount?: number; // how many times completed today
 }
 
 export interface FilterState {
@@ -76,39 +80,12 @@ export interface PlannerState {
   habitGroups: HabitGroupType[];
 }
 
-export type BucketRange = { start: number; end: number };
-
-export type ConfigurableBucketRanges = {
-  morning: BucketRange;
-  afternoon: BucketRange;
-  evening: BucketRange;
-};
-
-export const DEFAULT_BUCKET_RANGES: ConfigurableBucketRanges = {
-  morning: { start: 5, end: 12 },
-  afternoon: { start: 12, end: 18 },
-  evening: { start: 18, end: 30 },
-};
-
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
   anytime: { start: 0, end: 24, label: 'Anytime' },
-  morning: { start: DEFAULT_BUCKET_RANGES.morning.start, end: DEFAULT_BUCKET_RANGES.morning.end, label: 'Morning' },
-  afternoon: { start: DEFAULT_BUCKET_RANGES.afternoon.start, end: DEFAULT_BUCKET_RANGES.afternoon.end, label: 'Afternoon' },
-  evening: { start: DEFAULT_BUCKET_RANGES.evening.start, end: DEFAULT_BUCKET_RANGES.evening.end, label: 'Evening' },
+  morning: { start: 5, end: 12, label: 'Morning' },
+  afternoon: { start: 12, end: 17, label: 'Afternoon' },
+  evening: { start: 17, end: 24, label: 'Evening' },
 };
-
-export function formatBucketHour(h: number): string {
-  const n = h % 24;
-  if (n === 0) return '12am';
-  if (n === 12) return '12pm';
-  return n < 12 ? `${n}am` : `${n - 12}pm`;
-}
-
-export function formatBucketRange(range: BucketRange): string {
-  return `${formatBucketHour(range.start)} – ${formatBucketHour(range.end)}`;
-}
-
-export const BUCKET_HOUR_OPTIONS: number[] = Array.from({ length: 25 }, (_, i) => i);
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',
@@ -116,31 +93,31 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   high: 'High',
 };
 
+export const DEFAULT_PROJECTS: Project[] = [
+  { name: 'Work', emoji: '💼' },
+  { name: 'Wellness', emoji: '🧘' },
+  { name: 'Personal', emoji: '🏠' },
+];
+
+export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
+  { name: 'Wellness', emoji: '💚' },
+  { name: 'Work', emoji: '💼' },
+  { name: 'Personal', emoji: '⭐' },
+];
+
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
   none: 'No repeat',
-  daily: 'Daily',
-  weekly: 'Weekly',
-  weekdays: 'Weekdays',
-  weekends: 'Weekends',
-  custom: 'Custom',
+  daily: 'Every day',
+  weekly: 'Once a week',
+  weekdays: 'Weekdays only',
+  weekends: 'Weekends only',
+  custom: 'Custom days',
 };
 
 export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const EMOJI_OPTIONS = [
-  '✨', '🎯', '📚', '💼', '🏃', '💪', '🧠', '❤️',
-  '🎨', '🎵', '🌍', '🚀', '⚡', '🔥', '💎', '🎁',
-  '📖', '🏆', '🌟', '💡', '🎭', '🌺', '🍎', '☕',
-];
-
-export const DEFAULT_PROJECTS: Project[] = [
-  { name: 'Personal', emoji: '✨' },
-  { name: 'Work', emoji: '💼' },
-  { name: 'Health', emoji: '🏃' },
-];
-
-export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
-  { name: 'Physical', emoji: '💪', color: '#FF6B6B' },
-  { name: 'Mental', emoji: '🧠', color: '#4ECDC4' },
-  { name: 'Learning', emoji: '📚', color: '#FFE66D' },
+  '💼', '🧘', '🏠', '📚', '💪', '🎯', '🌟', '⭐', '💚', '❤️',
+  '🔥', '✨', '🎨', '🎵', '🏃', '🧠', '💡', '📝', '🎮', '🍎',
+  '☕', '🌱', '🔔', '📊', '🛠️', '🎓', '💰', '🌈', '🚀', '🎁',
 ];

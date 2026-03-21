@@ -1,5 +1,5 @@
 'use client';
-// v4 — module graph rebuild
+
 import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, bucketRanges } = usePlannerStore();
+  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -102,7 +102,7 @@ export default function PlannerPage() {
         
         let dropTime: string;
         if (position === 'empty') {
-          dropTime = inferDropTime(bucket, 'empty', undefined, bucketRanges);
+          dropTime = inferDropTime(bucket, 'empty');
         } else {
           // Get reference item's time
           const refItemType = parts[3];
@@ -117,7 +117,7 @@ export default function PlannerPage() {
             refTime = refHabit?.startTime;
           }
           
-          dropTime = inferDropTime(bucket, position, refTime, bucketRanges);
+          dropTime = inferDropTime(bucket, position, refTime);
         }
         
         if (itemType === 'task') {
@@ -125,26 +125,12 @@ export default function PlannerPage() {
         } else if (itemType === 'habit') {
           scheduleHabit(itemId, bucket, dropTime);
         }
-      } else if (target.startsWith('untimed:')) {
-        // Dropping on untimed section - assign to bucket without scheduling
-        const bucket = target.split(':')[1] as TimeBucket;
-        if (itemType === 'task') {
-          // Update task: set timeBucket but keep isScheduled false and clear startTime
-          const { updateTask } = usePlannerStore.getState();
-          updateTask(itemId, { timeBucket: bucket, isScheduled: false, startTime: undefined });
-        } else if (itemType === 'habit') {
-          // Update habit: set timeBucket and clear startTime
-          const { updateHabit } = usePlannerStore.getState();
-          updateHabit(itemId, { timeBucket: bucket, startTime: undefined });
-        }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket header/general area - also assign without scheduling
+        // Dropping on bucket without specific time - assign to bucket but keep unscheduled
         if (itemType === 'task') {
-          const { updateTask } = usePlannerStore.getState();
-          updateTask(itemId, { timeBucket: target as TimeBucket, isScheduled: false, startTime: undefined });
+          assignTaskToBucket(itemId, target as TimeBucket);
         } else if (itemType === 'habit') {
-          const { updateHabit } = usePlannerStore.getState();
-          updateHabit(itemId, { timeBucket: target as TimeBucket, startTime: undefined });
+          assignHabitToBucket(itemId, target as TimeBucket);
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule

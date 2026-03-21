@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
-import { formatBucketRange } from '@/lib/planner-types';
+import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame } from 'lucide-react';
 
@@ -15,15 +15,34 @@ interface WeekViewProps {
 
 const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
 
-const bucketLabels: Record<string, string> = {
+const bucketLabels: Record<TimeBucket, string> = {
   anytime: 'Anytime',
   morning: 'Morning',
   afternoon: 'Afternoon',
   evening: 'Evening',
 };
 
+const bucketTimes: Record<TimeBucket, string> = {
+  anytime: '',
+  morning: '6am - 12pm',
+  afternoon: '12pm - 6pm',
+  evening: '6pm - 12am',
+};
+
 export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, bucketRanges } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+
+  // Track current time for the indicator
+  const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setCurrentTime({ hour: now.getHours(), minute: now.getMinutes() });
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Get the start of the week (Sunday)
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 0 }), [selectedDate]);
@@ -107,12 +126,11 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
         </div>
 
         {/* Time buckets grid */}
-        {TIME_BUCKETS.map((bucket) => {
-          return (
+        {TIME_BUCKETS.map((bucket) => (
           <div
             key={bucket}
             className={cn(
-              'relative grid grid-cols-8 gap-1',
+              'grid grid-cols-8 gap-1',
               !compactMode && 'flex-1 min-h-0'
             )}
           >
@@ -122,7 +140,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                 {bucketLabels[bucket]}
               </span>
               <span className="text-[10px] text-muted-foreground/60">
-                {formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges])}
+                {bucketTimes[bucket]}
               </span>
             </div>
             
@@ -131,16 +149,46 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
               const { tasks: bucketTasks, habits: bucketHabits } = getItemsByBucket(day, bucket);
               const isSelected = isSameDay(day, selectedDate);
               
+              // Determine if the current time falls in this bucket for today
+              const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
+                anytime: { start: 0, end: 24 },
+                morning: { start: 5, end: 12 },
+                afternoon: { start: 12, end: 17 },
+                evening: { start: 17, end: 24 },
+              };
+              const range = bucketRanges[bucket];
+              const isCurrentCell = showCurrentTimeIndicator &&
+                isToday(day) &&
+                currentTime !== null &&
+                currentTime.hour >= range.start &&
+                currentTime.hour < range.end;
+              const minuteProgress = currentTime
+                ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
+                : 0;
+              
               return (
                 <div
                   key={`${day.toISOString()}-${bucket}`}
                   className={cn(
-                    'rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
+                    'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
                     compactMode ? 'min-h-[80px]' : 'min-h-0',
                     isSelected && 'border-primary/30 bg-primary/5',
                     isToday(day) && !isSelected && 'bg-secondary/30'
                   )}
                 >
+                  {/* Current time indicator */}
+                  {isCurrentCell && (
+                    <div
+                      className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+                      style={{ top: `${minuteProgress * 100}%` }}
+                    >
+                      <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
+                      <div
+                        className="absolute left-1.5 right-0 h-0.5"
+                        style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.2) 100%)' }}
+                      />
+                    </div>
+                  )}
                   {/* Compact task pills */}
                   {bucketTasks.map((task) => (
                     <button
@@ -183,8 +231,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
               );
             })}
           </div>
-          );
-        })}
+        ))}
       </div>
     </div>
   );
