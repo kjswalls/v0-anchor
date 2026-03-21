@@ -248,13 +248,15 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   // Skipped state - compact card
   if (habit.status === 'skipped') {
     return (
-      <div
-        onClick={onClick}
-        className={cn(
-          'group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all cursor-pointer w-full overflow-hidden',
-          'border-border/40 bg-muted/30 hover:bg-muted/50'
-        )}
-      >
+      <div className="flex items-stretch gap-1">
+        <div className="w-5 flex-shrink-0" />
+        <div
+          onClick={onClick}
+          className={cn(
+            'group relative flex items-center gap-2 px-3 py-2 rounded-lg border transition-all cursor-pointer flex-1 overflow-hidden',
+            'border-border/40 bg-muted/30 hover:bg-muted/50'
+          )}
+        >
         <SkipForward className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0" />
         <span className="text-xs text-muted-foreground/70 flex-1 truncate">
           {habit.title}
@@ -268,8 +270,9 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             toggleHabitStatus(habit.id, 'pending');
           }}
         >
-          Unskip
-        </Button>
+            Unskip
+          </Button>
+        </div>
       </div>
     );
   }
@@ -277,16 +280,23 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   // Normal state (pending or done)
   return (
     <div
-      onClick={onClick}
+      className="group relative flex items-stretch gap-1"
       onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
       onMouseLeave={() => setHoveredItem(null, null)}
-      className={cn(
-        'group relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer w-full overflow-hidden',
-        compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
-        'border-border/60 hover:border-border',
-        habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
-      )}
-      style={{
+    >
+      {/* Spacer matching the drag handle width on TaskCards */}
+      <div className="w-5 flex-shrink-0" />
+
+      {/* Card */}
+      <div
+        onClick={onClick}
+        className={cn(
+          'relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer flex-1 overflow-hidden',
+          compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
+          'border-border/60 hover:border-border',
+          habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
+        )}
+        style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
         backgroundImage: `
           repeating-linear-gradient(
@@ -407,6 +417,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             Skip
           </Button>
         )}
+      </div>
       </div>
     </div>
   );
