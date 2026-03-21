@@ -488,7 +488,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
       {displayRows.map((row, index) => {
         if (row.type === 'separator') {
           return (
-            <div key={`sep-${index}`} className="flex items-center gap-3 py-1">
+            <div key={`sep-${index}`} className="flex items-center gap-2 py-1">
               <div className="w-12" />
               <div className="flex-1 flex items-center">
                 <div className="flex-1 border-t border-dashed border-border" />
@@ -503,7 +503,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
         if (!hour || !items) return null;
         
         return (
-          <div key={hour} className="flex gap-3">
+          <div key={hour} className="flex gap-2">
             <div className="w-12 text-xs text-muted-foreground pt-2 text-right tabular-nums flex-shrink-0">
               {formatHour(hour)}
             </div>
@@ -618,7 +618,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
               <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
                 {/* Untimed Habits */}
                 {untimedHabits.length > 0 && (
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
                     <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
                       Habits
                     </div>
@@ -632,7 +632,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                 
                 {/* Untimed Tasks */}
                 {untimedTasks.length > 0 && (
-                  <div className="flex gap-3">
+                  <div className="flex gap-2">
                     <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
                       Tasks
                     </div>
