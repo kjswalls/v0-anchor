@@ -38,37 +38,6 @@ interface KeyboardShortcutsStore {
   resetShortcuts: () => void;
 }
 
-// Migration helper: convert old format (key+modifier) to new format (keys array)
-interface OldShortcutFormat {
-  id: string;
-  label: string;
-  description: string;
-  key?: string;
-  modifier?: string;
-  keys?: string[];
-}
-
-function migrateShortcut(shortcut: OldShortcutFormat): ShortcutBinding {
-  // Already in new format
-  if (shortcut.keys && Array.isArray(shortcut.keys)) {
-    return shortcut as ShortcutBinding;
-  }
-  // Migrate from old format
-  const keys: string[] = [];
-  if (shortcut.modifier) {
-    keys.push(shortcut.modifier);
-  }
-  if (shortcut.key) {
-    keys.push(shortcut.key.toLowerCase() === ' ' ? 'space' : shortcut.key.toLowerCase());
-  }
-  return {
-    id: shortcut.id,
-    label: shortcut.label,
-    description: shortcut.description,
-    keys: keys.length > 0 ? keys : ['n'], // fallback
-  };
-}
-
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
   persist(
     (set) => ({
@@ -85,17 +54,6 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
     }),
     {
       name: 'anchor-keyboard-shortcuts',
-      migrate: (persistedState: unknown) => {
-        const state = persistedState as { shortcuts?: OldShortcutFormat[] };
-        if (state?.shortcuts) {
-          return {
-            ...state,
-            shortcuts: state.shortcuts.map(migrateShortcut),
-          };
-        }
-        return state;
-      },
-      version: 1,
     }
   )
 );
