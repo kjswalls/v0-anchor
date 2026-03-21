@@ -38,8 +38,8 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Priority, TimeBucket, RepeatFrequency } from '@/lib/types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/types';
+import type { Priority, TimeBucket, RepeatFrequency } from '@/lib/types'; // v4
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/types'; // v4
 import { cn } from '@/lib/utils';
 
 interface AddTaskDialogProps {

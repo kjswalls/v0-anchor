@@ -1,5 +1,5 @@
 'use client';
-// v3 — constants moved to planner-constants.ts; sample data added
+// v4 — fresh module graph rebuild
 import { create } from 'zustand';
 import type { Task, Habit, HabitStatus, Project, HabitGroupType, TimeBucket, GroupBy, FilterState, ViewMode, Priority, RepeatFrequency, ConfigurableBucketRanges } from './types';
 import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, DEFAULT_BUCKET_RANGES } from './types';

@@ -1,5 +1,5 @@
 'use client';
-
+// v4 — module graph rebuild
 import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';

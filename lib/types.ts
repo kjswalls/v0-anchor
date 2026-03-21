@@ -1,3 +1,4 @@
+// v4 - fresh module for Turbopack
 export type Priority = 'low' | 'medium' | 'high';
 export type TimeBucket = 'anytime' | 'morning' | 'afternoon' | 'evening';
 export type TaskStatus = 'pending' | 'completed' | 'cancelled';
