@@ -995,12 +995,16 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const indicatorStyle = (() => {
     if (!currentTime || !isCurrentBucket || !showCurrentTimeIndicator || bucket === 'anytime') return null;
     const range = bucketRanges[bucket as keyof typeof bucketRanges];
-    const rangeStart = range.start;
-    const rangeEnd = range.end; // may be > 24 for overnight
-    const totalMinutes = (rangeEnd - rangeStart) * 60;
-    // Elapsed minutes since bucket start, handling overnight wrap
-    let elapsedHours = currentTime.hour - rangeStart;
-    if (elapsedHours < 0) elapsedHours += 24; // midnight wrap
+    const totalMinutes = (range.end - range.start) * 60;
+    
+    // For overnight buckets (end > 24), adjust the current hour so time progresses correctly
+    let adjustedHour = currentTime.hour;
+    if (range.end > 24 && currentTime.hour < range.start) {
+      // Hours after midnight in an overnight bucket (e.g., 1am in evening bucket 18-30)
+      adjustedHour = currentTime.hour + 24;
+    }
+    
+    const elapsedHours = adjustedHour - range.start;
     const elapsed = elapsedHours * 60 + currentTime.minute;
     const pct = Math.min(Math.max(elapsed / totalMinutes, 0), 1) * 100;
     return pct;
