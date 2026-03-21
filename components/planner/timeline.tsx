@@ -1044,14 +1044,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         {/* Current time indicator — absolute overlay, always visible when in this bucket */}
         {indicatorStyle !== null && (
           <div
-            className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+            className="absolute left-0 right-0 h-1 pointer-events-none z-20 flex items-center"
             style={{ top: `${indicatorStyle}%` }}
           >
-            <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
-            <div
-              className="absolute left-2 right-0 h-0.5"
-              style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)' }}
-            />
+            <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/60 flex-shrink-0" />
+            <div className="flex-1 h-0.5 bg-primary/70 shadow-[0_0_4px_1px] shadow-primary/40" />
           </div>
         )}
         {totalItems > 0 ? (
