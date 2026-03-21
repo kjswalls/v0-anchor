@@ -142,7 +142,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         <div className="flex items-start">
           <p
             className={cn(
-              'text-sm font-medium text-foreground leading-tight line-clamp-2 flex-1',
+              'font-medium text-foreground leading-tight line-clamp-2 flex-1',
+              compactMode ? 'text-xs' : 'text-sm',
               task.status === 'completed' && 'line-through text-muted-foreground'
             )}
           >
@@ -357,7 +358,8 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
         <div className="flex-1 min-w-0 flex flex-col gap-1">
           <span
             className={cn(
-              'text-sm font-medium text-foreground leading-tight line-clamp-2',
+              'font-medium text-foreground leading-tight line-clamp-2',
+              compactMode ? 'text-xs' : 'text-sm',
               habit.status === 'done' && 'line-through text-muted-foreground'
             )}
           >
@@ -559,8 +561,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       )}>
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-medium text-foreground">{config.label}</h3>
-          <span className="text-xs text-muted-foreground">{config.timeRange}</span>
+          <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
+          <span className={cn('text-muted-foreground', compactMode ? 'text-[10px]' : 'text-xs')}>{config.timeRange}</span>
           {totalItems > 0 && (
             <Badge variant="secondary" className="text-xs h-5 px-1.5">
               {totalItems}
