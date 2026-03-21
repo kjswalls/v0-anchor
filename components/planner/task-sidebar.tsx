@@ -44,7 +44,7 @@ interface TaskItemProps {
 }
 
 function TaskItem({ task, onClick }: TaskItemProps) {
-  const { toggleTaskStatus, deleteTask, getProjectEmoji } = usePlannerStore();
+  const { toggleTaskStatus, deleteTask, getProjectEmoji, setHoveredItem } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const {
@@ -69,6 +69,8 @@ function TaskItem({ task, onClick }: TaskItemProps) {
         task.status === 'completed' && 'opacity-60'
       )}
       onClick={onClick}
+      onMouseEnter={() => setHoveredItem(task.id, 'task')}
+      onMouseLeave={() => setHoveredItem(null, null)}
     >
       <button
         {...attributes}
