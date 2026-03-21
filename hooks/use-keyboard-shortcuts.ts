@@ -1,26 +1,43 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useKeyboardShortcutsStore, ShortcutBinding } from '@/lib/keyboard-shortcuts-store';
 
 type ShortcutHandlers = Partial<Record<string, () => void>>;
 
-/** Returns true if the event matches this binding. */
-function matchesShortcut(e: KeyboardEvent, binding: ShortcutBinding): boolean {
-  const keyMatch = e.key === binding.key;
-  const modifierMatch =
-    binding.modifier === ''
-      ? !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
-      : binding.modifier === 'ctrl'
-      ? e.ctrlKey
-      : binding.modifier === 'meta'
-      ? e.metaKey
-      : binding.modifier === 'shift'
-      ? e.shiftKey
-      : binding.modifier === 'alt'
-      ? e.altKey
-      : false;
-  return keyMatch && modifierMatch;
+/** Normalize a key to lowercase and handle special cases. */
+function normalizeKey(key: string): string {
+  if (key === ' ') return 'space';
+  // Map modifier key names to their standard forms
+  if (key === 'Control') return 'ctrl';
+  if (key === 'Meta' || key === 'OS') return 'meta';
+  if (key === 'Shift') return 'shift';
+  if (key === 'Alt') return 'alt';
+  return key.toLowerCase();
+}
+
+/** Returns the normalized set of keys currently being pressed. */
+function getPressedKeys(e: KeyboardEvent): string[] {
+  const keys: string[] = [];
+  
+  if (e.ctrlKey) keys.push('ctrl');
+  if (e.metaKey) keys.push('meta');
+  if (e.shiftKey) keys.push('shift');
+  if (e.altKey) keys.push('alt');
+  
+  const normalized = normalizeKey(e.key);
+  if (!['ctrl', 'meta', 'shift', 'alt'].includes(normalized)) {
+    keys.push(normalized);
+  }
+  
+  return keys.sort();
+}
+
+/** Returns true if the pressed keys match the binding exactly. */
+function matchesShortcut(pressedKeys: string[], binding: ShortcutBinding): boolean {
+  if (pressedKeys.length !== binding.keys.length) return false;
+  const sortedBinding = [...binding.keys].sort();
+  return pressedKeys.every((key, i) => key === sortedBinding[i]);
 }
 
 /** Returns true if focus is inside a form element where shortcuts should be suppressed. */
@@ -38,21 +55,27 @@ function isFocusedOnInput(): boolean {
 
 /**
  * Registers global keydown listeners for the app's configurable shortcuts.
+ * Supports up to 3 keys pressed concurrently (e.g., Ctrl+Shift+K).
  * Handlers are keyed by shortcut id (e.g. 'new_task').
  * Shortcuts are suppressed when the user is typing in an input.
  */
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
   const { shortcuts } = useKeyboardShortcutsStore();
+  const activeHandledRef = useRef<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isFocusedOnInput()) return;
 
+      const pressedKeys = getPressedKeys(e);
+      if (pressedKeys.length === 0) return;
+
       for (const binding of shortcuts) {
-        if (matchesShortcut(e, binding)) {
+        if (matchesShortcut(pressedKeys, binding)) {
           const handler = handlers[binding.id];
-          if (handler) {
+          if (handler && activeHandledRef.current !== binding.id) {
             e.preventDefault();
+            activeHandledRef.current = binding.id;
             handler();
             return;
           }
@@ -60,8 +83,17 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       }
     };
 
+    const handleKeyUp = () => {
+      // Reset the active handler on key release to allow re-triggering
+      activeHandledRef.current = null;
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
     // Re-register whenever shortcuts config or handlers change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortcuts, handlers]);

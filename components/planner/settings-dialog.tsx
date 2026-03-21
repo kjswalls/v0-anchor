@@ -80,19 +80,22 @@ function SettingRow({ label, description, children }: { label: string; descripti
   );
 }
 
-const MODIFIER_LABELS: Record<ShortcutBinding['modifier'], string> = {
-  '': 'None',
-  ctrl: 'Ctrl',
-  meta: '⌘',
-  shift: 'Shift',
-  alt: 'Alt',
+const MODIFIER_LABELS: Record<string, string> = {
+  'ctrl': 'Ctrl',
+  'meta': '⌘',
+  'shift': 'Shift',
+  'alt': 'Alt',
 };
 
 function ShortcutRow({ binding }: { binding: ShortcutBinding }) {
   const { updateShortcut } = useKeyboardShortcutsStore();
   const [recording, setRecording] = useState(false);
+  const [recordedKeys, setRecordedKeys] = useState<string[]>([]);
 
-  const handleStartRecording = () => setRecording(true);
+  const handleStartRecording = () => {
+    setRecording(true);
+    setRecordedKeys([]);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!recording) return;
@@ -102,22 +105,36 @@ function ShortcutRow({ binding }: { binding: ShortcutBinding }) {
     // Ignore bare modifier presses
     if (['Control', 'Meta', 'Shift', 'Alt'].includes(e.key)) return;
 
-    const modifier: ShortcutBinding['modifier'] = e.ctrlKey
-      ? 'ctrl'
-      : e.metaKey
-      ? 'meta'
-      : e.shiftKey
-      ? 'shift'
-      : e.altKey
-      ? 'alt'
-      : '';
+    // Build the set of keys currently pressed
+    const keys: string[] = [];
+    if (e.ctrlKey) keys.push('ctrl');
+    if (e.metaKey) keys.push('meta');
+    if (e.shiftKey) keys.push('shift');
+    if (e.altKey) keys.push('alt');
+    
+    const normalizedKey = e.key === ' ' ? 'space' : e.key.toLowerCase();
+    if (!['ctrl', 'meta', 'shift', 'alt'].includes(normalizedKey)) {
+      keys.push(normalizedKey);
+    }
 
-    updateShortcut(binding.id, { key: e.key, modifier });
-    setRecording(false);
+    // Limit to 3 keys max
+    if (keys.length <= 3) {
+      setRecordedKeys(keys.sort());
+    }
   };
 
-  const displayKey = binding.key === ' ' ? 'Space' : binding.key;
-  const displayModifier = MODIFIER_LABELS[binding.modifier];
+  const handleKeyUp = () => {
+    if (!recording || recordedKeys.length === 0) return;
+    // Save and stop recording when user releases keys
+    updateShortcut(binding.id, recordedKeys);
+    setRecording(false);
+    setRecordedKeys([]);
+  };
+
+  const displayKeys = binding.keys.map((key) => {
+    if (key === 'space') return 'Space';
+    return MODIFIER_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
+  });
 
   return (
     <div className="flex items-center justify-between gap-4">
@@ -127,24 +144,32 @@ function ShortcutRow({ binding }: { binding: ShortcutBinding }) {
       </div>
       <button
         onKeyDown={handleKeyDown}
-        onBlur={() => setRecording(false)}
+        onKeyUp={handleKeyUp}
+        onBlur={() => {
+          if (recording) {
+            setRecording(false);
+            setRecordedKeys([]);
+          }
+        }}
         onClick={handleStartRecording}
         className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono transition-colors outline-none min-w-[80px] justify-center',
+          'flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono transition-colors outline-none min-w-[100px] justify-center flex-wrap',
           recording
             ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
             : 'border-border bg-muted text-foreground hover:border-primary/50'
         )}
       >
         {recording ? (
-          <span className="animate-pulse text-primary">Press key...</span>
+          <span className="animate-pulse text-primary">Recording...</span>
+        ) : displayKeys.length === 0 ? (
+          <span className="text-muted-foreground">No shortcut</span>
         ) : (
-          <>
-            {binding.modifier && (
-              <span className="opacity-70">{displayModifier}+</span>
-            )}
-            <span>{displayKey}</span>
-          </>
+          displayKeys.map((key, i) => (
+            <span key={i}>
+              {i > 0 && <span className="mx-1">+</span>}
+              {key}
+            </span>
+          ))
         )}
       </button>
     </div>
