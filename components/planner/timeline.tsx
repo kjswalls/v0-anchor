@@ -87,112 +87,117 @@ function TaskCard({ task, onClick }: TaskCardProps) {
     <div
       ref={setNodeRef}
       style={style}
-      onClick={onClick}
+      className={cn('group relative flex items-stretch gap-1', isDragging && 'opacity-50 z-50')}
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
       onMouseLeave={() => setHoveredItem(null, null)}
-      className={cn(
-        'group relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
-        compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
-        task.status === 'completed' && 'opacity-60',
-        isDragging && 'opacity-50 shadow-lg z-50'
-      )}
     >
-      {/* Large background emoji */}
-      {projectEmoji && (
-        <span 
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
-          style={{ lineHeight: 1 }}
-        >
-          {projectEmoji}
-        </span>
-      )}
-      
-      {/* Drag handle */}
+      {/* Drag handle — outside the card, to the left */}
       <button
         {...attributes}
         {...listeners}
-        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none self-start mt-0.5 relative z-10"
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none flex items-center px-0.5 text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
+        tabIndex={-1}
       >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
-      </button>
-      
-      {/* Checkbox */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleTaskStatus(task.id);
-        }}
-        className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5 relative z-10',
-          task.status === 'completed'
-            ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 hover:border-primary'
-        )}
-      >
-        {task.status === 'completed' && (
-          <Check className="h-3 w-3 text-primary-foreground" />
-        )}
+        <GripVertical className="h-4 w-4" />
       </button>
 
-      {/* Content */}
-      <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
-        {/* Title row — no emoji here */}
-        <div className={compactMode ? 'flex items-center' : 'flex items-start'}>
-          <p
-            className={cn(
-              'font-medium text-foreground leading-tight line-clamp-2 flex-1',
-              compactMode ? 'text-xs' : 'text-sm',
-              task.status === 'completed' && 'line-through text-muted-foreground'
-            )}
-          >
-            {task.title}
-          </p>
-        </div>
-        
-        {/* Meta row - emoji, duration, priority, time */}
-        <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
-          {projectEmoji && (
-            <span className="text-sm leading-none">{projectEmoji}</span>
-          )}
-          {task.startTime && (
-            <span className="font-medium">{task.startTime}</span>
-          )}
-          {task.duration && (
-            <span className="flex items-center gap-0.5">
-              <Clock className="h-3 w-3" />
-              {task.duration}m
-            </span>
-          )}
-          {task.priority && (
-            <span className={cn(
-              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-              task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
-            )}>
-              {priorityLabels[task.priority]}
-            </span>
-          )}
-          {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-            <Repeat className="h-3 w-3" />
-          )}
-        </div>
-      </div>
-      
-      {/* Unschedule button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-5 w-5 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start relative z-10"
-        onClick={(e) => {
-          e.stopPropagation();
-          unscheduleTask(task.id);
-        }}
+      {/* Card */}
+      <div
+        onClick={onClick}
+        className={cn(
+          'group/card relative flex gap-3 pr-4 pl-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
+          compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
+          task.status === 'completed' && 'opacity-60',
+        )}
       >
-        <X className="h-3 w-3" />
-      </Button>
+        {/* Large background emoji */}
+        {projectEmoji && (
+          <span
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+            style={{ lineHeight: 1 }}
+          >
+            {projectEmoji}
+          </span>
+        )}
+
+        {/* Checkbox */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTaskStatus(task.id);
+          }}
+          className={cn(
+            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5 relative z-10',
+            task.status === 'completed'
+              ? 'bg-primary border-primary'
+              : 'border-muted-foreground/40 hover:border-primary'
+          )}
+        >
+          {task.status === 'completed' && (
+            <Check className="h-3 w-3 text-primary-foreground" />
+          )}
+        </button>
+
+        {/* Content */}
+        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
+          {/* Title row */}
+          <div className={compactMode ? 'flex items-center' : 'flex items-start'}>
+            <p
+              className={cn(
+                'font-medium text-foreground leading-tight line-clamp-2 flex-1',
+                compactMode ? 'text-xs' : 'text-sm',
+                task.status === 'completed' && 'line-through text-muted-foreground'
+              )}
+            >
+              {task.title}
+            </p>
+          </div>
+
+          {/* Meta row - emoji, duration, priority, time */}
+          <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
+            {projectEmoji && (
+              <span className="text-sm leading-none">{projectEmoji}</span>
+            )}
+            {task.startTime && (
+              <span className="font-medium">{task.startTime}</span>
+            )}
+            {task.duration && (
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-3 w-3" />
+                {task.duration}m
+              </span>
+            )}
+            {task.priority && (
+              <span className={cn(
+                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+                task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
+              )}>
+                {priorityLabels[task.priority]}
+              </span>
+            )}
+            {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+              <Repeat className="h-3 w-3" />
+            )}
+          </div>
+        </div>
+
+        {/* Unschedule button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 opacity-0 group-hover/card:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start relative z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            unscheduleTask(task.id);
+          }}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   );
 }
