@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -23,19 +23,7 @@ const bucketLabels: Record<string, string> = {
 };
 
 export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, bucketRanges } = usePlannerStore();
-
-  // Track current time for the indicator
-  const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      setCurrentTime({ hour: now.getHours(), minute: now.getMinutes() });
-    };
-    update();
-    const id = setInterval(update, 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, bucketRanges } = usePlannerStore();
 
   // Get the start of the week (Sunday)
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 0 }), [selectedDate]);
@@ -120,25 +108,6 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
 
         {/* Time buckets grid */}
         {TIME_BUCKETS.map((bucket) => {
-          // Use store bucket ranges (supports overnight ranges like evening end=30)
-          const range = bucketRanges[bucket as keyof typeof bucketRanges];
-          const endNorm = range.end % 24;
-          const isCurrentBucketRow = showCurrentTimeIndicator &&
-            currentTime !== null &&
-            (range.end > 24
-              ? (currentTime.hour >= range.start || currentTime.hour < endNorm)
-              : (currentTime.hour >= range.start && currentTime.hour < range.end));
-          // Effective duration in hours (handles overnight)
-          const durationHours = range.end > 24 ? (range.end - range.start) : (range.end - range.start);
-          const elapsedHours = currentTime
-            ? (currentTime.hour >= range.start
-                ? currentTime.hour - range.start
-                : currentTime.hour + 24 - range.start)
-            : 0;
-          const minuteProgress = currentTime
-            ? (elapsedHours * 60 + currentTime.minute) / (durationHours * 60)
-            : 0;
-
           return (
           <div
             key={bucket}
@@ -156,35 +125,6 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                 {formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges])}
               </span>
             </div>
-            
-            {/* Current time indicator — only shown over today's column */}
-            {(() => {
-              // Find which column (0-6) is today
-              const todayIndex = weekDays.findIndex((d) => isToday(d));
-              if (!isCurrentBucketRow || todayIndex === -1) return null;
-              
-              // Grid has 8 columns: 1 time label + 7 days
-              // Each day column is 1/8 of the width, starting after the label (also 1/8)
-              const colWidth = 100 / 8; // ~12.5%
-              const left = colWidth * (1 + todayIndex); // skip time label column
-              const right = 100 - left - colWidth;
-              
-              return (
-                <div
-                  className="absolute h-0.5 pointer-events-none z-30"
-                  style={{ 
-                    top: `${minuteProgress * 100}%`,
-                    left: `${left}%`,
-                    right: `${right}%`,
-                  }}
-                >
-                  <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
-                  <div
-                    className="absolute left-1.5 right-0 h-0.5 bg-primary"
-                  />
-                </div>
-              );
-            })()}
             
             {/* Day columns */}
             {weekDays.map((day) => {
