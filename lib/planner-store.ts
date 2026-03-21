@@ -1,5 +1,5 @@
 'use client';
-
+// v3 — constants moved to planner-constants.ts; sample data added
 import { create } from 'zustand';
 import type { Task, Habit, HabitStatus, Project, HabitGroupType, TimeBucket, GroupBy, FilterState, ViewMode, Priority, RepeatFrequency, ConfigurableBucketRanges } from './planner-types';
 import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, DEFAULT_BUCKET_RANGES } from './planner-types';
@@ -105,8 +105,22 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
 
   return {
     // ---- Initial state ----
-    tasks: [],
-    habits: [],
+    tasks: [
+      { id: 'sample-1', title: 'Review morning emails', priority: 'medium', project: 'Work', startDate: new Date(), status: 'pending', timeBucket: 'morning', startTime: '08:00', duration: 30, isScheduled: true, order: 0 },
+      { id: 'sample-2', title: 'Team standup', priority: 'high', project: 'Work', startDate: new Date(), status: 'pending', timeBucket: 'morning', startTime: '09:30', duration: 30, isScheduled: true, order: 1 },
+      { id: 'sample-3', title: 'Write project proposal', priority: 'high', project: 'Work', startDate: new Date(), status: 'pending', timeBucket: 'afternoon', startTime: '13:00', duration: 90, isScheduled: true, order: 2 },
+      { id: 'sample-4', title: 'Grocery shopping', priority: 'low', project: 'Personal', startDate: new Date(), status: 'pending', timeBucket: 'afternoon', startTime: '15:30', duration: 45, isScheduled: true, order: 3 },
+      { id: 'sample-5', title: 'Read 30 pages', priority: 'medium', project: 'Personal', startDate: new Date(), status: 'pending', timeBucket: 'evening', startTime: '20:00', duration: 45, isScheduled: true, order: 4 },
+      { id: 'sample-6', title: 'Plan tomorrow', priority: 'medium', project: 'Work', startDate: new Date(), status: 'pending', timeBucket: 'anytime', isScheduled: false, order: 5 },
+      { id: 'sample-7', title: 'Call dentist', priority: 'low', project: 'Personal', startDate: new Date(), status: 'pending', timeBucket: 'anytime', isScheduled: false, order: 6 },
+    ],
+    habits: [
+      { id: 'habit-1', title: 'Morning run', group: 'Physical', streak: 5, status: 'pending', completedDates: [], timeBucket: 'morning', startTime: '07:00', repeatFrequency: 'daily' },
+      { id: 'habit-2', title: 'Meditate 10 mins', group: 'Mental', streak: 12, status: 'pending', completedDates: [], timeBucket: 'morning', startTime: '07:45', repeatFrequency: 'daily' },
+      { id: 'habit-3', title: 'Evening journal', group: 'Mental', streak: 3, status: 'pending', completedDates: [], timeBucket: 'evening', startTime: '21:00', repeatFrequency: 'daily' },
+      { id: 'habit-4', title: 'Read non-fiction', group: 'Learning', streak: 8, status: 'pending', completedDates: [], timeBucket: 'evening', startTime: '21:30', repeatFrequency: 'daily' },
+      { id: 'habit-5', title: 'Drink 2L water', group: 'Physical', streak: 21, status: 'pending', completedDates: [], timeBucket: 'anytime', repeatFrequency: 'daily' },
+    ],
     selectedDate: new Date(),
     viewMode: 'day',
     groupBy: 'bucket',

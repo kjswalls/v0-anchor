@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-constants';
 import { cn } from '@/lib/utils';
 
 interface EditTaskDialogProps {
