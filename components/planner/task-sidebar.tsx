@@ -29,6 +29,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
@@ -452,8 +453,10 @@ interface TaskSidebarProps {
 }
 
 export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: TaskSidebarProps) {
-  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters } = usePlannerStore();
+  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
+  const [habitGroupBy, setHabitGroupBy] = useState<'group' | 'status' | 'repeat' | 'bucket' | 'none'>('group');
+  const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'pending' | 'done' | 'skipped'>('all');
   
   const { isOver, setNodeRef: setDroppableRef } = useDroppable({ id: 'sidebar' });
 
@@ -488,25 +491,51 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     return groups;
   }, [unscheduledTasks, groupBy]);
 
-  // Group habits by their group
+  // Filter + group habits
+  const filteredHabits = useMemo(() => {
+    return habits.filter((h) => habitStatusFilter === 'all' || h.status === habitStatusFilter);
+  }, [habits, habitStatusFilter]);
+
   const groupedHabits = useMemo(() => {
     const groups: Record<string, Habit[]> = {};
-    habits.forEach((habit) => {
-      const key = habit.group || 'Other';
+
+    const addTo = (key: string, habit: Habit) => {
       if (!groups[key]) groups[key] = [];
       groups[key].push(habit);
+    };
+
+    filteredHabits.forEach((habit) => {
+      switch (habitGroupBy) {
+        case 'group':
+          addTo(habit.group || 'Other', habit);
+          break;
+        case 'status': {
+          const labels: Record<string, string> = { pending: 'Pending', done: 'Done', skipped: 'Skipped' };
+          addTo(labels[habit.status] || habit.status, habit);
+          break;
+        }
+        case 'repeat':
+          addTo(REPEAT_FREQUENCY_LABELS[habit.repeatFrequency] || 'No repeat', habit);
+          break;
+        case 'bucket':
+          addTo(habit.timeBucket ? habit.timeBucket.charAt(0).toUpperCase() + habit.timeBucket.slice(1) : 'Anytime', habit);
+          break;
+        case 'none':
+          addTo('All Habits', habit);
+          break;
+      }
     });
-    // Sort groups to match habitGroups order
-    const ordered: Record<string, Habit[]> = {};
-    habitGroups.forEach((g) => {
-      if (groups[g.name]) ordered[g.name] = groups[g.name];
-    });
-    // Append any groups not in habitGroups
-    Object.keys(groups).forEach((key) => {
-      if (!ordered[key]) ordered[key] = groups[key];
-    });
-    return ordered;
-  }, [habits, habitGroups]);
+
+    if (habitGroupBy === 'group') {
+      // Preserve habitGroups order
+      const ordered: Record<string, Habit[]> = {};
+      habitGroups.forEach((g) => { if (groups[g.name]) ordered[g.name] = groups[g.name]; });
+      Object.keys(groups).forEach((key) => { if (!ordered[key]) ordered[key] = groups[key]; });
+      return ordered;
+    }
+
+    return groups;
+  }, [filteredHabits, habitGroupBy, habitGroups]);
 
   const hasActiveFilters = Object.keys(filters).length > 0;
 
@@ -636,10 +665,46 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {/* Habits pane */}
       {activeTab === 'habits' && (
         <>
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">{habits.length} total</p>
-              <div className="flex items-center gap-1">
+          <div className="p-4 border-b border-border space-y-3">
+            <div className="flex items-center gap-2">
+              {/* Status filter */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className={cn('h-7 px-2 text-xs', habitStatusFilter !== 'all' && 'border-primary text-primary')}>
+                    <Filter className="h-3.5 w-3.5 mr-1" />
+                    {habitStatusFilter === 'all' ? 'Filter' : habitStatusFilter.charAt(0).toUpperCase() + habitStatusFilter.slice(1)}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuRadioGroup value={habitStatusFilter} onValueChange={(v) => setHabitStatusFilter(v as typeof habitStatusFilter)}>
+                    <DropdownMenuRadioItem value="all" className="text-xs">All statuses</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="pending" className="text-xs">Pending</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="done" className="text-xs">Done</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="skipped" className="text-xs">Skipped</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Group by */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
+                    Group
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuRadioGroup value={habitGroupBy} onValueChange={(v) => setHabitGroupBy(v as typeof habitGroupBy)}>
+                    <DropdownMenuRadioItem value="group" className="text-xs">Group</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="repeat" className="text-xs">Repetition</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="bucket" className="text-xs">Time bucket</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="flex items-center gap-1 ml-auto">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onManageCategories} title="Manage Groups">
                   <FolderOpen className="h-3.5 w-3.5" />
                 </Button>
@@ -648,16 +713,28 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
                 </Button>
               </div>
             </div>
+
+            {/* Active filter badge */}
+            {habitStatusFilter !== 'all' && (
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
+                  {habitStatusFilter}
+                  <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => setHabitStatusFilter('all')} />
+                </Badge>
+              </div>
+            )}
           </div>
 
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-4">
               {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
                 <div key={groupName}>
-                  <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                    {groupName}
-                    <span className="ml-1 text-muted-foreground/60">({groupHabits.length})</span>
-                  </h3>
+                  {habitGroupBy !== 'none' && (
+                    <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                      {groupName}
+                      <span className="ml-1 text-muted-foreground/60">({groupHabits.length})</span>
+                    </h3>
+                  )}
                   <div className="space-y-2">
                     {groupHabits.map((habit) => (
                       <HabitItem key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
@@ -666,10 +743,10 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
                 </div>
               ))}
 
-              {habits.length === 0 && (
+              {filteredHabits.length === 0 && (
                 <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">No habits yet</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">Add a habit using the + button above</p>
+                  <p className="text-sm text-muted-foreground">{habits.length === 0 ? 'No habits yet' : 'No habits match the filter'}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">{habits.length === 0 ? 'Add a habit using the + button above' : 'Try changing or clearing the filter'}</p>
                 </div>
               )}
             </div>
