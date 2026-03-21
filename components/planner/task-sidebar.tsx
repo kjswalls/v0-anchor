@@ -783,7 +783,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
                 </div>
               ))}
 
-              {filteredHabits.length === 0 && (
+              {Object.values(groupedHabits).flat().length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">{habits.length === 0 ? 'No habits yet' : 'No habits match the filter'}</p>
                   <p className="text-xs text-muted-foreground/70 mt-1">{habits.length === 0 ? 'Add a habit using the + button above' : 'Try changing or clearing the filter'}</p>
