@@ -498,6 +498,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     <div className="space-y-1">
       {displayRows.map((row, index) => {
         if (row.type === 'separator') {
+          if (compactMode) return null;
           return (
             <div key={`sep-${index}`} className="flex items-center gap-2 py-1">
               <div className="w-12" />
