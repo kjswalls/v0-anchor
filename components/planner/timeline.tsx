@@ -1341,7 +1341,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
           <ChevronLeft className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
         </div>
         {/* Fade mask toward the right edge */}
-        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
         <div
           key={`prev-${selectedDate.toISOString()}`}
@@ -1448,7 +1448,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
           <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
         </div>
         {/* Fade mask toward the left edge */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
         <div
           key={`next-${selectedDate.toISOString()}`}
