@@ -477,16 +477,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     if (task.isScheduled) return false;
     
     // Apply filters
-    if (filters.status.length > 0 && !filters.status.includes(task.status)) return false;
-    if (filters.priority.length > 0 && task.priority && !filters.priority.includes(task.priority)) return false;
-    if (filters.projects.length > 0 && task.project && !filters.projects.includes(task.project)) return false;
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      if (!task.title.toLowerCase().includes(searchLower) && 
-          !task.description?.toLowerCase().includes(searchLower)) {
-        return false;
-      }
-    }
+    if (filters.status && filters.status !== task.status) return false;
+    if (filters.priority && filters.priority !== task.priority) return false;
+    if (filters.project && filters.project !== task.project) return false;
     
     return true;
   });
