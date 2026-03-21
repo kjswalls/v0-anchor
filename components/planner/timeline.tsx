@@ -1160,36 +1160,6 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           </div>
         )}
 
-        {/* Timeline filter — centered above Anytime */}
-        <div className="flex justify-center">
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
-            <Button
-              variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('all')}
-            >
-              All
-            </Button>
-            <Button
-              variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('tasks')}
-            >
-              Tasks
-            </Button>
-            <Button
-              variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('habits')}
-            >
-              Habits
-            </Button>
-          </div>
-        </div>
-        
         {/* Anytime bucket pinned at top */}
         <TimelineBucket 
           bucket="anytime" 

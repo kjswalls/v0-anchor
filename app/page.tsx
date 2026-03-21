@@ -23,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import {
   DndContext,
   closestCenter,
@@ -48,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -201,21 +202,53 @@ export default function PlannerPage() {
           onTaskClick={handleTaskClick}
           onHabitClick={handleHabitClick}
         />
-        <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
-          <main className="flex-1 flex flex-col bg-background overflow-hidden">
-            {viewMode === 'day' ? (
-              <Timeline 
-                onTaskClick={handleTaskClick} 
-                onHabitClick={handleHabitClick} 
-                onAddClick={handleAddFromTimeline}
-              />
-            ) : (
-              <WeekView
-                onTaskClick={handleTaskClick}
-                onHabitClick={handleHabitClick}
-              />
-            )}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Item visibility toggle - positioned above main content */}
+          <div className="flex justify-center px-4 py-3 border-b border-border flex-shrink-0">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
+              <Button
+                variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => setTimelineItemFilter('all')}
+              >
+                All
+              </Button>
+              <Button
+                variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => setTimelineItemFilter('tasks')}
+              >
+                Tasks
+              </Button>
+              <Button
+                variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => setTimelineItemFilter('habits')}
+              >
+                Habits
+              </Button>
+            </div>
+          </div>
+
+          <main className="flex-1 flex overflow-hidden">
+            <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
+            <div className="flex-1 flex flex-col bg-background overflow-hidden">
+              {viewMode === 'day' ? (
+                <Timeline 
+                  onTaskClick={handleTaskClick} 
+                  onHabitClick={handleHabitClick} 
+                  onAddClick={handleAddFromTimeline}
+                />
+              ) : (
+                <WeekView
+                  onTaskClick={handleTaskClick}
+                  onHabitClick={handleHabitClick}
+                />
+              )}
+            </div>
           </main>
         </div>
       </div>
