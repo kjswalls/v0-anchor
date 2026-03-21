@@ -51,7 +51,9 @@ export interface Habit {
   group: HabitGroup;
   streak: number;
   status: HabitStatus;
-  completedDates: string[]; // ISO date strings
+  completedDates: string[]; // ISO date strings (YYYY-MM-DD)
+  skippedDates: string[];   // ISO date strings (YYYY-MM-DD)
+  dailyCounts: Record<string, number>; // date string -> count for multi-complete habits
   timeBucket?: TimeBucket;
   startTime?: string; // Renamed from scheduledTime - HH:mm format
   // Repeat configuration

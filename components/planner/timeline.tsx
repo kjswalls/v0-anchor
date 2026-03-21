@@ -305,24 +305,33 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate } = usePlannerStore();
   const [isHovered, setIsHovered] = useState(false);
   const showMeta = !chillMode || isHovered;
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
+  // Derive effective status for the viewed date
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  const isCompletedOnDate = habit.completedDates.includes(dateStr);
+  const isSkippedOnDate = (habit.skippedDates ?? []).includes(dateStr);
+  const countOnDate = (habit.dailyCounts ?? {})[dateStr] ?? 0;
+  
+  const effectiveStatus: HabitStatus = isSkippedOnDate ? 'skipped' : isCompletedOnDate ? 'done' : 'pending';
+  const effectiveCount = isCompletedOnDate ? (countOnDate || habit.timesPerDay || 1) : countOnDate;
+
   // Handle increment for multi-complete habits
   const handleIncrement = () => {
     if (habit.timesPerDay && habit.timesPerDay > 1) {
-      if (habit.status === 'done') {
+      if (effectiveStatus === 'done') {
         // Uncheck: drop back to one below the target
-        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1);
-      } else if (habit.status === 'pending') {
-        const newCount = (habit.currentDayCount || 0) + 1;
+        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1, selectedDate);
+      } else if (effectiveStatus === 'pending') {
+        const newCount = (effectiveCount || 0) + 1;
         if (newCount >= habit.timesPerDay) {
-          toggleHabitStatus(habit.id, 'done', habit.timesPerDay);
+          toggleHabitStatus(habit.id, 'done', habit.timesPerDay, selectedDate);
         } else {
-          toggleHabitStatus(habit.id, 'pending', newCount);
+          toggleHabitStatus(habit.id, 'pending', newCount, selectedDate);
         }
       }
     } else {
@@ -334,21 +343,21 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           case 'skipped': return 'pending';
         }
       };
-      toggleHabitStatus(habit.id, getNextStatus(habit.status));
+      toggleHabitStatus(habit.id, getNextStatus(effectiveStatus), undefined, selectedDate);
     }
   };
 
   // Handle decrement for multi-complete habits
   const handleDecrement = () => {
-    if (habit.timesPerDay && habit.timesPerDay > 1 && habit.currentDayCount && habit.currentDayCount > 0) {
-      toggleHabitStatus(habit.id, 'pending', habit.currentDayCount - 1);
+    if (habit.timesPerDay && habit.timesPerDay > 1 && effectiveCount && effectiveCount > 0) {
+      toggleHabitStatus(habit.id, 'pending', effectiveCount - 1, selectedDate);
     }
   };
 
-  const showMultiCompleteControls = habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending' && habit.currentDayCount && habit.currentDayCount > 0;
+  const showMultiCompleteControls = habit.timesPerDay && habit.timesPerDay > 1 && effectiveStatus === 'pending' && effectiveCount && effectiveCount > 0;
 
   // Skipped state - compact card
-  if (habit.status === 'skipped') {
+  if (effectiveStatus === 'skipped') {
     return (
       <div className="flex items-stretch gap-1">
         <div className="w-5 flex-shrink-0" />
@@ -369,7 +378,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             e.stopPropagation();
-            toggleHabitStatus(habit.id, 'pending');
+            toggleHabitStatus(habit.id, 'pending', undefined, selectedDate);
           }}
         >
             Unskip

@@ -50,10 +50,10 @@ interface PlannerStore {
   reorderTasks: (taskIds: string[]) => void;
   
   // Habit actions
-  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'currentDayCount'>) => void;
+  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
-  toggleHabitStatus: (id: string, status: HabitStatus, count?: number) => void;
+  toggleHabitStatus: (id: string, status: HabitStatus, count?: number, date?: Date) => void;
   scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
   assignHabitToBucket: (id: string, bucket: TimeBucket) => void;
   resetHabitStreak: (id: string) => void;
@@ -231,6 +231,8 @@ const initialHabits: Habit[] = [
     streak: 12,
     status: 'pending',
     completedDates: [],
+    skippedDates: [],
+    dailyCounts: {},
     timeBucket: 'morning',
     startTime: '07:00',
     repeatFrequency: 'daily',
@@ -242,12 +244,14 @@ const initialHabits: Habit[] = [
     title: 'Drink water',
     group: 'wellness',
     streak: 5,
-    status: 'done',
-    completedDates: [getDateString(new Date())],
+    status: 'pending',
+    completedDates: [],
+    skippedDates: [],
+    dailyCounts: {},
     timeBucket: 'anytime',
     repeatFrequency: 'daily',
     timesPerDay: 8,
-    currentDayCount: 3,
+    currentDayCount: 0,
   },
   {
     id: 'h3',
@@ -256,6 +260,8 @@ const initialHabits: Habit[] = [
     streak: 8,
     status: 'pending',
     completedDates: [],
+    skippedDates: [],
+    dailyCounts: {},
     timeBucket: 'morning',
     startTime: '09:30',
     repeatFrequency: 'weekdays',
@@ -269,6 +275,8 @@ const initialHabits: Habit[] = [
     streak: 3,
     status: 'pending',
     completedDates: [],
+    skippedDates: [],
+    dailyCounts: {},
     timeBucket: 'evening',
     repeatFrequency: 'daily',
     timesPerDay: 1,
@@ -425,6 +433,8 @@ export const usePlannerStore = create<PlannerStore>()(
           streak: 0,
           status: 'pending',
           completedDates: [],
+          skippedDates: [],
+          dailyCounts: {},
           currentDayCount: 0,
         };
         set((state) => ({ habits: [...state.habits, habit] }));
@@ -459,31 +469,48 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
       },
       
-      toggleHabitStatus: (id, status, count) => {
-        const today = getDateString(new Date());
+      toggleHabitStatus: (id, status, count, date) => {
+        const dateStr = getDateString(date ?? new Date());
         set((state) => ({
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
-            
-            const wasCompleted = h.completedDates.includes(today);
+
+            const wasCompleted = h.completedDates.includes(dateStr);
+            const wasSkipped = (h.skippedDates ?? []).includes(dateStr);
             let newCompletedDates = [...h.completedDates];
+            let newSkippedDates = [...(h.skippedDates ?? [])];
+            let newDailyCounts = { ...(h.dailyCounts ?? {}) };
             let newStreak = h.streak;
-            let newCurrentDayCount = count !== undefined ? count : h.currentDayCount || 0;
-            
+
+            // Update completedDates
             if (status === 'done' && !wasCompleted) {
-              newCompletedDates.push(today);
+              newCompletedDates.push(dateStr);
               newStreak += 1;
             } else if (status !== 'done' && wasCompleted) {
-              newCompletedDates = newCompletedDates.filter((d) => d !== today);
+              newCompletedDates = newCompletedDates.filter((d) => d !== dateStr);
               newStreak = Math.max(0, newStreak - 1);
             }
-            
+
+            // Update skippedDates
+            if (status === 'skipped' && !wasSkipped) {
+              newSkippedDates.push(dateStr);
+            } else if (status !== 'skipped' && wasSkipped) {
+              newSkippedDates = newSkippedDates.filter((d) => d !== dateStr);
+            }
+
+            // Update dailyCounts for multi-complete habits
+            if (count !== undefined) {
+              newDailyCounts[dateStr] = count;
+            }
+
             return {
               ...h,
               status,
               completedDates: newCompletedDates,
+              skippedDates: newSkippedDates,
+              dailyCounts: newDailyCounts,
+              currentDayCount: count !== undefined ? count : h.currentDayCount || 0,
               streak: newStreak,
-              currentDayCount: newCurrentDayCount,
             };
           }),
         }));
