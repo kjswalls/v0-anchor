@@ -496,7 +496,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
   });
 
   return (
-    <div className="space-y-1">
+    <div className={compactMode ? 'space-y-0' : 'space-y-1'}>
       {displayRows.map((row, index) => {
         if (row.type === 'separator') {
           if (compactMode) return null;
