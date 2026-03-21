@@ -110,6 +110,12 @@ export default function PlannerPage() {
     setAddDialogOpen(true);
   };
 
+  const handleAddHabitFromSidebar = () => {
+    setAddDialogTab('habit');
+    setAddDialogBucket(undefined);
+    setAddDialogOpen(true);
+  };
+
   const handleAddFromSidebar = () => {
     setAddDialogTab('task');
     setAddDialogBucket(undefined);
@@ -195,7 +201,7 @@ export default function PlannerPage() {
           onHabitClick={handleHabitClick}
         />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} onManageCategories={handleManageCategories} />
+          <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
             <Timeline 
               onTaskClick={handleTaskClick} 
