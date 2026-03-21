@@ -444,6 +444,7 @@ interface HourlyGridProps {
 }
 
 function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick }: HourlyGridProps) {
+  const { compactMode } = usePlannerStore();
   const range = TIME_BUCKET_RANGES[bucket];
   
   // Group items by hour
