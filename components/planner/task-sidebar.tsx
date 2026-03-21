@@ -28,8 +28,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
+import type { Task, Habit, GroupBy, Priority } from '@/lib/types';
+import { REPEAT_FREQUENCY_LABELS } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
@@ -442,7 +442,7 @@ function FilterButton() {
   );
 }
 
-// ─── Main Sidebar ────────────────��────────────────────────────────────────────
+// ─── Main Sidebar ────────────────���────────────────────────────────────────────
 
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;

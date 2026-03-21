@@ -12,7 +12,7 @@ import { ManageCategoriesDialog } from '@/components/planner/manage-categories-d
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket } from '@/lib/types';
 import {
   AlertDialog,
   AlertDialogAction,

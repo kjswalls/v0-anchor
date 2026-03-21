@@ -89,7 +89,7 @@ export type ConfigurableBucketRanges = {
 export const DEFAULT_BUCKET_RANGES: ConfigurableBucketRanges = {
   morning: { start: 5, end: 12 },
   afternoon: { start: 12, end: 18 },
-  evening: { start: 18, end: 30 }, // 30 = 6am next day (crosses midnight)
+  evening: { start: 18, end: 30 },
 };
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
@@ -99,7 +99,6 @@ export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number
   evening: { start: DEFAULT_BUCKET_RANGES.evening.start, end: DEFAULT_BUCKET_RANGES.evening.end, label: 'Evening' },
 };
 
-/** Format hour (0–47) to display string like "6pm" or "12am". */
 export function formatBucketHour(h: number): string {
   const n = h % 24;
   if (n === 0) return '12am';
@@ -107,15 +106,11 @@ export function formatBucketHour(h: number): string {
   return n < 12 ? `${n}am` : `${n - 12}pm`;
 }
 
-/** Format a BucketRange to a human-readable label like "6am – 12pm". */
 export function formatBucketRange(range: BucketRange): string {
   return `${formatBucketHour(range.start)} – ${formatBucketHour(range.end)}`;
 }
 
-/** Hours 0–24 for use in select dropdowns. */
 export const BUCKET_HOUR_OPTIONS: number[] = Array.from({ length: 25 }, (_, i) => i);
-
-// ---- Labels & defaults ----
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',
@@ -141,34 +136,13 @@ export const EMOJI_OPTIONS = [
 ];
 
 export const DEFAULT_PROJECTS: Project[] = [
-  {
-    name: 'Personal',
-    emoji: '✨',
-  },
-  {
-    name: 'Work',
-    emoji: '💼',
-  },
-  {
-    name: 'Health',
-    emoji: '🏃',
-  },
+  { name: 'Personal', emoji: '✨' },
+  { name: 'Work', emoji: '💼' },
+  { name: 'Health', emoji: '🏃' },
 ];
 
 export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
-  {
-    name: 'Physical',
-    emoji: '💪',
-    color: '#FF6B6B',
-  },
-  {
-    name: 'Mental',
-    emoji: '🧠',
-    color: '#4ECDC4',
-  },
-  {
-    name: 'Learning',
-    emoji: '📚',
-    color: '#FFE66D',
-  },
+  { name: 'Physical', emoji: '💪', color: '#FF6B6B' },
+  { name: 'Mental', emoji: '🧠', color: '#4ECDC4' },
+  { name: 'Learning', emoji: '📚', color: '#FFE66D' },
 ];

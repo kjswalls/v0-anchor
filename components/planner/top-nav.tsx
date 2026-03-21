@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { ViewMode, Task, Habit } from '@/lib/planner-types';
+import type { ViewMode, Task, Habit } from '@/lib/types';
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 

@@ -3,8 +3,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
-import { formatBucketRange } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket } from '@/lib/types';
+import { formatBucketRange } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame } from 'lucide-react';
 
