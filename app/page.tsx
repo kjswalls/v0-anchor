@@ -125,6 +125,14 @@ export default function PlannerPage() {
         } else if (itemType === 'habit') {
           scheduleHabit(itemId, bucket, dropTime);
         }
+      } else if (target.startsWith('untimed:')) {
+        // Dropping on untimed section - assign without scheduling
+        const bucket = target.slice('untimed:'.length) as TimeBucket;
+        if (itemType === 'task') {
+          assignTaskToBucket(itemId, bucket);
+        } else if (itemType === 'habit') {
+          assignHabitToBucket(itemId, bucket);
+        }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
         // Dropping on bucket without specific time - assign to bucket but keep unscheduled
         if (itemType === 'task') {

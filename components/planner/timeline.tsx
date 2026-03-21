@@ -949,6 +949,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const Icon = config.icon;
   const { compactMode, chillMode } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
+  const { isOver: isOverUntimed, setNodeRef: setUntimedNodeRef } = useDroppable({ id: `untimed:${bucket}` });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
 
@@ -1016,9 +1017,16 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       <div className={cn(compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
         {totalItems > 0 ? (
           <>
-            {/* Untimed Section */}
-            {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
-              <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
+            {/* Untimed Section - always show when dragging, show when there are items */}
+            {((untimedHabits.length > 0 || untimedTasks.length > 0) || (activeId && bucket !== 'anytime')) && (
+              <div
+                ref={setUntimedNodeRef}
+                className={cn(
+                  'rounded-lg transition-all',
+                  isOverUntimed && 'bg-primary/10 ring-1 ring-primary/30',
+                  compactMode ? 'space-y-1 p-1' : 'space-y-3 p-2'
+                )}
+              >
                 {/* Untimed Habits */}
                 {untimedHabits.length > 0 && (
                   <div className="flex gap-2">
@@ -1044,6 +1052,13 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                         <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                       ))}
                     </div>
+                  </div>
+                )}
+                
+                {/* Empty drop zone when dragging with no items */}
+                {untimedHabits.length === 0 && untimedTasks.length === 0 && activeId && (
+                  <div className="py-4 text-center text-xs text-muted-foreground/50 border border-dashed border-border rounded px-2">
+                    Drop here for unscheduled
                   </div>
                 )}
               </div>
