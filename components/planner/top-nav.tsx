@@ -469,10 +469,17 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => {
+            if (!mounted) return;
+            setTheme(theme === 'dark' ? 'light' : 'dark');
+          }}
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
         >
-          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {mounted ? (
+            theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
+          ) : (
+            <span className="h-4 w-4" />
+          )}
         </Button>
 
         <Button

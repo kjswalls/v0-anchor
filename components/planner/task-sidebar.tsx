@@ -563,10 +563,10 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Tab switcher */}
-      <div className="flex border-b border-border">
+      <div className="flex border-b border-border h-16 items-center">
         <button
           className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors',
+            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
             activeTab === 'tasks'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -578,7 +578,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         </button>
         <button
           className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors',
+            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
             activeTab === 'habits'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
