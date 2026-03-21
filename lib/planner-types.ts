@@ -11,6 +11,12 @@ export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weeken
 export interface Project {
   name: string;
   emoji: string;
+  // Optional scheduling for project time blocks
+  repeatFrequency?: RepeatFrequency;
+  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  timeBucket?: TimeBucket;
+  startTime?: string; // HH:mm format
+  duration?: number; // in minutes
 }
 
 export interface HabitGroupType {
@@ -34,6 +40,9 @@ export interface Task {
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
   order: number;
+  // Project block tracking
+  inProjectBlock?: boolean; // Whether task is inside its project's time block
+  previousStartTime?: string; // Stored start time before moving into project block
 }
 
 export interface Habit {

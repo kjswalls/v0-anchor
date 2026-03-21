@@ -64,6 +64,9 @@ interface PlannerStore {
   removeProject: (name: string) => void;
   getProjectEmoji: (name: string) => string;
   getProjectColor: (name: string) => string;
+  getProject: (name: string) => Project | undefined;
+  moveTaskToProjectBlock: (taskId: string) => void;
+  moveTaskOutOfProjectBlock: (taskId: string) => void;
   
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
@@ -74,11 +77,56 @@ interface PlannerStore {
   
   // Cleanup orphaned references
   cleanupOrphanedReferences: () => void;
+  
+  // Undo/Redo
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const getDateString = (date: Date) => date.toISOString().split('T')[0];
+
+// History management for undo/redo
+interface HistoryState {
+  tasks: Task[];
+  habits: Habit[];
+  projects: Project[];
+  habitGroups: HabitGroupType[];
+}
+
+const MAX_HISTORY_SIZE = 50;
+let historyStack: HistoryState[] = [];
+let historyIndex = -1;
+let isUndoRedoAction = false;
+
+const saveToHistory = (state: HistoryState) => {
+  if (isUndoRedoAction) return;
+  
+  // If we're not at the end of history, truncate forward history
+  if (historyIndex < historyStack.length - 1) {
+    historyStack = historyStack.slice(0, historyIndex + 1);
+  }
+  
+  // Deep clone the state to avoid reference issues
+  const snapshot: HistoryState = {
+    tasks: JSON.parse(JSON.stringify(state.tasks)),
+    habits: JSON.parse(JSON.stringify(state.habits)),
+    projects: JSON.parse(JSON.stringify(state.projects)),
+    habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
+  };
+  
+  historyStack.push(snapshot);
+  
+  // Limit history size
+  if (historyStack.length > MAX_HISTORY_SIZE) {
+    historyStack.shift();
+  } else {
+    historyIndex++;
+  }
+};
 
 // Get appropriate bucket for a given time
 const getBucketForTime = (time: string): TimeBucket => {
@@ -490,6 +538,50 @@ export const usePlannerStore = create<PlannerStore>()(
         const hues = [200, 150, 280, 30, 340]; // blue, teal, purple, orange, pink
         return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
       },
+
+      getProject: (name) => {
+        return get().projects.find((p) => p.name === name);
+      },
+
+      moveTaskToProjectBlock: (taskId) => {
+        set((state) => {
+          const task = state.tasks.find((t) => t.id === taskId);
+          if (!task || !task.project) return state;
+          
+          const project = state.projects.find((p) => p.name === task.project);
+          if (!project || !project.startTime || !project.timeBucket) return state;
+          
+          return {
+            tasks: state.tasks.map((t) =>
+              t.id === taskId
+                ? {
+                    ...t,
+                    inProjectBlock: true,
+                    previousStartTime: t.startTime,
+                    startTime: undefined, // Clear start time when in project block
+                    timeBucket: project.timeBucket,
+                    isScheduled: true,
+                  }
+                : t
+            ),
+          };
+        });
+      },
+
+      moveTaskOutOfProjectBlock: (taskId) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId
+              ? {
+                  ...t,
+                  inProjectBlock: false,
+                  startTime: t.previousStartTime,
+                  previousStartTime: undefined,
+                }
+              : t
+          ),
+        }));
+      },
       
       addHabitGroup: (name, emoji, color) => {
         const normalized = name.toLowerCase();
@@ -564,6 +656,48 @@ export const usePlannerStore = create<PlannerStore>()(
           ),
         });
       },
+
+      // Undo/Redo
+      canUndo: false,
+      canRedo: false,
+      
+      undo: () => {
+        if (historyIndex <= 0) return;
+        
+        isUndoRedoAction = true;
+        historyIndex--;
+        const prevState = historyStack[historyIndex];
+        
+        set({
+          tasks: JSON.parse(JSON.stringify(prevState.tasks)),
+          habits: JSON.parse(JSON.stringify(prevState.habits)),
+          projects: JSON.parse(JSON.stringify(prevState.projects)),
+          habitGroups: JSON.parse(JSON.stringify(prevState.habitGroups)),
+          canUndo: historyIndex > 0,
+          canRedo: true,
+        });
+        
+        isUndoRedoAction = false;
+      },
+      
+      redo: () => {
+        if (historyIndex >= historyStack.length - 1) return;
+        
+        isUndoRedoAction = true;
+        historyIndex++;
+        const nextState = historyStack[historyIndex];
+        
+        set({
+          tasks: JSON.parse(JSON.stringify(nextState.tasks)),
+          habits: JSON.parse(JSON.stringify(nextState.habits)),
+          projects: JSON.parse(JSON.stringify(nextState.projects)),
+          habitGroups: JSON.parse(JSON.stringify(nextState.habitGroups)),
+          canUndo: true,
+          canRedo: historyIndex < historyStack.length - 1,
+        });
+        
+        isUndoRedoAction = false;
+      },
     }),
     {
       name: 'planner-storage',
@@ -578,8 +712,51 @@ export const usePlannerStore = create<PlannerStore>()(
         // After rehydrating, clean up orphaned references
         if (state) {
           setTimeout(() => state.cleanupOrphanedReferences(), 0);
+          // Initialize history with current state
+          setTimeout(() => {
+            saveToHistory({
+              tasks: state.tasks,
+              habits: state.habits,
+              projects: state.projects,
+              habitGroups: state.habitGroups,
+            });
+          }, 100);
         }
       },
     }
   )
 );
+
+// Subscribe to changes and save to history
+let prevState: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] } | null = null;
+
+usePlannerStore.subscribe((state) => {
+  if (isUndoRedoAction) return;
+  
+  const currentState = {
+    tasks: state.tasks,
+    habits: state.habits,
+    projects: state.projects,
+    habitGroups: state.habitGroups,
+  };
+  
+  // Only save if data actually changed (not just view state)
+  if (prevState) {
+    const hasChanged = 
+      JSON.stringify(currentState.tasks) !== JSON.stringify(prevState.tasks) ||
+      JSON.stringify(currentState.habits) !== JSON.stringify(prevState.habits) ||
+      JSON.stringify(currentState.projects) !== JSON.stringify(prevState.projects) ||
+      JSON.stringify(currentState.habitGroups) !== JSON.stringify(prevState.habitGroups);
+    
+    if (hasChanged) {
+      saveToHistory(currentState);
+      // Update canUndo/canRedo after saving
+      usePlannerStore.setState({
+        canUndo: historyIndex > 0,
+        canRedo: false,
+      });
+    }
+  }
+  
+  prevState = currentState;
+});

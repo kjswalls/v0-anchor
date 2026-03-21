@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, Search, X, CheckCircle2, Flame, Filter } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, Search, X, CheckCircle2, Flame, Filter, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -23,7 +23,7 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -35,6 +35,29 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd/Ctrl + Z (undo) or Cmd/Ctrl + Shift + Z (redo)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      // Also support Cmd/Ctrl + Y for redo (Windows convention)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo]);
 
   // Fetch sunset time on mount
   useEffect(() => {

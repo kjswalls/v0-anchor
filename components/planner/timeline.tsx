@@ -1,12 +1,22 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, TimeBucket, Priority, HabitStatus } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket, Priority, HabitStatus, Project } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
@@ -62,7 +72,14 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onClick }: TaskCardProps) {
-  const { toggleTaskStatus, unscheduleTask, getProjectEmoji, setHoveredItem, compactMode } = usePlannerStore();
+  const { compactMode, toggleTaskStatus, unscheduleTask, deleteTask, getProjectEmoji, setHoveredItem, getProject, moveTaskToProjectBlock, moveTaskOutOfProjectBlock } = usePlannerStore();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Check if task's project has a time block
+  const project = task.project ? getProject(task.project) : undefined;
+  const hasProjectBlock = project?.startTime && project?.timeBucket;
+  const canMoveToBlock = hasProjectBlock && !task.inProjectBlock && task.startTime;
+  const canMoveOutOfBlock = task.inProjectBlock;
   const {
     attributes,
     listeners,
@@ -187,22 +204,93 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           </div>
         </div>
 
-        {/* Unschedule button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'h-5 w-5 opacity-0 group-hover/card:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 relative z-10',
-            compactMode ? 'self-center' : 'self-start'
+        {/* Action buttons - back to sidebar and delete */}
+        <div className={cn(
+          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10',
+          compactMode ? 'self-center' : 'self-start'
+        )}>
+          {/* Move to project block button */}
+          {canMoveToBlock && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                moveTaskToProjectBlock(task.id);
+              }}
+              title={`Move to ${project?.name} block`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
           )}
-          onClick={(e) => {
-            e.stopPropagation();
-            unscheduleTask(task.id);
-          }}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+          
+          {/* Move out of project block button */}
+          {canMoveOutOfBlock && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                moveTaskOutOfProjectBlock(task.id);
+              }}
+              title="Restore original time"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          
+          {/* Back to sidebar button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              unscheduleTask(task.id);
+            }}
+            title="Move to sidebar"
+          >
+            <ArrowLeftToLine className="h-3.5 w-3.5" />
+          </Button>
+          
+          {/* Delete button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowDeleteConfirm(true);
+            }}
+            title="Delete task"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+      
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{task.title}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { deleteTask(task.id); setShowDeleteConfirm(false); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -439,6 +527,108 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   );
 }
 
+// Project time block component
+interface ProjectBlockProps {
+  project: Project;
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+}
+
+function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
+  const { compactMode, moveTaskToProjectBlock, moveTaskOutOfProjectBlock, toggleTaskStatus, getProjectColor } = usePlannerStore();
+  
+  // Tasks that are inside the project block vs those with their own start times
+  const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
+  const tasksOutsideBlock = tasks.filter((t) => !t.inProjectBlock && t.startTime);
+  
+  if (tasksInBlock.length === 0 && tasksOutsideBlock.length === 0 && tasks.length === 0) {
+    return null;
+  }
+
+  const projectColor = getProjectColor(project.name);
+
+  return (
+    <div 
+      className={cn(
+        'rounded-lg border-2 border-dashed overflow-hidden',
+        compactMode ? 'p-2' : 'p-3'
+      )}
+      style={{ borderColor: projectColor }}
+    >
+      {/* Project block header */}
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-lg">{project.emoji}</span>
+        <span className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>
+          {project.name}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {project.startTime} · {project.duration}m
+        </span>
+      </div>
+      
+      {/* Tasks inside the block */}
+      {tasksInBlock.length > 0 ? (
+        <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
+          {tasksInBlock.map((task) => (
+            <div key={task.id} className="group/blocktask relative">
+              <div
+                onClick={() => onTaskClick(task)}
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
+                  task.status === 'completed' && 'opacity-60'
+                )}
+              >
+                {/* Checkbox */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleTaskStatus(task.id);
+                  }}
+                  className={cn(
+                    'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+                    task.status === 'completed'
+                      ? 'bg-primary border-primary'
+                      : 'border-muted-foreground/40 hover:border-primary'
+                  )}
+                >
+                  {task.status === 'completed' && (
+                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                  )}
+                </button>
+                
+                <span className={cn(
+                  'flex-1 text-sm',
+                  task.status === 'completed' && 'line-through text-muted-foreground'
+                )}>
+                  {task.title}
+                </span>
+                
+                {/* Move out button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 opacity-0 group-hover/blocktask:opacity-100 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTaskOutOfProjectBlock(task.id);
+                  }}
+                  title="Restore original time"
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground text-center py-2">
+          No tasks in this block yet
+        </p>
+      )}
+    </div>
+  );
+}
+
 // Truncated hourly grid showing only populated hours with "..." separators
 interface HourlyGridProps {
   bucket: TimeBucket;
@@ -446,11 +636,32 @@ interface HourlyGridProps {
   scheduledHabits: Habit[];
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  isCurrentBucket?: boolean;
+  recurringProjects?: Project[];
 }
 
-function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick }: HourlyGridProps) {
+function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [] }: HourlyGridProps) {
   const { compactMode } = usePlannerStore();
   const range = TIME_BUCKET_RANGES[bucket];
+  
+  // Current time tracking for the glow indicator
+  const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
+  
+  useEffect(() => {
+    if (!isCurrentBucket) {
+      setCurrentTime(null);
+      return;
+    }
+    
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime({ hour: now.getHours(), minute: now.getMinutes() });
+    };
+    
+    updateTime();
+    const interval = setInterval(updateTime, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [isCurrentBucket]);
   
   // Group items by hour
   const itemsByHour: Record<number, { tasks: Task[]; habits: Habit[] }> = {};
@@ -472,10 +683,21 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
   });
 
   // Find hours that have items within the bucket range
-  const hoursWithItems = Object.keys(itemsByHour)
+  let hoursWithItems = Object.keys(itemsByHour)
     .map(Number)
     .filter((h) => h >= range.start && h < range.end)
     .sort((a, b) => a - b);
+
+  // Add current hour to display if in current bucket (even if no items at that hour)
+  if (isCurrentBucket && currentTime && currentTime.hour >= range.start && currentTime.hour < range.end) {
+    if (!hoursWithItems.includes(currentTime.hour)) {
+      hoursWithItems = [...hoursWithItems, currentTime.hour].sort((a, b) => a - b);
+      // Initialize empty items for the current hour
+      if (!itemsByHour[currentTime.hour]) {
+        itemsByHour[currentTime.hour] = { tasks: [], habits: [] };
+      }
+    }
+  }
 
   if (hoursWithItems.length === 0) return null;
 
@@ -520,12 +742,29 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
         const { hour, items } = row;
         if (!hour || !items) return null;
         
+        const isCurrentHour = currentTime && currentTime.hour === hour;
+        const minuteProgress = currentTime ? currentTime.minute / 60 : 0;
+        
         return (
-          <div key={hour} className="flex gap-2">
+          <div key={hour} className="flex gap-2 relative">
             <div className="w-12 text-xs text-muted-foreground pt-2 text-right tabular-nums flex-shrink-0">
               {formatHour(hour)}
             </div>
-            <div className={cn('flex-1 border-l border-border/30 pl-3', compactMode ? 'py-0.5' : 'py-1')}>
+            <div className={cn('flex-1 border-l border-border/30 pl-3 relative', compactMode ? 'py-0.5' : 'py-1')}>
+              {/* Current time indicator */}
+              {isCurrentHour && (
+                <div 
+                  className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+                  style={{ top: `${minuteProgress * 100}%` }}
+                >
+                  <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
+                  <div className="absolute left-2 right-0 h-0.5 bg-primary/60 shadow-[0_0_6px_1px] shadow-primary/30" 
+                    style={{ 
+                      background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)'
+                    }} 
+                  />
+                </div>
+              )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
                 {/* Habits */}
                 {items.habits.length > 0 && (
@@ -561,9 +800,10 @@ interface TimelineBucketProps {
   onHabitClick: (habit: Habit) => void;
   onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
   isCurrentBucket?: boolean;
+  recurringProjects?: Project[];
 }
 
-function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket }: TimelineBucketProps) {
+function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [] }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
   const { compactMode } = usePlannerStore();
@@ -673,6 +913,21 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
               </div>
             )}
 
+            {/* Project blocks for this bucket */}
+            {recurringProjects
+              .filter((p) => p.timeBucket === bucket)
+              .map((project) => {
+                const projectTasks = tasks.filter((t) => t.project === project.name);
+                return (
+                  <ProjectBlock
+                    key={project.name}
+                    project={project}
+                    tasks={projectTasks}
+                    onTaskClick={onTaskClick}
+                  />
+                );
+              })}
+
             {/* Scheduled Section (hourly grid) */}
             {(scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
               <HourlyGrid
@@ -681,6 +936,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                 scheduledHabits={scheduledHabits}
                 onTaskClick={onTaskClick}
                 onHabitClick={onHabitClick}
+                isCurrentBucket={isCurrentBucket}
+                recurringProjects={recurringProjects}
               />
             )}
           </>
@@ -763,6 +1020,30 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
     if (!searchQuery) return filteredHabits;
     return filteredHabits.filter(h => h.title.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [filteredHabits, searchQuery]);
+
+  // Get projects with time blocks for the current day
+  const { projects, getProject } = usePlannerStore();
+  
+  const recurringProjectsForToday = useMemo(() => {
+    const today = selectedDate.getDay(); // 0 = Sunday
+    return projects.filter((p) => {
+      if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
+      
+      switch (p.repeatFrequency) {
+        case 'daily':
+          return true;
+        case 'weekdays':
+          return today >= 1 && today <= 5;
+        case 'weekends':
+          return today === 0 || today === 6;
+        case 'weekly':
+          // For weekly, check if today matches any of the repeat days
+          return p.repeatDays?.includes(today) ?? false;
+        default:
+          return false;
+      }
+    });
+  }, [projects, selectedDate]);
 
   const scheduledTasksByBucket = useMemo(() => {
     const grouped: Record<TimeBucket, Task[]> = {
@@ -874,6 +1155,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
           isCurrentBucket={mounted && currentBucket === 'morning'}
+          recurringProjects={recurringProjectsForToday}
         />
         <TimelineBucket 
           bucket="afternoon" 
@@ -883,6 +1165,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
           isCurrentBucket={mounted && currentBucket === 'afternoon'}
+          recurringProjects={recurringProjectsForToday}
         />
         <TimelineBucket 
           bucket="evening" 
@@ -892,6 +1175,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           onHabitClick={onHabitClick}
           onAddClick={onAddClick}
           isCurrentBucket={mounted && currentBucket === 'evening'}
+          recurringProjects={recurringProjectsForToday}
         />
       </div>
     </ScrollArea>

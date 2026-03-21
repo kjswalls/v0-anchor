@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, FolderKanban, Tag } from 'lucide-react';
+import { Plus, Trash2, FolderKanban, Tag, Settings2 } from 'lucide-react';
+import { EditProjectDialog } from './edit-project-dialog';
+import type { Project } from '@/lib/planner-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -43,6 +45,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
   const [newGroup, setNewGroup] = useState('');
   const [newGroupEmoji, setNewGroupEmoji] = useState('⭐');
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string } | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const handleAddProject = () => {
     if (newProject.trim()) {
@@ -142,15 +145,32 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                       key={project.name}
                       className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
                     >
-                      <span className="text-sm text-foreground">{project.emoji} {project.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirm({ type: 'project', name: project.name })}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-foreground">{project.emoji} {project.name}</span>
+                        {project.startTime && project.timeBucket && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                            {project.startTime} · {project.duration}m
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditingProject(project)}
+                        >
+                          <Settings2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteConfirm({ type: 'project', name: project.name })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -239,6 +259,12 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <EditProjectDialog
+        project={editingProject}
+        open={!!editingProject}
+        onOpenChange={(open) => !open && setEditingProject(null)}
+      />
     </>
   );
 }
