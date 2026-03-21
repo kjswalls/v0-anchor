@@ -90,7 +90,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   const handleAddNewGroup = () => {
     if (newGroupName.trim()) {
       addHabitGroup(newGroupName.trim(), newGroupEmoji || '');
-      setGroup(newGroupName.trim().toLowerCase());
+      setGroup(newGroupName.trim());
       setShowNewGroup(false);
       setNewGroupName('');
       setNewGroupEmoji('');

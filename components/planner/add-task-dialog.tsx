@@ -150,7 +150,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const handleAddNewGroup = () => {
     if (newGroupName.trim()) {
       addHabitGroup(newGroupName.trim(), newGroupEmoji);
-      setHabitGroup(newGroupName.trim().toLowerCase());
+      setHabitGroup(newGroupName.trim());
       setShowNewGroup(false);
       setNewGroupName('');
       setNewGroupEmoji('⭐');
