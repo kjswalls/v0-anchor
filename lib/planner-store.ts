@@ -1,5 +1,5 @@
 'use client';
-
+// v2 — force Turbopack module re-evaluation after planner-types rewrite
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {

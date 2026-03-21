@@ -868,8 +868,10 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
   hoursWithItems.forEach((hour, index) => {
     if (index > 0) {
       const prevHour = hoursWithItems[index - 1];
-      if (hour - prevHour > 1) {
-        // Add a separator for the gap
+      // For overnight buckets, adjust hours after midnight before comparing gap size
+      const prevAdj = range.end > 24 && prevHour < range.start ? prevHour + 24 : prevHour;
+      const currAdj = range.end > 24 && hour < range.start ? hour + 24 : hour;
+      if (currAdj - prevAdj > 1) {
         displayRows.push({ type: 'separator' });
       }
     }
