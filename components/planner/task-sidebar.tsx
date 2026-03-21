@@ -467,6 +467,70 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     }
   }, [timelineItemFilter]);
 
+  // Droppable for sidebar (to unschedule tasks)
+  const { isOver, setNodeRef: setDroppableRef } = useDroppable({
+    id: 'sidebar',
+  });
+
+  // Filter unscheduled tasks
+  const unscheduledTasks = tasks.filter((task) => {
+    if (task.isScheduled) return false;
+    
+    // Apply filters
+    if (filters.status.length > 0 && !filters.status.includes(task.status)) return false;
+    if (filters.priority.length > 0 && task.priority && !filters.priority.includes(task.priority)) return false;
+    if (filters.projects.length > 0 && task.project && !filters.projects.includes(task.project)) return false;
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      if (!task.title.toLowerCase().includes(searchLower) && 
+          !task.description?.toLowerCase().includes(searchLower)) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+
+  // Group tasks by selected grouping
+  const groupedTasks = useMemo(() => {
+    if (groupBy === 'none') return { 'All Tasks': unscheduledTasks };
+    
+    const groups: Record<string, typeof unscheduledTasks> = {};
+    
+    unscheduledTasks.forEach((task) => {
+      let key = '';
+      switch (groupBy) {
+        case 'project':
+          key = task.project || 'No Project';
+          break;
+        case 'priority':
+          key = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'No Priority';
+          break;
+        case 'status':
+          key = task.status.charAt(0).toUpperCase() + task.status.slice(1);
+          break;
+      }
+      
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(task);
+    });
+    
+    return groups;
+  }, [unscheduledTasks, groupBy]);
+
+  // Group habits by habit group
+  const habitsByGroup = useMemo(() => {
+    const groups: Record<string, typeof habits> = {};
+    
+    habits.forEach((habit) => {
+      const key = habit.group || 'Ungrouped';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(habit);
+    });
+    
+    return groups;
+  }, [habits]);
+
   return (
     <aside 
       ref={setDroppableRef}
