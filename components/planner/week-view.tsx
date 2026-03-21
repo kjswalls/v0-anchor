@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
-import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame } from 'lucide-react';
 
@@ -24,9 +24,9 @@ const bucketLabels: Record<TimeBucket, string> = {
 
 const bucketTimes: Record<TimeBucket, string> = {
   anytime: '',
-  morning: '6am - 12pm',
-  afternoon: '12pm - 6pm',
-  evening: '6pm - 12am',
+  morning: formatBucketRange(TIME_BUCKET_RANGES.morning),
+  afternoon: formatBucketRange(TIME_BUCKET_RANGES.afternoon),
+  evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
 export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {

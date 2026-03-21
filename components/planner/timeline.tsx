@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket, Priority, HabitStatus, Project } from '@/lib/planner-types';
-import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay } from 'date-fns';
@@ -39,21 +39,21 @@ const bucketConfig: Record<TimeBucket, {
   morning: {
     icon: Sunrise,
     label: 'Morning',
-    timeRange: '5am - 12pm',
+    timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning),
     bgClass: 'bg-morning/20',
     borderClass: 'border-morning/40',
   },
   afternoon: {
     icon: Sun,
     label: 'Afternoon',
-    timeRange: '12pm - 5pm',
+    timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon),
     bgClass: 'bg-afternoon/20',
     borderClass: 'border-afternoon/40',
   },
   evening: {
     icon: Moon,
     label: 'Evening',
-    timeRange: '5pm - 12am',
+    timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening),
     bgClass: 'bg-evening/20',
     borderClass: 'border-evening/40',
   },
