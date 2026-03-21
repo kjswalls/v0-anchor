@@ -529,6 +529,28 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     return groups;
   }, [habits]);
 
+  // Filter and group habits based on habitStatusFilter and habitGroupBy
+  const groupedHabits = useMemo(() => {
+    // First filter by status
+    const filteredHabits = habitStatusFilter === 'all' 
+      ? habits 
+      : habits.filter((h) => h.status === habitStatusFilter);
+    
+    // Then group
+    if (habitGroupBy === 'none') {
+      return { 'All Habits': filteredHabits };
+    }
+    
+    const groups: Record<string, typeof habits> = {};
+    filteredHabits.forEach((habit) => {
+      const key = habit.group || 'Ungrouped';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(habit);
+    });
+    
+    return groups;
+  }, [habits, habitStatusFilter, habitGroupBy]);
+
   return (
     <aside 
       ref={setDroppableRef}
