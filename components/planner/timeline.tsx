@@ -1017,7 +1017,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
         {/* Untimed section — part of the unscheduled drop zone */}
         {(hasUntimed || (activeId && !hasScheduled)) && (
-          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3')}>
+          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}>
             {/* Untimed Habits */}
             {untimedHabits.length > 0 && (
               <div className="flex gap-2">
@@ -1058,7 +1058,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
       {/* Scheduled section — separate from the unscheduled drop zone */}
       {(hasScheduled || (activeId && hasUntimed)) && (
-        <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3')}>
+        <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3', !hasUntimed && (compactMode ? 'pt-2' : 'pt-3'))}>
           {/* Divider */}
           {hasUntimed && hasScheduled && bucket !== 'anytime' && (
             <div className={cn('flex items-center gap-2', compactMode ? 'py-1 mt-1' : 'py-1 mt-3')}>
