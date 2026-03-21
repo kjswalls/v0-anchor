@@ -1282,41 +1282,76 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
     setSelectedDate(next);
   };
 
+  // Compute tasks for prev/next days to drive skeleton item counts
+  const prevDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, [selectedDate]);
+
+  const nextDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, [selectedDate]);
+
+  const tasksForPrevDay = useMemo(() =>
+    tasks.filter(t => t.startDate && isSameDay(new Date(t.startDate), prevDate) && t.timeBucket),
+  [tasks, prevDate]);
+
+  const tasksForNextDay = useMemo(() =>
+    tasks.filter(t => t.startDate && isSameDay(new Date(t.startDate), nextDate) && t.timeBucket),
+  [tasks, nextDate]);
+
+  // Build per-bucket item counts for each adjacent day
+  const bucketOrder: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
+
+  const prevBucketCounts = useMemo(() =>
+    Object.fromEntries(bucketOrder.map(b => [b, tasksForPrevDay.filter(t => t.timeBucket === b).length])) as Record<TimeBucket, number>,
+  [tasksForPrevDay]);
+
+  const nextBucketCounts = useMemo(() =>
+    Object.fromEntries(bucketOrder.map(b => [b, tasksForNextDay.filter(t => t.timeBucket === b).length])) as Record<TimeBucket, number>,
+  [tasksForNextDay]);
+
   return (
-    <ScrollArea className="flex-1 h-full">
-      <div className="relative">
-        {/* Previous day wireframe preview */}
-        <div className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
-          <div className="h-full flex flex-col justify-center gap-4 pr-2 opacity-20">
-            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-24 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-20 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-          </div>
-          <button
-            onClick={goToPreviousDay}
-            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
-          >
-            <ChevronLeft className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+    <div className="flex-1 flex h-full overflow-hidden">
+      {/* Previous day preview — fixed, does not scroll */}
+      <button
+        onClick={goToPreviousDay}
+        aria-label="Go to previous day"
+        className="group relative flex-shrink-0 w-28 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+      >
+        {/* Chevron hint */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <ChevronLeft className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
         </div>
-
-        {/* Next day wireframe preview */}
-        <div className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
-          <div className="h-full flex flex-col justify-center gap-4 pl-2 opacity-20">
-            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-20 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-28 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-          </div>
-          <button
-            onClick={goToNextDay}
-            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
-          >
-            <ChevronRight className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+        {/* Fade mask toward the right edge */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Bucket skeletons */}
+        <div className={cn('flex flex-col w-full', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+          {bucketOrder.map((b) => {
+            const cfg = bucketConfig[b];
+            const count = Math.max(prevBucketCounts[b], 1);
+            return (
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-50', cfg.borderClass)}>
+                {/* Header */}
+                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                </div>
+                {/* Item rows */}
+                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                  {Array.from({ length: count }).map((_, i) => (
+                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </button>
 
+      <ScrollArea className="flex-1 h-full">
         <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
         {/* Search results indicator */}
         {searchQuery && (
@@ -1371,7 +1406,42 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   activeId={activeId}
 />
         </div>
-      </div>
-    </ScrollArea>
+      </ScrollArea>
+
+      {/* Next day preview — fixed, does not scroll */}
+      <button
+        onClick={goToNextDay}
+        aria-label="Go to next day"
+        className="group relative flex-shrink-0 w-28 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+      >
+        {/* Chevron hint */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
+        </div>
+        {/* Fade mask toward the left edge */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Bucket skeletons */}
+        <div className={cn('flex flex-col w-full', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+          {bucketOrder.map((b) => {
+            const cfg = bucketConfig[b];
+            const count = Math.max(nextBucketCounts[b], 1);
+            return (
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-50', cfg.borderClass)}>
+                {/* Header */}
+                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                </div>
+                {/* Item rows */}
+                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                  {Array.from({ length: count }).map((_, i) => (
+                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </button>
+    </div>
   );
 }
