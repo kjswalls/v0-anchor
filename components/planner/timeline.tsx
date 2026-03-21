@@ -1334,7 +1334,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         onClick={goToPreviousDay}
         aria-label="Go to previous day"
         className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
-        style={{ right: 'calc(50% + 24rem)' }}
+        style={{ left: 'calc(50% - 31rem)' }}
       >
         {/* Chevron hint */}
         <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
