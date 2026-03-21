@@ -55,6 +55,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   const [startTime, setStartTime] = useState<string>('');
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('daily');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatMonthDay, setRepeatMonthDay] = useState<number>(1);
   const [timesPerDay, setTimesPerDay] = useState<string>('1');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -72,6 +73,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       setStartTime(habit.startTime || '');
       setRepeatFrequency(habit.repeatFrequency);
       setRepeatDays(habit.repeatDays || []);
+      setRepeatMonthDay(habit.repeatMonthDay || 1);
       setTimesPerDay(habit.timesPerDay?.toString() || '1');
       setShowNewGroup(false);
       setNewGroupName('');
@@ -104,7 +106,8 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       title: title.trim(),
       group,
       repeatFrequency,
-      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
+      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatMonthDay: repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
       timesPerDay: parseInt(timesPerDay) || 1,
       startTime: startTime || undefined,
     });
@@ -277,9 +280,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
               </Select>
             </div>
 
-            {repeatFrequency === 'custom' && (
+            {(repeatFrequency === 'weekly' || repeatFrequency === 'custom') && (
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Select days</Label>
+                <Label className="text-sm text-muted-foreground">
+                  {repeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+                </Label>
                 <div className="flex gap-1">
                   {WEEKDAY_LABELS.map((day, index) => (
                     <button
@@ -297,6 +302,32 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {repeatFrequency === 'monthly' && (
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Day of month</Label>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => setRepeatMonthDay(day)}
+                      className={cn(
+                        'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                        repeatMonthDay === day
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      )}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  For months with fewer days, it will occur on the last day.
+                </p>
               </div>
             )}
 

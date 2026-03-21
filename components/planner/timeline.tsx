@@ -1312,6 +1312,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   
   const recurringProjectsForToday = useMemo(() => {
     const today = selectedDate.getDay(); // 0 = Sunday
+    const dateOfMonth = selectedDate.getDate(); // 1-31
     return projects.filter((p) => {
       if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
       
@@ -1324,6 +1325,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
           return today === 0 || today === 6;
         case 'weekly':
           // For weekly, check if today matches any of the repeat days
+          return p.repeatDays?.includes(today) ?? false;
+        case 'monthly':
+          // Show on the configured day of month, or last day if month is shorter
+          const targetDay = p.repeatMonthDay || 1;
+          const lastDayOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+          return dateOfMonth === Math.min(targetDay, lastDayOfMonth);
+        case 'custom':
+          // For custom, check if today matches any of the repeat days
           return p.repeatDays?.includes(today) ?? false;
         default:
           return false;

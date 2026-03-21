@@ -6,7 +6,7 @@ export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
-export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'custom';
+export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'monthly' | 'custom';
 
 export interface Project {
   name: string;
@@ -14,6 +14,7 @@ export interface Project {
   // Optional scheduling for project time blocks
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   timeBucket?: TimeBucket;
   startTime?: string; // HH:mm format
   duration?: number; // in minutes
@@ -39,6 +40,7 @@ export interface Task {
   // Repeat configuration
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   order: number;
   // Project block tracking
   inProjectBlock?: boolean; // Whether task is inside its project's time block
@@ -60,6 +62,7 @@ export interface Habit {
   // Repeat configuration
   repeatFrequency: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   timesPerDay?: number; // for habits that need to be done multiple times
   currentDayCount?: number; // how many times completed today
 }
@@ -121,10 +124,11 @@ export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
 
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
   none: 'No repeat',
-  daily: 'Every day',
-  weekly: 'Once a week',
-  weekdays: 'Weekdays only',
-  weekends: 'Weekends only',
+  daily: 'Daily',
+  weekdays: 'Weekdays',
+  weekends: 'Weekends',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
   custom: 'Custom days',
 };
 

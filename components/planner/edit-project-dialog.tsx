@@ -28,7 +28,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Project, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { EMOJI_OPTIONS, REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
+import { EMOJI_OPTIONS, WEEKDAY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditProjectDialogProps {
@@ -37,10 +37,10 @@ interface EditProjectDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const TIME_BUCKETS: { value: TimeBucket; label: string }[] = [
-  { value: 'morning', label: 'Morning (5am - 12pm)' },
-  { value: 'afternoon', label: 'Afternoon (12pm - 5pm)' },
-  { value: 'evening', label: 'Evening (5pm - 12am)' },
+const TIME_BUCKETS: { value: TimeBucket; label: string; defaultTime: string }[] = [
+  { value: 'morning', label: 'Morning (5am - 12pm)', defaultTime: '05:00' },
+  { value: 'afternoon', label: 'Afternoon (12pm - 5pm)', defaultTime: '12:00' },
+  { value: 'evening', label: 'Evening (5pm - 12am)', defaultTime: '17:00' },
 ];
 
 const REPEAT_OPTIONS: { value: RepeatFrequency; label: string }[] = [
@@ -49,6 +49,20 @@ const REPEAT_OPTIONS: { value: RepeatFrequency; label: string }[] = [
   { value: 'weekdays', label: 'Weekdays' },
   { value: 'weekends', label: 'Weekends' },
   { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Custom days' },
+];
+
+const DURATION_OPTIONS = [
+  { value: '15', label: '15 minutes' },
+  { value: '30', label: '30 minutes' },
+  { value: '45', label: '45 minutes' },
+  { value: '60', label: '1 hour' },
+  { value: '90', label: '1.5 hours' },
+  { value: '120', label: '2 hours' },
+  { value: '180', label: '3 hours' },
+  { value: '240', label: '4 hours' },
+  { value: 'custom', label: 'Custom' },
 ];
 
 export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDialogProps) {
@@ -57,9 +71,13 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
   const [emoji, setEmoji] = useState(project?.emoji || '📋');
   const [hasTimeBlock, setHasTimeBlock] = useState(false);
   const [timeBucket, setTimeBucket] = useState<TimeBucket>('morning');
-  const [startTime, setStartTime] = useState('09:00');
+  const [startTime, setStartTime] = useState('05:00');
   const [duration, setDuration] = useState(60);
+  const [customDuration, setCustomDuration] = useState('');
+  const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('daily');
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatMonthDay, setRepeatMonthDay] = useState<number>(1);
 
   // Reset form when project changes
   useEffect(() => {
@@ -67,21 +85,70 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
       setEmoji(project.emoji);
       setHasTimeBlock(!!project.startTime && !!project.timeBucket);
       setTimeBucket(project.timeBucket || 'morning');
-      setStartTime(project.startTime || '09:00');
-      setDuration(project.duration || 60);
+      setStartTime(project.startTime || '05:00');
+      const projectDuration = project.duration || 60;
+      setDuration(projectDuration);
+      // Check if duration is a standard option
+      const isStandard = DURATION_OPTIONS.some(opt => opt.value !== 'custom' && parseInt(opt.value) === projectDuration);
+      setIsCustomDuration(!isStandard);
+      setCustomDuration(isStandard ? '' : projectDuration.toString());
       setRepeatFrequency(project.repeatFrequency || 'daily');
+      setRepeatDays(project.repeatDays || []);
+      setRepeatMonthDay(project.repeatMonthDay || 1);
     }
   }, [project]);
 
+  // Update start time when bucket changes
+  const handleBucketChange = (newBucket: TimeBucket) => {
+    setTimeBucket(newBucket);
+    const bucketConfig = TIME_BUCKETS.find(b => b.value === newBucket);
+    if (bucketConfig) {
+      setStartTime(bucketConfig.defaultTime);
+    }
+  };
+
+  // Handle duration selection
+  const handleDurationChange = (value: string) => {
+    if (value === 'custom') {
+      setIsCustomDuration(true);
+      setCustomDuration(duration.toString());
+    } else {
+      setIsCustomDuration(false);
+      setDuration(parseInt(value));
+    }
+  };
+
+  // Handle custom duration input
+  const handleCustomDurationChange = (value: string) => {
+    setCustomDuration(value);
+    const parsed = parseInt(value);
+    if (!isNaN(parsed) && parsed > 0) {
+      setDuration(parsed);
+    }
+  };
+
+  // Toggle day for custom/weekly repeat
+  const toggleDay = (day: number) => {
+    if (repeatDays.includes(day)) {
+      setRepeatDays(repeatDays.filter((d) => d !== day));
+    } else {
+      setRepeatDays([...repeatDays, day].sort());
+    }
+  };
+
   const handleSave = () => {
     if (!project) return;
+    
+    const finalDuration = isCustomDuration ? (parseInt(customDuration) || 60) : duration;
     
     updateProject(project.name, {
       emoji,
       timeBucket: hasTimeBlock ? timeBucket : undefined,
       startTime: hasTimeBlock ? startTime : undefined,
-      duration: hasTimeBlock ? duration : undefined,
+      duration: hasTimeBlock ? finalDuration : undefined,
       repeatFrequency: hasTimeBlock ? repeatFrequency : undefined,
+      repeatDays: hasTimeBlock && (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatMonthDay: hasTimeBlock && repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
     });
     
     onOpenChange(false);
@@ -91,7 +158,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card">
+      <DialogContent className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-foreground">Edit Project</DialogTitle>
           <DialogDescription>
@@ -133,7 +200,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
             <div className="space-y-0.5">
               <Label className="text-sm font-medium">Time Block</Label>
               <p className="text-xs text-muted-foreground">
-                Reserve time daily for this project
+                Reserve time for this project
               </p>
             </div>
             <Switch
@@ -151,7 +218,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                   <Calendar className="h-4 w-4 inline mr-1" />
                   Bucket
                 </Label>
-                <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket)}>
+                <Select value={timeBucket} onValueChange={(v) => handleBucketChange(v as TimeBucket)}>
                   <SelectTrigger className="flex-1">
                     <SelectValue />
                   </SelectTrigger>
@@ -182,21 +249,42 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
               {/* Duration */}
               <div className="flex items-center gap-4">
                 <Label className="w-20 text-sm text-muted-foreground">Duration</Label>
-                <Select value={duration.toString()} onValueChange={(v) => setDuration(parseInt(v))}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 minutes</SelectItem>
-                    <SelectItem value="30">30 minutes</SelectItem>
-                    <SelectItem value="45">45 minutes</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                    <SelectItem value="90">1.5 hours</SelectItem>
-                    <SelectItem value="120">2 hours</SelectItem>
-                    <SelectItem value="180">3 hours</SelectItem>
-                    <SelectItem value="240">4 hours</SelectItem>
-                  </SelectContent>
-                </Select>
+                {isCustomDuration ? (
+                  <div className="flex-1 flex gap-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      placeholder="Minutes"
+                      value={customDuration}
+                      onChange={(e) => handleCustomDurationChange(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsCustomDuration(false)}
+                      className="text-xs text-muted-foreground"
+                    >
+                      Presets
+                    </Button>
+                  </div>
+                ) : (
+                  <Select 
+                    value={duration.toString()} 
+                    onValueChange={handleDurationChange}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DURATION_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
 
               {/* Repeat frequency */}
@@ -218,6 +306,59 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Day selector for weekly or custom repeat */}
+              {(repeatFrequency === 'weekly' || repeatFrequency === 'custom') && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">
+                    {repeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+                  </Label>
+                  <div className="flex gap-1">
+                    {WEEKDAY_LABELS.map((day, index) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => toggleDay(index)}
+                        className={cn(
+                          'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
+                          repeatDays.includes(index)
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Day of month selector for monthly repeat */}
+              {repeatFrequency === 'monthly' && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Day of month</Label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setRepeatMonthDay(day)}
+                        className={cn(
+                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                          repeatMonthDay === day
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    For months with fewer days, it will occur on the last day.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
