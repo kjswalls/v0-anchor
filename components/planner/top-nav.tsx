@@ -23,13 +23,14 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [sunsetTime, setSunsetTime] = useState<string | null>(null);
+  const [sunriseTime, setSunriseTime] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,20 +75,31 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               const data = await response.json();
               if (data.results?.sunset) {
                 const sunsetDate = new Date(data.results.sunset);
-                setSunsetTime(sunsetDate.toISOString().split('T')[1].substring(0, 5));
+                const hours = sunsetDate.getHours().toString().padStart(2, '0');
+                const minutes = sunsetDate.getMinutes().toString().padStart(2, '0');
+                setSunsetTime(`${hours}:${minutes}`);
+              }
+              if (data.results?.sunrise) {
+                const sunriseDate = new Date(data.results.sunrise);
+                const hours = sunriseDate.getHours().toString().padStart(2, '0');
+                const minutes = sunriseDate.getMinutes().toString().padStart(2, '0');
+                setSunriseTime(`${hours}:${minutes}`);
               }
             },
             () => {
               // Fallback: use default sunset time of 18:00 if geolocation fails
               setSunsetTime('18:00');
+              setSunriseTime('06:00');
             }
           );
         } else {
           setSunsetTime('18:00');
+          setSunriseTime('06:00');
         }
       } catch (error) {
         // Fallback to default if API fails
         setSunsetTime('18:00');
+        setSunriseTime('06:00');
       }
     };
     
@@ -106,8 +118,16 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   }, []);
 
   const goToToday = () => setSelectedDate(new Date());
-  const goPrevious = () => setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
-  const goNext = () => setSelectedDate(addDays(selectedDate, viewMode === 'week' ? 7 : 1));
+  const goPrevious = () => {
+    setNavDirection('right');
+    setSelectedDate(subDays(selectedDate, viewMode === 'week' ? 7 : 1));
+    setTimeout(() => setNavDirection(null), 600);
+  };
+  const goNext = () => {
+    setNavDirection('left');
+    setSelectedDate(addDays(selectedDate, viewMode === 'week' ? 7 : 1));
+    setTimeout(() => setNavDirection(null), 600);
+  };
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -250,10 +270,15 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           >
             {mounted && isToday(selectedDate) && (() => {
               const now = new Date();
-              const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
-                                  now.getMinutes().toString().padStart(2, '0');
-              const isNight = sunsetTime ? currentTime >= sunsetTime : now.getHours() < 6 || now.getHours() >= 20;
-              return isNight ? (
+              const currentMinutes = now.getHours() * 60 + now.getMinutes();
+              const toMinutes = (hhmm: string) => {
+                const [h, m] = hhmm.split(':').map(Number);
+                return h * 60 + m;
+              };
+              const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
+              const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
+              const isAfterSunset = currentMinutes >= sunsetMins;
+              return isAfterSunset ? (
                 <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
               ) : (
                 <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />

@@ -209,8 +209,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
         {/* Action buttons - back to sidebar and delete */}
         <div className={cn(
-          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10',
-          compactMode ? 'self-center' : 'self-start'
+          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10 self-center',
         )}>
           {/* Move to project block button */}
           {canMoveToBlock && (
@@ -306,24 +305,33 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate } = usePlannerStore();
   const [isHovered, setIsHovered] = useState(false);
   const showMeta = !chillMode || isHovered;
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
+  // Derive effective status for the viewed date
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  const isCompletedOnDate = habit.completedDates.includes(dateStr);
+  const isSkippedOnDate = (habit.skippedDates ?? []).includes(dateStr);
+  const countOnDate = (habit.dailyCounts ?? {})[dateStr] ?? 0;
+  
+  const effectiveStatus: HabitStatus = isSkippedOnDate ? 'skipped' : isCompletedOnDate ? 'done' : 'pending';
+  const effectiveCount = isCompletedOnDate ? (countOnDate || habit.timesPerDay || 1) : countOnDate;
+
   // Handle increment for multi-complete habits
   const handleIncrement = () => {
     if (habit.timesPerDay && habit.timesPerDay > 1) {
-      if (habit.status === 'done') {
+      if (effectiveStatus === 'done') {
         // Uncheck: drop back to one below the target
-        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1);
-      } else if (habit.status === 'pending') {
-        const newCount = (habit.currentDayCount || 0) + 1;
+        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1, selectedDate);
+      } else if (effectiveStatus === 'pending') {
+        const newCount = (effectiveCount || 0) + 1;
         if (newCount >= habit.timesPerDay) {
-          toggleHabitStatus(habit.id, 'done', habit.timesPerDay);
+          toggleHabitStatus(habit.id, 'done', habit.timesPerDay, selectedDate);
         } else {
-          toggleHabitStatus(habit.id, 'pending', newCount);
+          toggleHabitStatus(habit.id, 'pending', newCount, selectedDate);
         }
       }
     } else {
@@ -335,21 +343,21 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           case 'skipped': return 'pending';
         }
       };
-      toggleHabitStatus(habit.id, getNextStatus(habit.status));
+      toggleHabitStatus(habit.id, getNextStatus(effectiveStatus), undefined, selectedDate);
     }
   };
 
   // Handle decrement for multi-complete habits
   const handleDecrement = () => {
-    if (habit.timesPerDay && habit.timesPerDay > 1 && habit.currentDayCount && habit.currentDayCount > 0) {
-      toggleHabitStatus(habit.id, 'pending', habit.currentDayCount - 1);
+    if (habit.timesPerDay && habit.timesPerDay > 1 && effectiveCount && effectiveCount > 0) {
+      toggleHabitStatus(habit.id, 'pending', effectiveCount - 1, selectedDate);
     }
   };
 
-  const showMultiCompleteControls = habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending' && habit.currentDayCount && habit.currentDayCount > 0;
+  const showMultiCompleteControls = habit.timesPerDay && habit.timesPerDay > 1 && effectiveStatus === 'pending' && effectiveCount && effectiveCount > 0;
 
   // Skipped state - compact card
-  if (habit.status === 'skipped') {
+  if (effectiveStatus === 'skipped') {
     return (
       <div className="flex items-stretch gap-1">
         <div className="w-5 flex-shrink-0" />
@@ -370,7 +378,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             e.stopPropagation();
-            toggleHabitStatus(habit.id, 'pending');
+            toggleHabitStatus(habit.id, 'pending', undefined, selectedDate);
           }}
         >
             Unskip
@@ -397,7 +405,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           'relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
           'border-border/60 hover:border-border',
-          habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
+          effectiveStatus === 'done' && 'ring-2 ring-primary/20 border-primary/30'
         )}
         style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
@@ -443,7 +451,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
               <Minus className="h-2.5 w-2.5 text-muted-foreground" />
             </button>
             <span className="text-sm font-bold text-primary w-4 text-center animate-in scale-in duration-300">
-              {habit.currentDayCount}
+              {effectiveCount}
             </span>
             <button
               onClick={(e) => {
@@ -463,11 +471,11 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             }}
             className={cn(
               'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
-              habit.status === 'done' && 'bg-primary border-primary',
-              habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
+              effectiveStatus === 'done' && 'bg-primary border-primary',
+              effectiveStatus === 'pending' && 'border-muted-foreground/40 hover:border-primary'
             )}
           >
-            {habit.status === 'done' && (
+            {effectiveStatus === 'done' && (
               <Check className="h-3 w-3 text-primary-foreground animate-in fade-in duration-200" />
             )}
           </button>
@@ -478,7 +486,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             className={cn(
               'font-medium text-foreground leading-tight line-clamp-2',
               compactMode ? 'text-xs' : 'text-sm',
-              habit.status === 'done' && 'line-through text-muted-foreground'
+              effectiveStatus === 'done' && 'line-through text-muted-foreground'
             )}
           >
             {habit.title}
@@ -496,7 +504,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
               <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{habit.startTime}</span>
             )}
             {habit.timesPerDay && habit.timesPerDay > 1 && (
-              <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
+              <span>{effectiveCount || 0}/{habit.timesPerDay} today</span>
             )}
             {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
               <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
@@ -513,14 +521,14 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
         )}
 
         {/* Skip button - always visible for pending habits */}
-        {habit.status === 'pending' && (
+        {effectiveStatus === 'pending' && (
           <Button
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation();
-              toggleHabitStatus(habit.id, 'skipped');
+              toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate);
             }}
           >
             Skip
@@ -1018,7 +1026,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
         {/* Untimed section — part of the unscheduled drop zone */}
         {(hasUntimed || (activeId && !hasScheduled)) && (
-          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3')}>
+          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}>
             {/* Untimed Habits */}
             {untimedHabits.length > 0 && (
               <div className="flex gap-2">
@@ -1059,7 +1067,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
       {/* Scheduled section — separate from the unscheduled drop zone */}
       {(hasScheduled || (activeId && hasUntimed)) && (
-        <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3')}>
+        <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3', !hasUntimed && (compactMode ? 'pt-2' : 'pt-3'))}>
           {/* Divider */}
           {hasUntimed && hasScheduled && bucket !== 'anytime' && (
             <div className={cn('flex items-center gap-2', compactMode ? 'py-1 mt-1' : 'py-1 mt-3')}>
@@ -1131,7 +1139,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, navDirection, setNavDirection } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -1272,53 +1280,106 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   }, [filteredHabitsForDate]);
 
   const goToPreviousDay = () => {
+    setNavDirection('right');
     const prev = new Date(selectedDate);
     prev.setDate(prev.getDate() - 1);
     setSelectedDate(prev);
+    setTimeout(() => setNavDirection(null), 600);
   };
 
   const goToNextDay = () => {
+    setNavDirection('left');
     const next = new Date(selectedDate);
     next.setDate(next.getDate() + 1);
     setSelectedDate(next);
+    setTimeout(() => setNavDirection(null), 600);
   };
 
+  // Compute tasks for prev/next days to drive skeleton item counts
+  const prevDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    return d;
+  }, [selectedDate]);
+
+  const nextDate = useMemo(() => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, [selectedDate]);
+
+  const tasksForPrevDay = useMemo(() =>
+    tasks.filter(t => t.startDate && isSameDay(new Date(t.startDate), prevDate) && t.timeBucket),
+  [tasks, prevDate]);
+
+  const tasksForNextDay = useMemo(() =>
+    tasks.filter(t => t.startDate && isSameDay(new Date(t.startDate), nextDate) && t.timeBucket),
+  [tasks, nextDate]);
+
+  // Build per-bucket item counts for each adjacent day
+  const bucketOrder: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
+
+  const prevBucketCounts = useMemo(() =>
+    Object.fromEntries(bucketOrder.map(b => [b, tasksForPrevDay.filter(t => t.timeBucket === b).length])) as Record<TimeBucket, number>,
+  [tasksForPrevDay]);
+
+  const nextBucketCounts = useMemo(() =>
+    Object.fromEntries(bucketOrder.map(b => [b, tasksForNextDay.filter(t => t.timeBucket === b).length])) as Record<TimeBucket, number>,
+  [tasksForNextDay]);
+
   return (
-    <ScrollArea className="flex-1 h-full">
-      <div className="relative">
-        {/* Previous day wireframe preview */}
-        <div className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
-          <div className="h-full flex flex-col justify-center gap-4 pr-2 opacity-20">
-            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-24 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-20 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
-          </div>
-          <button
-            onClick={goToPreviousDay}
-            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
-          >
-            <ChevronLeft className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+    <div className="flex-1 flex h-full overflow-hidden">
+      {/* Previous day preview — fixed, does not scroll */}
+      <button
+        onClick={goToPreviousDay}
+        aria-label="Go to previous day"
+        className="group relative flex-shrink-0 w-28 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+      >
+        {/* Chevron hint */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <ChevronLeft className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
         </div>
-
-        {/* Next day wireframe preview */}
-        <div className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
-          <div className="h-full flex flex-col justify-center gap-4 pl-2 opacity-20">
-            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-20 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-28 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
-          </div>
-          <button
-            onClick={goToNextDay}
-            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
-          >
-            <ChevronRight className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
+        {/* Fade mask toward the right edge */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Bucket skeletons — vertically centered */}
+        <div
+          key={`prev-${selectedDate.toISOString()}`}
+          className={cn(
+            'flex flex-col w-full h-full justify-center',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+            navDirection === 'right' && 'animate-slide-in-from-left'
+          )}
+        >
+          {bucketOrder.map((b) => {
+            const cfg = bucketConfig[b];
+            const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
+            return (
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
+                {/* Header */}
+                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                </div>
+                {/* Item rows */}
+                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                  {Array.from({ length: count }).map((_, i) => (
+                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      </button>
 
-        <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
+      <ScrollArea className="flex-1 h-full overflow-hidden">
+        <div 
+          key={`${selectedDate.toISOString()}-${navDirection}`}
+          className={cn(
+            'max-w-3xl mx-auto pb-20',
+            compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4',
+            navDirection && 'animate-slide-in-from-' + (navDirection === 'left' ? 'right' : 'left')
+          )}
+        >
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">
@@ -1372,7 +1433,49 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   activeId={activeId}
 />
         </div>
-      </div>
-    </ScrollArea>
+      </ScrollArea>
+
+      {/* Next day preview — fixed, does not scroll */}
+      <button
+        onClick={goToNextDay}
+        aria-label="Go to next day"
+        className="group relative flex-shrink-0 w-28 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+      >
+        {/* Chevron hint */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+          <ChevronRight className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
+        </div>
+        {/* Fade mask toward the left edge */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Bucket skeletons — vertically centered */}
+        <div
+          key={`next-${selectedDate.toISOString()}`}
+          className={cn(
+            'flex flex-col w-full h-full justify-center',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+            navDirection === 'left' && 'animate-slide-in-from-right'
+          )}
+        >
+          {bucketOrder.map((b) => {
+            const cfg = bucketConfig[b];
+            const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);
+            return (
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
+                {/* Header */}
+                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                </div>
+                {/* Item rows */}
+                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                  {Array.from({ length: count }).map((_, i) => (
+                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </button>
+    </div>
   );
 }
