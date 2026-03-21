@@ -101,6 +101,7 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
     history.past.push({ tasks: [...tasks], habits: [...habits] });
     history.future = [];
     if (history.past.length > 50) history.past.shift();
+    set({ canUndo: true, canRedo: false });
   };
 
   return {
@@ -330,25 +331,35 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
       return colorMap[emoji] || '#E8E8E8';
     },
 
-    // ---- Undo/Redo ----
-    undo: () => {
-      if (history.past.length > 0) {
-        const prev = history.past.pop();
-        if (prev) {
-          history.future.push({ tasks: get().tasks, habits: get().habits });
-          set({ tasks: prev.tasks, habits: prev.habits });
-        }
+  // ---- Undo/Redo ----
+  undo: () => {
+    if (history.past.length > 0) {
+      const prev = history.past.pop();
+      if (prev) {
+        history.future.push({ tasks: get().tasks, habits: get().habits });
+        set({ 
+          tasks: prev.tasks, 
+          habits: prev.habits,
+          canUndo: history.past.length > 0,
+          canRedo: history.future.length > 0,
+        });
       }
-    },
-    redo: () => {
-      if (history.future.length > 0) {
-        const next = history.future.pop();
-        if (next) {
-          history.past.push({ tasks: get().tasks, habits: get().habits });
-          set({ tasks: next.tasks, habits: next.habits });
-        }
+    }
+  },
+  redo: () => {
+    if (history.future.length > 0) {
+      const next = history.future.pop();
+      if (next) {
+        history.past.push({ tasks: get().tasks, habits: get().habits });
+        set({ 
+          tasks: next.tasks, 
+          habits: next.habits,
+          canUndo: history.past.length > 0,
+          canRedo: history.future.length > 0,
+        });
       }
-    },
+    }
+  },
 
     // ---- Appearance ----
     setCompactMode: (compact) => set({ compactMode: compact }),

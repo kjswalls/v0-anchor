@@ -919,6 +919,25 @@ interface TimelineBucketProps {
   activeId?: string | null;
 }
 
+// Drop zone for untimed items within a bucket
+function UntimedDropZone({ bucket, children, className }: { bucket: TimeBucket; children: React.ReactNode; className?: string }) {
+  const dropId = `untimed:${bucket}`;
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'rounded-lg transition-all',
+        isOver && 'bg-primary/10 ring-1 ring-primary/30',
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
@@ -992,38 +1011,44 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       <div className={cn(compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
         {totalItems > 0 ? (
           <>
-            {/* Untimed Section */}
-            {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
-              <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
-                {/* Untimed Habits */}
-                {untimedHabits.length > 0 && (
-                  <div className="flex gap-2">
-                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
-                      Habits
+            {/* Untimed Section - droppable without scheduling */}
+            <UntimedDropZone bucket={bucket} className={cn(compactMode ? 'space-y-1' : 'space-y-3', 'p-1 -m-1')}>
+              {(untimedHabits.length > 0 || untimedTasks.length > 0) ? (
+                <>
+                  {/* Untimed Habits */}
+                  {untimedHabits.length > 0 && (
+                    <div className="flex gap-2">
+                      <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                        Habits
+                      </div>
+                      <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                        {untimedHabits.map((habit) => (
+                          <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                        ))}
+                      </div>
                     </div>
-                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
-                      {untimedHabits.map((habit) => (
-                        <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                      ))}
+                  )}
+                  
+                  {/* Untimed Tasks */}
+                  {untimedTasks.length > 0 && (
+                    <div className="flex gap-2">
+                      <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                        Tasks
+                      </div>
+                      <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                        {untimedTasks.map((task) => (
+                          <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-                
-                {/* Untimed Tasks */}
-                {untimedTasks.length > 0 && (
-                  <div className="flex gap-2">
-                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
-                      Tasks
-                    </div>
-                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
-                      {untimedTasks.map((task) => (
-                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </>
+              ) : (
+                <div className="py-2 text-center text-xs text-muted-foreground/50">
+                  Drop here for unscheduled
+                </div>
+              )}
+            </UntimedDropZone>
 
             {/* Divider between untimed and scheduled */}
             {(untimedHabits.length > 0 || untimedTasks.length > 0) && (scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (

@@ -125,12 +125,26 @@ export default function PlannerPage() {
         } else if (itemType === 'habit') {
           scheduleHabit(itemId, bucket, dropTime);
         }
-      } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket without specific time
+      } else if (target.startsWith('untimed:')) {
+        // Dropping on untimed section - assign to bucket without scheduling
+        const bucket = target.split(':')[1] as TimeBucket;
         if (itemType === 'task') {
-          scheduleTask(itemId, target as TimeBucket);
+          // Update task: set timeBucket but keep isScheduled false and clear startTime
+          const { updateTask } = usePlannerStore.getState();
+          updateTask(itemId, { timeBucket: bucket, isScheduled: false, startTime: undefined });
         } else if (itemType === 'habit') {
-          scheduleHabit(itemId, target as TimeBucket);
+          // Update habit: set timeBucket and clear startTime
+          const { updateHabit } = usePlannerStore.getState();
+          updateHabit(itemId, { timeBucket: bucket, startTime: undefined });
+        }
+      } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
+        // Dropping on bucket header/general area - also assign without scheduling
+        if (itemType === 'task') {
+          const { updateTask } = usePlannerStore.getState();
+          updateTask(itemId, { timeBucket: target as TimeBucket, isScheduled: false, startTime: undefined });
+        } else if (itemType === 'habit') {
+          const { updateHabit } = usePlannerStore.getState();
+          updateHabit(itemId, { timeBucket: target as TimeBucket, startTime: undefined });
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule
