@@ -1360,11 +1360,11 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
 
       <ScrollArea className="flex-1 h-full overflow-hidden">
         <div 
+          key={`${selectedDate.toISOString()}-${slideDirection}`}
           className={cn(
-            'max-w-3xl mx-auto pb-20 transition-all duration-300 ease-out',
+            'max-w-3xl mx-auto pb-20',
             compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4',
-            slideDirection === 'left' && 'animate-slide-in-from-right',
-            slideDirection === 'right' && 'animate-slide-in-from-left'
+            slideDirection && 'animate-slide-in-from-' + (slideDirection === 'left' ? 'right' : 'left')
           )}
         >
         {/* Search results indicator */}
