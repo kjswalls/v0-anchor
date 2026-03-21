@@ -62,7 +62,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onClick }: TaskCardProps) {
-  const { toggleTaskStatus, unscheduleTask, getProjectEmoji, setHoveredItem } = usePlannerStore();
+  const { toggleTaskStatus, unscheduleTask, getProjectEmoji, setHoveredItem, compactMode } = usePlannerStore();
   const {
     attributes,
     listeners,
@@ -91,7 +91,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
       onMouseLeave={() => setHoveredItem(null, null)}
       className={cn(
-        'group relative flex gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
+        'group relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
+        compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
         task.status === 'completed' && 'opacity-60',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
@@ -203,7 +204,7 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode } = usePlannerStore();
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
@@ -274,7 +275,8 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
       onMouseLeave={() => setHoveredItem(null, null)}
       className={cn(
-        'group relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
+        'group relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer w-full overflow-hidden',
+        compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
         'border-border/60 hover:border-border',
         habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
       )}
@@ -528,7 +530,7 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  
+  const { compactMode } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
 
   // Separate into untimed and scheduled
@@ -550,7 +552,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       )}
     >
       {/* Header */}
-      <div className={cn('px-4 py-3 rounded-t-lg flex items-center justify-between', config.bgClass)}>
+      <div className={cn(
+        'rounded-t-lg flex items-center justify-between',
+        compactMode ? 'px-4 py-2' : 'px-4 py-3',
+        config.bgClass,
+      )}>
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-medium text-foreground">{config.label}</h3>
@@ -586,19 +592,19 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       </div>
       
       {/* Content */}
-      <div className="p-3 space-y-4">
+      <div className={cn(compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
         {totalItems > 0 ? (
           <>
             {/* Untimed Section */}
             {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
-              <div className="space-y-3">
+              <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
                 {/* Untimed Habits */}
                 {untimedHabits.length > 0 && (
                   <div className="flex gap-3">
                     <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
                       Habits
                     </div>
-                    <div className="flex-1 border-l border-border/30 pl-3 py-1 space-y-2">
+                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
                       {untimedHabits.map((habit) => (
                         <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
                       ))}
@@ -612,7 +618,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                     <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
                       Tasks
                     </div>
-                    <div className="flex-1 border-l border-border/30 pl-3 py-1 space-y-2">
+                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
                       {untimedTasks.map((task) => (
                         <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                       ))}
@@ -643,7 +649,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             )}
           </>
         ) : (
-          <div className="py-6 text-center">
+          <div className={cn('text-center', compactMode ? 'py-3' : 'py-6')}>
             <p className="text-sm text-muted-foreground/70">
               Drag tasks here or use + buttons above
             </p>
@@ -661,7 +667,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -775,7 +781,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
 
   return (
     <ScrollArea className="flex-1 h-full">
-      <div className="p-6 space-y-4 max-w-3xl mx-auto pb-20">
+      <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">

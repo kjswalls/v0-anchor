@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
+import { usePlannerStore } from '@/lib/planner-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -184,12 +185,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [habitReminders, setHabitReminders] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [compactMode, setCompactMode] = useState(false);
+  const [compactMode, setCompactModeLocal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
+  const { compactMode: storeCompactMode, setCompactMode } = usePlannerStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -296,9 +298,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Compact mode" description="Reduce spacing for more content">
+              <SettingRow label="Compact mode" description="Fit more into the timeline with reduced spacing">
                 <Switch 
-                  checked={compactMode} 
+                  checked={storeCompactMode} 
                   onCheckedChange={setCompactMode}
                 />
               </SettingRow>

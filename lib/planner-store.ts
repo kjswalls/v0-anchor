@@ -27,6 +27,8 @@ interface PlannerStore {
   projects: Project[];
   habitGroups: HabitGroupType[];
   timelineItemFilter: 'all' | 'tasks' | 'habits';
+  compactMode: boolean;
+  setCompactMode: (compact: boolean) => void;
   /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
@@ -230,6 +232,8 @@ export const usePlannerStore = create<PlannerStore>()(
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
       timelineItemFilter: 'all' as const,
+      compactMode: false,
+      setCompactMode: (compact) => set({ compactMode: compact }),
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
