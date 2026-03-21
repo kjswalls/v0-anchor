@@ -456,6 +456,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
   const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode, timelineItemFilter } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [isHovered, setIsHovered] = useState(false);
+  const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'done' | 'pending' | 'skipped'>('all');
   const showControls = !chillMode || isHovered;
 
   // Auto-switch tab when filter changes to show only available items
