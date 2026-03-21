@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
 import { Timeline } from '@/components/planner/timeline';
+import { WeekView } from '@/components/planner/week-view';
 import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
@@ -47,7 +48,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -203,11 +204,18 @@ export default function PlannerPage() {
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
-            <Timeline 
-              onTaskClick={handleTaskClick} 
-              onHabitClick={handleHabitClick} 
-              onAddClick={handleAddFromTimeline}
-            />
+            {viewMode === 'day' ? (
+              <Timeline 
+                onTaskClick={handleTaskClick} 
+                onHabitClick={handleHabitClick} 
+                onAddClick={handleAddFromTimeline}
+              />
+            ) : (
+              <WeekView
+                onTaskClick={handleTaskClick}
+                onHabitClick={handleHabitClick}
+              />
+            )}
           </main>
         </div>
       </div>

@@ -453,8 +453,9 @@ interface TaskSidebarProps {
 }
 
 export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: TaskSidebarProps) {
-  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters } = usePlannerStore();
+  const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
+  const [isHovered, setIsHovered] = useState(false);
   const [habitGroupBy, setHabitGroupBy] = useState<'group' | 'status' | 'repeat' | 'bucket' | 'none'>('group');
   const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'pending' | 'done' | 'skipped'>('all');
   
@@ -539,6 +540,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
 
   const hasActiveFilters = Object.keys(filters).length > 0;
 
+  const showControls = !chillMode || isHovered;
+
   return (
     <aside 
       ref={setDroppableRef}
@@ -546,6 +549,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         'w-80 border-r border-border bg-sidebar flex flex-col h-full transition-colors',
         isOver && 'bg-primary/5 border-primary'
       )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Tab switcher */}
       <div className="flex border-b border-border">
@@ -578,7 +583,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {/* Tasks pane */}
       {activeTab === 'tasks' && (
         <>
-          <div className="p-4 border-b border-border">
+          <div className={cn('p-4 border-b border-border transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
             <div className="flex items-center gap-2">
               <FilterButton />
               
@@ -678,7 +683,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {/* Habits pane */}
       {activeTab === 'habits' && (
         <>
-          <div className="p-4 border-b border-border space-y-3">
+          <div className={cn('p-4 border-b border-border space-y-3 transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
             <div className="flex items-center gap-2">
               {/* Status filter */}
               <DropdownMenu>

@@ -191,7 +191,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
-  const { compactMode: storeCompactMode, setCompactMode } = usePlannerStore();
+  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode } = usePlannerStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -302,6 +302,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Switch 
                   checked={storeCompactMode} 
                   onCheckedChange={setCompactMode}
+                />
+              </SettingRow>
+
+              <SettingRow label="Chill mode" description="Hide extra UI elements until hovered for a calmer look">
+                <Switch 
+                  checked={chillMode} 
+                  onCheckedChange={setChillMode}
                 />
               </SettingRow>
 

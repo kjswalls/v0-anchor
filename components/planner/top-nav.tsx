@@ -417,6 +417,30 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           </ToggleGroupItem>
         </ToggleGroup>
         
+        {/* Undo/Redo buttons */}
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={undo}
+            disabled={!canUndo}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={redo}
+            disabled={!canRedo}
+            className="h-8 w-8 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
+        </div>
+        
         <Button
           variant="ghost"
           size="icon"

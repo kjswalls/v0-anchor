@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,8 +72,10 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onClick }: TaskCardProps) {
-  const { compactMode, toggleTaskStatus, unscheduleTask, deleteTask, getProjectEmoji, setHoveredItem, getProject, moveTaskToProjectBlock, moveTaskOutOfProjectBlock } = usePlannerStore();
+  const { compactMode, chillMode, toggleTaskStatus, unscheduleTask, deleteTask, getProjectEmoji, setHoveredItem, getProject, moveTaskToProjectBlock, moveTaskOutOfProjectBlock } = usePlannerStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const showMeta = !chillMode || isHovered;
   
   // Check if task's project has a time block
   const project = task.project ? getProject(task.project) : undefined;
@@ -105,8 +107,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       ref={setNodeRef}
       style={style}
       className={cn('group relative flex items-stretch gap-1', isDragging && 'opacity-50 z-50')}
-      onMouseEnter={() => setHoveredItem(task.id, 'task')}
-      onMouseLeave={() => setHoveredItem(null, null)}
+      onMouseEnter={() => { setHoveredItem(task.id, 'task'); setIsHovered(true); }}
+      onMouseLeave={() => { setHoveredItem(null, null); setIsHovered(false); }}
     >
       {/* Drag handle — outside the card, to the left */}
       <button
@@ -174,13 +176,13 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           {/* Meta row - emoji, duration, priority, time */}
           <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
             {projectEmoji && task.project && (
-              <span className="flex items-center gap-1 leading-none">
+              <span className={cn('flex items-center gap-1 leading-none transition-opacity', !showMeta && 'opacity-0')}>
                 <span className="text-sm">{projectEmoji}</span>
                 <span>{task.project}</span>
               </span>
             )}
             {task.startTime && (
-              <span className="font-medium">{task.startTime}</span>
+              <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{task.startTime}</span>
             )}
             {task.duration && (
               <span className="flex items-center gap-0.5">
@@ -190,16 +192,17 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             )}
             {task.priority && (
               <span className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-opacity',
                 task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
                 task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-                task.priority === 'low' && 'bg-priority-low/15 text-priority-low'
+                task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                !showMeta && 'opacity-0'
               )}>
                 {priorityLabels[task.priority]}
               </span>
             )}
             {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-              <Repeat className="h-3 w-3" />
+              <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
             )}
           </div>
         </div>
@@ -303,7 +306,9 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode } = usePlannerStore();
+  const [isHovered, setIsHovered] = useState(false);
+  const showMeta = !chillMode || isHovered;
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
@@ -379,8 +384,8 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   return (
     <div
       className="group relative flex items-stretch gap-1"
-      onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
-      onMouseLeave={() => setHoveredItem(null, null)}
+      onMouseEnter={() => { setHoveredItem(habit.id, 'habit'); setIsHovered(true); }}
+      onMouseLeave={() => { setHoveredItem(null, null); setIsHovered(false); }}
     >
       {/* Spacer matching the drag handle width on TaskCards */}
       <div className="w-5 flex-shrink-0" />
@@ -482,19 +487,19 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           {/* Meta row - group, times per day, start time */}
           <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
             {habit.group && (
-              <span className="flex items-center gap-1 leading-none">
+              <span className={cn('flex items-center gap-1 leading-none transition-opacity', !showMeta && 'opacity-0')}>
                 {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
                 <span>{habit.group}</span>
               </span>
             )}
             {habit.startTime && (
-              <span className="font-medium">{habit.startTime}</span>
+              <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{habit.startTime}</span>
             )}
             {habit.timesPerDay && habit.timesPerDay > 1 && (
               <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
             )}
             {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
-              <Repeat className="h-3 w-3" />
+              <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
             )}
           </div>
         </div>
@@ -806,8 +811,10 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [] }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode } = usePlannerStore();
+  const { compactMode, chillMode } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
+  const [isHovered, setIsHovered] = useState(false);
+  const showExtras = !chillMode || isHovered;
 
   // Separate into untimed and scheduled
   const untimedTasks = tasks.filter((t) => !t.startTime);
@@ -826,6 +833,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         isOver && 'border-solid border-primary bg-primary/5',
         isCurrentBucket && 'shadow-[0_0_25px_-3px] shadow-primary/30'
       )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       {/* Header */}
       <div className={cn(
@@ -836,16 +845,16 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-          <span className={cn('text-muted-foreground', compactMode ? 'text-[10px]' : 'text-xs')}>{config.timeRange}</span>
+          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
           {totalItems > 0 && (
-            <Badge variant="secondary" className="text-xs h-5 px-1.5">
+            <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
               {totalItems}
             </Badge>
           )}
         </div>
         
         {/* Add buttons */}
-        <div className="flex items-center gap-1">
+        <div className={cn('flex items-center gap-1 transition-opacity', !showExtras && 'opacity-0')}>
           <Button
             variant="ghost"
             size="sm"
@@ -1096,9 +1105,54 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
     return grouped;
   }, [filteredHabitsForDate]);
 
+  const goToPreviousDay = () => {
+    const prev = new Date(selectedDate);
+    prev.setDate(prev.getDate() - 1);
+    setSelectedDate(prev);
+  };
+
+  const goToNextDay = () => {
+    const next = new Date(selectedDate);
+    next.setDate(next.getDate() + 1);
+    setSelectedDate(next);
+  };
+
   return (
     <ScrollArea className="flex-1 h-full">
-      <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
+      <div className="relative">
+        {/* Previous day wireframe preview */}
+        <div className="absolute left-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
+          <div className="h-full flex flex-col justify-center gap-4 pr-2 opacity-20">
+            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
+            <div className="h-24 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
+            <div className="h-20 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
+            <div className="h-16 w-full bg-gradient-to-r from-transparent to-border rounded-r-lg" />
+          </div>
+          <button
+            onClick={goToPreviousDay}
+            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
+          >
+            <ChevronLeft className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        </div>
+
+        {/* Next day wireframe preview */}
+        <div className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none">
+          <div className="h-full flex flex-col justify-center gap-4 pl-2 opacity-20">
+            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
+            <div className="h-20 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
+            <div className="h-28 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
+            <div className="h-16 w-full bg-gradient-to-l from-transparent to-border rounded-l-lg" />
+          </div>
+          <button
+            onClick={goToNextDay}
+            className="absolute inset-0 flex items-center justify-center pointer-events-auto cursor-pointer hover:bg-background/50 transition-colors group"
+          >
+            <ChevronRight className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        </div>
+
+        <div className={cn('max-w-3xl mx-auto pb-20', compactMode ? 'p-3 space-y-2' : 'p-6 space-y-4')}>
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">
@@ -1177,6 +1231,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
           isCurrentBucket={mounted && currentBucket === 'evening'}
           recurringProjects={recurringProjectsForToday}
         />
+        </div>
       </div>
     </ScrollArea>
   );
