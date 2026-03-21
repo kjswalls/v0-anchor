@@ -143,18 +143,16 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
         {/* Content */}
         <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
-          {/* Title row */}
-          <div className={compactMode ? 'flex items-center' : 'flex items-start'}>
-            <p
-              className={cn(
-                'font-medium text-foreground leading-tight line-clamp-2 flex-1',
-                compactMode ? 'text-xs' : 'text-sm',
-                task.status === 'completed' && 'line-through text-muted-foreground'
-              )}
-            >
-              {task.title}
-            </p>
-          </div>
+          {/* Title */}
+          <p
+            className={cn(
+              'font-medium text-foreground leading-tight line-clamp-2',
+              compactMode ? 'text-xs' : 'text-sm',
+              task.status === 'completed' && 'line-through text-muted-foreground'
+            )}
+          >
+            {task.title}
+          </p>
 
           {/* Meta row - emoji, duration, priority, time */}
           <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
