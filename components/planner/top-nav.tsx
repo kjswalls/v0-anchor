@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, FolderOpen, Search, X, CheckCircle2, Flame, Filter } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, Search, X, CheckCircle2, Flame, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -23,7 +23,7 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -125,7 +125,23 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   return (
     <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
       <div className="flex items-center gap-4">
-        <h1 className="text-xl font-medium text-foreground tracking-tight">Calm Planner</h1>
+        {/* Anchor logo mark */}
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-foreground flex-shrink-0"
+          aria-label="Anchor"
+        >
+          <circle cx="12" cy="5" r="2" />
+          <line x1="12" y1="7" x2="12" y2="22" />
+          <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+        </svg>
         
         <div className="flex items-center gap-2 ml-6">
           <Button
@@ -185,36 +201,6 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             Today
           </Button>
 
-        </div>
-        
-        {/* Timeline Filter - Centered */}
-        <div className="flex items-center justify-center flex-1">
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
-            <Button
-              variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('all')}
-            >
-              All
-            </Button>
-            <Button
-              variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('tasks')}
-            >
-              Tasks
-            </Button>
-            <Button
-              variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setTimelineItemFilter('habits')}
-            >
-              Habits
-            </Button>
-          </div>
         </div>
       </div>
       
@@ -377,16 +363,6 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onManageCategories}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title="Manage Projects & Groups"
-        >
-          <FolderOpen className="h-4 w-4" />
         </Button>
 
         <Button

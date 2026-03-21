@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Calm Planner — ADHD-Friendly Daily Planning',
+  title: 'Anchor — ADHD-Friendly Daily Planning',
   description: 'A calm, minimal daily planner designed for neurodivergent minds. Plan your day with gentle structure.',
   generator: 'v0.app',
   icons: {

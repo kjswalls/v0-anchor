@@ -147,7 +147,7 @@ export default function PlannerPage() {
           onHabitClick={handleHabitClick}
         />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} />
+          <TaskSidebar onTaskClick={handleTaskClick} onAddClick={handleAddFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col bg-background overflow-hidden">
             <Timeline 
               onTaskClick={handleTaskClick} 

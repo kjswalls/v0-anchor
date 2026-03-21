@@ -57,6 +57,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [timesPerDay, setTimesPerDay] = useState<string>('1');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // New group state
   const [showNewGroup, setShowNewGroup] = useState(false);
@@ -119,8 +120,13 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   };
 
   const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = () => {
     if (!habit) return;
     deleteHabit(habit.id);
+    setShowDeleteConfirm(false);
     onOpenChange(false);
   };
 
@@ -357,6 +363,23 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetStreak} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Reset Streak
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{habit?.title}" and all its history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

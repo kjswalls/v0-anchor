@@ -5,6 +5,16 @@ import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -36,6 +46,7 @@ interface TaskItemProps {
 function TaskItem({ task, onClick }: TaskItemProps) {
   const { toggleTaskStatus, deleteTask, getProjectEmoji } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const {
     attributes,
     listeners,
@@ -123,11 +134,31 @@ function TaskItem({ task, onClick }: TaskItemProps) {
         className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
         onClick={(e) => {
           e.stopPropagation();
-          deleteTask(task.id);
+          setShowDeleteConfirm(true);
         }}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{task.title}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { deleteTask(task.id); setShowDeleteConfirm(false); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -160,20 +191,25 @@ function FilterButton() {
   };
 
   const handleMouseEnter = (submenu: string) => {
-    // Clear any pending timeout
+    // Clear any pending close timeout immediately
     if (submenuTimeoutRef.current) {
       clearTimeout(submenuTimeoutRef.current);
       submenuTimeoutRef.current = null;
     }
-    // Set the new submenu immediately
     setActiveSubmenu(submenu);
   };
 
   const handleMouseLeave = () => {
-    // Only close if we're not entering another submenu trigger
     submenuTimeoutRef.current = setTimeout(() => {
       setActiveSubmenu(null);
-    }, 200);
+    }, 300);
+  };
+
+  const cancelClose = () => {
+    if (submenuTimeoutRef.current) {
+      clearTimeout(submenuTimeoutRef.current);
+      submenuTimeoutRef.current = null;
+    }
   };
 
   // Clean up timeout on unmount
@@ -225,7 +261,7 @@ function FilterButton() {
               align="start" 
               className="w-36 p-1" 
               sideOffset={4}
-              onMouseEnter={() => handleMouseEnter('project')}
+              onMouseEnter={cancelClose}
               onMouseLeave={handleMouseLeave}
             >
               {projects.map((project) => (
@@ -258,7 +294,7 @@ function FilterButton() {
               align="start" 
               className="w-28 p-1" 
               sideOffset={4}
-              onMouseEnter={() => handleMouseEnter('priority')}
+              onMouseEnter={cancelClose}
               onMouseLeave={handleMouseLeave}
             >
               <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>
@@ -291,7 +327,7 @@ function FilterButton() {
               align="start" 
               className="w-28 p-1" 
               sideOffset={4}
-              onMouseEnter={() => handleMouseEnter('status')}
+              onMouseEnter={cancelClose}
               onMouseLeave={handleMouseLeave}
             >
               <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>
@@ -394,6 +430,9 @@ export function TaskSidebar({ onTaskClick, onAddClick, onManageCategories }: Tas
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-foreground">Tasks</h2>
           <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-1">
+              {unscheduledTasks.length} unscheduled
+            </span>
             <Button
               variant="ghost"
               size="icon"
@@ -401,11 +440,8 @@ export function TaskSidebar({ onTaskClick, onAddClick, onManageCategories }: Tas
               onClick={onManageCategories}
               title="Manage Projects & Groups"
             >
-              <FolderOpen className="h-4 w-4" />
+              <FolderOpen className="h-3.5 w-3.5" />
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {unscheduledTasks.length} unscheduled
-            </span>
             <Button
               variant="ghost"
               size="icon"

@@ -135,8 +135,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
       {/* Content */}
       <div className="flex-1 min-w-0 flex flex-col gap-1 relative z-10">
-        {/* Title row with emoji at end */}
-        <div className="flex items-start gap-1.5">
+        {/* Title row — no emoji here */}
+        <div className="flex items-start">
           <p
             className={cn(
               'text-sm font-medium text-foreground leading-tight line-clamp-2 flex-1',
@@ -145,13 +145,13 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           >
             {task.title}
           </p>
-          {projectEmoji && (
-            <span className="text-base flex-shrink-0 mt-0.5">{projectEmoji}</span>
-          )}
         </div>
         
-        {/* Meta row - duration, priority, time */}
+        {/* Meta row - emoji, duration, priority, time */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {projectEmoji && (
+            <span className="text-sm leading-none">{projectEmoji}</span>
+          )}
           {task.startTime && (
             <span className="font-medium">{task.startTime}</span>
           )}
@@ -657,7 +657,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter } = usePlannerStore();
+  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -778,6 +778,36 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
             Showing results for "{searchQuery}"
           </div>
         )}
+
+        {/* Timeline filter — centered above Anytime */}
+        <div className="flex justify-center">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
+            <Button
+              variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('all')}
+            >
+              All
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('tasks')}
+            >
+              Tasks
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('habits')}
+            >
+              Habits
+            </Button>
+          </div>
+        </div>
         
         {/* Anytime bucket pinned at top */}
         <TimelineBucket 
