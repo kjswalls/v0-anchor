@@ -157,19 +157,34 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
               </span>
             </div>
             
-            {/* Current time indicator — spans all 7 day columns */}
-            {isCurrentBucketRow && (
-              <div
-                className="absolute left-[calc(100%/8)] right-0 h-0.5 pointer-events-none z-30"
-                style={{ top: `${minuteProgress * 100}%` }}
-              >
-                <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
+            {/* Current time indicator — only shown over today's column */}
+            {(() => {
+              // Find which column (0-6) is today
+              const todayIndex = weekDays.findIndex((d) => isToday(d));
+              if (!isCurrentBucketRow || todayIndex === -1) return null;
+              
+              // Grid has 8 columns: 1 time label + 7 days
+              // Each day column is 1/8 of the width, starting after the label (also 1/8)
+              const colWidth = 100 / 8; // ~12.5%
+              const left = colWidth * (1 + todayIndex); // skip time label column
+              const right = 100 - left - colWidth;
+              
+              return (
                 <div
-                  className="absolute left-1.5 right-0 h-0.5"
-                  style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.2) 100%)' }}
-                />
-              </div>
-            )}
+                  className="absolute h-0.5 pointer-events-none z-30"
+                  style={{ 
+                    top: `${minuteProgress * 100}%`,
+                    left: `${left}%`,
+                    right: `${right}%`,
+                  }}
+                >
+                  <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
+                  <div
+                    className="absolute left-1.5 right-0 h-0.5 bg-primary"
+                  />
+                </div>
+              );
+            })()}
             
             {/* Day columns */}
             {weekDays.map((day) => {

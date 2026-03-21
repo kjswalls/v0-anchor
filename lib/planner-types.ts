@@ -100,7 +100,7 @@ export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number
   evening: { start: DEFAULT_BUCKET_RANGES.evening.start, end: DEFAULT_BUCKET_RANGES.evening.end, label: 'Evening' },
 };
 
-/** Format hour (0-47) to display string like "6pm", "12am" */
+/** Format hour (0-47) to display string like "6pm" or "12am" */
 export function formatBucketHour(h: number): string {
   const n = h % 24;
   if (n === 0) return '12am';

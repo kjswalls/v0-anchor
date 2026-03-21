@@ -1117,7 +1117,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
+  const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, bucketRanges } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -1140,13 +1140,20 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         return;
       }
       
-      // Determine bucket based on hour
-      if (hour >= 5 && hour < 12) {
+      // Determine bucket based on configurable ranges
+      const { morning, afternoon, evening } = bucketRanges;
+      if (hour >= morning.start && hour < morning.end) {
         setCurrentBucket('morning');
-      } else if (hour >= 12 && hour < 17) {
+      } else if (hour >= afternoon.start && hour < afternoon.end) {
         setCurrentBucket('afternoon');
-      } else if (hour >= 17 || hour < 5) {
-        setCurrentBucket('evening');
+      } else {
+        // Evening may wrap midnight (end > 24)
+        const eveningEndNorm = evening.end % 24;
+        if (hour >= evening.start || (evening.end > 24 && hour < eveningEndNorm)) {
+          setCurrentBucket('evening');
+        } else {
+          setCurrentBucket(null);
+        }
       }
     };
 
@@ -1154,7 +1161,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
     const interval = setInterval(updateCurrentBucket, 60000); // Update every minute
     
     return () => clearInterval(interval);
-  }, [selectedDate]);
+  }, [selectedDate, bucketRanges]);
 
   // Avoid using searchQuery from store - it's been removed
   const searchQuery = '';
