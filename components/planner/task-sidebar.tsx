@@ -66,7 +66,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group flex items-start gap-2 p-3 rounded-lg bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full',
+        'group relative flex items-start gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
         isDragging && 'opacity-50 shadow-lg z-50',
         task.status === 'completed' && 'opacity-60'
       )}
@@ -74,10 +74,20 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
       onMouseLeave={() => setHoveredItem(null, null)}
     >
+      {/* Large background emoji */}
+      {projectEmoji && (
+        <span
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+          style={{ lineHeight: 1 }}
+        >
+          {projectEmoji}
+        </span>
+      )}
+
       <button
         {...attributes}
         {...listeners}
-        className="mt-0.5 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none"
+        className="mt-0.5 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none relative z-10"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
@@ -90,21 +100,21 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+          'mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
         )}
       >
         {task.status === 'completed' && (
-          <Check className="h-2.5 w-2.5 text-primary-foreground" />
+          <Check className="h-3 w-3 text-primary-foreground" />
         )}
       </button>
       
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 relative z-10">
         <p
           className={cn(
-            'text-sm text-foreground leading-tight',
+            'text-sm font-medium text-foreground leading-tight line-clamp-2',
             task.status === 'completed' && 'line-through text-muted-foreground'
           )}
         >
@@ -143,7 +153,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity mt-0.5 flex-shrink-0 relative z-10"
         onClick={(e) => {
           e.stopPropagation();
           setShowDeleteConfirm(true);
