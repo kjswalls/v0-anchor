@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
-import { formatBucketHour, type ConfigurableBucketRanges } from '@/lib/types';
+import { formatBucketHour, type ConfigurableBucketRanges } from '@/lib/planner-types';
 import {
   Dialog,
   DialogContent,

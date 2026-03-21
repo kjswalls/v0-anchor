@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, FolderKanban, Tag, Settings2 } from 'lucide-react';
 import { EditProjectDialog } from './edit-project-dialog';
-import type { Project } from '@/lib/types';
+import type { Project } from '@/lib/planner-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -30,7 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePlannerStore } from '@/lib/planner-store';
-import { EMOJI_OPTIONS } from '@/lib/types';
+import { EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface ManageCategoriesDialogProps {

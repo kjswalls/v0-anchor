@@ -27,8 +27,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Project, TimeBucket, RepeatFrequency } from '@/lib/types';
-import { EMOJI_OPTIONS, REPEAT_FREQUENCY_LABELS } from '@/lib/types';
+import type { Project, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
+import { EMOJI_OPTIONS, REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditProjectDialogProps {

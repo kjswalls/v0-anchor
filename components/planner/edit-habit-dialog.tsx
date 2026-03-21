@@ -36,8 +36,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Habit, HabitGroup, TimeBucket, RepeatFrequency } from '@/lib/types'; // v4
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/types'; // v4
+import type { Habit, HabitGroup, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface EditHabitDialogProps {

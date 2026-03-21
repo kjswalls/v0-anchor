@@ -1,8 +1,8 @@
 'use client';
 // v4 — fresh module graph rebuild
 import { create } from 'zustand';
-import type { Task, Habit, HabitStatus, Project, HabitGroupType, TimeBucket, GroupBy, FilterState, ViewMode, Priority, RepeatFrequency, ConfigurableBucketRanges } from './types';
-import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, DEFAULT_BUCKET_RANGES } from './types';
+import type { Task, Habit, HabitStatus, Project, HabitGroupType, TimeBucket, GroupBy, FilterState, ViewMode, Priority, RepeatFrequency, ConfigurableBucketRanges } from './planner-types';
+import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, DEFAULT_BUCKET_RANGES } from './planner-types';
 import { isSameDay } from 'date-fns';
 
 // Get appropriate bucket for a given time
