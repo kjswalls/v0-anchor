@@ -635,6 +635,120 @@ function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
 }
 
 // Truncated hourly grid showing only populated hours with "..." separators
+// Drop zone component for scheduled section
+interface ScheduledDropZoneProps {
+  dropId: string;
+  isActive: boolean;
+}
+
+function ScheduledDropZone({ dropId, isActive }: ScheduledDropZoneProps) {
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  if (!isActive) return null;
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'h-2 -my-0.5 transition-all rounded',
+        isOver ? 'h-8 bg-primary/20 border-2 border-dashed border-primary my-1' : 'bg-transparent'
+      )}
+    />
+  );
+}
+
+// Empty bucket drop zone that expands when dragging
+interface EmptyBucketDropZoneProps {
+  bucket: TimeBucket;
+  isActive: boolean;
+}
+
+function EmptyBucketDropZone({ bucket, isActive }: EmptyBucketDropZoneProps) {
+  const dropId = `scheduled:${bucket}:empty`;
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  if (!isActive) return null;
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'transition-all rounded-lg border-2 border-dashed',
+        isOver 
+          ? 'h-16 bg-primary/10 border-primary' 
+          : 'h-10 bg-secondary/30 border-border/50'
+      )}
+    >
+      <div className="h-full flex items-center justify-center">
+        <span className={cn('text-xs', isOver ? 'text-primary' : 'text-muted-foreground')}>
+          Drop to schedule with time
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Helper to infer drop time based on position
+export function inferDropTime(
+  bucket: TimeBucket,
+  position: 'empty' | 'before' | 'after',
+  referenceTime?: string
+): string {
+  const now = new Date();
+  const ranges: Record<TimeBucket, { start: number; end: number }> = {
+    anytime: { start: 0, end: 24 },
+    morning: { start: 5, end: 12 },
+    afternoon: { start: 12, end: 17 },
+    evening: { start: 17, end: 24 },
+  };
+  const range = ranges[bucket];
+  
+  if (position === 'empty') {
+    // Use current time if within bucket, otherwise bucket start
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    if (currentHour >= range.start && currentHour < range.end) {
+      return `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+    }
+    return `${String(range.start).padStart(2, '0')}:00`;
+  }
+  
+  if (!referenceTime) {
+    return `${String(range.start).padStart(2, '0')}:00`;
+  }
+  
+  const [refHour, refMinute] = referenceTime.split(':').map(Number);
+  
+  if (position === 'before') {
+    // 30 minutes before reference, but not before bucket start
+    let newMinute = refMinute - 30;
+    let newHour = refHour;
+    if (newMinute < 0) {
+      newMinute += 60;
+      newHour -= 1;
+    }
+    if (newHour < range.start) {
+      newHour = range.start;
+      newMinute = 0;
+    }
+    return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
+  }
+  
+  // position === 'after'
+  // 30 minutes after reference, but not after bucket end
+  let newMinute = refMinute + 30;
+  let newHour = refHour;
+  if (newMinute >= 60) {
+    newMinute -= 60;
+    newHour += 1;
+  }
+  if (newHour >= range.end) {
+    newHour = range.end - 1;
+    newMinute = 30;
+  }
+  return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
+}
+
 interface HourlyGridProps {
   bucket: TimeBucket;
   scheduledTasks: Task[];
@@ -643,10 +757,12 @@ interface HourlyGridProps {
   onHabitClick: (habit: Habit) => void;
   isCurrentBucket?: boolean;
   recurringProjects?: Project[];
+  activeId?: string | null;
 }
 
-function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [] }: HourlyGridProps) {
+function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [], activeId }: HourlyGridProps) {
   const { compactMode } = usePlannerStore();
+  const isDragging = !!activeId;
   const range = TIME_BUCKET_RANGES[bucket];
   
   // Current time tracking for the glow indicator
@@ -704,7 +820,13 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     }
   }
 
-  if (hoursWithItems.length === 0) return null;
+  // If no items but dragging is active, show empty drop zone
+  if (hoursWithItems.length === 0) {
+    if (isDragging && bucket !== 'anytime') {
+      return <EmptyBucketDropZone bucket={bucket} isActive={true} />;
+    }
+    return null;
+  }
 
   const formatHour = (hour: number) => {
     if (hour === 0) return '12am';
@@ -771,22 +893,35 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
                 </div>
               )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
-                {/* Habits */}
-                {items.habits.length > 0 && (
-                  <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
-                    {items.habits.map((habit) => (
-                      <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                    ))}
-                  </div>
-                )}
-                {/* Tasks */}
-                {items.tasks.length > 0 && (
-                  <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
-                    {items.tasks.map((task) => (
-                      <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                    ))}
-                  </div>
-                )}
+                {/* Combine all items sorted by time for drop zone placement */}
+                {(() => {
+                  const allItems = [
+                    ...items.habits.map(h => ({ type: 'habit' as const, item: h, time: h.startTime || '00:00' })),
+                    ...items.tasks.map(t => ({ type: 'task' as const, item: t, time: t.startTime || '00:00' })),
+                  ].sort((a, b) => a.time.localeCompare(b.time));
+                  
+                  return allItems.map((entry, idx) => (
+                    <div key={entry.item.id}>
+                      {/* Drop zone before this item */}
+                      <ScheduledDropZone
+                        dropId={`scheduled:${bucket}:before:${entry.type}:${entry.item.id}`}
+                        isActive={isDragging}
+                      />
+                      {entry.type === 'habit' ? (
+                        <HabitCard habit={entry.item as Habit} onClick={() => onHabitClick(entry.item as Habit)} />
+                      ) : (
+                        <TaskCard task={entry.item as Task} onClick={() => onTaskClick(entry.item as Task)} />
+                      )}
+                      {/* Drop zone after last item */}
+                      {idx === allItems.length - 1 && (
+                        <ScheduledDropZone
+                          dropId={`scheduled:${bucket}:after:${entry.type}:${entry.item.id}`}
+                          isActive={isDragging}
+                        />
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           </div>
@@ -806,9 +941,10 @@ interface TimelineBucketProps {
   onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
   isCurrentBucket?: boolean;
   recurringProjects?: Project[];
+  activeId?: string | null;
 }
 
-function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [] }: TimelineBucketProps) {
+function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
   const { compactMode, chillMode } = usePlannerStore();
@@ -939,15 +1075,16 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
             {/* Scheduled Section (hourly grid) */}
             {(scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
-              <HourlyGrid
-                bucket={bucket}
-                scheduledTasks={scheduledTasks}
-                scheduledHabits={scheduledHabits}
-                onTaskClick={onTaskClick}
-                onHabitClick={onHabitClick}
-                isCurrentBucket={isCurrentBucket}
-                recurringProjects={recurringProjects}
-              />
+<HourlyGrid
+  bucket={bucket}
+  scheduledTasks={scheduledTasks}
+  scheduledHabits={scheduledHabits}
+  onTaskClick={onTaskClick}
+  onHabitClick={onHabitClick}
+  isCurrentBucket={isCurrentBucket}
+  recurringProjects={recurringProjects}
+  activeId={activeId}
+/>
             )}
           </>
         ) : (
@@ -966,9 +1103,10 @@ interface TimelineProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
   onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
+  activeId?: string | null;
 }
 
-export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProps) {
+export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
   const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -1161,46 +1299,50 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick }: TimelineProp
         )}
 
         {/* Anytime bucket pinned at top */}
-        <TimelineBucket 
-          bucket="anytime" 
-          tasks={scheduledTasksByBucket.anytime} 
-          habits={scheduledHabitsByBucket.anytime}
-          onTaskClick={onTaskClick}
-          onHabitClick={onHabitClick}
-          onAddClick={onAddClick}
-        />
+<TimelineBucket
+  bucket="anytime"
+  tasks={scheduledTasksByBucket.anytime}
+  habits={scheduledHabitsByBucket.anytime}
+  onTaskClick={onTaskClick}
+  onHabitClick={onHabitClick}
+  onAddClick={onAddClick}
+  activeId={activeId}
+/>
         
         {/* Time-specific buckets */}
-        <TimelineBucket 
-          bucket="morning" 
-          tasks={scheduledTasksByBucket.morning} 
-          habits={scheduledHabitsByBucket.morning}
-          onTaskClick={onTaskClick}
-          onHabitClick={onHabitClick}
-          onAddClick={onAddClick}
-          isCurrentBucket={mounted && currentBucket === 'morning'}
-          recurringProjects={recurringProjectsForToday}
-        />
-        <TimelineBucket 
-          bucket="afternoon" 
-          tasks={scheduledTasksByBucket.afternoon} 
-          habits={scheduledHabitsByBucket.afternoon}
-          onTaskClick={onTaskClick}
-          onHabitClick={onHabitClick}
-          onAddClick={onAddClick}
-          isCurrentBucket={mounted && currentBucket === 'afternoon'}
-          recurringProjects={recurringProjectsForToday}
-        />
-        <TimelineBucket 
-          bucket="evening" 
-          tasks={scheduledTasksByBucket.evening} 
-          habits={scheduledHabitsByBucket.evening}
-          onTaskClick={onTaskClick}
-          onHabitClick={onHabitClick}
-          onAddClick={onAddClick}
-          isCurrentBucket={mounted && currentBucket === 'evening'}
-          recurringProjects={recurringProjectsForToday}
-        />
+<TimelineBucket
+  bucket="morning"
+  tasks={scheduledTasksByBucket.morning}
+  habits={scheduledHabitsByBucket.morning}
+  onTaskClick={onTaskClick}
+  onHabitClick={onHabitClick}
+  onAddClick={onAddClick}
+  isCurrentBucket={mounted && currentBucket === 'morning'}
+  recurringProjects={recurringProjectsForToday}
+  activeId={activeId}
+/>
+<TimelineBucket
+  bucket="afternoon"
+  tasks={scheduledTasksByBucket.afternoon}
+  habits={scheduledHabitsByBucket.afternoon}
+  onTaskClick={onTaskClick}
+  onHabitClick={onHabitClick}
+  onAddClick={onAddClick}
+  isCurrentBucket={mounted && currentBucket === 'afternoon'}
+  recurringProjects={recurringProjectsForToday}
+  activeId={activeId}
+/>
+<TimelineBucket
+  bucket="evening"
+  tasks={scheduledTasksByBucket.evening}
+  habits={scheduledHabitsByBucket.evening}
+  onTaskClick={onTaskClick}
+  onHabitClick={onHabitClick}
+  onAddClick={onAddClick}
+  isCurrentBucket={mounted && currentBucket === 'evening'}
+  recurringProjects={recurringProjectsForToday}
+  activeId={activeId}
+/>
         </div>
       </div>
     </ScrollArea>

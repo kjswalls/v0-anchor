@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
-import { Timeline } from '@/components/planner/timeline';
+import { Timeline, inferDropTime } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
 import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -85,15 +85,56 @@ export default function PlannerPage() {
     setActiveId(null);
     
     if (over) {
-      const taskId = active.id as string;
+      const itemId = active.id as string;
       const target = over.id as string;
       
-      // Check if dropping on a time bucket
-      if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        scheduleTask(taskId, target as TimeBucket);
+      // Determine if dragged item is a task or habit
+      const draggedTask = tasks.find(t => t.id === itemId);
+      const draggedHabit = habits.find(h => h.id === itemId);
+      const itemType = draggedTask ? 'task' : draggedHabit ? 'habit' : null;
+      
+      // Check if dropping on a scheduled section with time
+      if (target.startsWith('scheduled:')) {
+        // Format: scheduled:{bucket}:{position}:{itemType}:{itemId} or scheduled:{bucket}:empty
+        const parts = target.split(':');
+        const bucket = parts[1] as TimeBucket;
+        const position = parts[2] as 'before' | 'after' | 'empty';
+        
+        let dropTime: string;
+        if (position === 'empty') {
+          dropTime = inferDropTime(bucket, 'empty');
+        } else {
+          // Get reference item's time
+          const refItemType = parts[3];
+          const refItemId = parts[4];
+          let refTime: string | undefined;
+          
+          if (refItemType === 'task') {
+            const refTask = tasks.find(t => t.id === refItemId);
+            refTime = refTask?.startTime;
+          } else if (refItemType === 'habit') {
+            const refHabit = habits.find(h => h.id === refItemId);
+            refTime = refHabit?.startTime;
+          }
+          
+          dropTime = inferDropTime(bucket, position, refTime);
+        }
+        
+        if (itemType === 'task') {
+          scheduleTask(itemId, bucket, dropTime);
+        } else if (itemType === 'habit') {
+          scheduleHabit(itemId, bucket, dropTime);
+        }
+      } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
+        // Dropping on bucket without specific time
+        if (itemType === 'task') {
+          scheduleTask(itemId, target as TimeBucket);
+        } else if (itemType === 'habit') {
+          scheduleHabit(itemId, target as TimeBucket);
+        }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule
-        unscheduleTask(taskId);
+        unscheduleTask(itemId);
       }
     }
   };
@@ -237,11 +278,12 @@ export default function PlannerPage() {
             <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
             <div className="flex-1 flex flex-col bg-background overflow-hidden">
               {viewMode === 'day' ? (
-                <Timeline 
-                  onTaskClick={handleTaskClick} 
-                  onHabitClick={handleHabitClick} 
-                  onAddClick={handleAddFromTimeline}
-                />
+<Timeline
+  onTaskClick={handleTaskClick}
+  onHabitClick={handleHabitClick}
+  onAddClick={handleAddFromTimeline}
+  activeId={activeId}
+/>
               ) : (
                 <WeekView
                   onTaskClick={handleTaskClick}
