@@ -173,14 +173,23 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             disabled={mounted && isToday(selectedDate)}
             className="h-8 px-3 text-sm ml-2 relative"
           >
-            {mounted && isToday(selectedDate) && (
-              <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
-            )}
+            {mounted && isToday(selectedDate) && (() => {
+              const hour = new Date().getHours();
+              const isNight = hour < 6 || hour >= 20;
+              return isNight ? (
+                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
+              ) : (
+                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
+              );
+            })()}
             Today
           </Button>
 
-          {/* Timeline Filter */}
-          <div className="flex items-center gap-1 ml-4 px-2 py-1 rounded-lg bg-secondary">
+        </div>
+        
+        {/* Timeline Filter - Centered */}
+        <div className="flex items-center justify-center flex-1">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
             <Button
               variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
               size="sm"

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -205,15 +205,13 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
-  // Simple toggle: pending <-> done, or handle multi-complete
-  const handleClick = () => {
+  // Handle increment for multi-complete habits
+  const handleIncrement = () => {
     if (habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending') {
-      // For multi-complete habits, increment count
       const newCount = (habit.currentDayCount || 0) + 1;
       if (newCount >= habit.timesPerDay) {
         toggleHabitStatus(habit.id, 'done');
       } else {
-        // Update count in store - need to implement this
         toggleHabitStatus(habit.id, 'pending', newCount);
       }
     } else {
@@ -228,6 +226,15 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       toggleHabitStatus(habit.id, getNextStatus(habit.status));
     }
   };
+
+  // Handle decrement for multi-complete habits
+  const handleDecrement = () => {
+    if (habit.timesPerDay && habit.timesPerDay > 1 && habit.currentDayCount && habit.currentDayCount > 0) {
+      toggleHabitStatus(habit.id, 'pending', habit.currentDayCount - 1);
+    }
+  };
+
+  const showMultiCompleteControls = habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending' && habit.currentDayCount && habit.currentDayCount > 0;
 
   // Skipped state - compact card
   if (habit.status === 'skipped') {
@@ -298,25 +305,48 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       
       {/* Content */}
       <div className="relative z-10 flex items-center gap-3 w-full">
-        {/* Checkbox */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleClick();
-          }}
-          className={cn(
-            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
-            habit.status === 'done' && 'bg-primary border-primary',
-            habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
-          )}
-        >
-          {habit.status === 'done' && (
-            <Check className="h-3 w-3 text-primary-foreground animate-in fade-in duration-200" />
-          )}
-          {habit.status === 'pending' && habit.timesPerDay && habit.timesPerDay > 1 && habit.currentDayCount && habit.currentDayCount > 0 && (
-            <span className="text-xs font-bold text-primary animate-in scale-in duration-300">{habit.currentDayCount}</span>
-          )}
-        </button>
+        {/* Checkbox / Multi-complete counter */}
+        {showMultiCompleteControls ? (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDecrement();
+              }}
+              className="w-5 h-5 rounded-full border border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
+            >
+              <Minus className="h-2.5 w-2.5 text-muted-foreground" />
+            </button>
+            <span className="text-sm font-bold text-primary w-4 text-center animate-in scale-in duration-300">
+              {habit.currentDayCount}
+            </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleIncrement();
+              }}
+              className="w-5 h-5 rounded-full border border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
+            >
+              <Plus className="h-2.5 w-2.5 text-muted-foreground" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleIncrement();
+            }}
+            className={cn(
+              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
+              habit.status === 'done' && 'bg-primary border-primary',
+              habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
+            )}
+          >
+            {habit.status === 'done' && (
+              <Check className="h-3 w-3 text-primary-foreground animate-in fade-in duration-200" />
+            )}
+          </button>
+        )}
         
         <div className="flex-1 min-w-0 flex flex-col gap-1">
           <span
@@ -557,35 +587,34 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           <>
             {/* Untimed Section */}
             {(untimedHabits.length > 0 || untimedTasks.length > 0) && (
-              <div className="flex gap-3">
-                <div className="w-12 flex-shrink-0" />
-                <div className="flex-1">
-                  <div className="space-y-3">
-                    {/* Untimed Habits */}
-                    {untimedHabits.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Habits</span>
-                        <div className="space-y-2">
-                          {untimedHabits.map((habit) => (
-                            <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Untimed Tasks */}
-                    {untimedTasks.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-1">Tasks</span>
-                        <div className="space-y-2">
-                          {untimedTasks.map((task) => (
-                            <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
+              <div className="space-y-3">
+                {/* Untimed Habits */}
+                {untimedHabits.length > 0 && (
+                  <div className="flex gap-3">
+                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                      Habits
+                    </div>
+                    <div className="flex-1 border-l border-border/30 pl-3 py-1 space-y-2">
+                      {untimedHabits.map((habit) => (
+                        <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {/* Untimed Tasks */}
+                {untimedTasks.length > 0 && (
+                  <div className="flex gap-3">
+                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                      Tasks
+                    </div>
+                    <div className="flex-1 border-l border-border/30 pl-3 py-1 space-y-2">
+                      {untimedTasks.map((task) => (
+                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

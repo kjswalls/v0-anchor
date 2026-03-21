@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -137,7 +137,7 @@ function FilterButton() {
   const { filters, setFilters, clearFilters, projects, getProjectEmoji } = usePlannerStore();
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
-  const [submenuTimeoutId, setSubmenuTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const hasActiveFilters = Object.keys(filters).length > 0;
 
@@ -160,19 +160,30 @@ function FilterButton() {
   };
 
   const handleMouseEnter = (submenu: string) => {
-    if (submenuTimeoutId) {
-      clearTimeout(submenuTimeoutId);
-      setSubmenuTimeoutId(null);
+    // Clear any pending timeout
+    if (submenuTimeoutRef.current) {
+      clearTimeout(submenuTimeoutRef.current);
+      submenuTimeoutRef.current = null;
     }
+    // Set the new submenu immediately
     setActiveSubmenu(submenu);
   };
 
   const handleMouseLeave = () => {
-    const timeoutId = setTimeout(() => {
+    // Only close if we're not entering another submenu trigger
+    submenuTimeoutRef.current = setTimeout(() => {
       setActiveSubmenu(null);
-    }, 150);
-    setSubmenuTimeoutId(timeoutId);
+    }, 200);
   };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (submenuTimeoutRef.current) {
+        clearTimeout(submenuTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <Popover open={filterOpen} onOpenChange={setFilterOpen}>
