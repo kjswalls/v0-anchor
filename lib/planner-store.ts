@@ -31,6 +31,8 @@ interface PlannerStore {
   setCompactMode: (compact: boolean) => void;
   chillMode: boolean;
   setChillMode: (chill: boolean) => void;
+  showCurrentTimeIndicator: boolean;
+  setShowCurrentTimeIndicator: (show: boolean) => void;
   /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
@@ -286,6 +288,8 @@ export const usePlannerStore = create<PlannerStore>()(
       setCompactMode: (compact) => set({ compactMode: compact }),
       chillMode: false,
       setChillMode: (chill) => set({ chillMode: chill }),
+      showCurrentTimeIndicator: true,
+      setShowCurrentTimeIndicator: (show) => set({ showCurrentTimeIndicator: show }),
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),

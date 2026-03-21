@@ -761,7 +761,7 @@ interface HourlyGridProps {
 }
 
 function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [], activeId }: HourlyGridProps) {
-  const { compactMode } = usePlannerStore();
+  const { compactMode, showCurrentTimeIndicator } = usePlannerStore();
   const isDragging = !!activeId;
   const range = TIME_BUCKET_RANGES[bucket];
   
@@ -879,7 +879,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
             </div>
             <div className={cn('flex-1 border-l border-border/30 pl-3 relative', compactMode ? 'py-0.5' : 'py-1')}>
               {/* Current time indicator */}
-              {isCurrentHour && (
+              {isCurrentHour && showCurrentTimeIndicator && (
                 <div 
                   className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
                   style={{ top: `${minuteProgress * 100}%` }}

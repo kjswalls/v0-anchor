@@ -191,7 +191,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
-  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode } = usePlannerStore();
+  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -323,6 +323,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Switch 
                   checked={animationsEnabled} 
                   onCheckedChange={setAnimationsEnabled}
+                />
+              </SettingRow>
+
+              <SettingRow label="Current time indicator" description="Show a glowing line at the current time in Day and Week views">
+                <Switch 
+                  checked={showCurrentTimeIndicator} 
+                  onCheckedChange={setShowCurrentTimeIndicator}
                 />
               </SettingRow>
             </SettingsSection>
