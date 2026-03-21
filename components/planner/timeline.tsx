@@ -405,7 +405,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           'relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
           'border-border/60 hover:border-border',
-          habit.status === 'done' && 'ring-2 ring-primary/20 border-primary/30'
+          effectiveStatus === 'done' && 'ring-2 ring-primary/20 border-primary/30'
         )}
         style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
@@ -451,7 +451,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
               <Minus className="h-2.5 w-2.5 text-muted-foreground" />
             </button>
             <span className="text-sm font-bold text-primary w-4 text-center animate-in scale-in duration-300">
-              {habit.currentDayCount}
+              {effectiveCount}
             </span>
             <button
               onClick={(e) => {
@@ -471,11 +471,11 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             }}
             className={cn(
               'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
-              habit.status === 'done' && 'bg-primary border-primary',
-              habit.status === 'pending' && 'border-muted-foreground/40 hover:border-primary'
+              effectiveStatus === 'done' && 'bg-primary border-primary',
+              effectiveStatus === 'pending' && 'border-muted-foreground/40 hover:border-primary'
             )}
           >
-            {habit.status === 'done' && (
+            {effectiveStatus === 'done' && (
               <Check className="h-3 w-3 text-primary-foreground animate-in fade-in duration-200" />
             )}
           </button>
@@ -486,7 +486,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             className={cn(
               'font-medium text-foreground leading-tight line-clamp-2',
               compactMode ? 'text-xs' : 'text-sm',
-              habit.status === 'done' && 'line-through text-muted-foreground'
+              effectiveStatus === 'done' && 'line-through text-muted-foreground'
             )}
           >
             {habit.title}
@@ -504,7 +504,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
               <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{habit.startTime}</span>
             )}
             {habit.timesPerDay && habit.timesPerDay > 1 && (
-              <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
+              <span>{effectiveCount || 0}/{habit.timesPerDay} today</span>
             )}
             {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
               <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
@@ -521,14 +521,14 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
         )}
 
         {/* Skip button - always visible for pending habits */}
-        {habit.status === 'pending' && (
+        {effectiveStatus === 'pending' && (
           <Button
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation();
-              toggleHabitStatus(habit.id, 'skipped');
+              toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate);
             }}
           >
             Skip
