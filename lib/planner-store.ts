@@ -732,10 +732,11 @@ export const usePlannerStore = create<PlannerStore>()(
 );
 
 // Subscribe to changes and save to history
-let prevState: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] } | null = null;
+let prevStateJson: string | null = null;
+let isUpdatingUndoRedo = false;
 
 usePlannerStore.subscribe((state) => {
-  if (isUndoRedoAction) return;
+  if (isUndoRedoAction || isUpdatingUndoRedo) return;
   
   const currentState = {
     tasks: state.tasks,
@@ -744,23 +745,19 @@ usePlannerStore.subscribe((state) => {
     habitGroups: state.habitGroups,
   };
   
+  const currentStateJson = JSON.stringify(currentState);
+  
   // Only save if data actually changed (not just view state)
-  if (prevState) {
-    const hasChanged = 
-      JSON.stringify(currentState.tasks) !== JSON.stringify(prevState.tasks) ||
-      JSON.stringify(currentState.habits) !== JSON.stringify(prevState.habits) ||
-      JSON.stringify(currentState.projects) !== JSON.stringify(prevState.projects) ||
-      JSON.stringify(currentState.habitGroups) !== JSON.stringify(prevState.habitGroups);
-    
-    if (hasChanged) {
-      saveToHistory(currentState);
-      // Update canUndo/canRedo after saving
-      usePlannerStore.setState({
-        canUndo: historyIndex > 0,
-        canRedo: false,
-      });
-    }
+  if (prevStateJson && currentStateJson !== prevStateJson) {
+    saveToHistory(currentState);
+    // Update canUndo/canRedo after saving (prevent recursive trigger)
+    isUpdatingUndoRedo = true;
+    usePlannerStore.setState({
+      canUndo: historyIndex > 0,
+      canRedo: false,
+    });
+    isUpdatingUndoRedo = false;
   }
   
-  prevState = currentState;
+  prevStateJson = currentStateJson;
 });
