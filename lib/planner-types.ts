@@ -102,19 +102,18 @@ export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number
 
 /** Format hour (0-47) to display string like "6pm", "12am" */
 export function formatBucketHour(h: number): string {
-  const normalized = h % 24;
-  if (normalized === 0) return '12am';
-  if (normalized === 12) return '12pm';
-  if (normalized < 12) return `${normalized}am`;
-  return `${normalized - 12}pm`;
+  const n = h % 24;
+  if (n === 0) return '12am';
+  if (n === 12) return '12pm';
+  return n < 12 ? `${n}am` : `${n - 12}pm`;
 }
 
-/** Format a BucketRange to a label string like "6am - 12pm" */
+/** Format a BucketRange to a label string like "6am – 12pm" */
 export function formatBucketRange(range: BucketRange): string {
-  return `${formatBucketHour(range.start)} - ${formatBucketHour(range.end)}`;
+  return `${formatBucketHour(range.start)} – ${formatBucketHour(range.end)}`;
 }
 
-export const BUCKET_HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i); // 0-24
+export const BUCKET_HOUR_OPTIONS: number[] = Array.from({ length: 25 }, (_, i) => i); // 0-24
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',

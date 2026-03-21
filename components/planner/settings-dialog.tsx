@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
-import { formatBucketHour, BUCKET_HOUR_OPTIONS, type ConfigurableBucketRanges } from '@/lib/planner-types';
+import { formatBucketHour, type ConfigurableBucketRanges } from '@/lib/planner-types';
 import {
   Dialog,
   DialogContent,
@@ -402,49 +402,68 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Select>
               </SettingRow>
 
-              {/* Bucket time ranges */}
-              {(['morning', 'afternoon', 'evening'] as const).map((b) => (
-                <SettingRow
-                  key={b}
-                  label={`${b.charAt(0).toUpperCase() + b.slice(1)} hours`}
-                  description={`Time range for the ${b} bucket`}
-                >
-                  <div className="flex items-center gap-1">
+              {/* Bucket time ranges — buckets are contiguous; adjusting a boundary shifts both adjacent buckets */}
+              {(() => {
+                // The three adjustable boundaries are:
+                //   morningStart  : where Morning begins
+                //   morningEnd    : end of Morning = start of Afternoon
+                //   afternoonEnd  : end of Afternoon = start of Evening
+                //   eveningEnd    : end of Evening (may cross midnight, max 30 = 6am next day)
+                const { morning, afternoon, evening } = bucketRanges;
+
+                const update = (field: 'morningStart' | 'morningEnd' | 'afternoonEnd' | 'eveningEnd', val: number) => {
+                  const next = { ...bucketRanges };
+                  if (field === 'morningStart') {
+                    next.morning = { ...morning, start: val };
+                  } else if (field === 'morningEnd') {
+                    // morning end = afternoon start
+                    next.morning = { ...morning, end: val };
+                    next.afternoon = { ...afternoon, start: val };
+                  } else if (field === 'afternoonEnd') {
+                    // afternoon end = evening start
+                    next.afternoon = { ...afternoon, end: val };
+                    next.evening = { ...evening, start: val };
+                  } else {
+                    next.evening = { ...evening, end: val };
+                  }
+                  setBucketRanges(next);
+                };
+
+                const boundaryRow = (
+                  label: string,
+                  description: string,
+                  value: number,
+                  field: 'morningStart' | 'morningEnd' | 'afternoonEnd' | 'eveningEnd',
+                  maxHour = 24,
+                ) => (
+                  <SettingRow key={field} label={label} description={description}>
                     <Select
-                      value={String(bucketRanges[b].start)}
-                      onValueChange={(v) =>
-                        setBucketRanges({ ...bucketRanges, [b]: { ...bucketRanges[b], start: Number(v) } })
-                      }
+                      value={String(value)}
+                      onValueChange={(v) => update(field, Number(v))}
                     >
-                      <SelectTrigger className="w-20 h-8 text-xs">
+                      <SelectTrigger className="w-24 h-8 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {BUCKET_HOUR_OPTIONS.map((h) => (
-                          <SelectItem key={h} value={String(h)}>{formatBucketHour(h)}</SelectItem>
+                        {Array.from({ length: maxHour + 1 }, (_, i) => i).map((h) => (
+                          <SelectItem key={h} value={String(h)}>
+                            {formatBucketHour(h)}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-xs text-muted-foreground">to</span>
-                    <Select
-                      value={String(bucketRanges[b].end)}
-                      onValueChange={(v) =>
-                        setBucketRanges({ ...bucketRanges, [b]: { ...bucketRanges[b], end: Number(v) } })
-                      }
-                    >
-                      <SelectTrigger className="w-20 h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {/* Allow up to 30 (= 6am next day) for evening */}
-                        {(b === 'evening' ? [...BUCKET_HOUR_OPTIONS, 25, 26, 27, 28, 29, 30] : BUCKET_HOUR_OPTIONS).map((h) => (
-                          <SelectItem key={h} value={String(h)}>{formatBucketHour(h)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </SettingRow>
-              ))}
+                  </SettingRow>
+                );
+
+                return (
+                  <>
+                    {boundaryRow('Morning starts', 'When the Morning bucket begins', morning.start, 'morningStart')}
+                    {boundaryRow('Afternoon starts', 'End of Morning / start of Afternoon', morning.end, 'morningEnd')}
+                    {boundaryRow('Evening starts', 'End of Afternoon / start of Evening', afternoon.end, 'afternoonEnd')}
+                    {boundaryRow('Evening ends', 'End of Evening (can cross midnight)', evening.end, 'eveningEnd', 30)}
+                  </>
+                );
+              })()}
             </SettingsSection>
           </div>
         </div>
