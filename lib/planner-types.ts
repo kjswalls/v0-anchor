@@ -43,6 +43,7 @@ export interface Task {
   // Project block tracking
   inProjectBlock?: boolean; // Whether task is inside its project's time block
   previousStartTime?: string; // Stored start time before moving into project block
+  previousStartDate?: Date; // Stored start date before moving into project block
 }
 
 export interface Habit {

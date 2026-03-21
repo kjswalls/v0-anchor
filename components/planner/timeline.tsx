@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight, ArrowRight, ChevronsRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -544,49 +544,69 @@ interface ProjectBlockProps {
   project: Project;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  activeId?: string | null;
 }
 
-function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
-  const { compactMode, moveTaskToProjectBlock, moveTaskOutOfProjectBlock, toggleTaskStatus, getProjectColor } = usePlannerStore();
+function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
+  const { compactMode, toggleTaskStatus, getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } = usePlannerStore();
   
-  // Tasks that are inside the project block vs those with their own start times
+  // Tasks that are inside the project block (for today)
   const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
-  const tasksOutsideBlock = tasks.filter((t) => !t.inProjectBlock && t.startTime);
   
-  if (tasksInBlock.length === 0 && tasksOutsideBlock.length === 0 && tasks.length === 0) {
-    return null;
-  }
-
+  // All incomplete tasks for this project that are NOT in a project block
+  // These are candidates to be moved into the block
+  const availableTasks = allTasks.filter(
+    (t) => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
+  );
+  
   const projectColor = getProjectColor(project.name);
+  
+  // Set up droppable - ID format: projectblock:ProjectName
+  const dropId = `projectblock:${project.name}`;
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  // Check if the currently dragged item can be dropped here
+  // Only allow tasks that belong to this project
+  const draggedTask = activeId ? allTasks.find(t => t.id === activeId) : null;
+  const canAcceptDrop = draggedTask && draggedTask.project === project.name;
+
+  const handleMoveAll = () => {
+    const taskIds = availableTasks.map((t) => t.id);
+    moveTasksToProjectBlock(taskIds);
+  };
 
   return (
     <div 
+      ref={setNodeRef}
       className={cn(
-        'rounded-lg border-2 border-dashed overflow-hidden',
-        compactMode ? 'p-2' : 'p-3'
+        'rounded-lg border-2 overflow-hidden transition-all mb-3',
+        compactMode ? 'p-2' : 'p-3',
+        isOver && canAcceptDrop ? 'border-solid border-primary bg-primary/10' : 'border-dashed',
+        isOver && !canAcceptDrop && 'border-destructive/50 bg-destructive/5'
       )}
-      style={{ borderColor: projectColor }}
+      style={{ borderColor: isOver ? undefined : projectColor }}
     >
       {/* Project block header */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">{project.emoji}</span>
+      <div className={cn('flex items-center gap-2', compactMode ? 'mb-1' : 'mb-2')}>
+        <span className={compactMode ? 'text-sm' : 'text-lg'}>{project.emoji}</span>
         <span className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>
           {project.name}
         </span>
-        <span className="text-xs text-muted-foreground">
+        <span className={cn('text-muted-foreground', compactMode ? 'text-[10px]' : 'text-xs')}>
           {project.startTime} · {project.duration}m
         </span>
       </div>
       
       {/* Tasks inside the block */}
-      {tasksInBlock.length > 0 ? (
-        <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
+      {tasksInBlock.length > 0 && (
+        <div className={cn(compactMode ? 'space-y-0.5 mb-1.5' : 'space-y-2 mb-3')}>
           {tasksInBlock.map((task) => (
             <div key={task.id} className="group/blocktask relative">
               <div
                 onClick={() => onTaskClick(task)}
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
+                  'flex items-center gap-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
+                  compactMode ? 'px-2 py-1' : 'px-3 py-2',
                   task.status === 'completed' && 'opacity-60'
                 )}
               >
@@ -597,46 +617,132 @@ function ProjectBlock({ project, tasks, onTaskClick }: ProjectBlockProps) {
                     toggleTaskStatus(task.id);
                   }}
                   className={cn(
-                    'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors',
+                    'flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors',
+                    compactMode ? 'w-3.5 h-3.5' : 'w-4 h-4',
                     task.status === 'completed'
                       ? 'bg-primary border-primary'
                       : 'border-muted-foreground/40 hover:border-primary'
                   )}
                 >
                   {task.status === 'completed' && (
-                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                    <Check className={compactMode ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
                   )}
                 </button>
                 
                 <span className={cn(
-                  'flex-1 text-sm',
+                  'flex-1',
+                  compactMode ? 'text-xs' : 'text-sm',
                   task.status === 'completed' && 'line-through text-muted-foreground'
                 )}>
                   {task.title}
                 </span>
-                
-                {/* Move out button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 opacity-0 group-hover/blocktask:opacity-100 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveTaskOutOfProjectBlock(task.id);
-                  }}
-                  title="Restore original time"
-                >
-                  <Minus className="h-3 w-3" />
-                </Button>
               </div>
             </div>
           ))}
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground text-center py-2">
-          No tasks in this block yet
-        </p>
       )}
+
+      {/* Available tasks preview - tasks that can be moved into this block */}
+      {availableTasks.length > 0 ? (
+        <div className={cn('rounded-lg border border-dashed border-border/50', compactMode ? 'p-1.5' : 'p-2')}>
+          <div className={cn('flex items-center justify-between', compactMode ? 'mb-1' : 'mb-2')}>
+            <span className={cn('text-muted-foreground', compactMode ? 'text-[10px]' : 'text-xs')}>
+              {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn('text-primary hover:text-primary', compactMode ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-xs')}
+              onClick={handleMoveAll}
+            >
+              <ChevronsRight className={compactMode ? 'h-2.5 w-2.5 mr-0.5' : 'h-3 w-3 mr-1'} />
+              Move all
+            </Button>
+          </div>
+          <div className={compactMode ? 'space-y-0.5' : 'space-y-1.5'}>
+            {availableTasks.slice(0, 5).map((task) => (
+              <div
+                key={task.id}
+                onClick={() => onTaskClick(task)}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors group/preview',
+                  compactMode ? 'px-1.5 py-1' : 'px-2.5 py-2'
+                )}
+              >
+                <div className={cn('flex-1 min-w-0', compactMode ? 'flex flex-row flex-wrap gap-1.5 items-center' : '')}>
+                  <p className={cn(
+                    'font-medium text-foreground truncate',
+                    compactMode ? 'text-xs' : 'text-sm'
+                  )}>
+                    {task.title}
+                  </p>
+                  <div className={cn(
+                    'flex items-center gap-1.5 text-muted-foreground',
+                    compactMode ? 'text-[10px]' : 'text-xs mt-0.5'
+                  )}>
+                    {task.timeBucket && !task.startTime && (
+                      <span className="capitalize">{task.timeBucket}</span>
+                    )}
+                    {task.startTime && (
+                      <span className="font-medium">{task.startTime}</span>
+                    )}
+                    {task.duration && (
+                      <span className="flex items-center gap-0.5">
+                        <Clock className={compactMode ? 'h-2.5 w-2.5' : 'h-3 w-3'} />
+                        {task.duration}m
+                      </span>
+                    )}
+                    {task.priority && (
+                      <span className={cn(
+                        'rounded font-medium',
+                        compactMode ? 'px-1 py-0 text-[9px]' : 'px-1.5 py-0.5 text-[10px]',
+                        task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+                        task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+                        task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                      )}>
+                        {task.priority === 'high' ? 'High' : task.priority === 'medium' ? 'Med' : 'Low'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'p-0 opacity-0 group-hover/preview:opacity-100 text-muted-foreground hover:text-primary flex-shrink-0',
+                    compactMode ? 'h-5 w-5' : 'h-6 w-6'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTaskToProjectBlock(task.id);
+                  }}
+                  title="Move to block"
+                >
+                  <ArrowRight className={compactMode ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+                </Button>
+              </div>
+            ))}
+            {availableTasks.length > 5 && (
+              <p className={cn('text-muted-foreground/70 text-center', compactMode ? 'text-[10px] py-0.5' : 'text-xs py-1')}>
+                +{availableTasks.length - 5} more
+              </p>
+            )}
+          </div>
+        </div>
+      ) : tasksInBlock.length === 0 ? (
+        <div className={cn(
+          'text-xs text-muted-foreground text-center py-3 rounded-lg border border-dashed border-border/50',
+          isOver && canAcceptDrop && 'border-primary bg-primary/5'
+        )}>
+          {isOver && canAcceptDrop ? (
+            <span className="text-primary">Drop to add to block</span>
+          ) : isOver && !canAcceptDrop ? (
+            <span className="text-destructive/70">Only {project.name} tasks allowed</span>
+          ) : (
+            <span>No tasks for this project</span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -960,15 +1066,16 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
 
-  // Separate into untimed and scheduled
-  const untimedTasks = tasks.filter((t) => !t.startTime);
-  const scheduledTasks = tasks.filter((t) => t.startTime);
+  // Separate into untimed and scheduled (exclude tasks in project blocks from regular display)
+  const untimedTasks = tasks.filter((t) => !t.startTime && !t.inProjectBlock);
+  const scheduledTasks = tasks.filter((t) => t.startTime && !t.inProjectBlock);
   const untimedHabits = habits.filter((h) => !h.startTime);
   const scheduledHabits = habits.filter((h) => h.startTime);
 
   const totalItems = tasks.length + habits.length;
   const hasScheduled = scheduledTasks.length > 0 || scheduledHabits.length > 0;
   const hasUntimed = untimedTasks.length > 0 || untimedHabits.length > 0;
+  const hasProjectBlocks = recurringProjects.some((p) => p.timeBucket === bucket);
 
   return (
     <div
@@ -1065,10 +1172,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       </div>
 
       {/* Scheduled section — separate from the unscheduled drop zone */}
-      {(hasScheduled || (activeId && hasUntimed)) && (
+      {(hasScheduled || hasProjectBlocks || (activeId && hasUntimed)) && (
         <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3', !hasUntimed && (compactMode ? 'pt-2' : 'pt-3'))}>
           {/* Divider */}
-          {hasUntimed && hasScheduled && bucket !== 'anytime' && (
+          {hasUntimed && (hasScheduled || hasProjectBlocks) && bucket !== 'anytime' && (
             <div className={cn('flex items-center gap-2', compactMode ? 'py-1 mt-1' : 'py-1 mt-3')}>
               <div className="flex-1 h-px bg-border" />
               <Clock className="h-3 w-3 text-muted-foreground/50" />
@@ -1087,6 +1194,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
                   project={project}
                   tasks={projectTasks}
                   onTaskClick={onTaskClick}
+                  activeId={activeId}
                 />
               );
             })}
@@ -1114,8 +1222,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         </div>
       )}
 
-      {/* Completely empty bucket */}
-      {totalItems === 0 && (
+      {/* Completely empty bucket - only show if no project blocks either */}
+      {totalItems === 0 && !hasProjectBlocks && (
         <div className={cn('text-center', compactMode ? 'p-2' : 'p-3')}>
           {activeId && bucket !== 'anytime' ? (
             <EmptyBucketDropZone bucket={bucket} isActive={true} />

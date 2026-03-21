@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -135,6 +135,15 @@ export default function PlannerPage() {
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule
         unscheduleTask(itemId);
+      } else if (target.startsWith('projectblock:')) {
+        // Dropping on a project block - move task into the project block
+        // Format: projectblock:{projectName}
+        const projectName = target.replace('projectblock:', '');
+        
+        // Only allow tasks that belong to this project
+        if (itemType === 'task' && draggedTask?.project === projectName) {
+          moveTaskToProjectBlock(itemId);
+        }
       }
     }
   };
