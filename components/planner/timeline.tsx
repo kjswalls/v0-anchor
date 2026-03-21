@@ -224,7 +224,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
     if (habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending') {
       const newCount = (habit.currentDayCount || 0) + 1;
       if (newCount >= habit.timesPerDay) {
-        toggleHabitStatus(habit.id, 'done');
+        toggleHabitStatus(habit.id, 'done', habit.timesPerDay);
       } else {
         toggleHabitStatus(habit.id, 'pending', newCount);
       }
