@@ -6,7 +6,6 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Check, Clock, Flame } from 'lucide-react';
 
 interface WeekViewProps {
@@ -82,10 +81,13 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
   };
 
   return (
-    <ScrollArea className="flex-1 h-full">
-      <div className={cn('p-4', compactMode ? 'space-y-2' : 'space-y-4')}>
+    <div className={cn('flex-1 h-full flex flex-col', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
+      <div className={cn(
+        'p-4 flex flex-col',
+        compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
+      )}>
         {/* Week header with day names and dates */}
-        <div className="grid grid-cols-8 gap-1">
+        <div className="grid grid-cols-8 gap-1 flex-shrink-0">
           {/* Empty cell for time labels */}
           <div className="h-12" />
           
@@ -113,9 +115,15 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
 
         {/* Time buckets grid */}
         {TIME_BUCKETS.map((bucket) => (
-          <div key={bucket} className="grid grid-cols-8 gap-1">
+          <div
+            key={bucket}
+            className={cn(
+              'grid grid-cols-8 gap-1',
+              !compactMode && 'flex-1 min-h-0'
+            )}
+          >
             {/* Time label */}
-            <div className="flex flex-col items-end justify-start pr-2 pt-1">
+            <div className="flex flex-col items-end justify-start pr-2 pt-1 flex-shrink-0">
               <span className="text-xs font-medium text-muted-foreground">
                 {bucketLabels[bucket]}
               </span>
@@ -133,7 +141,8 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                 <div
                   key={`${day.toISOString()}-${bucket}`}
                   className={cn(
-                    'min-h-[80px] rounded-lg border border-border/50 p-1.5 space-y-1 overflow-hidden',
+                    'rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
+                    compactMode ? 'min-h-[80px]' : 'min-h-0',
                     isSelected && 'border-primary/30 bg-primary/5',
                     isToday(day) && !isSelected && 'bg-secondary/30'
                   )}
@@ -182,6 +191,6 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
           </div>
         ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
