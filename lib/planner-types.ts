@@ -11,12 +11,11 @@ export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weeken
 export interface Project {
   name: string;
   emoji: string;
-  // Optional scheduling for project time blocks
   repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatDays?: number[];
   timeBucket?: TimeBucket;
-  startTime?: string; // HH:mm format
-  duration?: number; // in minutes
+  startTime?: string;
+  duration?: number;
 }
 
 export interface HabitGroupType {
@@ -30,19 +29,17 @@ export interface Task {
   title: string;
   priority?: Priority;
   project?: string;
-  startDate?: Date; // Changed from dueDate - determines which day this shows on
+  startDate?: Date;
   status: TaskStatus;
   timeBucket?: TimeBucket;
-  startTime?: string; // Renamed from scheduledTime - HH:mm format
-  duration?: number; // in minutes
+  startTime?: string;
+  duration?: number;
   isScheduled: boolean;
-  // Repeat configuration
   repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatDays?: number[];
   order: number;
-  // Project block tracking
-  inProjectBlock?: boolean; // Whether task is inside its project's time block
-  previousStartTime?: string; // Stored start time before moving into project block
+  inProjectBlock?: boolean;
+  previousStartTime?: string;
 }
 
 export interface Habit {
@@ -51,14 +48,13 @@ export interface Habit {
   group: HabitGroup;
   streak: number;
   status: HabitStatus;
-  completedDates: string[]; // ISO date strings
+  completedDates: string[];
   timeBucket?: TimeBucket;
-  startTime?: string; // Renamed from scheduledTime - HH:mm format
-  // Repeat configuration
+  startTime?: string;
   repeatFrequency: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
-  timesPerDay?: number; // for habits that need to be done multiple times
-  currentDayCount?: number; // how many times completed today
+  repeatDays?: number[];
+  timesPerDay?: number;
+  currentDayCount?: number;
 }
 
 export interface FilterState {
@@ -80,7 +76,10 @@ export interface PlannerState {
   habitGroups: HabitGroupType[];
 }
 
+// ---- Configurable bucket ranges ----
+
 export type BucketRange = { start: number; end: number };
+
 export type ConfigurableBucketRanges = {
   morning: BucketRange;
   afternoon: BucketRange;
@@ -114,6 +113,8 @@ export function formatBucketRange(range: BucketRange): string {
 }
 
 export const BUCKET_HOUR_OPTIONS: number[] = Array.from({ length: 25 }, (_, i) => i); // 0-24
+
+// ---- Labels & defaults ----
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',

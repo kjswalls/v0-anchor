@@ -881,15 +881,10 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
               {/* Current time indicator */}
               {isCurrentHour && showCurrentTimeIndicator && (
                 <div 
-                  className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+                  className="absolute left-0 right-0 h-px pointer-events-none z-10 opacity-30"
                   style={{ top: `${minuteProgress * 100}%` }}
                 >
-                  <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
-                  <div className="absolute left-2 right-0 h-0.5 bg-primary/60 shadow-[0_0_6px_1px] shadow-primary/30" 
-                    style={{ 
-                      background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)'
-                    }} 
-                  />
+                  <div className="absolute left-0 right-0 h-px bg-primary/40" />
                 </div>
               )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
@@ -947,11 +942,42 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode, bucketRanges } = usePlannerStore();
+  const { compactMode, chillMode, bucketRanges, showCurrentTimeIndicator } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
   const timeRangeLabel = bucket === 'anytime' ? 'Flexible' : formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges]);
+
+  // Current time tracking — owned here so it always renders regardless of scheduled items
+  const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
+  useEffect(() => {
+    if (!isCurrentBucket || !showCurrentTimeIndicator || bucket === 'anytime') {
+      setCurrentTime(null);
+      return;
+    }
+    const update = () => {
+      const now = new Date();
+      setCurrentTime({ hour: now.getHours(), minute: now.getMinutes() });
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [isCurrentBucket, showCurrentTimeIndicator, bucket]);
+
+  // Calculate indicator position as a % within the bucket's time range
+  const indicatorStyle = (() => {
+    if (!currentTime || !isCurrentBucket || !showCurrentTimeIndicator || bucket === 'anytime') return null;
+    const range = bucketRanges[bucket as keyof typeof bucketRanges];
+    const rangeStart = range.start;
+    const rangeEnd = range.end; // may be > 24 for overnight
+    const totalMinutes = (rangeEnd - rangeStart) * 60;
+    // Elapsed minutes since bucket start, handling overnight wrap
+    let elapsedHours = currentTime.hour - rangeStart;
+    if (elapsedHours < 0) elapsedHours += 24; // midnight wrap
+    const elapsed = elapsedHours * 60 + currentTime.minute;
+    const pct = Math.min(Math.max(elapsed / totalMinutes, 0), 1) * 100;
+    return pct;
+  })();
 
   // Separate into untimed and scheduled
   const untimedTasks = tasks.filter((t) => !t.startTime);
@@ -1014,7 +1040,20 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       </div>
       
       {/* Content */}
-      <div className={cn(compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
+      <div className={cn('relative', compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
+        {/* Current time indicator — absolute overlay, always visible when in this bucket */}
+        {indicatorStyle !== null && (
+          <div
+            className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+            style={{ top: `${indicatorStyle}%` }}
+          >
+            <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
+            <div
+              className="absolute left-2 right-0 h-0.5"
+              style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)' }}
+            />
+          </div>
+        )}
         {totalItems > 0 ? (
           <>
             {/* Untimed Section */}
