@@ -112,7 +112,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       duration: duration ? parseInt(duration) : undefined,
       startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
-      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
+      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
     });
 
     // Handle scheduling
@@ -329,9 +329,11 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
             </Select>
           </div>
 
-          {repeatFrequency === 'custom' && (
+          {(repeatFrequency === 'weekly' || repeatFrequency === 'custom') && (
             <div className="space-y-2">
-              <Label className="text-sm text-muted-foreground">Select days</Label>
+              <Label className="text-sm text-muted-foreground">
+                {repeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+              </Label>
               <div className="flex gap-1">
                 {WEEKDAY_LABELS.map((day, index) => (
                   <button

@@ -49,6 +49,7 @@ const REPEAT_OPTIONS: { value: RepeatFrequency; label: string }[] = [
   { value: 'weekdays', label: 'Weekdays' },
   { value: 'weekends', label: 'Weekends' },
   { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Custom days' },
 ];
 

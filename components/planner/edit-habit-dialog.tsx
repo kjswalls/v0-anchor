@@ -104,7 +104,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       title: title.trim(),
       group,
       repeatFrequency,
-      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
+      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
       timesPerDay: parseInt(timesPerDay) || 1,
       startTime: startTime || undefined,
     });
@@ -277,9 +277,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
               </Select>
             </div>
 
-            {repeatFrequency === 'custom' && (
+            {(repeatFrequency === 'weekly' || repeatFrequency === 'custom') && (
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Select days</Label>
+                <Label className="text-sm text-muted-foreground">
+                  {repeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+                </Label>
                 <div className="flex gap-1">
                   {WEEKDAY_LABELS.map((day, index) => (
                     <button

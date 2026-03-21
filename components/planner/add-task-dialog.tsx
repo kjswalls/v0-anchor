@@ -186,7 +186,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       timeBucket: taskTimeBucket,
       startTime: taskStartTime || undefined,
       repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
-      repeatDays: taskRepeatFrequency === 'custom' ? taskRepeatDays : undefined,
+      repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
     });
 
     // If a bucket was provided, schedule the task
@@ -210,7 +210,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       timeBucket: habitTimeBucket,
       startTime: habitStartTime || undefined,
       repeatFrequency: habitRepeatFrequency,
-      repeatDays: habitRepeatFrequency === 'custom' ? habitRepeatDays : undefined,
+      repeatDays: (habitRepeatFrequency === 'custom' || habitRepeatFrequency === 'weekly') ? habitRepeatDays : undefined,
       timesPerDay: parseInt(habitTimesPerDay) || 1,
     });
     
@@ -412,9 +412,11 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 </Select>
               </div>
 
-              {taskRepeatFrequency === 'custom' && (
+              {(taskRepeatFrequency === 'weekly' || taskRepeatFrequency === 'custom') && (
                 <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Select days</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    {taskRepeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+                  </Label>
                   <div className="flex gap-1">
                     {WEEKDAY_LABELS.map((day, index) => (
                       <button
@@ -548,9 +550,11 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 </Select>
               </div>
 
-              {habitRepeatFrequency === 'custom' && (
+              {(habitRepeatFrequency === 'weekly' || habitRepeatFrequency === 'custom') && (
                 <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Select days</Label>
+                  <Label className="text-sm text-muted-foreground">
+                    {habitRepeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
+                  </Label>
                   <div className="flex gap-1">
                     {WEEKDAY_LABELS.map((day, index) => (
                       <button
