@@ -39,7 +39,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-constants'; // v2
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface AddTaskDialogProps {
@@ -177,8 +177,14 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const handleAddTask = () => {
     if (!taskTitle.trim()) return;
     
+    const hasSchedule = !!(taskTimeBucket && taskTimeBucket !== 'anytime' && taskStartTime);
+    
     addTask({
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title: taskTitle.trim(),
+      status: 'pending',
+      isScheduled: hasSchedule,
+      order: 0,
       priority: taskPriority,
       project: taskProject || undefined,
       startDate: taskStartDate,
@@ -188,14 +194,6 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
       repeatDays: taskRepeatFrequency === 'custom' ? taskRepeatDays : undefined,
     });
-
-    // If a bucket was provided, schedule the task
-    if (taskTimeBucket) {
-      const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
-      if (newTaskId) {
-        scheduleTask(newTaskId, taskTimeBucket, taskStartTime || undefined);
-      }
-    }
     
     resetForm();
     onOpenChange(false);

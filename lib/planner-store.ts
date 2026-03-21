@@ -140,7 +140,14 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
     // ---- Task operations ----
     addTask: (task) => {
       pushHistory();
-      set((state) => ({ tasks: [...state.tasks, task] }));
+      const newTask: Task = {
+        id: task.id || `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        status: task.status || 'pending',
+        isScheduled: task.isScheduled ?? !!(task.timeBucket && task.timeBucket !== 'anytime'),
+        order: task.order ?? get().tasks.length,
+        ...task,
+      };
+      set((state) => ({ tasks: [...state.tasks, newTask] }));
     },
     updateTask: (id, updates) => {
       pushHistory();

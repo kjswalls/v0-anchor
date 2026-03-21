@@ -30,7 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { usePlannerStore } from '@/lib/planner-store';
-import { EMOJI_OPTIONS } from '@/lib/planner-constants';
+import { EMOJI_OPTIONS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 interface ManageCategoriesDialogProps {
