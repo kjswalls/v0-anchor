@@ -503,7 +503,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
           key = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'No Priority';
           break;
         case 'status':
-          key = task.status.charAt(0).toUpperCase() + task.status.slice(1);
+          key = task.status ? task.status.charAt(0).toUpperCase() + task.status.slice(1) : 'No Status';
           break;
       }
       
