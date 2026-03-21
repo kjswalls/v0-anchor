@@ -273,11 +273,12 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               };
               const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
               const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
-              const isAtSunset = currentMinutes >= sunsetMins;
-              const isAtSunrise = currentMinutes >= sunriseMins && currentMinutes < sunriseMins + 60;
-              if (isAtSunset) return <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />;
-              if (isAtSunrise) return <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />;
-              return null;
+              const isAfterSunset = currentMinutes >= sunsetMins;
+              return isAfterSunset ? (
+                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
+              ) : (
+                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
+              );
             })()}
             Today
           </Button>
