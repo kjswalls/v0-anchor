@@ -551,7 +551,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       <div className="flex border-b border-border">
         <button
           className={cn(
-            'flex-1 py-3 text-sm font-medium transition-colors',
+            'flex-1 py-3 text-base font-medium transition-colors',
             activeTab === 'tasks'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -563,7 +563,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         </button>
         <button
           className={cn(
-            'flex-1 py-3 text-sm font-medium transition-colors',
+            'flex-1 py-3 text-base font-medium transition-colors',
             activeTab === 'habits'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
