@@ -127,7 +127,6 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
             {/* Day columns */}
             {weekDays.map((day) => {
               const { tasks: bucketTasks, habits: bucketHabits } = getItemsByBucket(day, bucket);
-              const totalItems = bucketTasks.length + bucketHabits.length;
               const isSelected = isSameDay(day, selectedDate);
               
               return (
@@ -140,7 +139,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                   )}
                 >
                   {/* Compact task pills */}
-                  {bucketTasks.slice(0, 3).map((task) => (
+                  {bucketTasks.map((task) => (
                     <button
                       key={task.id}
                       onClick={() => onTaskClick(task)}
@@ -163,7 +162,7 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                   ))}
                   
                   {/* Compact habit pills */}
-                  {bucketHabits.slice(0, 2).map((habit) => (
+                  {bucketHabits.map((habit) => (
                     <button
                       key={habit.id}
                       onClick={() => onHabitClick(habit)}
@@ -177,13 +176,6 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                       <span className="truncate">{habit.title}</span>
                     </button>
                   ))}
-                  
-                  {/* Overflow indicator */}
-                  {totalItems > 5 && (
-                    <div className="text-[9px] text-muted-foreground text-center">
-                      +{totalItems - 5} more
-                    </div>
-                  )}
                 </div>
               );
             })}
