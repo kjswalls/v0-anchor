@@ -563,34 +563,30 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     >
       {/* Tab switcher */}
       <div className="flex border-b border-border">
-        {timelineItemFilter !== 'habits' && (
-          <button
-            className={cn(
-              'flex-1 py-3 text-base font-medium transition-colors',
-              activeTab === 'tasks'
-                ? 'text-foreground border-b-2 border-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            onClick={() => setActiveTab('tasks')}
-          >
-            Tasks
-            <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
-          </button>
-        )}
-        {timelineItemFilter !== 'tasks' && (
-          <button
-            className={cn(
-              'flex-1 py-3 text-base font-medium transition-colors',
-              activeTab === 'habits'
-                ? 'text-foreground border-b-2 border-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            onClick={() => setActiveTab('habits')}
-          >
-            Habits
-            <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
-          </button>
-        )}
+        <button
+          className={cn(
+            'flex-1 py-3 text-base font-medium transition-colors',
+            activeTab === 'tasks'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActiveTab('tasks')}
+        >
+          Tasks
+          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
+        </button>
+        <button
+          className={cn(
+            'flex-1 py-3 text-base font-medium transition-colors',
+            activeTab === 'habits'
+              ? 'text-foreground border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+          onClick={() => setActiveTab('habits')}
+        >
+          Habits
+          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
+        </button>
       </div>
 
       {/* Tasks pane */}
