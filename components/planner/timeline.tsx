@@ -520,11 +520,11 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
             <div className="w-12 text-xs text-muted-foreground pt-2 text-right tabular-nums flex-shrink-0">
               {formatHour(hour)}
             </div>
-            <div className="flex-1 border-l border-border/30 pl-3 py-1">
-              <div className="space-y-1.5">
+            <div className={cn('flex-1 border-l border-border/30 pl-3', compactMode ? 'py-0.5' : 'py-1')}>
+              <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
                 {/* Habits */}
                 {items.habits.length > 0 && (
-                  <div className="space-y-2">
+                  <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
                     {items.habits.map((habit) => (
                       <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
                     ))}
@@ -532,7 +532,7 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
                 )}
                 {/* Tasks */}
                 {items.tasks.length > 0 && (
-                  <div className="space-y-2">
+                  <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
                     {items.tasks.map((task) => (
                       <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                     ))}
