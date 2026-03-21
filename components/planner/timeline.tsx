@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket, Priority, HabitStatus, Project } from '@/lib/planner-types';
-import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay } from 'date-fns';
@@ -25,35 +25,30 @@ import { isSameDay } from 'date-fns';
 const bucketConfig: Record<TimeBucket, {
   icon: typeof Clock;
   label: string;
-  timeRange: string;
   bgClass: string;
   borderClass: string;
 }> = {
   anytime: {
     icon: Sparkles,
     label: 'Anytime',
-    timeRange: 'Flexible',
     bgClass: 'bg-anytime/30',
     borderClass: 'border-anytime/50',
   },
   morning: {
     icon: Sunrise,
     label: 'Morning',
-    timeRange: '5am - 12pm',
     bgClass: 'bg-morning/20',
     borderClass: 'border-morning/40',
   },
   afternoon: {
     icon: Sun,
     label: 'Afternoon',
-    timeRange: '12pm - 5pm',
     bgClass: 'bg-afternoon/20',
     borderClass: 'border-afternoon/40',
   },
   evening: {
     icon: Moon,
     label: 'Evening',
-    timeRange: '5pm - 12am',
     bgClass: 'bg-evening/20',
     borderClass: 'border-evening/40',
   },
@@ -692,61 +687,66 @@ function EmptyBucketDropZone({ bucket, isActive }: EmptyBucketDropZoneProps) {
 export function inferDropTime(
   bucket: TimeBucket,
   position: 'empty' | 'before' | 'after',
-  referenceTime?: string
+  referenceTime?: string,
+  customRanges?: { morning: { start: number; end: number }; afternoon: { start: number; end: number }; evening: { start: number; end: number } }
 ): string {
   const now = new Date();
-  const ranges: Record<TimeBucket, { start: number; end: number }> = {
+  const ranges = {
     anytime: { start: 0, end: 24 },
-    morning: { start: 5, end: 12 },
-    afternoon: { start: 12, end: 17 },
-    evening: { start: 17, end: 24 },
+    morning: customRanges?.morning ?? { start: 5, end: 12 },
+    afternoon: customRanges?.afternoon ?? { start: 12, end: 18 },
+    evening: customRanges?.evening ?? { start: 18, end: 30 },
   };
   const range = ranges[bucket];
+  // Normalise end for time arithmetic (mod 24 for display)
+  const endNorm = range.end % 24;
   
   if (position === 'empty') {
-    // Use current time if within bucket, otherwise bucket start
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    if (currentHour >= range.start && currentHour < range.end) {
+    // For overnight buckets (end > 24), check if hour is after start OR before end%24
+    const inBucket = range.end > 24
+      ? (currentHour >= range.start || currentHour < endNorm)
+      : (currentHour >= range.start && currentHour < range.end);
+    if (inBucket) {
       return `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
     }
-    return `${String(range.start).padStart(2, '0')}:00`;
+    return `${String(range.start % 24).padStart(2, '0')}:00`;
   }
   
   if (!referenceTime) {
-    return `${String(range.start).padStart(2, '0')}:00`;
+    return `${String(range.start % 24).padStart(2, '0')}:00`;
   }
   
   const [refHour, refMinute] = referenceTime.split(':').map(Number);
   
   if (position === 'before') {
-    // 30 minutes before reference, but not before bucket start
     let newMinute = refMinute - 30;
     let newHour = refHour;
     if (newMinute < 0) {
       newMinute += 60;
       newHour -= 1;
     }
-    if (newHour < range.start) {
-      newHour = range.start;
+    if (newHour < range.start % 24) {
+      newHour = range.start % 24;
       newMinute = 0;
     }
     return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
   }
   
   // position === 'after'
-  // 30 minutes after reference, but not after bucket end
   let newMinute = refMinute + 30;
   let newHour = refHour;
   if (newMinute >= 60) {
     newMinute -= 60;
     newHour += 1;
   }
-  if (newHour >= range.end) {
-    newHour = range.end - 1;
+  const afterEnd = endNorm === 0 ? 24 : endNorm;
+  if (newHour >= afterEnd && range.end <= 24) {
+    newHour = afterEnd - 1;
     newMinute = 30;
   }
-  return `${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
+  return `${String(newHour % 24).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}`;
 }
 
 interface HourlyGridProps {
@@ -761,28 +761,9 @@ interface HourlyGridProps {
 }
 
 function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHabitClick, isCurrentBucket, recurringProjects = [], activeId }: HourlyGridProps) {
-  const { compactMode, showCurrentTimeIndicator } = usePlannerStore();
+  const { compactMode, bucketRanges } = usePlannerStore();
   const isDragging = !!activeId;
-  const range = TIME_BUCKET_RANGES[bucket];
-  
-  // Current time tracking for the glow indicator
-  const [currentTime, setCurrentTime] = useState<{ hour: number; minute: number } | null>(null);
-  
-  useEffect(() => {
-    if (!isCurrentBucket) {
-      setCurrentTime(null);
-      return;
-    }
-    
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime({ hour: now.getHours(), minute: now.getMinutes() });
-    };
-    
-    updateTime();
-    const interval = setInterval(updateTime, 60000); // Update every minute
-    return () => clearInterval(interval);
-  }, [isCurrentBucket]);
+  const range = bucket === 'anytime' ? { start: 0, end: 24 } : bucketRanges[bucket as keyof typeof bucketRanges];
   
   // Group items by hour
   const itemsByHour: Record<number, { tasks: Task[]; habits: Habit[] }> = {};
@@ -803,22 +784,31 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     }
   });
 
+  // Helper to check if an hour falls within the bucket range (handles overnight wrap)
+  const isHourInRange = (h: number) => {
+    if (range.end <= 24) {
+      // Normal range (e.g., morning 5-12)
+      return h >= range.start && h < range.end;
+    } else {
+      // Overnight range (e.g., evening 18-30 means 6pm to 6am)
+      const endNorm = range.end % 24;
+      return h >= range.start || h < endNorm;
+    }
+  };
+
   // Find hours that have items within the bucket range
   let hoursWithItems = Object.keys(itemsByHour)
     .map(Number)
-    .filter((h) => h >= range.start && h < range.end)
-    .sort((a, b) => a - b);
-
-  // Add current hour to display if in current bucket (even if no items at that hour)
-  if (isCurrentBucket && currentTime && currentTime.hour >= range.start && currentTime.hour < range.end) {
-    if (!hoursWithItems.includes(currentTime.hour)) {
-      hoursWithItems = [...hoursWithItems, currentTime.hour].sort((a, b) => a - b);
-      // Initialize empty items for the current hour
-      if (!itemsByHour[currentTime.hour]) {
-        itemsByHour[currentTime.hour] = { tasks: [], habits: [] };
+    .filter(isHourInRange)
+    .sort((a, b) => {
+      // For overnight buckets, sort so hours after midnight come after hours before midnight
+      if (range.end > 24) {
+        const aAdj = a < range.start ? a + 24 : a;
+        const bAdj = b < range.start ? b + 24 : b;
+        return aAdj - bAdj;
       }
-    }
-  }
+      return a - b;
+    });
 
   // If no items but dragging is active, show empty drop zone
   if (hoursWithItems.length === 0) {
@@ -841,8 +831,10 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
   hoursWithItems.forEach((hour, index) => {
     if (index > 0) {
       const prevHour = hoursWithItems[index - 1];
-      if (hour - prevHour > 1) {
-        // Add a separator for the gap
+      // For overnight buckets, adjust hours after midnight before comparing gap size
+      const prevAdj = range.end > 24 && prevHour < range.start ? prevHour + 24 : prevHour;
+      const currAdj = range.end > 24 && hour < range.start ? hour + 24 : hour;
+      if (currAdj - prevAdj > 1) {
         displayRows.push({ type: 'separator' });
       }
     }
@@ -869,29 +861,12 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
         const { hour, items } = row;
         if (!hour || !items) return null;
         
-        const isCurrentHour = currentTime && currentTime.hour === hour;
-        const minuteProgress = currentTime ? currentTime.minute / 60 : 0;
-        
         return (
           <div key={hour} className="flex gap-2 relative">
             <div className="w-12 text-xs text-muted-foreground pt-2 text-right tabular-nums flex-shrink-0">
               {formatHour(hour)}
             </div>
             <div className={cn('flex-1 border-l border-border/30 pl-3 relative', compactMode ? 'py-0.5' : 'py-1')}>
-              {/* Current time indicator */}
-              {isCurrentHour && showCurrentTimeIndicator && (
-                <div 
-                  className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
-                  style={{ top: `${minuteProgress * 100}%` }}
-                >
-                  <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
-                  <div className="absolute left-2 right-0 h-0.5 bg-primary/60 shadow-[0_0_6px_1px] shadow-primary/30" 
-                    style={{ 
-                      background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)'
-                    }} 
-                  />
-                </div>
-              )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
                 {/* Combine all items sorted by time for drop zone placement */}
                 {(() => {
@@ -947,10 +922,11 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode } = usePlannerStore();
+  const { compactMode, chillMode, bucketRanges } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
+  const timeRangeLabel = bucket === 'anytime' ? 'Flexible' : formatBucketRange(bucketRanges[bucket as keyof typeof bucketRanges]);
 
   // Separate into untimed and scheduled
   const untimedTasks = tasks.filter((t) => !t.startTime);
@@ -981,7 +957,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted-foreground" />
           <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{timeRangeLabel}</span>
           {totalItems > 0 && (
             <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
               {totalItems}
@@ -1117,43 +1093,13 @@ interface TimelineProps {
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
   const { tasks, habits, selectedDate, timelineItemFilter, setTimelineItemFilter, compactMode } = usePlannerStore();
-  const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
   // Filter tasks and habits based on timeline filter
   const filteredTasks = timelineItemFilter === 'habits' ? [] : tasks;
   const filteredHabits = timelineItemFilter === 'tasks' ? [] : habits;
 
-  // Determine current time bucket and update every minute
-  useEffect(() => {
-    setMounted(true);
-    
-    const updateCurrentBucket = () => {
-      const now = new Date();
-      const hour = now.getHours();
-      
-      // Only show glow if viewing today
-      const isToday = isSameDay(now, selectedDate);
-      if (!isToday) {
-        setCurrentBucket(null);
-        return;
-      }
-      
-      // Determine bucket based on hour
-      if (hour >= 5 && hour < 12) {
-        setCurrentBucket('morning');
-      } else if (hour >= 12 && hour < 17) {
-        setCurrentBucket('afternoon');
-      } else if (hour >= 17 || hour < 5) {
-        setCurrentBucket('evening');
-      }
-    };
-
-    updateCurrentBucket();
-    const interval = setInterval(updateCurrentBucket, 60000); // Update every minute
-    
-    return () => clearInterval(interval);
-  }, [selectedDate]);
+  useEffect(() => { setMounted(true); }, []);
 
   // Avoid using searchQuery from store - it's been removed
   const searchQuery = '';
@@ -1326,7 +1272,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   onTaskClick={onTaskClick}
   onHabitClick={onHabitClick}
   onAddClick={onAddClick}
-  isCurrentBucket={mounted && currentBucket === 'morning'}
+  isCurrentBucket={false}
   recurringProjects={recurringProjectsForToday}
   activeId={activeId}
 />
@@ -1337,7 +1283,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   onTaskClick={onTaskClick}
   onHabitClick={onHabitClick}
   onAddClick={onAddClick}
-  isCurrentBucket={mounted && currentBucket === 'afternoon'}
+  isCurrentBucket={false}
   recurringProjects={recurringProjectsForToday}
   activeId={activeId}
 />
@@ -1348,7 +1294,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   onTaskClick={onTaskClick}
   onHabitClick={onHabitClick}
   onAddClick={onAddClick}
-  isCurrentBucket={mounted && currentBucket === 'evening'}
+  isCurrentBucket={false}
   recurringProjects={recurringProjectsForToday}
   activeId={activeId}
 />

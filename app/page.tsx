@@ -1,5 +1,5 @@
 'use client';
-
+// v4 — module graph rebuild
 import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
@@ -49,7 +49,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, scheduleHabit, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, bucketRanges } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -102,7 +102,7 @@ export default function PlannerPage() {
         
         let dropTime: string;
         if (position === 'empty') {
-          dropTime = inferDropTime(bucket, 'empty');
+          dropTime = inferDropTime(bucket, 'empty', undefined, bucketRanges);
         } else {
           // Get reference item's time
           const refItemType = parts[3];
@@ -117,7 +117,7 @@ export default function PlannerPage() {
             refTime = refHabit?.startTime;
           }
           
-          dropTime = inferDropTime(bucket, position, refTime);
+          dropTime = inferDropTime(bucket, position, refTime, bucketRanges);
         }
         
         if (itemType === 'task') {
@@ -126,11 +126,11 @@ export default function PlannerPage() {
           scheduleHabit(itemId, bucket, dropTime);
         }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket without specific time - assign to bucket but keep unscheduled
+        // Dropping on bucket without specific time
         if (itemType === 'task') {
-          assignTaskToBucket(itemId, target as TimeBucket);
+          scheduleTask(itemId, target as TimeBucket);
         } else if (itemType === 'habit') {
-          assignHabitToBucket(itemId, target as TimeBucket);
+          scheduleHabit(itemId, target as TimeBucket);
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule

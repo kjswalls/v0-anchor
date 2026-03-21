@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
+import { formatBucketHour, type ConfigurableBucketRanges } from '@/lib/planner-types';
 import {
   Dialog,
   DialogContent,
@@ -191,7 +192,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
-  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
+  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, bucketRanges, setBucketRanges } = usePlannerStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -325,13 +326,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   onCheckedChange={setAnimationsEnabled}
                 />
               </SettingRow>
-
-              <SettingRow label="Current time indicator" description="Show a glowing line at the current time in Day and Week views">
-                <Switch 
-                  checked={showCurrentTimeIndicator} 
-                  onCheckedChange={setShowCurrentTimeIndicator}
-                />
-              </SettingRow>
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
@@ -400,6 +394,69 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </SelectContent>
                 </Select>
               </SettingRow>
+
+              {/* Bucket time ranges — buckets are contiguous; adjusting a boundary shifts both adjacent buckets */}
+              {(() => {
+                // The three adjustable boundaries are:
+                //   morningStart  : where Morning begins
+                //   morningEnd    : end of Morning = start of Afternoon
+                //   afternoonEnd  : end of Afternoon = start of Evening
+                //   eveningEnd    : end of Evening (may cross midnight, max 30 = 6am next day)
+                const { morning, afternoon, evening } = bucketRanges;
+
+                const update = (field: 'morningStart' | 'morningEnd' | 'afternoonEnd' | 'eveningEnd', val: number) => {
+                  const next = { ...bucketRanges };
+                  if (field === 'morningStart') {
+                    next.morning = { ...morning, start: val };
+                  } else if (field === 'morningEnd') {
+                    // morning end = afternoon start
+                    next.morning = { ...morning, end: val };
+                    next.afternoon = { ...afternoon, start: val };
+                  } else if (field === 'afternoonEnd') {
+                    // afternoon end = evening start
+                    next.afternoon = { ...afternoon, end: val };
+                    next.evening = { ...evening, start: val };
+                  } else {
+                    next.evening = { ...evening, end: val };
+                  }
+                  setBucketRanges(next);
+                };
+
+                const boundaryRow = (
+                  label: string,
+                  description: string,
+                  value: number,
+                  field: 'morningStart' | 'morningEnd' | 'afternoonEnd' | 'eveningEnd',
+                  maxHour = 24,
+                ) => (
+                  <SettingRow key={field} label={label} description={description}>
+                    <Select
+                      value={String(value)}
+                      onValueChange={(v) => update(field, Number(v))}
+                    >
+                      <SelectTrigger className="w-24 h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: maxHour + 1 }, (_, i) => i).map((h) => (
+                          <SelectItem key={h} value={String(h)}>
+                            {formatBucketHour(h)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </SettingRow>
+                );
+
+                return (
+                  <>
+                    {boundaryRow('Morning starts', 'When the Morning bucket begins', morning.start, 'morningStart')}
+                    {boundaryRow('Afternoon starts', 'End of Morning / start of Afternoon', morning.end, 'morningEnd')}
+                    {boundaryRow('Evening starts', 'End of Afternoon / start of Evening', afternoon.end, 'afternoonEnd')}
+                    {boundaryRow('Evening ends', 'End of Evening (can cross midnight)', evening.end, 'eveningEnd', 30)}
+                  </>
+                );
+              })()}
             </SettingsSection>
           </div>
         </div>
