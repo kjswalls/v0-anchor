@@ -74,6 +74,7 @@ interface PlannerStore {
   getProjectColor: (name: string) => string;
   getProject: (name: string) => Project | undefined;
   moveTaskToProjectBlock: (taskId: string) => void;
+  moveTasksToProjectBlock: (taskIds: string[]) => void;
   moveTaskOutOfProjectBlock: (taskId: string) => void;
   
   // Habit group actions
@@ -620,10 +621,40 @@ export const usePlannerStore = create<PlannerStore>()(
                     ...t,
                     inProjectBlock: true,
                     previousStartTime: t.startTime,
+                    previousStartDate: t.startDate,
                     startTime: undefined, // Clear start time when in project block
                     timeBucket: project.timeBucket,
                     isScheduled: true,
-                    startDate: t.startDate || selectedDate, // Ensure startDate is set
+                    startDate: selectedDate, // Always use selected date for project block
+                  }
+                : t
+            ),
+          };
+        });
+      },
+
+      moveTasksToProjectBlock: (taskIds) => {
+        const selectedDate = get().selectedDate;
+        set((state) => {
+          // Get the project from the first task
+          const firstTask = state.tasks.find((t) => taskIds.includes(t.id));
+          if (!firstTask || !firstTask.project) return state;
+          
+          const project = state.projects.find((p) => p.name === firstTask.project);
+          if (!project || !project.startTime || !project.timeBucket) return state;
+          
+          return {
+            tasks: state.tasks.map((t) =>
+              taskIds.includes(t.id) && t.project === project.name
+                ? {
+                    ...t,
+                    inProjectBlock: true,
+                    previousStartTime: t.startTime,
+                    previousStartDate: t.startDate,
+                    startTime: undefined,
+                    timeBucket: project.timeBucket,
+                    isScheduled: true,
+                    startDate: selectedDate, // Always use selected date for project block
                   }
                 : t
             ),
@@ -639,7 +670,9 @@ export const usePlannerStore = create<PlannerStore>()(
                   ...t,
                   inProjectBlock: false,
                   startTime: t.previousStartTime,
+                  startDate: t.previousStartDate,
                   previousStartTime: undefined,
+                  previousStartDate: undefined,
                 }
               : t
           ),

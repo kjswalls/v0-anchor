@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight, ArrowRight, ChevronsRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -548,10 +548,16 @@ interface ProjectBlockProps {
 }
 
 function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
-  const { compactMode, moveTaskOutOfProjectBlock, toggleTaskStatus, getProjectColor, tasks: allTasks } = usePlannerStore();
+  const { compactMode, toggleTaskStatus, getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } = usePlannerStore();
   
-  // Tasks that are inside the project block
+  // Tasks that are inside the project block (for today)
   const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
+  
+  // All incomplete tasks for this project that are NOT in a project block
+  // These are candidates to be moved into the block
+  const availableTasks = allTasks.filter(
+    (t) => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
+  );
   
   const projectColor = getProjectColor(project.name);
   
@@ -563,6 +569,11 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
   // Only allow tasks that belong to this project
   const draggedTask = activeId ? allTasks.find(t => t.id === activeId) : null;
   const canAcceptDrop = draggedTask && draggedTask.project === project.name;
+
+  const handleMoveAll = () => {
+    const taskIds = availableTasks.map((t) => t.id);
+    moveTasksToProjectBlock(taskIds);
+  };
 
   return (
     <div 
@@ -587,8 +598,8 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
       </div>
       
       {/* Tasks inside the block */}
-      {tasksInBlock.length > 0 ? (
-        <div className={compactMode ? 'space-y-1' : 'space-y-2'}>
+      {tasksInBlock.length > 0 && (
+        <div className={cn('mb-3', compactMode ? 'space-y-1' : 'space-y-2')}>
           {tasksInBlock.map((task) => (
             <div key={task.id} className="group/blocktask relative">
               <div
@@ -622,25 +633,55 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
                 )}>
                   {task.title}
                 </span>
-                
-                {/* Move out button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 opacity-0 group-hover/blocktask:opacity-100 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveTaskOutOfProjectBlock(task.id);
-                  }}
-                  title="Restore original time"
-                >
-                  <Minus className="h-3 w-3" />
-                </Button>
               </div>
             </div>
           ))}
         </div>
-      ) : (
+      )}
+
+      {/* Available tasks preview - tasks that can be moved into this block */}
+      {availableTasks.length > 0 ? (
+        <div className="rounded-lg border border-dashed border-border/50 p-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">
+              {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-primary hover:text-primary"
+              onClick={handleMoveAll}
+            >
+              <ChevronsRight className="h-3 w-3 mr-1" />
+              Move all
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {availableTasks.slice(0, 5).map((task) => (
+              <div
+                key={task.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded bg-muted/50 text-xs group/preview"
+              >
+                <span className="flex-1 truncate text-muted-foreground">{task.title}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 opacity-0 group-hover/preview:opacity-100 text-muted-foreground hover:text-primary"
+                  onClick={() => moveTaskToProjectBlock(task.id)}
+                  title="Move to block"
+                >
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+            {availableTasks.length > 5 && (
+              <p className="text-xs text-muted-foreground/70 text-center py-1">
+                +{availableTasks.length - 5} more
+              </p>
+            )}
+          </div>
+        </div>
+      ) : tasksInBlock.length === 0 ? (
         <div className={cn(
           'text-xs text-muted-foreground text-center py-3 rounded-lg border border-dashed border-border/50',
           isOver && canAcceptDrop && 'border-primary bg-primary/5'
@@ -650,10 +691,10 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
           ) : isOver && !canAcceptDrop ? (
             <span className="text-destructive/70">Only {project.name} tasks allowed</span>
           ) : (
-            <span>Drop {project.name} tasks here</span>
+            <span>No tasks for this project</span>
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -977,9 +1018,9 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
 
-  // Separate into untimed and scheduled
-  const untimedTasks = tasks.filter((t) => !t.startTime);
-  const scheduledTasks = tasks.filter((t) => t.startTime);
+  // Separate into untimed and scheduled (exclude tasks in project blocks from regular display)
+  const untimedTasks = tasks.filter((t) => !t.startTime && !t.inProjectBlock);
+  const scheduledTasks = tasks.filter((t) => t.startTime && !t.inProjectBlock);
   const untimedHabits = habits.filter((h) => !h.startTime);
   const scheduledHabits = habits.filter((h) => h.startTime);
 
