@@ -10,6 +10,7 @@ import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
+import { AIChat } from '@/components/planner/ai-chat';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -336,6 +337,9 @@ export default function PlannerPage() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
+
+      {/* AI Chat placeholder */}
+      <AIChat />
 
       {/* Keyboard shortcut delete confirmation */}
       <AlertDialog
