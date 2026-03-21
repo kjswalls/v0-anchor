@@ -107,7 +107,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       <div
         onClick={onClick}
         className={cn(
-          'group/card relative flex gap-3 pr-4 pl-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
+          'group/card relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px] items-center' : 'py-3 min-h-[72px] items-start',
           task.status === 'completed' && 'opacity-60',
         )}
