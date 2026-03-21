@@ -1327,8 +1327,10 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
           // For weekly, check if today matches any of the repeat days
           return p.repeatDays?.includes(today) ?? false;
         case 'monthly':
-          // Show on the 1st of each month (or could be customized)
-          return dateOfMonth === 1;
+          // Show on the configured day of month, or last day if month is shorter
+          const targetDay = p.repeatMonthDay || 1;
+          const lastDayOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0).getDate();
+          return dateOfMonth === Math.min(targetDay, lastDayOfMonth);
         case 'custom':
           // For custom, check if today matches any of the repeat days
           return p.repeatDays?.includes(today) ?? false;

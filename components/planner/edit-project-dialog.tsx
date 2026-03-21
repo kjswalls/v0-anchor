@@ -77,6 +77,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
   const [isCustomDuration, setIsCustomDuration] = useState(false);
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('daily');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatMonthDay, setRepeatMonthDay] = useState<number>(1);
 
   // Reset form when project changes
   useEffect(() => {
@@ -93,6 +94,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
       setCustomDuration(isStandard ? '' : projectDuration.toString());
       setRepeatFrequency(project.repeatFrequency || 'daily');
       setRepeatDays(project.repeatDays || []);
+      setRepeatMonthDay(project.repeatMonthDay || 1);
     }
   }, [project]);
 
@@ -146,6 +148,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
       duration: hasTimeBlock ? finalDuration : undefined,
       repeatFrequency: hasTimeBlock ? repeatFrequency : undefined,
       repeatDays: hasTimeBlock && (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatMonthDay: hasTimeBlock && repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
     });
     
     onOpenChange(false);
@@ -327,6 +330,33 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Day of month selector for monthly repeat */}
+              {repeatFrequency === 'monthly' && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Day of month</Label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setRepeatMonthDay(day)}
+                        className={cn(
+                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                          repeatMonthDay === day
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    For months with fewer days, it will occur on the last day.
+                  </p>
                 </div>
               )}
             </div>

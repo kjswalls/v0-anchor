@@ -67,6 +67,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [taskStartTime, setTaskStartTime] = useState<string>('');
   const [taskRepeatFrequency, setTaskRepeatFrequency] = useState<RepeatFrequency>('none');
   const [taskRepeatDays, setTaskRepeatDays] = useState<number[]>([]);
+  const [taskRepeatMonthDay, setTaskRepeatMonthDay] = useState<number>(1);
   
   // Habit state
   const [habitTitle, setHabitTitle] = useState('');
@@ -75,6 +76,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [habitStartTime, setHabitStartTime] = useState<string>('');
   const [habitRepeatFrequency, setHabitRepeatFrequency] = useState<RepeatFrequency>('daily');
   const [habitRepeatDays, setHabitRepeatDays] = useState<number[]>([]);
+  const [habitRepeatMonthDay, setHabitRepeatMonthDay] = useState<number>(1);
   const [habitTimesPerDay, setHabitTimesPerDay] = useState<string>('1');
   
   // New category state
@@ -108,12 +110,14 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
     setTaskStartTime('');
     setTaskRepeatFrequency('none');
     setTaskRepeatDays([]);
+    setTaskRepeatMonthDay(1);
     setHabitTitle('');
     setHabitGroup(habitGroups[0]?.name || 'personal');
     setHabitTimeBucket(defaultBucket || 'anytime');
     setHabitStartTime('');
     setHabitRepeatFrequency('daily');
     setHabitRepeatDays([]);
+    setHabitRepeatMonthDay(1);
     setHabitTimesPerDay('1');
     setShowNewProject(false);
     setShowNewGroup(false);
@@ -187,6 +191,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       startTime: taskStartTime || undefined,
       repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
       repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
+      repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
     });
 
     // If a bucket was provided, schedule the task
@@ -211,6 +216,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       startTime: habitStartTime || undefined,
       repeatFrequency: habitRepeatFrequency,
       repeatDays: (habitRepeatFrequency === 'custom' || habitRepeatFrequency === 'weekly') ? habitRepeatDays : undefined,
+      repeatMonthDay: habitRepeatFrequency === 'monthly' ? habitRepeatMonthDay : undefined,
       timesPerDay: parseInt(habitTimesPerDay) || 1,
     });
     
@@ -436,6 +442,32 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </div>
                 </div>
               )}
+
+              {taskRepeatFrequency === 'monthly' && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Day of month</Label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setTaskRepeatMonthDay(day)}
+                        className={cn(
+                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                          taskRepeatMonthDay === day
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    For months with fewer days, it will occur on the last day.
+                  </p>
+                </div>
+              )}
               
               <Button onClick={handleAddTask} className="w-full mt-4">
                 Add Task
@@ -572,6 +604,32 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {habitRepeatFrequency === 'monthly' && (
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Day of month</Label>
+                  <div className="grid grid-cols-7 gap-1">
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setHabitRepeatMonthDay(day)}
+                        className={cn(
+                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                          habitRepeatMonthDay === day
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                        )}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    For months with fewer days, it will occur on the last day.
+                  </p>
                 </div>
               )}
 

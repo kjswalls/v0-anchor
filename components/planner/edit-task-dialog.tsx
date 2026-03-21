@@ -60,6 +60,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   const [startTime, setStartTime] = useState<string>('');
   const [repeatFrequency, setRepeatFrequency] = useState<RepeatFrequency>('none');
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatMonthDay, setRepeatMonthDay] = useState<number>(1);
   
   // New project state
   const [showNewProject, setShowNewProject] = useState(false);
@@ -77,6 +78,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setStartTime(task.startTime || '');
       setRepeatFrequency(task.repeatFrequency || 'none');
       setRepeatDays(task.repeatDays || []);
+      setRepeatMonthDay(task.repeatMonthDay || 1);
       setShowNewProject(false);
       setNewProjectName('');
       setNewProjectEmoji('');
@@ -113,6 +115,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
       repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatMonthDay: repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
     });
 
     // Handle scheduling
@@ -351,6 +354,32 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {repeatFrequency === 'monthly' && (
+            <div className="space-y-2">
+              <Label className="text-sm text-muted-foreground">Day of month</Label>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => setRepeatMonthDay(day)}
+                    className={cn(
+                      'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
+                      repeatMonthDay === day
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    )}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                For months with fewer days, it will occur on the last day.
+              </p>
             </div>
           )}
         </div>

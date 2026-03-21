@@ -14,6 +14,7 @@ export interface Project {
   // Optional scheduling for project time blocks
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   timeBucket?: TimeBucket;
   startTime?: string; // HH:mm format
   duration?: number; // in minutes
@@ -39,6 +40,7 @@ export interface Task {
   // Repeat configuration
   repeatFrequency?: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   order: number;
   // Project block tracking
   inProjectBlock?: boolean; // Whether task is inside its project's time block
@@ -60,6 +62,7 @@ export interface Habit {
   // Repeat configuration
   repeatFrequency: RepeatFrequency;
   repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
+  repeatMonthDay?: number; // 1-31 for monthly repeat
   timesPerDay?: number; // for habits that need to be done multiple times
   currentDayCount?: number; // how many times completed today
 }
