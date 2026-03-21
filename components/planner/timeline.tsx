@@ -1094,9 +1094,13 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           </>
         ) : (
           <div className={cn('text-center', compactMode ? 'py-3' : 'py-6')}>
-            <p className="text-sm text-muted-foreground/70">
-              Drag tasks here or use + buttons above
-            </p>
+            {activeId && bucket !== 'anytime' ? (
+              <EmptyBucketDropZone bucket={bucket} isActive={true} />
+            ) : (
+              <p className="text-sm text-muted-foreground/70">
+                Drag tasks here or use + buttons above
+              </p>
+            )}
           </div>
         )}
       </div>
