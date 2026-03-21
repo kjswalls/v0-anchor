@@ -30,6 +30,18 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: 'Delete the task currently under the mouse (shows confirmation)',
     keys: ['Backspace'],
   },
+  {
+    id: 'undo',
+    label: 'Undo',
+    description: 'Undo the last action',
+    keys: ['ctrl', 'z'],
+  },
+  {
+    id: 'redo',
+    label: 'Redo',
+    description: 'Redo the last undone action',
+    keys: ['ctrl', 'shift', 'z'],
+  },
 ];
 
 interface KeyboardShortcutsStore {
