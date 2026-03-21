@@ -221,12 +221,17 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
 
   // Handle increment for multi-complete habits
   const handleIncrement = () => {
-    if (habit.timesPerDay && habit.timesPerDay > 1 && habit.status === 'pending') {
-      const newCount = (habit.currentDayCount || 0) + 1;
-      if (newCount >= habit.timesPerDay) {
-        toggleHabitStatus(habit.id, 'done', habit.timesPerDay);
-      } else {
-        toggleHabitStatus(habit.id, 'pending', newCount);
+    if (habit.timesPerDay && habit.timesPerDay > 1) {
+      if (habit.status === 'done') {
+        // Uncheck: drop back to one below the target
+        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1);
+      } else if (habit.status === 'pending') {
+        const newCount = (habit.currentDayCount || 0) + 1;
+        if (newCount >= habit.timesPerDay) {
+          toggleHabitStatus(habit.id, 'done', habit.timesPerDay);
+        } else {
+          toggleHabitStatus(habit.id, 'pending', newCount);
+        }
       }
     } else {
       // Regular toggle
