@@ -247,7 +247,7 @@ export default function PlannerPage() {
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col overflow-hidden">
             {/* Item visibility toggle - centered above timeline, respects sidebar */}
-            <div className="flex justify-center px-4 py-3 border-b border-border flex-shrink-0">
+            <div className="flex justify-center items-center px-4 border-b border-border flex-shrink-0 h-16">
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
                 <Button
                   variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
