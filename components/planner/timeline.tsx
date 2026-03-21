@@ -949,7 +949,6 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const Icon = config.icon;
   const { compactMode, chillMode } = usePlannerStore();
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
-  const { isOver: isOverUntimed, setNodeRef: setUntimedNodeRef } = useDroppable({ id: `untimed:${bucket}` });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
 
@@ -1019,14 +1018,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           <>
             {/* Untimed Section - always show when dragging, show when there are items */}
             {((untimedHabits.length > 0 || untimedTasks.length > 0) || (activeId && bucket !== 'anytime')) && (
-              <div
-                ref={setUntimedNodeRef}
-                className={cn(
-                  'rounded-lg transition-all',
-                  isOverUntimed && 'bg-primary/10 ring-1 ring-primary/30',
-                  compactMode ? 'space-y-1 p-1' : 'space-y-3 p-2'
-                )}
-              >
+              <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
                 {/* Untimed Habits */}
                 {untimedHabits.length > 0 && (
                   <div className="flex gap-2">
