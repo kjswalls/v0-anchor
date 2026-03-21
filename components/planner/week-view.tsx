@@ -7,6 +7,7 @@ import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
@@ -30,7 +31,7 @@ const bucketTimes: Record<TimeBucket, string> = {
 };
 
 export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
 
   // Get the start of the week (Sunday)
   const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 0 }), [selectedDate]);
@@ -75,8 +76,8 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
     const { tasks: dayTasks, habits: dayHabits } = getItemsForDay(date);
     
     return {
-      tasks: dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled),
-      habits: dayHabits.filter((h) => h.timeBucket === bucket),
+      tasks: timelineItemFilter === 'habits' ? [] : dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled),
+      habits: timelineItemFilter === 'tasks' ? [] : dayHabits.filter((h) => h.timeBucket === bucket),
     };
   };
 
@@ -86,6 +87,36 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
         'p-4 flex flex-col',
         compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
       )}>
+        {/* Item visibility toggle */}
+        <div className="flex justify-center flex-shrink-0">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
+            <Button
+              variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('all')}
+            >
+              All
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('tasks')}
+            >
+              Tasks
+            </Button>
+            <Button
+              variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setTimelineItemFilter('habits')}
+            >
+              Habits
+            </Button>
+          </div>
+        </div>
+
         {/* Week header with day names and dates */}
         <div className="grid grid-cols-8 gap-1 flex-shrink-0">
           {/* Empty cell for time labels */}
