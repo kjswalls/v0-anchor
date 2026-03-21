@@ -108,7 +108,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         onClick={onClick}
         className={cn(
           'group/card relative flex gap-3 pr-4 pl-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
-          compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
+          compactMode ? 'py-2 min-h-[52px] items-center' : 'py-3 min-h-[72px] items-start',
           task.status === 'completed' && 'opacity-60',
         )}
       >
@@ -129,7 +129,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             toggleTaskStatus(task.id);
           }}
           className={cn(
-            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors self-start mt-0.5 relative z-10',
+            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+            compactMode ? 'self-center' : 'self-start mt-0.5',
             task.status === 'completed'
               ? 'bg-primary border-primary'
               : 'border-muted-foreground/40 hover:border-primary'
@@ -192,7 +193,10 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-5 w-5 opacity-0 group-hover/card:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 self-start relative z-10"
+          className={cn(
+            'h-5 w-5 opacity-0 group-hover/card:opacity-100 text-muted-foreground hover:text-foreground transition-opacity flex-shrink-0 relative z-10',
+            compactMode ? 'self-center' : 'self-start'
+          )}
           onClick={(e) => {
             e.stopPropagation();
             unscheduleTask(task.id);
