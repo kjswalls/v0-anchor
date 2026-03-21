@@ -1209,12 +1209,16 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       evening: [],
     };
 
+    // Include all tasks that have a timeBucket assigned (scheduled or unscheduled)
     tasksForDate
-      .filter((task) => task.isScheduled && task.timeBucket)
+      .filter((task) => task.timeBucket)
       .sort((a, b) => {
+        // Scheduled tasks (with startTime) come first, sorted by time
         if (a.startTime && b.startTime) {
           return a.startTime.localeCompare(b.startTime);
         }
+        if (a.startTime && !b.startTime) return -1;
+        if (!a.startTime && b.startTime) return 1;
         return a.order - b.order;
       })
       .forEach((task) => {
