@@ -803,16 +803,43 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     }
   });
 
+  // Helper to check if an hour falls within the bucket range (handles overnight wrap)
+  const isHourInRange = (h: number) => {
+    if (range.end <= 24) {
+      // Normal range (e.g., morning 5-12)
+      return h >= range.start && h < range.end;
+    } else {
+      // Overnight range (e.g., evening 18-30 means 6pm to 6am)
+      const endNorm = range.end % 24;
+      return h >= range.start || h < endNorm;
+    }
+  };
+
   // Find hours that have items within the bucket range
   let hoursWithItems = Object.keys(itemsByHour)
     .map(Number)
-    .filter((h) => h >= range.start && h < range.end)
-    .sort((a, b) => a - b);
+    .filter(isHourInRange)
+    .sort((a, b) => {
+      // For overnight buckets, sort so hours after midnight come after hours before midnight
+      if (range.end > 24) {
+        const aAdj = a < range.start ? a + 24 : a;
+        const bAdj = b < range.start ? b + 24 : b;
+        return aAdj - bAdj;
+      }
+      return a - b;
+    });
 
   // Add current hour to display if in current bucket (even if no items at that hour)
-  if (isCurrentBucket && currentTime && currentTime.hour >= range.start && currentTime.hour < range.end) {
+  if (isCurrentBucket && currentTime && isHourInRange(currentTime.hour)) {
     if (!hoursWithItems.includes(currentTime.hour)) {
-      hoursWithItems = [...hoursWithItems, currentTime.hour].sort((a, b) => a - b);
+      hoursWithItems = [...hoursWithItems, currentTime.hour].sort((a, b) => {
+        if (range.end > 24) {
+          const aAdj = a < range.start ? a + 24 : a;
+          const bAdj = b < range.start ? b + 24 : b;
+          return aAdj - bAdj;
+        }
+        return a - b;
+      });
       // Initialize empty items for the current hour
       if (!itemsByHour[currentTime.hour]) {
         itemsByHour[currentTime.hour] = { tasks: [], habits: [] };
@@ -1047,8 +1074,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             className="absolute left-0 right-0 h-1 pointer-events-none z-20 flex items-center"
             style={{ top: `${indicatorStyle}%` }}
           >
-            <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/60 flex-shrink-0" />
-            <div className="flex-1 h-0.5 bg-primary/70 shadow-[0_0_4px_1px] shadow-primary/40" />
+            <div className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50 flex-shrink-0" />
+            <div className="flex-1 h-px bg-primary/30" />
           </div>
         )}
         {totalItems > 0 ? (
