@@ -62,7 +62,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onClick }: TaskCardProps) {
-  const { toggleTaskStatus, unscheduleTask, getProjectEmoji } = usePlannerStore();
+  const { toggleTaskStatus, unscheduleTask, getProjectEmoji, setHoveredItem } = usePlannerStore();
   const {
     attributes,
     listeners,
@@ -88,6 +88,8 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       ref={setNodeRef}
       style={style}
       onClick={onClick}
+      onMouseEnter={() => setHoveredItem(task.id, 'task')}
+      onMouseLeave={() => setHoveredItem(null, null)}
       className={cn(
         'group relative flex gap-3 px-4 py-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
         task.status === 'completed' && 'opacity-60',
@@ -201,7 +203,7 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem } = usePlannerStore();
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
@@ -269,6 +271,8 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   return (
     <div
       onClick={onClick}
+      onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
+      onMouseLeave={() => setHoveredItem(null, null)}
       className={cn(
         'group relative flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer w-full min-h-[72px] overflow-hidden',
         'border-border/60 hover:border-border',

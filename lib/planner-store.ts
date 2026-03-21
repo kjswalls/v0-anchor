@@ -27,6 +27,10 @@ interface PlannerStore {
   projects: Project[];
   habitGroups: HabitGroupType[];
   timelineItemFilter: 'all' | 'tasks' | 'habits';
+  /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
+  hoveredItemId: string | null;
+  hoveredItemType: 'task' | 'habit' | null;
+  setHoveredItem: (id: string | null, type: 'task' | 'habit' | null) => void;
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
@@ -226,6 +230,9 @@ export const usePlannerStore = create<PlannerStore>()(
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
       timelineItemFilter: 'all' as const,
+      hoveredItemId: null,
+      hoveredItemType: null,
+      setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
       
       addTask: (taskData) => {
         // Auto-correct bucket based on start time

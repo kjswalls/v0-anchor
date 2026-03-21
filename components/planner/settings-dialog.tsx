@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -78,6 +80,77 @@ function SettingRow({ label, description, children }: { label: string; descripti
   );
 }
 
+const MODIFIER_LABELS: Record<ShortcutBinding['modifier'], string> = {
+  '': 'None',
+  ctrl: 'Ctrl',
+  meta: '⌘',
+  shift: 'Shift',
+  alt: 'Alt',
+};
+
+function ShortcutRow({ binding }: { binding: ShortcutBinding }) {
+  const { updateShortcut } = useKeyboardShortcutsStore();
+  const [recording, setRecording] = useState(false);
+
+  const handleStartRecording = () => setRecording(true);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Ignore bare modifier presses
+    if (['Control', 'Meta', 'Shift', 'Alt'].includes(e.key)) return;
+
+    const modifier: ShortcutBinding['modifier'] = e.ctrlKey
+      ? 'ctrl'
+      : e.metaKey
+      ? 'meta'
+      : e.shiftKey
+      ? 'shift'
+      : e.altKey
+      ? 'alt'
+      : '';
+
+    updateShortcut(binding.id, { key: e.key, modifier });
+    setRecording(false);
+  };
+
+  const displayKey = binding.key === ' ' ? 'Space' : binding.key;
+  const displayModifier = MODIFIER_LABELS[binding.modifier];
+
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="space-y-0.5 flex-1">
+        <p className="text-sm text-foreground">{binding.label}</p>
+        <p className="text-xs text-muted-foreground">{binding.description}</p>
+      </div>
+      <button
+        onKeyDown={handleKeyDown}
+        onBlur={() => setRecording(false)}
+        onClick={handleStartRecording}
+        className={cn(
+          'flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono transition-colors outline-none min-w-[80px] justify-center',
+          recording
+            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+            : 'border-border bg-muted text-foreground hover:border-primary/50'
+        )}
+      >
+        {recording ? (
+          <span className="animate-pulse text-primary">Press key...</span>
+        ) : (
+          <>
+            {binding.modifier && (
+              <span className="opacity-70">{displayModifier}+</span>
+            )}
+            <span>{displayKey}</span>
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
   const [language, setLanguage] = useState('en');
@@ -91,6 +164,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
+  const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -217,6 +291,29 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   onCheckedChange={setAnimationsEnabled}
                 />
               </SettingRow>
+            </SettingsSection>
+
+            {/* Keyboard Shortcuts */}
+            <SettingsSection
+              title="Keyboard Shortcuts"
+              icon={<Keyboard className="h-4 w-4" />}
+            >
+              <div className="space-y-4">
+                {shortcuts.map((binding) => (
+                  <ShortcutRow key={binding.id} binding={binding} />
+                ))}
+              </div>
+              <div className="pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+                  onClick={resetShortcuts}
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Reset to defaults
+                </Button>
+              </div>
             </SettingsSection>
 
             {/* Calendar */}

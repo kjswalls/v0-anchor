@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
 import { Timeline } from '@/components/planner/timeline';
@@ -10,7 +10,18 @@ import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DndContext,
   closestCenter,
@@ -36,7 +47,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, scheduleTask, unscheduleTask } = usePlannerStore();
+  const { tasks, habits, scheduleTask, unscheduleTask, deleteTask, deleteHabit, hoveredItemId, hoveredItemType } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -46,6 +57,8 @@ export default function PlannerPage() {
   const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Keyboard shortcut delete confirmation
+  const [shortcutDeleteTarget, setShortcutDeleteTarget] = useState<{ id: string; type: 'task' | 'habit'; title: string } | null>(null);
   
   useEffect(() => {
     setMounted(true);
@@ -116,6 +129,41 @@ export default function PlannerPage() {
   const handleOpenSettings = () => {
     setSettingsOpen(true);
   };
+
+  // Keyboard shortcut handlers
+  const handleShortcutNewTask = useCallback(() => {
+    setAddDialogTab('task');
+    setAddDialogBucket(undefined);
+    setAddDialogOpen(true);
+  }, []);
+
+  const handleShortcutEdit = useCallback(() => {
+    if (!hoveredItemId || !hoveredItemType) return;
+    if (hoveredItemType === 'task') {
+      const task = tasks.find((t) => t.id === hoveredItemId);
+      if (task) setEditingTask(task);
+    } else {
+      const habit = habits.find((h) => h.id === hoveredItemId);
+      if (habit) setEditingHabit(habit);
+    }
+  }, [hoveredItemId, hoveredItemType, tasks, habits]);
+
+  const handleShortcutDelete = useCallback(() => {
+    if (!hoveredItemId || !hoveredItemType) return;
+    if (hoveredItemType === 'task') {
+      const task = tasks.find((t) => t.id === hoveredItemId);
+      if (task) setShortcutDeleteTarget({ id: task.id, type: 'task', title: task.title });
+    } else {
+      const habit = habits.find((h) => h.id === hoveredItemId);
+      if (habit) setShortcutDeleteTarget({ id: habit.id, type: 'habit', title: habit.title });
+    }
+  }, [hoveredItemId, hoveredItemType, tasks, habits]);
+
+  useKeyboardShortcuts({
+    new_task: handleShortcutNewTask,
+    edit_hovered: handleShortcutEdit,
+    delete_hovered: handleShortcutDelete,
+  });
 
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
@@ -190,6 +238,40 @@ export default function PlannerPage() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
+
+      {/* Keyboard shortcut delete confirmation */}
+      <AlertDialog
+        open={!!shortcutDeleteTarget}
+        onOpenChange={(open) => !open && setShortcutDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {shortcutDeleteTarget?.type === 'habit' ? 'Habit' : 'Task'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete &quot;{shortcutDeleteTarget?.title}&quot;. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (!shortcutDeleteTarget) return;
+                if (shortcutDeleteTarget.type === 'task') {
+                  deleteTask(shortcutDeleteTarget.id);
+                } else {
+                  deleteHabit(shortcutDeleteTarget.id);
+                }
+                setShortcutDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DndContext>
   );
 }
