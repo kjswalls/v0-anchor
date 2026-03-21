@@ -1333,7 +1333,8 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       <button
         onClick={goToPreviousDay}
         aria-label="Go to previous day"
-        className="group absolute left-0 top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        style={{ left: 'calc(50% - 24rem)' }}
       >
         {/* Chevron hint */}
         <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
@@ -1439,7 +1440,8 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       <button
         onClick={goToNextDay}
         aria-label="Go to next day"
-        className="group absolute right-0 top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        style={{ right: 'calc(50% - 24rem)' }}
       >
         {/* Chevron hint */}
         <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
