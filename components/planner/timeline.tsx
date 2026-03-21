@@ -681,7 +681,7 @@ function EmptyBucketDropZone({ bucket, isActive }: EmptyBucketDropZoneProps) {
     >
       <div className="h-full flex items-center justify-center">
         <span className={cn('text-xs', isOver ? 'text-primary' : 'text-muted-foreground')}>
-          Drop to schedule with time
+          Drop here to schedule with time
         </span>
       </div>
     </div>
