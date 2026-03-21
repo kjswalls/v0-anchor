@@ -948,6 +948,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const config = bucketConfig[bucket];
   const Icon = config.icon;
   const { compactMode, chillMode } = usePlannerStore();
+  // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
@@ -959,10 +960,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   const scheduledHabits = habits.filter((h) => h.startTime);
 
   const totalItems = tasks.length + habits.length;
+  const hasScheduled = scheduledTasks.length > 0 || scheduledHabits.length > 0;
+  const hasUntimed = untimedTasks.length > 0 || untimedHabits.length > 0;
 
   return (
     <div
-      ref={setNodeRef}
       className={cn(
         'rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
@@ -972,145 +974,151 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Header */}
-      <div className={cn(
-        'rounded-t-lg flex items-center justify-between',
-        compactMode ? 'px-4 py-2' : 'px-4 py-3',
-        config.bgClass,
-      )}>
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-          <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
-          {totalItems > 0 && (
-            <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
-              {totalItems}
-            </Badge>
-          )}
+      {/* Header + untimed section wrapped together as the unscheduled drop zone */}
+      <div ref={setNodeRef}>
+        {/* Header */}
+        <div className={cn(
+          'rounded-t-lg flex items-center justify-between',
+          compactMode ? 'px-4 py-2' : 'px-4 py-3',
+          config.bgClass,
+        )}>
+          <div className="flex items-center gap-2">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
+            <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+            {totalItems > 0 && (
+              <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
+                {totalItems}
+              </Badge>
+            )}
+          </div>
+          
+          {/* Add buttons */}
+          <div className={cn('flex items-center gap-1 transition-opacity', !showExtras && 'opacity-0')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => onAddClick(bucket, 'task')}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Task
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => onAddClick(bucket, 'habit')}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Habit
+            </Button>
+          </div>
         </div>
-        
-        {/* Add buttons */}
-        <div className={cn('flex items-center gap-1 transition-opacity', !showExtras && 'opacity-0')}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => onAddClick(bucket, 'task')}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Task
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => onAddClick(bucket, 'habit')}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Habit
-          </Button>
-        </div>
-      </div>
-      
-      {/* Content */}
-      <div className={cn(compactMode ? 'p-2 space-y-2' : 'p-3 space-y-4')}>
-        {totalItems > 0 ? (
-          <>
-            {/* Untimed Section - always show when dragging, show when there are items */}
-            {((untimedHabits.length > 0 || untimedTasks.length > 0) || (activeId && bucket !== 'anytime')) && (
-              <div className={cn(compactMode ? 'space-y-1' : 'space-y-3')}>
-                {/* Untimed Habits */}
-                {untimedHabits.length > 0 && (
-                  <div className="flex gap-2">
-                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
-                      Habits
-                    </div>
-                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
-                      {untimedHabits.map((habit) => (
-                        <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Untimed Tasks */}
-                {untimedTasks.length > 0 && (
-                  <div className="flex gap-2">
-                    <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
-                      Tasks
-                    </div>
-                    <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
-                      {untimedTasks.map((task) => (
-                        <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Empty drop zone when dragging with no items */}
-                {untimedHabits.length === 0 && untimedTasks.length === 0 && activeId && (
-                  <div className="py-4 text-center text-xs text-muted-foreground/50 border border-dashed border-border rounded px-2">
-                    Drop here for unscheduled
-                  </div>
-                )}
+
+        {/* Untimed section — part of the unscheduled drop zone */}
+        {(hasUntimed || (activeId && !hasScheduled)) && (
+          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3')}>
+            {/* Untimed Habits */}
+            {untimedHabits.length > 0 && (
+              <div className="flex gap-2">
+                <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                  Habits
+                </div>
+                <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                  {untimedHabits.map((habit) => (
+                    <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Divider between untimed and scheduled */}
-            {(untimedHabits.length > 0 || untimedTasks.length > 0) && (scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
-              <div className="flex items-center gap-2 py-1">
-                <div className="flex-1 h-px bg-border" />
-                <Clock className="h-3 w-3 text-muted-foreground/50" />
-                <div className="flex-1 h-px bg-border" />
+            {/* Untimed Tasks */}
+            {untimedTasks.length > 0 && (
+              <div className="flex gap-2">
+                <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+                  Tasks
+                </div>
+                <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                  {untimedTasks.map((task) => (
+                    <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Project blocks for this bucket */}
-            {recurringProjects
-              .filter((p) => p.timeBucket === bucket)
-              .map((project) => {
-                const projectTasks = tasks.filter((t) => t.project === project.name);
-                return (
-                  <ProjectBlock
-                    key={project.name}
-                    project={project}
-                    tasks={projectTasks}
-                    onTaskClick={onTaskClick}
-                  />
-                );
-              })}
-
-            {/* Scheduled Section (hourly grid) */}
-            {(scheduledTasks.length > 0 || scheduledHabits.length > 0) && bucket !== 'anytime' && (
-              <HourlyGrid
-                bucket={bucket}
-                scheduledTasks={scheduledTasks}
-                scheduledHabits={scheduledHabits}
-                onTaskClick={onTaskClick}
-                onHabitClick={onHabitClick}
-                isCurrentBucket={isCurrentBucket}
-                recurringProjects={recurringProjects}
-                activeId={activeId}
-              />
-            )}
-            
-            {/* Empty bucket drop zone when dragging */}
-            {scheduledTasks.length === 0 && scheduledHabits.length === 0 && bucket !== 'anytime' && activeId && (
-              <EmptyBucketDropZone bucket={bucket} isActive={true} />
-            )}
-          </>
-        ) : (
-          <div className={cn('text-center', compactMode ? 'py-3' : 'py-6')}>
-            {activeId && bucket !== 'anytime' ? (
-              <EmptyBucketDropZone bucket={bucket} isActive={true} />
-            ) : (
-              <p className="text-sm text-muted-foreground/70">
-                Drag tasks here or use + buttons above
-              </p>
+            {/* Placeholder when dragging and no untimed items but also no scheduled items */}
+            {!hasUntimed && activeId && !hasScheduled && (
+              <div className="py-4 text-center text-xs text-muted-foreground/50">
+                Drop here to add unscheduled
+              </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Scheduled section — separate from the unscheduled drop zone */}
+      {(hasScheduled || (activeId && hasUntimed)) && (
+        <div className={cn(compactMode ? 'px-2 pb-2' : 'px-3 pb-3')}>
+          {/* Divider */}
+          {hasUntimed && hasScheduled && bucket !== 'anytime' && (
+            <div className={cn('flex items-center gap-2', compactMode ? 'py-1 mt-1' : 'py-1 mt-3')}>
+              <div className="flex-1 h-px bg-border" />
+              <Clock className="h-3 w-3 text-muted-foreground/50" />
+              <div className="flex-1 h-px bg-border" />
+            </div>
+          )}
+
+          {/* Project blocks */}
+          {recurringProjects
+            .filter((p) => p.timeBucket === bucket)
+            .map((project) => {
+              const projectTasks = tasks.filter((t) => t.project === project.name);
+              return (
+                <ProjectBlock
+                  key={project.name}
+                  project={project}
+                  tasks={projectTasks}
+                  onTaskClick={onTaskClick}
+                />
+              );
+            })}
+
+          {/* Scheduled hourly grid */}
+          {hasScheduled && bucket !== 'anytime' && (
+            <HourlyGrid
+              bucket={bucket}
+              scheduledTasks={scheduledTasks}
+              scheduledHabits={scheduledHabits}
+              onTaskClick={onTaskClick}
+              onHabitClick={onHabitClick}
+              isCurrentBucket={isCurrentBucket}
+              recurringProjects={recurringProjects}
+              activeId={activeId}
+            />
+          )}
+
+          {/* Empty schedule drop zone when dragging and there are untimed items but no scheduled ones */}
+          {!hasScheduled && bucket !== 'anytime' && activeId && hasUntimed && (
+            <div className={cn(compactMode ? 'mt-1' : 'mt-3')}>
+              <EmptyBucketDropZone bucket={bucket} isActive={true} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Completely empty bucket */}
+      {totalItems === 0 && (
+        <div className={cn('text-center', compactMode ? 'p-2' : 'p-3')}>
+          {activeId && bucket !== 'anytime' ? (
+            <EmptyBucketDropZone bucket={bucket} isActive={true} />
+          ) : (
+            <p className="text-sm text-muted-foreground/70">
+              Drag tasks here or use + buttons above
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
