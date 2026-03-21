@@ -1328,13 +1328,13 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         </div>
         {/* Fade mask toward the right edge */}
         <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
-        {/* Bucket skeletons */}
-        <div className={cn('flex flex-col w-full', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+        {/* Bucket skeletons — vertically centered */}
+        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
           {bucketOrder.map((b) => {
             const cfg = bucketConfig[b];
-            const count = Math.max(prevBucketCounts[b], 1);
+            const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
             return (
-              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-50', cfg.borderClass)}>
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
                 {/* Header */}
                 <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
                   <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
@@ -1420,13 +1420,13 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         </div>
         {/* Fade mask toward the left edge */}
         <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
-        {/* Bucket skeletons */}
-        <div className={cn('flex flex-col w-full', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
+        {/* Bucket skeletons — vertically centered */}
+        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5')}>
           {bucketOrder.map((b) => {
             const cfg = bucketConfig[b];
-            const count = Math.max(nextBucketCounts[b], 1);
+            const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);
             return (
-              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-50', cfg.borderClass)}>
+              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
                 {/* Header */}
                 <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
                   <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
