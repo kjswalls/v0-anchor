@@ -209,8 +209,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
         {/* Action buttons - back to sidebar and delete */}
         <div className={cn(
-          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10',
-          compactMode ? 'self-center' : 'self-start'
+          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10 self-center',
         )}>
           {/* Move to project block button */}
           {canMoveToBlock && (
