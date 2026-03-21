@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight, ArrowRight, ChevronsRight } from 'lucide-react';
+import { Clock, Sunrise, Sun, Moon, Sparkles, Check, X, SkipForward, Flame, GripVertical, Plus, Repeat, Minus, Trash2, ArrowLeftToLine, ChevronLeft, ChevronRight, ArrowRight, ChevronsRight } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
