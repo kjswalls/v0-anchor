@@ -75,11 +75,15 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               const data = await response.json();
               if (data.results?.sunset) {
                 const sunsetDate = new Date(data.results.sunset);
-                setSunsetTime(sunsetDate.toISOString().split('T')[1].substring(0, 5));
+                const hours = sunsetDate.getHours().toString().padStart(2, '0');
+                const minutes = sunsetDate.getMinutes().toString().padStart(2, '0');
+                setSunsetTime(`${hours}:${minutes}`);
               }
               if (data.results?.sunrise) {
                 const sunriseDate = new Date(data.results.sunrise);
-                setSunriseTime(sunriseDate.toISOString().split('T')[1].substring(0, 5));
+                const hours = sunriseDate.getHours().toString().padStart(2, '0');
+                const minutes = sunriseDate.getMinutes().toString().padStart(2, '0');
+                setSunriseTime(`${hours}:${minutes}`);
               }
             },
             () => {
@@ -274,7 +278,6 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
               const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
               const isAfterSunset = currentMinutes >= sunsetMins;
-              console.log("[v0] Current time:", now.toLocaleTimeString(), "currentMinutes:", currentMinutes, "sunsetTime:", sunsetTime, "sunsetMins:", sunsetMins, "isAfterSunset:", isAfterSunset);
               return isAfterSunset ? (
                 <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
               ) : (
