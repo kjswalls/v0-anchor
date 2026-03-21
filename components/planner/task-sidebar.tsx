@@ -551,7 +551,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       <div className="flex border-b border-border">
         <button
           className={cn(
-            'flex-1 py-2.5 text-xs font-medium transition-colors',
+            'flex-1 py-3 text-sm font-medium transition-colors',
             activeTab === 'tasks'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -559,11 +559,11 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
           onClick={() => setActiveTab('tasks')}
         >
           Tasks
-          <span className="ml-1.5 text-muted-foreground/70">({unscheduledTasks.length})</span>
+          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
         </button>
         <button
           className={cn(
-            'flex-1 py-2.5 text-xs font-medium transition-colors',
+            'flex-1 py-3 text-sm font-medium transition-colors',
             activeTab === 'habits'
               ? 'text-foreground border-b-2 border-primary'
               : 'text-muted-foreground hover:text-foreground'
@@ -571,7 +571,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
           onClick={() => setActiveTab('habits')}
         >
           Habits
-          <span className="ml-1.5 text-muted-foreground/70">({habits.length})</span>
+          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
         </button>
       </div>
 
@@ -614,21 +614,34 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
                 {filters.project && (
                   <Badge variant="secondary" className="text-xs h-5 px-2 gap-1">
                     {filters.project}
-                    <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => setFilters({ ...filters, project: undefined })} />
+                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, project: undefined }); }} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 )}
                 {filters.priority && (
                   <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
                     {filters.priority}
-                    <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => setFilters({ ...filters, priority: undefined })} />
+                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, priority: undefined }); }} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 )}
                 {filters.status && (
                   <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
                     {filters.status}
-                    <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => setFilters({ ...filters, status: undefined })} />
+                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, status: undefined }); }} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 )}
+                <button
+                  className="flex items-center px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
+                  onClick={() => clearFilters()}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear all
+                </button>
               </div>
             )}
           </div>
@@ -719,8 +732,17 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
                   {habitStatusFilter}
-                  <X className="h-3 w-3 cursor-pointer hover:text-destructive" onClick={() => setHabitStatusFilter('all')} />
+                  <button onClick={(e) => { e.stopPropagation(); setHabitStatusFilter('all'); }} className="hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
+                <button
+                  className="flex items-center px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
+                  onClick={() => setHabitStatusFilter('all')}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear all
+                </button>
               </div>
             )}
           </div>
