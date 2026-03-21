@@ -30,6 +30,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [sunsetTime, setSunsetTime] = useState<string | null>(null);
+  const [sunriseTime, setSunriseTime] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,18 +77,25 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
                 const sunsetDate = new Date(data.results.sunset);
                 setSunsetTime(sunsetDate.toISOString().split('T')[1].substring(0, 5));
               }
+              if (data.results?.sunrise) {
+                const sunriseDate = new Date(data.results.sunrise);
+                setSunriseTime(sunriseDate.toISOString().split('T')[1].substring(0, 5));
+              }
             },
             () => {
               // Fallback: use default sunset time of 18:00 if geolocation fails
               setSunsetTime('18:00');
+              setSunriseTime('06:00');
             }
           );
         } else {
           setSunsetTime('18:00');
+          setSunriseTime('06:00');
         }
       } catch (error) {
         // Fallback to default if API fails
         setSunsetTime('18:00');
+        setSunriseTime('06:00');
       }
     };
     
@@ -258,14 +266,18 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           >
             {mounted && isToday(selectedDate) && (() => {
               const now = new Date();
-              const currentTime = now.getHours().toString().padStart(2, '0') + ':' + 
-                                  now.getMinutes().toString().padStart(2, '0');
-              const isNight = sunsetTime ? currentTime >= sunsetTime : now.getHours() < 6 || now.getHours() >= 20;
-              return isNight ? (
-                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
-              ) : (
-                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
-              );
+              const currentMinutes = now.getHours() * 60 + now.getMinutes();
+              const toMinutes = (hhmm: string) => {
+                const [h, m] = hhmm.split(':').map(Number);
+                return h * 60 + m;
+              };
+              const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
+              const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
+              const isAtSunset = currentMinutes >= sunsetMins;
+              const isAtSunrise = currentMinutes >= sunriseMins && currentMinutes < sunriseMins + 60;
+              if (isAtSunset) return <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />;
+              if (isAtSunrise) return <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />;
+              return null;
             })()}
             Today
           </Button>
