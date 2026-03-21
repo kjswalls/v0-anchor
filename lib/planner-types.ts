@@ -115,6 +115,8 @@ export function formatBucketRange(range: BucketRange): string {
 }
 
 export const BUCKET_HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i); // 0-24
+
+export const PRIORITY_LABELS: Record<Priority, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
