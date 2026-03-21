@@ -123,31 +123,37 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   high: 'High',
 };
 
+export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export const DEFAULT_PROJECTS: Project[] = [
-  { name: 'Work', emoji: '💼' },
-  { name: 'Wellness', emoji: '🧘' },
-  { name: 'Personal', emoji: '🏠' },
+  {
+    name: 'Personal',
+    emoji: '✨',
+  },
+  {
+    name: 'Work',
+    emoji: '💼',
+  },
+  {
+    name: 'Health',
+    emoji: '🏃',
+  },
 ];
 
 export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
-  { name: 'Wellness', emoji: '💚' },
-  { name: 'Work', emoji: '💼' },
-  { name: 'Personal', emoji: '⭐' },
-];
-
-export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
-  none: 'No repeat',
-  daily: 'Every day',
-  weekly: 'Once a week',
-  weekdays: 'Weekdays only',
-  weekends: 'Weekends only',
-  custom: 'Custom days',
-};
-
-export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-export const EMOJI_OPTIONS = [
-  '💼', '🧘', '🏠', '📚', '💪', '🎯', '🌟', '⭐', '💚', '❤️',
-  '🔥', '✨', '🎨', '🎵', '🏃', '🧠', '💡', '📝', '🎮', '🍎',
-  '☕', '🌱', '🔔', '📊', '🛠️', '🎓', '💰', '🌈', '🚀', '🎁',
+  {
+    name: 'Physical',
+    emoji: '💪',
+    color: '#FF6B6B',
+  },
+  {
+    name: 'Mental',
+    emoji: '🧠',
+    color: '#4ECDC4',
+  },
+  {
+    name: 'Learning',
+    emoji: '📚',
+    color: '#FFE66D',
+  },
 ];

@@ -1009,6 +1009,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     const elapsedHours = adjustedHour - range.start;
     const elapsed = elapsedHours * 60 + currentTime.minute;
     const pct = Math.min(Math.max(elapsed / totalMinutes, 0), 1) * 100;
+    console.log("[v0] Indicator calc:", { bucket, currentTime, range, totalMinutes, adjustedHour, elapsedHours, elapsed, pct });
     return pct;
   })();
 
