@@ -101,7 +101,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+          'self-center flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
             : 'border-muted-foreground/40 hover:border-primary'
@@ -220,7 +220,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
 
       {/* Status circle */}
       <div className={cn(
-        'mt-0.5 flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+        'self-center flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
         habit.status === 'done' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
       )}>
         {habit.status === 'done' && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
