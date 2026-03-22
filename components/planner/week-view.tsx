@@ -33,26 +33,30 @@ const bucketTimes: Record<TimeBucket, string> = {
 };
 
 // Bucket styling config matching the day view
-const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowClass: string }> = {
+const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowClass: string; glowColor: string }> = {
   anytime: {
     borderClass: 'border-anytime/50',
     bgClass: 'bg-anytime/30',
-    glowClass: 'shadow-[0_0_12px_-2px] shadow-anytime/30',
+    glowClass: 'ring-2 ring-anytime/40',
+    glowColor: 'var(--anytime)',
   },
   morning: {
     borderClass: 'border-morning/40',
     bgClass: 'bg-morning/20',
-    glowClass: 'shadow-[0_0_12px_-2px] shadow-morning/40',
+    glowClass: 'ring-2 ring-morning/50',
+    glowColor: 'var(--morning)',
   },
   afternoon: {
     borderClass: 'border-afternoon/40',
     bgClass: 'bg-afternoon/20',
-    glowClass: 'shadow-[0_0_12px_-2px] shadow-afternoon/40',
+    glowClass: 'ring-2 ring-afternoon/50',
+    glowColor: 'var(--afternoon)',
   },
   evening: {
     borderClass: 'border-evening/40',
     bgClass: 'bg-evening/20',
-    glowClass: 'shadow-[0_0_12px_-2px] shadow-evening/40',
+    glowClass: 'ring-2 ring-evening/50',
+    glowColor: 'var(--evening)',
   },
 };
 
@@ -167,9 +171,10 @@ interface DroppableCellProps {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
+  style?: React.CSSProperties;
 }
 
-function DroppableCell({ dropId, children, className, disabled }: DroppableCellProps) {
+function DroppableCell({ dropId, children, className, disabled, style }: DroppableCellProps) {
   const { isOver, setNodeRef } = useDroppable({ 
     id: dropId,
     disabled: disabled,
@@ -182,6 +187,7 @@ function DroppableCell({ dropId, children, className, disabled }: DroppableCellP
         className,
         !disabled && isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
       )}
+      style={style}
     >
       {children}
     </div>
@@ -403,6 +409,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       isToday(day) && !isSelected && style.bgClass,
                       isCurrentCell && style.glowClass
                     )}
+                    style={isCurrentCell ? { boxShadow: `0 0 16px -2px ${style.glowColor}` } : undefined}
                   >
                     {/* Add button - only for today and future days */}
                     {onAddClick && !isPastDay && (
