@@ -215,3 +215,8 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Radial gradient utility for chevron backgrounds */
+.bg-gradient-radial {
+  background: radial-gradient(circle, var(--tw-gradient-from) 0%, var(--tw-gradient-via) 50%, var(--tw-gradient-to) 100%);
+}
