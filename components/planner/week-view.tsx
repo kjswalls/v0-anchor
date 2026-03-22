@@ -330,8 +330,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             })}
           </div>
         </div>
-        {/* Fade mask + chevron on hover */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        {/* Fade mask - always visible, fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Chevron on hover */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="flex flex-col items-center gap-1">
             <span className="text-[9px] font-medium text-muted-foreground">Previous</span>
             <span className="text-[9px] font-medium text-muted-foreground">week</span>
@@ -569,8 +571,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             })}
           </div>
         </div>
-        {/* Fade mask + chevron on hover */}
-        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        {/* Fade mask - always visible, fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Chevron on hover */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="flex flex-col items-center gap-1">
             <span className="text-[9px] font-medium text-muted-foreground">Next</span>
             <span className="text-[9px] font-medium text-muted-foreground">week</span>
