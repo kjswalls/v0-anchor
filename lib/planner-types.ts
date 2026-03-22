@@ -31,7 +31,7 @@ export interface Task {
   title: string;
   priority?: Priority;
   project?: string;
-  startDate?: Date; // Changed from dueDate - determines which day this shows on
+  startDate?: Date | string; // yyyy-MM-dd string or Date object - determines which day this shows on
   status: TaskStatus;
   timeBucket?: TimeBucket;
   startTime?: string; // Renamed from scheduledTime - HH:mm format
@@ -45,7 +45,7 @@ export interface Task {
   // Project block tracking
   inProjectBlock?: boolean; // Whether task is inside its project's time block
   previousStartTime?: string; // Stored start time before moving into project block
-  previousStartDate?: Date; // Stored start date before moving into project block
+  previousStartDate?: Date | string; // Stored start date before moving into project block
 }
 
 export interface Habit {

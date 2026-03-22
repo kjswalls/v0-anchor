@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { format } from 'date-fns';
 import type {
   Task,
   Habit,
@@ -191,7 +192,8 @@ const getBucketForTime = (time: string): TimeBucket => {
 };
 
 // Sample data for demonstration
-const today = new Date();
+// Store dates as yyyy-MM-dd strings to avoid timezone/serialization issues
+const todayStr = format(new Date(), 'yyyy-MM-dd');
 const initialTasks: Task[] = [
   {
     id: '1',
@@ -202,7 +204,7 @@ const initialTasks: Task[] = [
     isScheduled: true,
     timeBucket: 'morning',
     startTime: '09:00',
-    startDate: today,
+    startDate: todayStr,
     duration: 60,
     repeatFrequency: 'weekdays',
     order: 0,
@@ -215,7 +217,7 @@ const initialTasks: Task[] = [
     status: 'pending',
     isScheduled: true,
     timeBucket: 'morning',
-    startDate: today,
+    startDate: todayStr,
     duration: 20,
     order: 1,
   },
@@ -226,7 +228,7 @@ const initialTasks: Task[] = [
     project: 'Work',
     status: 'pending',
     isScheduled: false,
-    startDate: today,
+    startDate: todayStr,
     order: 2,
   },
   {
@@ -238,7 +240,7 @@ const initialTasks: Task[] = [
     isScheduled: true,
     timeBucket: 'afternoon',
     startTime: '14:00',
-    startDate: today,
+    startDate: todayStr,
     duration: 30,
     order: 3,
   },
@@ -250,7 +252,7 @@ const initialTasks: Task[] = [
     status: 'pending',
     isScheduled: true,
     timeBucket: 'evening',
-    startDate: today,
+    startDate: todayStr,
     duration: 45,
     order: 4,
   },
@@ -259,7 +261,7 @@ const initialTasks: Task[] = [
     title: 'Plan tomorrow',
     status: 'pending',
     isScheduled: false,
-    startDate: today,
+    startDate: todayStr,
     order: 5,
   },
 ];
@@ -443,6 +445,10 @@ export const usePlannerStore = create<PlannerStore>()(
                   isScheduled: true, 
                   timeBucket: finalBucket, 
                   startTime: time,
+                  // Clear project block state when scheduling to a bucket
+                  inProjectBlock: false,
+                  previousStartTime: undefined,
+                  previousStartDate: undefined,
                   ...(date ? { startDate: date } : {})
                 }
               : t
@@ -456,7 +462,16 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
-              ? { ...t, isScheduled: false, timeBucket: bucket, startTime: undefined }
+              ? { 
+                  ...t, 
+                  isScheduled: false, 
+                  timeBucket: bucket, 
+                  startTime: undefined,
+                  // Clear project block state when assigning to a bucket
+                  inProjectBlock: false,
+                  previousStartTime: undefined,
+                  previousStartDate: undefined,
+                }
               : t
           ),
         }));
@@ -689,6 +704,8 @@ export const usePlannerStore = create<PlannerStore>()(
 
       moveTaskToProjectBlock: (taskId) => {
         const selectedDate = get().selectedDate;
+        // Store date as string to avoid serialization issues with Date objects
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         set((state) => {
           const task = state.tasks.find((t) => t.id === taskId);
           if (!task || !task.project) return state;
@@ -707,7 +724,7 @@ export const usePlannerStore = create<PlannerStore>()(
                     startTime: undefined, // Clear start time when in project block
                     timeBucket: project.timeBucket,
                     isScheduled: true,
-                    startDate: selectedDate, // Always use selected date for project block
+                    startDate: selectedDateStr, // Store as string to avoid timezone issues
                   }
                 : t
             ),
@@ -717,9 +734,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
       moveTasksToProjectBlock: (taskIds) => {
         const selectedDate = get().selectedDate;
+        // Store date as string to avoid serialization issues with Date objects
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         set((state) => {
           // Get the project from the first task
-          const firstTask = state.tasks.find((t) => taskIds.includes(t.id));
+          const firstTask = state.tasks.find(t => taskIds.includes(t.id));
           if (!firstTask || !firstTask.project) return state;
           
           const project = state.projects.find((p) => p.name === firstTask.project);
@@ -727,16 +746,16 @@ export const usePlannerStore = create<PlannerStore>()(
           
           return {
             tasks: state.tasks.map((t) =>
-              taskIds.includes(t.id) && t.project === project.name
+              taskIds.includes(t.id)
                 ? {
                     ...t,
                     inProjectBlock: true,
                     previousStartTime: t.startTime,
                     previousStartDate: t.startDate,
-                    startTime: undefined,
+                    startTime: undefined, // Clear start time when in project block
                     timeBucket: project.timeBucket,
                     isScheduled: true,
-                    startDate: selectedDate, // Always use selected date for project block
+                    startDate: selectedDateStr, // Store as string to avoid timezone issues
                   }
                 : t
             ),

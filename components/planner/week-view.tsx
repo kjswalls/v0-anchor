@@ -16,7 +16,7 @@ interface WeekViewProps {
   onAddClick?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
-const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
+const TIME_BUCKETS: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
 
 const bucketLabels: Record<TimeBucket, string> = {
   anytime: 'Anytime',
@@ -130,21 +130,31 @@ function DraggableTaskPill({ task, onClick }: DraggableTaskPillProps) {
 interface WeekProjectBlockProps {
   project: Project;
   tasks: Task[];
+  allTasks: Task[];
   onTaskClick: (task: Task) => void;
 }
 
-function WeekProjectBlock({ project, tasks, onTaskClick }: WeekProjectBlockProps) {
+function WeekProjectBlock({ project, tasks, allTasks, onTaskClick }: WeekProjectBlockProps) {
   const { getProjectColor } = usePlannerStore();
-  const projectTasks = tasks.filter(t => t.project === project.id);
   const projectColor = getProjectColor(project.name);
   
-  if (projectTasks.length === 0) return null;
+  // Tasks that are inside the project block (for this bucket/day)
+  const tasksInBlock = tasks.filter(t => t.project === project.name && t.inProjectBlock);
+  
+  // All incomplete tasks for this project that are NOT in a project block (available to add)
+  const availableTasks = allTasks.filter(
+    t => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
+  );
+  
+  // Show block if there are tasks inside or available tasks
+  const hasContent = tasksInBlock.length > 0 || availableTasks.length > 0;
   
   return (
     <div 
       className="rounded-lg border-2 border-dashed p-1.5 space-y-0.5"
       style={{ borderColor: projectColor }}
     >
+      {/* Project header */}
       <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-0.5">
         {project.emoji && <span>{project.emoji}</span>}
         <span className="truncate font-medium">{project.name}</span>
@@ -154,9 +164,41 @@ function WeekProjectBlock({ project, tasks, onTaskClick }: WeekProjectBlockProps
           </span>
         )}
       </div>
-      {projectTasks.map((task) => (
+      
+      {/* Tasks inside the block */}
+      {tasksInBlock.map((task) => (
         <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
       ))}
+      
+      {/* Available tasks preview (compact) */}
+      {availableTasks.length > 0 && (
+        <div className="border-t border-border/30 pt-0.5 mt-0.5">
+          <div className="text-[8px] text-muted-foreground/60 mb-0.5">
+            {availableTasks.length} available
+          </div>
+          {availableTasks.slice(0, 2).map((task) => (
+            <div
+              key={task.id}
+              onClick={() => onTaskClick(task)}
+              className="text-[9px] text-muted-foreground truncate cursor-pointer hover:text-foreground transition-colors pl-1"
+            >
+              {task.title}
+            </div>
+          ))}
+          {availableTasks.length > 2 && (
+            <div className="text-[8px] text-muted-foreground/50 pl-1">
+              +{availableTasks.length - 2} more
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Show empty state if recurring block has no content */}
+      {!hasContent && (
+        <div className="text-[8px] text-muted-foreground/50 text-center py-0.5">
+          No tasks
+        </div>
+      )}
     </div>
   );
 }
@@ -167,23 +209,40 @@ interface DroppableCellProps {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
-  style?: React.CSSProperties;
+  glowColor?: string;
 }
 
-function DroppableCell({ dropId, children, className, disabled, style }: DroppableCellProps) {
+function DroppableCell({ dropId, children, className, disabled, glowColor }: DroppableCellProps) {
   const { isOver, setNodeRef } = useDroppable({ 
     id: dropId,
     disabled: disabled,
   });
+  
+  // Combine glow effect with drop zone ring effect
+  // Both use box-shadow, so we need to merge them
+  // Use the same blue as Tailwind's ring-primary (hsl(221.2 83.2% 53.3%))
+  const combinedStyle: React.CSSProperties | undefined = (() => {
+    const glowShadow = glowColor ? `0 0 25px -3px ${glowColor}` : null;
+    const ringShadow = !disabled && isOver ? 'inset 0 0 0 2px hsl(221.2 83.2% 53.3%)' : null;
+    
+    if (glowShadow && ringShadow) {
+      return { boxShadow: `${glowShadow}, ${ringShadow}` };
+    } else if (glowShadow) {
+      return { boxShadow: glowShadow };
+    } else if (ringShadow) {
+      return { boxShadow: ringShadow };
+    }
+    return undefined;
+  })();
   
   return (
     <div
       ref={setNodeRef}
       className={cn(
         className,
-        !disabled && isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
+        !disabled && isOver && 'bg-primary/5'
       )}
-      style={style}
+      style={combinedStyle}
     >
       {children}
     </div>
@@ -221,46 +280,60 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   const prevWeekDate = useMemo(() => subWeeks(selectedDate, 1), [selectedDate]);
   const nextWeekDate = useMemo(() => addWeeks(selectedDate, 1), [selectedDate]);
 
+  // Helper to normalize date to yyyy-MM-dd string
+  // Handles both Date objects and strings (ISO or yyyy-MM-dd format)
+  const normalizeDateStr = (dateValue: Date | string): string => {
+    if (typeof dateValue === 'string') {
+      // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
+      // For ISO strings, extract just the date part (ignore timezone)
+      return dateValue.includes('T') 
+        ? dateValue.split('T')[0]
+        : dateValue;
+    } else {
+      // For Date objects, use format which respects local timezone
+      return format(dateValue, 'yyyy-MM-dd');
+    }
+  };
+
   // Get tasks and habits for a specific day
   const getItemsForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
-      // Handle both Date objects and string formats for startDate
-      const taskDateStr = typeof task.startDate === 'string' 
-        ? task.startDate 
-        : format(task.startDate, 'yyyy-MM-dd');
+      const taskDateStr = normalizeDateStr(task.startDate);
       return taskDateStr === dateStr;
     });
 
-    // For habits, check if they should show on this day
-    const dayOfWeek = date.getDay();
-    const dayHabits = habits.filter((habit) => {
-      switch (habit.repeatFrequency) {
-        case 'daily':
-          return true;
-        case 'weekdays':
-          return dayOfWeek >= 1 && dayOfWeek <= 5;
-        case 'weekends':
-          return dayOfWeek === 0 || dayOfWeek === 6;
-        case 'weekly':
-          return habit.repeatDays?.includes(dayOfWeek) ?? false;
-        default:
-          return false;
-      }
-    });
+    // For habits - show all habits to match the day view behavior
+    // The day view shows all habits regardless of repeat frequency
+    // Individual habit filtering by day is handled elsewhere if needed
+    const dayHabits = habits;
 
     return { tasks: dayTasks, habits: dayHabits };
   };
 
-  // Group items by bucket
+  // Group items by bucket - separate scheduled and unscheduled
   const getItemsByBucket = (date: Date, bucket: TimeBucket) => {
     const { tasks: dayTasks, habits: dayHabits } = getItemsForDay(date);
     
+    const bucketTasks = timelineItemFilter === 'habits' ? [] : dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled);
+    const bucketHabits = timelineItemFilter === 'tasks' ? [] : dayHabits.filter((h) => h.timeBucket === bucket);
+    
+    // Separate into scheduled (has startTime) and unscheduled
+    const unscheduledHabits = bucketHabits.filter(h => !h.startTime);
+    const scheduledHabits = bucketHabits.filter(h => h.startTime);
+    const unscheduledTasks = bucketTasks.filter(t => !t.startTime && !t.inProjectBlock);
+    const scheduledTasks = bucketTasks.filter(t => t.startTime || t.inProjectBlock);
+    
     return {
-      tasks: timelineItemFilter === 'habits' ? [] : dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled),
-      habits: timelineItemFilter === 'tasks' ? [] : dayHabits.filter((h) => h.timeBucket === bucket),
+      tasks: bucketTasks,
+      habits: bucketHabits,
+      unscheduledHabits,
+      scheduledHabits,
+      unscheduledTasks,
+      scheduledTasks,
+      dayTasks, // All tasks for this day (for project block available tasks)
     };
   };
 
@@ -272,6 +345,34 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     // Find projects that have tasks in this bucket
     const projectIds = [...new Set(bucketTasks.filter(t => t.project).map(t => t.project!))];
     return projects.filter(p => projectIds.includes(p.id) && p.startTime && p.timeBucket === bucket);
+  };
+
+  // Get recurring project blocks for a specific date
+  const getRecurringProjectsForDate = (date: Date) => {
+    const dayOfWeek = date.getDay(); // 0 = Sunday
+    const dateOfMonth = date.getDate(); // 1-31
+    return projects.filter((p) => {
+      if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
+      
+      switch (p.repeatFrequency) {
+        case 'daily':
+          return true;
+        case 'weekdays':
+          return dayOfWeek >= 1 && dayOfWeek <= 5;
+        case 'weekends':
+          return dayOfWeek === 0 || dayOfWeek === 6;
+        case 'weekly':
+          return p.repeatDays?.includes(dayOfWeek) ?? false;
+        case 'monthly':
+          const targetDay = p.repeatMonthDay || 1;
+          const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+          return dateOfMonth === Math.min(targetDay, lastDayOfMonth);
+        case 'custom':
+          return p.repeatDays?.includes(dayOfWeek) ?? false;
+        default:
+          return false;
+      }
+    });
   };
 
   const navigateToPrevWeek = () => {
@@ -397,13 +498,27 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
               
               {/* Day columns */}
               {weekDays.map((day) => {
-                const { tasks: bucketTasks, habits: bucketHabits } = getItemsByBucket(day, bucket);
+                const { 
+                  tasks: bucketTasks, 
+                  unscheduledHabits, 
+                  scheduledHabits,
+                  unscheduledTasks, 
+                  scheduledTasks,
+                  dayTasks 
+                } = getItemsByBucket(day, bucket);
                 const projectBlocks = getProjectBlocksForBucket(day, bucket);
+                const recurringProjects = getRecurringProjectsForDate(day).filter(p => p.timeBucket === bucket);
                 const isSelected = isSameDay(day, selectedDate);
                 const isPastDay = isBefore(startOfDay(day), startOfDay(new Date()));
                 
-                // Get tasks not in project blocks
-                const tasksNotInBlocks = bucketTasks.filter(t => !projectBlocks.some(p => p.id === t.project));
+                // Combine project blocks and recurring projects (avoid duplicates)
+                const allProjectBlocks = [
+                  ...projectBlocks,
+                  ...recurringProjects.filter(rp => !projectBlocks.some(pb => pb.id === rp.id))
+                ];
+                
+                // Get tasks not in project blocks - only unscheduled tasks outside blocks
+                const tasksNotInBlocks = unscheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project));
                 
                 // Determine if the current time falls in this bucket for today
                 const style = bucketStyles[bucket];
@@ -427,11 +542,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     // Evening: 5pm-12am (7 hours)
                     isCurrentCell = true;
                     minuteProgress = ((hour - 17) * 60 + minute) / (7 * 60);
-                  } else if (bucket === 'anytime') {
-                    // Anytime is always "current" if viewing today
-                    isCurrentCell = true;
-                    minuteProgress = (hour * 60 + minute) / (24 * 60);
-                  }
+  // Anytime bucket is never the "current" time bucket - it has no specific hours
+  }
                 }
                 
                 // Generate drop ID that matches the format expected by DnD handler
@@ -449,9 +561,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       isSelected && 'border-primary/30 bg-primary/5',
                       isToday(day) && !isSelected && style.bgClass
                     )}
-                    style={isCurrentCell ? { 
-                      boxShadow: `0 0 25px -3px ${style.glowColor}`,
-                    } as React.CSSProperties : undefined}
+                    glowColor={isCurrentCell ? style.glowColor : undefined}
                   >
                     {/* Add button - only for today and future days */}
                     {onAddClick && !isPastDay && (
@@ -474,37 +584,24 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     {/* Uses white in dark mode, dark gray in light mode for visibility */}
                     {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
-                        className="absolute -left-4 -right-1 pointer-events-none z-10"
+                        className="absolute -left-4 -right-1 z-10 group/indicator"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        {/* Clock icon to the left, centered vertically with dot */}
-                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={3} />
+                        {/* Invisible hover area covering the entire indicator */}
+                        <div className="absolute left-0 right-0 -top-1.5 -bottom-1.5 cursor-default" />
+                        {/* Clock icon to the left - only visible on hover of the indicator area */}
+                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
                         {/* Glowing dot */}
-                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50" />
+                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 pointer-events-none" />
                         {/* Dashed line */}
                         <div
-                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50"
+                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 pointer-events-none"
                         />
                       </div>
                     )}
                     
-                    {/* Project blocks */}
-                    {projectBlocks.map((project) => (
-                      <WeekProjectBlock
-                        key={project.id}
-                        project={project}
-                        tasks={bucketTasks}
-                        onTaskClick={onTaskClick}
-                      />
-                    ))}
-                    
-                    {/* Tasks not in project blocks - draggable */}
-                    {tasksNotInBlocks.map((task) => (
-                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                    ))}
-                    
-                    {/* Compact habit pills */}
-                    {bucketHabits.map((habit) => (
+                    {/* 1. Unscheduled habits first (matching day view order) */}
+                    {unscheduledHabits.map((habit) => (
                       <button
                         key={habit.id}
                         onClick={() => onHabitClick(habit)}
@@ -517,6 +614,44 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         <Flame className="w-2 h-2 text-primary flex-shrink-0" />
                         <span className="truncate">{habit.title}</span>
                       </button>
+                    ))}
+                    
+                    {/* 2. Unscheduled tasks not in project blocks */}
+                    {tasksNotInBlocks.map((task) => (
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                    ))}
+                    
+                    {/* 3. Project blocks (including recurring) - contains scheduled items */}
+                    {allProjectBlocks.map((project) => (
+                      <WeekProjectBlock
+                        key={project.id}
+                        project={project}
+                        tasks={bucketTasks}
+                        allTasks={tasks}
+                        onTaskClick={onTaskClick}
+                      />
+                    ))}
+                    
+                    {/* 4. Scheduled habits */}
+                    {scheduledHabits.map((habit) => (
+                      <button
+                        key={habit.id}
+                        onClick={() => onHabitClick(habit)}
+                        className={cn(
+                          'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
+                          'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
+                          habit.status === 'done' && 'opacity-50'
+                        )}
+                      >
+                        <Clock className="w-2 h-2 text-primary flex-shrink-0" />
+                        <span className="truncate">{habit.title}</span>
+                        {habit.startTime && <span className="text-[8px] text-muted-foreground ml-auto">{habit.startTime}</span>}
+                      </button>
+                    ))}
+                    
+                    {/* 5. Scheduled tasks (with startTime, not in project blocks) */}
+                    {scheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project)).map((task) => (
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
                     ))}
                   </DroppableCell>
                 );
