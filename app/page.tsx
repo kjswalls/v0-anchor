@@ -256,37 +256,42 @@ export default function PlannerPage() {
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col overflow-hidden">
-            {/* Item visibility toggle and action feed - centered above timeline */}
-            <div className="flex justify-center items-center px-4 border-b border-border flex-shrink-0 h-16 gap-6">
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
-                <Button
-                  variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setTimelineItemFilter('all')}
-                >
-                  All
-                </Button>
-                <Button
-                  variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setTimelineItemFilter('tasks')}
-                >
-                  Tasks
-                </Button>
-                <Button
-                  variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => setTimelineItemFilter('habits')}
-                >
-                  Habits
-                </Button>
+            {/* Item visibility toggle and action feed - toggle centered, feed on right */}
+            <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
+              {/* Centered visibility toggle */}
+              <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
+                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary pointer-events-auto">
+                  <Button
+                    variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setTimelineItemFilter('all')}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setTimelineItemFilter('tasks')}
+                  >
+                    Tasks
+                  </Button>
+                  <Button
+                    variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setTimelineItemFilter('habits')}
+                  >
+                    Habits
+                  </Button>
+                </div>
               </div>
               
-              {/* Action feed near undo/redo */}
-              <ActionFeed />
+              {/* Action feed positioned on the right */}
+              <div className="ml-auto z-10">
+                <ActionFeed />
+              </div>
             </div>
 
             <div className="flex-1 flex flex-col bg-background overflow-hidden">
