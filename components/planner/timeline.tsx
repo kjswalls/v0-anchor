@@ -1113,7 +1113,33 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode } = usePlannerStore();
+  const { compactMode, chillMode, showCurrentTimeIndicator } = usePlannerStore();
+  
+  // Calculate time progress within bucket for the indicator
+  const [timeProgress, setTimeProgress] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isCurrentBucket) {
+      setTimeProgress(null);
+      return;
+    }
+    const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
+      anytime: { start: 0, end: 24 },
+      morning: { start: 5, end: 12 },
+      afternoon: { start: 12, end: 17 },
+      evening: { start: 17, end: 24 },
+    };
+    const range = bucketRanges[bucket];
+    const update = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const progress = ((hour - range.start) * 60 + minute) / ((range.end - range.start) * 60);
+      setTimeProgress(Math.max(0, Math.min(1, progress)));
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [isCurrentBucket, bucket]);
   // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
@@ -1133,7 +1159,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   return (
     <div
       className={cn(
-        'rounded-xl border-2 border-dashed transition-all',
+        'relative rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
         isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background'
@@ -1145,6 +1171,25 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Current time indicator - subtle white glowing line */}
+      {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
+        <div
+          className="absolute left-0 right-0 pointer-events-none z-10"
+          style={{ top: `${timeProgress * 100}%` }}
+        >
+          {/* Glowing dot */}
+          <div className="absolute left-2 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/60" />
+          {/* Glowing line */}
+          <div
+            className="absolute left-4 right-2 h-[2px] rounded-full"
+            style={{ 
+              background: 'linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 100%)',
+              boxShadow: '0 0 6px 1px rgba(255,255,255,0.4)'
+            }}
+          />
+        </div>
+      )}
+      
       {/* Header + untimed section wrapped together as the unscheduled drop zone */}
       <div ref={setNodeRef}>
         {/* Header */}

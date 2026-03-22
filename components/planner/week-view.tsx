@@ -191,7 +191,7 @@ function DroppableCell({ dropId, children, className, disabled, style }: Droppab
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -423,16 +423,21 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         </Button>
                       </div>
                     )}
-                    {/* Current time indicator */}
-                    {isCurrentCell && (
+                    {/* Current time indicator - subtle white glowing line */}
+                    {showCurrentTimeIndicator && isCurrentCell && (
                       <div
-                        className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+                        className="absolute left-0 right-0 pointer-events-none z-10"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
+                        {/* Glowing dot */}
+                        <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/60" />
+                        {/* Glowing line */}
                         <div
-                          className="absolute left-1.5 right-0 h-0.5"
-                          style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.2) 100%)' }}
+                          className="absolute left-2 right-0 h-[2px] rounded-full"
+                          style={{ 
+                            background: 'linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 100%)',
+                            boxShadow: '0 0 6px 1px rgba(255,255,255,0.4)'
+                          }}
                         />
                       </div>
                     )}
