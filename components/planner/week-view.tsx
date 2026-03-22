@@ -37,22 +37,22 @@ const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; g
   anytime: {
     borderClass: 'border-anytime/50',
     bgClass: 'bg-anytime/30',
-    glowColor: 'hsl(var(--anytime))',
+    glowColor: 'oklch(0.92 0.02 240 / 0.5)',
   },
   morning: {
     borderClass: 'border-morning/40',
     bgClass: 'bg-morning/20',
-    glowColor: 'hsl(var(--morning))',
+    glowColor: 'oklch(0.88 0.12 85 / 0.6)',
   },
   afternoon: {
     borderClass: 'border-afternoon/40',
     bgClass: 'bg-afternoon/20',
-    glowColor: 'hsl(var(--afternoon))',
+    glowColor: 'oklch(0.85 0.12 45 / 0.6)',
   },
   evening: {
     borderClass: 'border-evening/40',
     bgClass: 'bg-evening/20',
-    glowColor: 'hsl(var(--evening))',
+    glowColor: 'oklch(0.75 0.12 280 / 0.6)',
   },
 };
 
