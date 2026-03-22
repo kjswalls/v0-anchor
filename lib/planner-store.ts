@@ -163,7 +163,7 @@ const saveToHistory = (state: HistoryState) => {
   // Add action log entry
   actionLog.push({
     id: generateId(),
-    label: pendingActionLabel || 'Actions',
+    label: pendingActionLabel || 'Session start',
     timestamp: Date.now(),
   });
   pendingActionLabel = null;
