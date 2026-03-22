@@ -106,6 +106,8 @@ export function ActionFeed() {
     }, 100);
   };
 
+  console.log("[v0] ActionFeed rendering, canUndo:", canUndo, "canRedo:", canRedo, "actionLog length:", actionLog.length);
+
   return (
     <div
       ref={containerRef}
