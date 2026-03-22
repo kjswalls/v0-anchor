@@ -387,11 +387,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   } else if (bucket === 'afternoon' && hour >= 12 && hour < 17) {
                     isCurrentCell = true;
                     minuteProgress = ((hour - 12) * 60 + minute) / (5 * 60);
-                  } else if (bucket === 'evening' && (hour >= 17 || hour < 5)) {
+                  } else if (bucket === 'evening' && hour >= 17 && hour < 24) {
+                    // Evening: 5pm-12am (7 hours)
                     isCurrentCell = true;
-                    // For hours 0-4, treat as 24-28 for calculation
-                    const adjustedHour = hour < 5 ? hour + 24 : hour;
-                    minuteProgress = ((adjustedHour - 17) * 60 + minute) / (12 * 60);
+                    minuteProgress = ((hour - 17) * 60 + minute) / (7 * 60);
                   } else if (bucket === 'anytime') {
                     // Anytime is always "current" if viewing today
                     isCurrentCell = true;
@@ -435,20 +434,20 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         </Button>
                       </div>
                     )}
-                    {/* Current time indicator - subtle white glowing line */}
+                    {/* Current time indicator - subtle glowing line */}
+                    {/* Uses white in dark mode, dark gray in light mode for visibility */}
                     {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
                         className="absolute -left-1 -right-1 pointer-events-none z-10"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        {/* Glowing dot */}
-                        <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/70" />
+                        {/* Glowing dot - white in dark mode, dark in light mode */}
+                        <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-white/60 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-white/40 dark:shadow-white/50" />
                         {/* Glowing line */}
                         <div
-                          className="absolute left-2 right-0 h-[2px] rounded-full"
+                          className="absolute left-2 right-0 h-[1.5px] rounded-full dark:bg-white/40 bg-gray-500/50"
                           style={{ 
-                            background: 'linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 80%, rgba(255,255,255,0.3) 100%)',
-                            boxShadow: '0 0 8px 2px rgba(255,255,255,0.5)'
+                            boxShadow: 'var(--tw-shadow, 0 0 3px 1px rgba(255,255,255,0.2))'
                           }}
                         />
                       </div>

@@ -1044,20 +1044,6 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
               {formatHour(hour)}
             </div>
             <div className={cn('flex-1 border-l border-border/30 pl-3 relative', compactMode ? 'py-0.5' : 'py-1')}>
-              {/* Current time indicator */}
-              {isCurrentHour && showCurrentTimeIndicator && (
-                <div 
-                  className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
-                  style={{ top: `${minuteProgress * 100}%` }}
-                >
-                  <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
-                  <div className="absolute left-2 right-0 h-0.5 bg-primary/60 shadow-[0_0_6px_1px] shadow-primary/30" 
-                    style={{ 
-                      background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)'
-                    }} 
-                  />
-                </div>
-              )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
                 {/* Combine all items sorted by time for drop zone placement */}
                 {(() => {
@@ -1136,12 +1122,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         // Afternoon: 12pm-5pm (5 hours)
         progress = ((hour - 12) * 60 + minute) / (5 * 60);
       } else if (bucket === 'evening') {
-        // Evening: 5pm-5am (12 hours, wraps around midnight)
-        // For hours 0-4, treat as 24-28 for calculation
-        if (hour < 5) {
-          hour = hour + 24;
-        }
-        progress = ((hour - 17) * 60 + minute) / (12 * 60);
+        // Evening: 5pm-12am (7 hours)
+        progress = ((hour - 17) * 60 + minute) / (7 * 60);
       } else if (bucket === 'anytime') {
         // Full day
         progress = (hour * 60 + minute) / (24 * 60);
@@ -1185,20 +1167,20 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Current time indicator - subtle white glowing line extending past bucket edges */}
+      {/* Current time indicator - subtle glowing line extending past bucket edges */}
+      {/* Uses white in dark mode, dark gray in light mode for visibility */}
       {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
         <div
           className="absolute -left-3 -right-3 pointer-events-none z-10"
           style={{ top: `${timeProgress * 100}%` }}
         >
-          {/* Glowing dot */}
-          <div className="absolute left-1 w-2.5 h-2.5 -mt-[4px] rounded-full bg-white/90 shadow-[0_0_10px_3px] shadow-white/70" />
+          {/* Glowing dot - white in dark mode, dark in light mode */}
+          <div className="absolute left-1 w-2 h-2 -mt-[3px] rounded-full bg-white/60 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-white/40 dark:shadow-white/50 light:bg-gray-600/70 light:shadow-gray-600/40" />
           {/* Glowing line */}
           <div
-            className="absolute left-4 right-1 h-[2px] rounded-full"
+            className="absolute left-3 right-1 h-[1.5px] rounded-full dark:bg-white/40 bg-gray-500/50"
             style={{ 
-              background: 'linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 80%, rgba(255,255,255,0.3) 100%)',
-              boxShadow: '0 0 8px 2px rgba(255,255,255,0.5)'
+              boxShadow: 'var(--tw-shadow, 0 0 4px 1px rgba(255,255,255,0.3))'
             }}
           />
         </div>
