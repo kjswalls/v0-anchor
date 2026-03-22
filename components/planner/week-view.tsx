@@ -384,6 +384,18 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   currentTime !== null &&
                   currentTime.hour >= range.start &&
                   currentTime.hour < range.end;
+                
+                if (isToday(day) && bucket === 'afternoon') {
+                  console.log('[v0] Week view cell debug:', {
+                    bucket,
+                    showCurrentTimeIndicator,
+                    isToday: isToday(day),
+                    currentTime,
+                    range,
+                    isCurrentCell,
+                    glowColor: style.glowColor
+                  });
+                }
                 const minuteProgress = currentTime
                   ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
                   : 0;
