@@ -145,6 +145,20 @@ export default function PlannerPage() {
         if (itemType === 'task' && draggedTask?.project === projectName) {
           moveTaskToProjectBlock(itemId);
         }
+      } else if (target.startsWith('week:')) {
+        // Dropping on a week view cell
+        // Format: week:{date}:{bucket}
+        const parts = target.split(':');
+        const dateStr = parts[1];
+        const bucket = parts[2] as TimeBucket;
+        
+        if (itemType === 'task') {
+          // Schedule the task for that date and bucket
+          scheduleTask(itemId, bucket, undefined, dateStr);
+        } else if (itemType === 'habit') {
+          // Schedule the habit for that bucket
+          scheduleHabit(itemId, bucket);
+        }
       }
     }
   };

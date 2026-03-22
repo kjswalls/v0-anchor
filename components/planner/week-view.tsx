@@ -8,7 +8,7 @@ import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { Check, Clock, Flame, Plus, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
@@ -110,19 +110,52 @@ interface WeekProjectBlockProps {
 }
 
 function WeekProjectBlock({ project, tasks, onTaskClick }: WeekProjectBlockProps) {
+  const { getProjectColor } = usePlannerStore();
   const projectTasks = tasks.filter(t => t.project === project.id);
+  const projectColor = getProjectColor(project.name);
   
   if (projectTasks.length === 0) return null;
   
   return (
-    <div className="rounded border border-primary/30 bg-primary/5 p-1 space-y-0.5">
+    <div 
+      className="rounded-lg border-2 border-dashed p-1.5 space-y-0.5"
+      style={{ borderColor: projectColor }}
+    >
       <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-0.5">
         {project.emoji && <span>{project.emoji}</span>}
         <span className="truncate font-medium">{project.name}</span>
+        {project.startTime && (
+          <span className="text-muted-foreground/60">
+            {project.startTime}
+          </span>
+        )}
       </div>
       {projectTasks.map((task) => (
         <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
       ))}
+    </div>
+  );
+}
+
+// Droppable cell wrapper for week view buckets
+interface DroppableCellProps {
+  dropId: string;
+  children: React.ReactNode;
+  className?: string;
+}
+
+function DroppableCell({ dropId, children, className }: DroppableCellProps) {
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+  
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        className,
+        isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
+      )}
+    >
+      {children}
     </div>
   );
 }
@@ -220,7 +253,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     <div className="flex-1 h-full flex">
       {/* Previous week navigation */}
       <div 
-        className="w-12 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
+        className="w-16 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
         onClick={navigateToPrevWeek}
         onMouseEnter={() => setPrevWeekHovered(true)}
         onMouseLeave={() => setPrevWeekHovered(false)}
@@ -228,13 +261,15 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         {/* Fade gradient */}
         <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent pointer-events-none" />
         
-        {/* Label + chevron */}
-        <div className="relative z-10 flex flex-col items-center gap-2">
-          {prevWeekHovered && (
-            <span className="text-[10px] font-medium text-muted-foreground/70 text-center leading-tight">
-              Previous<br />week
-            </span>
-          )}
+        {/* Chevron - always centered */}
+        <div className="relative z-10 flex flex-col items-center">
+          {/* Label appears above chevron on hover */}
+          <div className={cn(
+            'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
+            prevWeekHovered ? 'opacity-100' : 'opacity-0'
+          )}>
+            Previous<br />week
+          </div>
           <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
             <ChevronLeft className="h-5 w-5 text-muted-foreground" />
           </div>
@@ -320,9 +355,13 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
                   : 0;
                 
+                // Generate drop ID that matches the format expected by DnD handler
+                const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
+                
                 return (
-                  <div
+                  <DroppableCell
                     key={`${day.toISOString()}-${bucket}`}
+                    dropId={dropId}
                     className={cn(
                       'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
                       compactMode ? 'min-h-[80px]' : 'min-h-0',
@@ -391,7 +430,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         <span className="truncate">{habit.title}</span>
                       </button>
                     ))}
-                  </div>
+                  </DroppableCell>
                 );
               })}
             </div>
@@ -401,7 +440,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
       {/* Next week navigation */}
       <div 
-        className="w-12 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
+        className="w-16 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
         onClick={navigateToNextWeek}
         onMouseEnter={() => setNextWeekHovered(true)}
         onMouseLeave={() => setNextWeekHovered(false)}
@@ -409,13 +448,15 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         {/* Fade gradient */}
         <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent pointer-events-none" />
         
-        {/* Label + chevron */}
-        <div className="relative z-10 flex flex-col items-center gap-2">
-          {nextWeekHovered && (
-            <span className="text-[10px] font-medium text-muted-foreground/70 text-center leading-tight">
-              Next<br />week
-            </span>
-          )}
+        {/* Chevron - always centered */}
+        <div className="relative z-10 flex flex-col items-center">
+          {/* Label appears above chevron on hover */}
+          <div className={cn(
+            'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
+            nextWeekHovered ? 'opacity-100' : 'opacity-0'
+          )}>
+            Next<br />week
+          </div>
           <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
