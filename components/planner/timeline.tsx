@@ -1457,9 +1457,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         {/* Date label + chevron stacked together, vertically centered */}
         <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="flex flex-col items-center gap-2">
-            <span className="text-[10px] font-medium text-muted-foreground/70 leading-tight whitespace-nowrap">
-              {prevDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-            </span>
+            <div className="flex flex-col items-center gap-0 leading-tight">
+              <span className="text-[10px] font-medium text-muted-foreground/70">
+                {prevDate.toLocaleDateString(undefined, { weekday: 'long' })}
+              </span>
+              <span className="text-[10px] font-medium text-muted-foreground/70">
+                {prevDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+              </span>
+            </div>
             <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
               <ChevronLeft className="h-5 w-5 text-muted-foreground" />
             </div>
@@ -1571,9 +1576,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         {/* Date label + chevron stacked together, vertically centered */}
         <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="flex flex-col items-center gap-2">
-            <span className="text-[10px] font-medium text-muted-foreground/70 leading-tight whitespace-nowrap">
-              {nextDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-            </span>
+            <div className="flex flex-col items-center gap-0 leading-tight">
+              <span className="text-[10px] font-medium text-muted-foreground/70">
+                {nextDate.toLocaleDateString(undefined, { weekday: 'long' })}
+              </span>
+              <span className="text-[10px] font-medium text-muted-foreground/70">
+                {nextDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+              </span>
+            </div>
             <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </div>
