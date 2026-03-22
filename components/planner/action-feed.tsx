@@ -106,12 +106,10 @@ export function ActionFeed() {
     }, 100);
   };
 
-  console.log("[v0] ActionFeed rendering, canUndo:", canUndo, "canRedo:", canRedo, "actionLog length:", actionLog.length);
-
   return (
     <div
       ref={containerRef}
-      className="relative flex items-center gap-1 bg-red-500/20"
+      className="relative flex items-center gap-1"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
