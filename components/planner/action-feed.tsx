@@ -1,16 +1,49 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+// Format shortcut keys for display
+const formatShortcutKey = (key: string): string => {
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const keyMap: Record<string, string> = {
+    ctrl: isMac ? '\u2318' : 'Ctrl',
+    meta: isMac ? '\u2318' : 'Win',
+    alt: isMac ? '\u2325' : 'Alt',
+    shift: '\u21E7',
+    backspace: '\u232B',
+    delete: '\u2326',
+    enter: '\u23CE',
+    escape: 'Esc',
+    arrowup: '\u2191',
+    arrowdown: '\u2193',
+    arrowleft: '\u2190',
+    arrowright: '\u2192',
+  };
+  const lower = key.toLowerCase();
+  return keyMap[lower] || key.toUpperCase();
+};
+
 export function ActionFeed() {
-  const { actionLog, historyIndex, undo, redo, canUndo, canRedo } = usePlannerStore();
+  const { actionLog, historyIndex, undo, redo, canUndo, canRedo, chillMode } = usePlannerStore();
+  const { shortcuts } = useKeyboardShortcutsStore();
   const [isExpanded, setIsExpanded] = useState(false);
   const [undoFlash, setUndoFlash] = useState(false);
   const [redoFlash, setRedoFlash] = useState(false);
+
+  // Get the current undo/redo shortcuts
+  const undoShortcut = useMemo(() => 
+    shortcuts.find(s => s.id === 'undo')?.keys || ['ctrl', 'z'],
+    [shortcuts]
+  );
+  const redoShortcut = useMemo(() => 
+    shortcuts.find(s => s.id === 'redo')?.keys || ['ctrl', 'shift', 'z'],
+    [shortcuts]
+  );
 
   // Listen for undo/redo keyboard events to flash the buttons
   useEffect(() => {
@@ -77,8 +110,8 @@ export function ActionFeed() {
         <Redo2 className="h-3.5 w-3.5" />
       </Button>
 
-      {/* Action preview - compact inline text */}
-      {actionLog.length > 0 && (
+      {/* Action preview - compact inline text (hidden in chill mode) */}
+      {!chillMode && actionLog.length > 0 && (
         <div className={cn(
           'text-[10px] font-mono text-muted-foreground/50 max-w-[120px] truncate ml-1 transition-opacity',
           isExpanded && 'opacity-0'
@@ -87,9 +120,39 @@ export function ActionFeed() {
         </div>
       )}
 
-      {/* Expanded dropdown - appears below */}
-      {isExpanded && actionLog.length > 0 && (
-        <div className="absolute top-full right-0 mt-2 z-50 bg-card border border-border rounded-lg shadow-lg p-2 min-w-[240px]">
+      {/* Expanded dropdown - appears below (hidden in chill mode) */}
+      {!chillMode && isExpanded && actionLog.length > 0 && (
+        <div className="absolute top-full right-0 mt-2 z-[100] bg-card border border-border rounded-lg shadow-lg p-2 min-w-[240px]">
+          {/* Keyboard shortcut indicators */}
+          <div className="flex items-center gap-3 mb-2 px-1 pb-2 border-b border-border">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">Undo</span>
+              <div className="flex gap-0.5">
+                {undoShortcut.map((key, i) => (
+                  <kbd
+                    key={i}
+                    className="px-1 py-0.5 text-[9px] font-mono bg-secondary text-secondary-foreground rounded border border-border/50"
+                  >
+                    {formatShortcutKey(key)}
+                  </kbd>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">Redo</span>
+              <div className="flex gap-0.5">
+                {redoShortcut.map((key, i) => (
+                  <kbd
+                    key={i}
+                    className="px-1 py-0.5 text-[9px] font-mono bg-secondary text-secondary-foreground rounded border border-border/50"
+                  >
+                    {formatShortcutKey(key)}
+                  </kbd>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="text-[10px] font-medium text-muted-foreground mb-1.5 px-1">
             History
           </div>
