@@ -130,21 +130,31 @@ function DraggableTaskPill({ task, onClick }: DraggableTaskPillProps) {
 interface WeekProjectBlockProps {
   project: Project;
   tasks: Task[];
+  allTasks: Task[];
   onTaskClick: (task: Task) => void;
 }
 
-function WeekProjectBlock({ project, tasks, onTaskClick }: WeekProjectBlockProps) {
+function WeekProjectBlock({ project, tasks, allTasks, onTaskClick }: WeekProjectBlockProps) {
   const { getProjectColor } = usePlannerStore();
-  const projectTasks = tasks.filter(t => t.project === project.id);
   const projectColor = getProjectColor(project.name);
   
-  if (projectTasks.length === 0) return null;
+  // Tasks that are inside the project block (for this bucket/day)
+  const tasksInBlock = tasks.filter(t => t.project === project.name && t.inProjectBlock);
+  
+  // All incomplete tasks for this project that are NOT in a project block (available to add)
+  const availableTasks = allTasks.filter(
+    t => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
+  );
+  
+  // Show block if there are tasks inside or available tasks
+  const hasContent = tasksInBlock.length > 0 || availableTasks.length > 0;
   
   return (
     <div 
       className="rounded-lg border-2 border-dashed p-1.5 space-y-0.5"
       style={{ borderColor: projectColor }}
     >
+      {/* Project header */}
       <div className="flex items-center gap-1 text-[9px] text-muted-foreground mb-0.5">
         {project.emoji && <span>{project.emoji}</span>}
         <span className="truncate font-medium">{project.name}</span>
@@ -154,9 +164,41 @@ function WeekProjectBlock({ project, tasks, onTaskClick }: WeekProjectBlockProps
           </span>
         )}
       </div>
-      {projectTasks.map((task) => (
+      
+      {/* Tasks inside the block */}
+      {tasksInBlock.map((task) => (
         <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
       ))}
+      
+      {/* Available tasks preview (compact) */}
+      {availableTasks.length > 0 && (
+        <div className="border-t border-border/30 pt-0.5 mt-0.5">
+          <div className="text-[8px] text-muted-foreground/60 mb-0.5">
+            {availableTasks.length} available
+          </div>
+          {availableTasks.slice(0, 2).map((task) => (
+            <div
+              key={task.id}
+              onClick={() => onTaskClick(task)}
+              className="text-[9px] text-muted-foreground truncate cursor-pointer hover:text-foreground transition-colors pl-1"
+            >
+              {task.title}
+            </div>
+          ))}
+          {availableTasks.length > 2 && (
+            <div className="text-[8px] text-muted-foreground/50 pl-1">
+              +{availableTasks.length - 2} more
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Show empty state if recurring block has no content */}
+      {!hasContent && (
+        <div className="text-[8px] text-muted-foreground/50 text-center py-0.5">
+          No tasks
+        </div>
+      )}
     </div>
   );
 }
@@ -178,9 +220,10 @@ function DroppableCell({ dropId, children, className, disabled, glowColor }: Dro
   
   // Combine glow effect with drop zone ring effect
   // Both use box-shadow, so we need to merge them
+  // Use the same blue as Tailwind's ring-primary (hsl(221.2 83.2% 53.3%))
   const combinedStyle: React.CSSProperties | undefined = (() => {
     const glowShadow = glowColor ? `0 0 25px -3px ${glowColor}` : null;
-    const ringShadow = !disabled && isOver ? 'inset 0 0 0 2px oklch(0.546 0.245 262.881)' : null;
+    const ringShadow = !disabled && isOver ? 'inset 0 0 0 2px hsl(221.2 83.2% 53.3%)' : null;
     
     if (glowShadow && ringShadow) {
       return { boxShadow: `${glowShadow}, ${ringShadow}` };
@@ -270,13 +313,26 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     return { tasks: dayTasks, habits: dayHabits };
   };
 
-  // Group items by bucket
+  // Group items by bucket - separate scheduled and unscheduled
   const getItemsByBucket = (date: Date, bucket: TimeBucket) => {
     const { tasks: dayTasks, habits: dayHabits } = getItemsForDay(date);
     
+    const bucketTasks = timelineItemFilter === 'habits' ? [] : dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled);
+    const bucketHabits = timelineItemFilter === 'tasks' ? [] : dayHabits.filter((h) => h.timeBucket === bucket);
+    
+    // Separate into scheduled (has startTime) and unscheduled
+    const unscheduledHabits = bucketHabits.filter(h => !h.startTime);
+    const scheduledHabits = bucketHabits.filter(h => h.startTime);
+    const unscheduledTasks = bucketTasks.filter(t => !t.startTime && !t.inProjectBlock);
+    const scheduledTasks = bucketTasks.filter(t => t.startTime || t.inProjectBlock);
+    
     return {
-      tasks: timelineItemFilter === 'habits' ? [] : dayTasks.filter((t) => t.timeBucket === bucket && t.isScheduled),
-      habits: timelineItemFilter === 'tasks' ? [] : dayHabits.filter((h) => h.timeBucket === bucket),
+      tasks: bucketTasks,
+      habits: bucketHabits,
+      unscheduledHabits,
+      scheduledHabits,
+      unscheduledTasks,
+      scheduledTasks,
     };
   };
 
@@ -441,7 +497,13 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
               
               {/* Day columns */}
               {weekDays.map((day) => {
-                const { tasks: bucketTasks, habits: bucketHabits } = getItemsByBucket(day, bucket);
+                const { 
+                  tasks: bucketTasks, 
+                  unscheduledHabits, 
+                  scheduledHabits,
+                  unscheduledTasks, 
+                  scheduledTasks 
+                } = getItemsByBucket(day, bucket);
                 const projectBlocks = getProjectBlocksForBucket(day, bucket);
                 const recurringProjects = getRecurringProjectsForDate(day).filter(p => p.timeBucket === bucket);
                 const isSelected = isSameDay(day, selectedDate);
@@ -453,8 +515,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   ...recurringProjects.filter(rp => !projectBlocks.some(pb => pb.id === rp.id))
                 ];
                 
-                // Get tasks not in project blocks
-                const tasksNotInBlocks = bucketTasks.filter(t => !allProjectBlocks.some(p => p.id === t.project));
+                // Get tasks not in project blocks - only unscheduled tasks outside blocks
+                const tasksNotInBlocks = unscheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project));
                 
                 // Determine if the current time falls in this bucket for today
                 const style = bucketStyles[bucket];
@@ -537,23 +599,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       </div>
                     )}
                     
-                    {/* Project blocks (including recurring) */}
-                    {allProjectBlocks.map((project) => (
-                      <WeekProjectBlock
-                        key={project.id}
-                        project={project}
-                        tasks={bucketTasks}
-                        onTaskClick={onTaskClick}
-                      />
-                    ))}
-                    
-                    {/* Tasks not in project blocks - draggable */}
-                    {tasksNotInBlocks.map((task) => (
-                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                    ))}
-                    
-                    {/* Compact habit pills */}
-                    {bucketHabits.map((habit) => (
+                    {/* 1. Unscheduled habits first (matching day view order) */}
+                    {unscheduledHabits.map((habit) => (
                       <button
                         key={habit.id}
                         onClick={() => onHabitClick(habit)}
@@ -566,6 +613,44 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         <Flame className="w-2 h-2 text-primary flex-shrink-0" />
                         <span className="truncate">{habit.title}</span>
                       </button>
+                    ))}
+                    
+                    {/* 2. Unscheduled tasks not in project blocks */}
+                    {tasksNotInBlocks.map((task) => (
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                    ))}
+                    
+                    {/* 3. Project blocks (including recurring) - contains scheduled items */}
+                    {allProjectBlocks.map((project) => (
+                      <WeekProjectBlock
+                        key={project.id}
+                        project={project}
+                        tasks={bucketTasks}
+                        allTasks={tasks}
+                        onTaskClick={onTaskClick}
+                      />
+                    ))}
+                    
+                    {/* 4. Scheduled habits */}
+                    {scheduledHabits.map((habit) => (
+                      <button
+                        key={habit.id}
+                        onClick={() => onHabitClick(habit)}
+                        className={cn(
+                          'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
+                          'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
+                          habit.status === 'done' && 'opacity-50'
+                        )}
+                      >
+                        <Clock className="w-2 h-2 text-primary flex-shrink-0" />
+                        <span className="truncate">{habit.title}</span>
+                        {habit.startTime && <span className="text-[8px] text-muted-foreground ml-auto">{habit.startTime}</span>}
+                      </button>
+                    ))}
+                    
+                    {/* 5. Scheduled tasks (with startTime, not in project blocks) */}
+                    {scheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project)).map((task) => (
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
                     ))}
                   </DroppableCell>
                 );
