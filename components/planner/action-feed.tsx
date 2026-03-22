@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Undo2, Redo2 } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -34,6 +35,21 @@ export function ActionFeed() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [undoFlash, setUndoFlash] = useState(false);
   const [redoFlash, setRedoFlash] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const updateDropdownPos = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      });
+    }
+  }, []);
 
   // Get the current undo/redo shortcuts
   const undoShortcut = useMemo(() => 
@@ -69,15 +85,21 @@ export function ActionFeed() {
   }, []);
 
   // Show most recent actions (reversed, newest first)
-  const displayActions = actionLog.slice(0, isExpanded ? 10 : 1);
+  const displayActions = actionLog.slice(0, 10);
   
   // Calculate which action is "current" (the one we'd undo to)
   const currentActionIndex = actionLog.length > 0 ? actionLog.length - historyIndex - 1 : -1;
 
+  const handleMouseEnter = () => {
+    updateDropdownPos();
+    setIsExpanded(true);
+  };
+
   return (
-    <div 
+    <div
+      ref={containerRef}
       className="relative flex items-center gap-1"
-      onMouseEnter={() => setIsExpanded(true)}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setIsExpanded(false)}
     >
       {/* Undo button */}
@@ -120,9 +142,14 @@ export function ActionFeed() {
         </div>
       )}
 
-      {/* Expanded dropdown - appears below (hidden in chill mode) */}
-      {!chillMode && isExpanded && actionLog.length > 0 && (
-        <div className="absolute top-full right-0 mt-2 z-[100] bg-card border border-border rounded-lg shadow-lg p-2 min-w-[240px]">
+      {/* Expanded dropdown - rendered in portal to escape overflow:hidden parents */}
+      {mounted && !chillMode && isExpanded && actionLog.length > 0 && createPortal(
+        <div
+          className="fixed z-[9999] bg-card border border-border rounded-lg shadow-xl p-2 min-w-[240px]"
+          style={{ top: dropdownPos.top, right: dropdownPos.right }}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={() => setIsExpanded(false)}
+        >
           {/* Keyboard shortcut indicators */}
           <div className="flex items-center gap-3 mb-2 px-1 pb-2 border-b border-border">
             <div className="flex items-center gap-1.5">
@@ -180,7 +207,8 @@ export function ActionFeed() {
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
