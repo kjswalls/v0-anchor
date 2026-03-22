@@ -1136,8 +1136,6 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     return () => clearInterval(id);
   }, [isCurrentBucket, bucket]);
   
-  console.log('[v0] TimelineBucket:', { bucket, isCurrentBucket, showCurrentTimeIndicator, timeProgress });
-  
   // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
@@ -1177,7 +1175,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           style={{ top: `${timeProgress * 100}%` }}
         >
           {/* Clock icon to the left, centered vertically with dot */}
-          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-1/2" strokeWidth={2.5} />
+          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={2.5} />
           {/* Glowing dot */}
           <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50" />
           {/* Dashed line */}

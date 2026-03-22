@@ -442,7 +442,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
                         {/* Clock icon to the left, centered vertically with dot */}
-                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-1/2" strokeWidth={3} />
+                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={3} />
                         {/* Glowing dot */}
                         <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50" />
                         {/* Dashed line */}
