@@ -283,34 +283,30 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   };
 
   return (
-    <div className="flex-1 h-full flex">
-      {/* Previous week navigation */}
-      <div 
-        className="w-16 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
-        onClick={navigateToPrevWeek}
-        onMouseEnter={() => setPrevWeekHovered(true)}
-        onMouseLeave={() => setPrevWeekHovered(false)}
-      >
-        {/* Fade gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent pointer-events-none" />
-        
-        {/* Chevron - always centered */}
-        <div className="relative z-10 flex flex-col items-center">
-          {/* Label appears above chevron on hover */}
-          <div className={cn(
-            'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
-            prevWeekHovered ? 'opacity-100' : 'opacity-0'
-          )}>
-            Previous<br />week
-          </div>
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
-            <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+    <div className="flex-1 h-full relative">
+      {/* Main week content - centered with max width */}
+      <div className={cn('h-full flex flex-col max-w-6xl mx-auto', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
+        {/* Previous week navigation - positioned inside content area */}
+        <div 
+          className="absolute left-4 top-1/2 -translate-y-1/2 z-10 flex flex-col items-center justify-center cursor-pointer group"
+          onClick={navigateToPrevWeek}
+          onMouseEnter={() => setPrevWeekHovered(true)}
+          onMouseLeave={() => setPrevWeekHovered(false)}
+        >
+          {/* Chevron - always centered */}
+          <div className="relative flex flex-col items-center">
+            {/* Label appears above chevron on hover */}
+            <div className={cn(
+              'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
+              prevWeekHovered ? 'opacity-100' : 'opacity-0'
+            )}>
+              Previous<br />week
+            </div>
+            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background/80 hover:bg-muted transition-colors">
+              <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Main week content */}
-      <div className={cn('flex-1 flex flex-col', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
         <div className={cn(
           'p-4 flex flex-col',
           compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
@@ -477,18 +473,15 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         </div>
       </div>
 
-      {/* Next week navigation */}
+      {/* Next week navigation - positioned inside content area */}
       <div 
-        className="w-16 flex-shrink-0 flex flex-col items-center justify-center cursor-pointer relative group"
+        className="absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col items-center justify-center cursor-pointer group"
         onClick={navigateToNextWeek}
         onMouseEnter={() => setNextWeekHovered(true)}
         onMouseLeave={() => setNextWeekHovered(false)}
       >
-        {/* Fade gradient */}
-        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent pointer-events-none" />
-        
         {/* Chevron - always centered */}
-        <div className="relative z-10 flex flex-col items-center">
+        <div className="relative flex flex-col items-center">
           {/* Label appears above chevron on hover */}
           <div className={cn(
             'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
@@ -496,7 +489,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
           )}>
             Next<br />week
           </div>
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background/80 hover:bg-muted transition-colors">
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>
