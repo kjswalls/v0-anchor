@@ -307,20 +307,13 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   const getItemsForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     
-    // Debug: Log task filtering for dates of interest
+    // Debug: Log ALL tasks with their dates when checking 3/21 or 3/22
     if (dateStr === '2026-03-21' || dateStr === '2026-03-22') {
-      const matchingTasks = tasks.filter(task => {
-        if (!task.startDate) return false;
-        const taskDateStr = normalizeDateStr(task.startDate);
-        return taskDateStr === dateStr;
-      });
-      console.log(`[v0] getItemsForDay(${dateStr}):`, {
-        totalTasks: tasks.length,
-        matchingTasks: matchingTasks.map(t => ({ 
-          title: t.title, 
-          startDate: t.startDate, 
-          normalized: t.startDate ? normalizeDateStr(t.startDate) : null 
-        })),
+      console.log(`[v0] getItemsForDay(${dateStr}) - checking ALL ${tasks.length} tasks:`);
+      tasks.forEach(t => {
+        const normalized = t.startDate ? normalizeDateStr(t.startDate) : null;
+        const matches = normalized === dateStr;
+        console.log(`[v0]   "${t.title}": startDate=${JSON.stringify(t.startDate)} (${typeof t.startDate}), normalized=${normalized}, matches=${matches}`);
       });
     }
     
