@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Plus, Sparkles, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -63,25 +63,23 @@ export function SidebarChat() {
         if (!isFocused) setIsExpanded(false);
       }}
     >
-      {/* Expanded chat area placeholder */}
+      {/* Expanded chat info */}
       {shouldExpand && (
-        <div className="mb-2 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-            <Sparkles className="h-3 w-3" />
-            <span>Ask about your tasks, habits, or planning</span>
-          </div>
+        <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground px-1">
+          <Sparkles className="h-3 w-3" />
+          <span>Ask about your tasks, habits, or planning</span>
         </div>
       )}
 
-      {/* Input area */}
-      <form onSubmit={handleSubmit}>
-        <div
-          className={cn(
-            'relative flex items-end gap-2 rounded-xl border border-border bg-card transition-all',
-            shouldExpand ? 'p-2' : 'p-1.5',
-            isFocused && 'border-primary/50 ring-1 ring-primary/20'
-          )}
-        >
+      {/* Input container - v0 style */}
+      <div
+        className={cn(
+          'rounded-xl border border-border bg-card overflow-hidden transition-all',
+          isFocused && 'border-primary/50 ring-1 ring-primary/20'
+        )}
+      >
+        {/* Text input area */}
+        <div className={cn('px-3', shouldExpand ? 'pt-3 pb-2' : 'py-2')}>
           <textarea
             ref={inputRef}
             value={inputValue}
@@ -95,24 +93,72 @@ export function SidebarChat() {
             placeholder={shouldExpand ? 'Ask anything...' : 'Chat with AI...'}
             rows={1}
             className={cn(
-              'flex-1 resize-none bg-transparent text-sm placeholder:text-muted-foreground/60 focus:outline-none',
-              shouldExpand ? 'min-h-[24px] px-2 py-1' : 'min-h-[20px] px-2 py-0.5 text-xs'
+              'w-full resize-none bg-transparent placeholder:text-muted-foreground/60 focus:outline-none',
+              shouldExpand ? 'min-h-[24px] text-sm' : 'min-h-[20px] text-xs'
             )}
           />
+        </div>
+
+        {/* Bottom toolbar row - v0 style */}
+        <div className={cn(
+          'flex items-center justify-between px-2 pb-2',
+          !shouldExpand && 'hidden'
+        )}>
+          {/* Left side - action buttons */}
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              title="Add context"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              title="AI features"
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Right side - send button */}
           <Button
-            type="submit"
+            type="button"
             size="icon"
-            variant="ghost"
+            onClick={handleSubmit}
             disabled={!inputValue.trim()}
             className={cn(
-              'shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-30',
-              shouldExpand ? 'h-7 w-7' : 'h-6 w-6'
+              'h-7 w-7 rounded-lg transition-colors',
+              inputValue.trim()
+                ? 'bg-foreground text-background hover:bg-foreground/90'
+                : 'bg-muted text-muted-foreground'
             )}
           >
-            <Send className={cn(shouldExpand ? 'h-4 w-4' : 'h-3 w-3')} />
+            <ArrowUp className="h-4 w-4" />
           </Button>
         </div>
-      </form>
+
+        {/* Collapsed send button */}
+        {!shouldExpand && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={handleSubmit}
+              disabled={!inputValue.trim()}
+              className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
+            >
+              <Send className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
