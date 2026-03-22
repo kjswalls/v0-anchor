@@ -191,7 +191,7 @@ function DroppableCell({ dropId, children, className, disabled, style }: Droppab
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -380,23 +380,11 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 };
                 const range = bucketRanges[bucket];
                 const style = bucketStyles[bucket];
-                const isCurrentCell = showCurrentTimeIndicator &&
-                  isToday(day) &&
+                // Show glow for current time bucket (independent of showCurrentTimeIndicator setting)
+                const isCurrentCell = isToday(day) &&
                   currentTime !== null &&
                   currentTime.hour >= range.start &&
                   currentTime.hour < range.end;
-                
-                if (isToday(day) && bucket === 'afternoon') {
-                  console.log('[v0] Week view cell debug:', {
-                    bucket,
-                    showCurrentTimeIndicator,
-                    isToday: isToday(day),
-                    currentTime,
-                    range,
-                    isCurrentCell,
-                    glowColor: style.glowColor
-                  });
-                }
                 const minuteProgress = currentTime
                   ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
                   : 0;
