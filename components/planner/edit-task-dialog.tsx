@@ -72,7 +72,22 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       setTitle(task.title);
       setPriority(task.priority || 'none');
       setProject(task.project || 'none');
-      setStartDate(task.startDate ? new Date(task.startDate) : undefined);
+      // Parse date string as local date, not UTC
+      // "2026-03-22" should be March 22 local time, not UTC midnight which shows as March 21
+      if (task.startDate) {
+        if (typeof task.startDate === 'string') {
+          // Extract just the date part (handles both "2026-03-22" and "2026-03-22T..." formats)
+          const dateStr = task.startDate.includes('T') 
+            ? task.startDate.split('T')[0] 
+            : task.startDate;
+          const [year, month, day] = dateStr.split('-').map(Number);
+          setStartDate(new Date(year, month - 1, day)); // month is 0-indexed
+        } else {
+          setStartDate(new Date(task.startDate));
+        }
+      } else {
+        setStartDate(undefined);
+      }
       setDuration(task.duration?.toString() || '30');
       setTimeBucket(task.timeBucket || 'none');
       setStartTime(task.startTime || '');
@@ -106,11 +121,14 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   const handleSave = () => {
     if (!task || !title.trim()) return;
     
+    // Save date as yyyy-MM-dd string to avoid timezone issues
+    const startDateStr = startDate ? format(startDate, 'yyyy-MM-dd') : undefined;
+    
     updateTask(task.id, {
       title: title.trim(),
       priority: priority === 'none' ? undefined : priority,
       project: project === 'none' ? undefined : project,
-      startDate,
+      startDate: startDateStr,
       duration: duration ? parseInt(duration) : undefined,
       startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,

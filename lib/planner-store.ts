@@ -427,7 +427,6 @@ export const usePlannerStore = create<PlannerStore>()(
       
       scheduleTask: (id, bucket, time, date) => {
         const task = get().tasks.find((t) => t.id === id);
-        console.log('[v0] scheduleTask called:', { id, bucket, time, date, taskTitle: task?.title });
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
         // Auto-correct bucket based on time
         let finalBucket = bucket;
