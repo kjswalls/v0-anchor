@@ -111,7 +111,7 @@ export function ActionFeed() {
   return (
     <div
       ref={containerRef}
-      className="relative flex items-center gap-1"
+      className="relative flex items-center gap-1 bg-red-500/20"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
