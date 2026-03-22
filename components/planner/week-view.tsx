@@ -142,17 +142,21 @@ interface DroppableCellProps {
   dropId: string;
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
 }
 
-function DroppableCell({ dropId, children, className }: DroppableCellProps) {
-  const { isOver, setNodeRef } = useDroppable({ id: dropId });
+function DroppableCell({ dropId, children, className, disabled }: DroppableCellProps) {
+  const { isOver, setNodeRef } = useDroppable({ 
+    id: dropId,
+    disabled: disabled,
+  });
   
   return (
     <div
       ref={setNodeRef}
       className={cn(
         className,
-        isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
+        !disabled && isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
       )}
     >
       {children}
@@ -362,6 +366,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   <DroppableCell
                     key={`${day.toISOString()}-${bucket}`}
                     dropId={dropId}
+                    disabled={isPastDay}
                     className={cn(
                       'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
                       compactMode ? 'min-h-[80px]' : 'min-h-0',

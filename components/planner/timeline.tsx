@@ -539,6 +539,84 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   );
 }
 
+// Draggable task inside a project block
+interface DraggableBlockTaskProps {
+  task: Task;
+  onClick: () => void;
+  compactMode: boolean;
+  toggleTaskStatus: (id: string) => void;
+}
+
+function DraggableBlockTask({ task, onClick, compactMode, toggleTaskStatus }: DraggableBlockTaskProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({ id: task.id });
+
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+  } : undefined;
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={cn('group/blocktask relative flex items-center gap-1', isDragging && 'opacity-50 z-50')}
+    >
+      {/* Drag handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="opacity-0 group-hover/blocktask:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none flex items-center text-muted-foreground"
+        onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
+      >
+        <GripVertical className={compactMode ? 'h-3 w-3' : 'h-4 w-4'} />
+      </button>
+      
+      {/* Task content */}
+      <div
+        onClick={onClick}
+        className={cn(
+          'flex-1 flex items-center gap-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
+          compactMode ? 'px-2 py-1' : 'px-3 py-2',
+          task.status === 'completed' && 'opacity-60'
+        )}
+      >
+        {/* Checkbox */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTaskStatus(task.id);
+          }}
+          className={cn(
+            'flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors',
+            compactMode ? 'w-3.5 h-3.5' : 'w-4 h-4',
+            task.status === 'completed'
+              ? 'bg-primary border-primary'
+              : 'border-muted-foreground/40 hover:border-primary'
+          )}
+        >
+          {task.status === 'completed' && (
+            <Check className={compactMode ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
+          )}
+        </button>
+        
+        <span className={cn(
+          'flex-1',
+          compactMode ? 'text-xs' : 'text-sm',
+          task.status === 'completed' && 'line-through text-muted-foreground'
+        )}>
+          {task.title}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // Project time block component
 interface ProjectBlockProps {
   project: Project;
@@ -601,43 +679,13 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
       {tasksInBlock.length > 0 && (
         <div className={cn(compactMode ? 'space-y-0.5 mb-1.5' : 'space-y-2 mb-3')}>
           {tasksInBlock.map((task) => (
-            <div key={task.id} className="group/blocktask relative">
-              <div
-                onClick={() => onTaskClick(task)}
-                className={cn(
-                  'flex items-center gap-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
-                  compactMode ? 'px-2 py-1' : 'px-3 py-2',
-                  task.status === 'completed' && 'opacity-60'
-                )}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleTaskStatus(task.id);
-                  }}
-                  className={cn(
-                    'flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors',
-                    compactMode ? 'w-3.5 h-3.5' : 'w-4 h-4',
-                    task.status === 'completed'
-                      ? 'bg-primary border-primary'
-                      : 'border-muted-foreground/40 hover:border-primary'
-                  )}
-                >
-                  {task.status === 'completed' && (
-                    <Check className={compactMode ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
-                  )}
-                </button>
-                
-                <span className={cn(
-                  'flex-1',
-                  compactMode ? 'text-xs' : 'text-sm',
-                  task.status === 'completed' && 'line-through text-muted-foreground'
-                )}>
-                  {task.title}
-                </span>
-              </div>
-            </div>
+            <DraggableBlockTask 
+              key={task.id} 
+              task={task} 
+              onClick={() => onTaskClick(task)}
+              compactMode={compactMode}
+              toggleTaskStatus={toggleTaskStatus}
+            />
           ))}
         </div>
       )}
