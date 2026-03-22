@@ -289,7 +289,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         onClick={navigateToPrevWeek}
         aria-label="Go to previous week"
         className="group absolute top-0 bottom-0 w-24 z-10 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
-        style={{ right: 'calc(50% + 36rem)' }}
+        style={{ right: 'calc(50% + 36rem - 3.5rem)' }}
       >
         {/* Week wireframe skeleton - single day column aligned with timeline */}
         <div className={cn(
