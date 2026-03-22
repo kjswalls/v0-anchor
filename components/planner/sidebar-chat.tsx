@@ -79,7 +79,14 @@ export function SidebarChat() {
         )}
       >
         {/* Text input area */}
-        <div className={cn('px-3', shouldExpand ? 'pt-3 pb-2' : 'py-0')}>
+        <div className={cn('relative px-3', shouldExpand ? 'pt-3 pb-2' : 'py-0')}>
+          {/* Custom placeholder with sparkle icon for collapsed state */}
+          {!shouldExpand && !inputValue && (
+            <div className="absolute inset-0 flex items-center gap-1.5 px-3 pointer-events-none text-muted-foreground/60">
+              <Sparkles className="h-3 w-3 flex-shrink-0" />
+              <span className="text-xs">Do all this for me...</span>
+            </div>
+          )}
           <textarea
             ref={inputRef}
             value={inputValue}
@@ -90,7 +97,7 @@ export function SidebarChat() {
             }}
             onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
-            placeholder={shouldExpand ? 'Ask anything...' : 'Do all this for me'}
+            placeholder={shouldExpand ? 'Ask anything...' : ''}
             rows={1}
             className={cn(
               'w-full resize-none bg-transparent placeholder:text-muted-foreground/60 focus:outline-none',
