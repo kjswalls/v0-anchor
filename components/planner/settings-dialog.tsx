@@ -67,11 +67,18 @@ function SettingsSection({ title, icon, children, defaultOpen = false }: Setting
   );
 }
 
-function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
+function SettingRow({ label, description, children, disabled }: { label: string; description?: string; children: React.ReactNode; disabled?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className={cn("flex items-center justify-between gap-4", disabled && "opacity-50 pointer-events-none")}>
       <div className="space-y-0.5">
-        <Label className="text-sm text-foreground">{label}</Label>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm text-foreground">{label}</Label>
+          {disabled && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-muted-foreground border-muted-foreground/30">
+              Coming soon
+            </Badge>
+          )}
+        </div>
         {description && (
           <p className="text-xs text-muted-foreground">{description}</p>
         )}
@@ -214,7 +221,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               icon={<Globe className="h-4 w-4" />}
               defaultOpen={true}
             >
-              <SettingRow label="Language" description="Choose your preferred language">
+              <SettingRow label="Language" description="Choose your preferred language" disabled>
                 <Select value={language} onValueChange={setLanguage}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -230,7 +237,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Time format" description="How times are displayed">
+              <SettingRow label="Time format" description="How times are displayed" disabled>
                 <Select value={timeFormat} onValueChange={setTimeFormat}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -248,14 +255,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Notifications" 
               icon={<Bell className="h-4 w-4" />}
             >
-              <SettingRow label="Enable notifications" description="Receive reminders and alerts">
+              <SettingRow label="Enable notifications" description="Receive reminders and alerts" disabled>
                 <Switch 
                   checked={notificationsEnabled} 
                   onCheckedChange={setNotificationsEnabled}
                 />
               </SettingRow>
 
-              <SettingRow label="Habit reminders" description="Get reminded about daily habits">
+              <SettingRow label="Habit reminders" description="Get reminded about daily habits" disabled>
                 <Switch 
                   checked={habitReminders} 
                   onCheckedChange={setHabitReminders}
@@ -263,7 +270,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 />
               </SettingRow>
 
-              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks">
+              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks" disabled>
                 <Switch 
                   checked={taskReminders} 
                   onCheckedChange={setTaskReminders}
@@ -271,7 +278,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 />
               </SettingRow>
 
-              <SettingRow label="Sound effects" description="Play sounds for notifications">
+              <SettingRow label="Sound effects" description="Play sounds for notifications" disabled>
                 <Switch 
                   checked={soundEnabled} 
                   onCheckedChange={setSoundEnabled}
@@ -285,7 +292,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Appearance" 
               icon={<Palette className="h-4 w-4" />}
             >
-              <SettingRow label="Theme" description="Choose your preferred theme">
+              <SettingRow label="Theme" description="Choose your preferred theme" disabled>
                 <Select value={theme} onValueChange={setTheme}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -312,14 +319,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 />
               </SettingRow>
 
-              <SettingRow label="Show completed tasks" description="Display completed tasks in timeline">
+              <SettingRow label="Show completed tasks" description="Display completed tasks in timeline" disabled>
                 <Switch 
                   checked={showCompleted} 
                   onCheckedChange={setShowCompleted}
                 />
               </SettingRow>
 
-              <SettingRow label="Animations" description="Enable smooth transitions">
+              <SettingRow label="Animations" description="Enable smooth transitions" disabled>
                 <Switch 
                   checked={animationsEnabled} 
                   onCheckedChange={setAnimationsEnabled}
@@ -362,7 +369,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Calendar" 
               icon={<Calendar className="h-4 w-4" />}
             >
-              <SettingRow label="Week starts on" description="First day of the week">
+              <SettingRow label="Week starts on" description="First day of the week" disabled>
                 <Select value={weekStartDay} onValueChange={setWeekStartDay}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -375,7 +382,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Default view" description="View shown when app opens">
+              <SettingRow label="Default view" description="View shown when app opens" disabled>
                 <Select defaultValue="day">
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -387,7 +394,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Default time bucket" description="Where new tasks are placed">
+              <SettingRow label="Default time bucket" description="Where new tasks are placed" disabled>
                 <Select defaultValue="anytime">
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
