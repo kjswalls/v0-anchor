@@ -92,6 +92,11 @@ interface PlannerStore {
   canRedo: boolean;
   undo: () => void;
   redo: () => void;
+  
+  // Action log for displaying undo/redo history
+  actionLog: ActionLogEntry[];
+  historyIndex: number;
+  refreshActionLog: () => void;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -106,10 +111,35 @@ interface HistoryState {
   habitGroups: HabitGroupType[];
 }
 
+export type ActionLogEntry = {
+  id: string;
+  label: string;
+  timestamp: number;
+};
+
 const MAX_HISTORY_SIZE = 50;
 let historyStack: HistoryState[] = [];
 let historyIndex = -1;
 let isUndoRedoAction = false;
+let actionLog: ActionLogEntry[] = [];
+let pendingActionLabel: string | null = null;
+
+// Set the label for the next action that will be saved to history
+export const setNextActionLabel = (label: string) => {
+  pendingActionLabel = label;
+};
+
+// Get the current action log
+export const getActionLog = (): ActionLogEntry[] => {
+  return [...actionLog].reverse(); // Most recent first
+};
+
+// Get the current history index for highlighting current position
+export const getHistoryInfo = () => ({
+  currentIndex: historyIndex,
+  totalEntries: historyStack.length,
+  actionLog: [...actionLog].reverse(),
+});
 
 const saveToHistory = (state: HistoryState) => {
   if (isUndoRedoAction) return;
@@ -117,6 +147,7 @@ const saveToHistory = (state: HistoryState) => {
   // If we're not at the end of history, truncate forward history
   if (historyIndex < historyStack.length - 1) {
     historyStack = historyStack.slice(0, historyIndex + 1);
+    actionLog = actionLog.slice(0, historyIndex + 1);
   }
   
   // Deep clone the state to avoid reference issues
@@ -129,9 +160,18 @@ const saveToHistory = (state: HistoryState) => {
   
   historyStack.push(snapshot);
   
+  // Add action log entry
+  actionLog.push({
+    id: generateId(),
+    label: pendingActionLabel || 'Actions',
+    timestamp: Date.now(),
+  });
+  pendingActionLabel = null;
+  
   // Limit history size
   if (historyStack.length > MAX_HISTORY_SIZE) {
     historyStack.shift();
+    actionLog.shift();
   } else {
     historyIndex++;
   }
@@ -297,6 +337,12 @@ export const usePlannerStore = create<PlannerStore>()(
       projects: DEFAULT_PROJECTS,
       habitGroups: DEFAULT_HABIT_GROUPS,
       timelineItemFilter: 'all' as const,
+      actionLog: [] as ActionLogEntry[],
+      historyIndex: -1,
+      refreshActionLog: () => {
+        const info = getHistoryInfo();
+        set({ actionLog: info.actionLog, historyIndex: info.currentIndex });
+      },
       compactMode: false,
       setCompactMode: (compact) => set({ compactMode: compact }),
       navDirection: null,
@@ -310,6 +356,7 @@ export const usePlannerStore = create<PlannerStore>()(
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
       
       addTask: (taskData) => {
+        setNextActionLabel(`Add task: ${taskData.title}`);
         // Auto-correct bucket based on start time
         let timeBucket = taskData.timeBucket;
         if (taskData.startTime && timeBucket && timeBucket !== 'anytime') {
@@ -331,6 +378,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       updateTask: (id, updates) => {
+        const task = get().tasks.find((t) => t.id === id);
+        setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
@@ -354,12 +403,17 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       deleteTask: (id) => {
+        const task = get().tasks.find((t) => t.id === id);
+        setNextActionLabel(`Delete task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.filter((t) => t.id !== id),
         }));
       },
       
       toggleTaskStatus: (id) => {
+        const task = get().tasks.find((t) => t.id === id);
+        const newStatus = task?.status === 'completed' ? 'pending' : 'completed';
+        setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
@@ -370,6 +424,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       scheduleTask: (id, bucket, time) => {
+        const task = get().tasks.find((t) => t.id === id);
+        setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
         // Auto-correct bucket based on time
         let finalBucket = bucket;
         if (time && bucket !== 'anytime') {
@@ -389,6 +445,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       assignTaskToBucket: (id, bucket) => {
+        const task = get().tasks.find((t) => t.id === id);
+        setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
@@ -399,6 +457,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       unscheduleTask: (id) => {
+        const task = get().tasks.find((t) => t.id === id);
+        setNextActionLabel(`Unschedule task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
@@ -409,6 +469,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       reorderTasks: (taskIds) => {
+        setNextActionLabel('Reorder tasks');
         set((state) => ({
           tasks: taskIds.map((id, index) => {
             const task = state.tasks.find((t) => t.id === id);
@@ -418,6 +479,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       addHabit: (habitData) => {
+        setNextActionLabel(`Add habit: ${habitData.title}`);
         // Auto-correct bucket based on start time
         let timeBucket = habitData.timeBucket;
         if (habitData.startTime && timeBucket && timeBucket !== 'anytime') {
@@ -442,6 +504,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       updateHabit: (id, updates) => {
+        const habit = get().habits.find((h) => h.id === id);
+        setNextActionLabel(`Edit habit: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
@@ -465,12 +529,17 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       deleteHabit: (id) => {
+        const habit = get().habits.find((h) => h.id === id);
+        setNextActionLabel(`Delete habit: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.filter((h) => h.id !== id),
         }));
       },
       
       toggleHabitStatus: (id, status, count, date) => {
+        const habit = get().habits.find((h) => h.id === id);
+        const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
+        setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
         const dateStr = getDateString(date ?? new Date());
         set((state) => ({
           habits: state.habits.map((h) => {
@@ -537,6 +606,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       assignHabitToBucket: (id, bucket) => {
+        const habit = get().habits.find((h) => h.id === id);
+        setNextActionLabel(`Move habit to ${bucket}: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.map((h) =>
             h.id === id
@@ -547,6 +618,8 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       resetHabitStreak: (id) => {
+        const habit = get().habits.find((h) => h.id === id);
+        setNextActionLabel(`Reset streak: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.map((h) =>
             h.id === id
@@ -564,6 +637,7 @@ export const usePlannerStore = create<PlannerStore>()(
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
       
       addProject: (name, emoji) => {
+        setNextActionLabel(`Add project: ${name}`);
         set((state) => ({
           projects: state.projects.some((p) => p.name === name)
             ? state.projects
@@ -572,6 +646,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       updateProject: (name, updates) => {
+        setNextActionLabel(`Edit project: ${name}`);
         set((state) => ({
           projects: state.projects.map((p) =>
             p.name === name ? { ...p, ...updates } : p
@@ -580,6 +655,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       removeProject: (name) => {
+        setNextActionLabel(`Delete project: ${name}`);
         set((state) => ({
           projects: state.projects.filter((p) => p.name !== name),
           // Also remove project from tasks
@@ -769,6 +845,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
         
+        const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
           habits: restoredHabits,
@@ -776,6 +853,8 @@ export const usePlannerStore = create<PlannerStore>()(
           habitGroups: restoredGroups,
           canUndo: historyIndex > 0,
           canRedo: true,
+          actionLog: info.actionLog,
+          historyIndex: info.currentIndex,
         });
         
         // Update the baseline for the subscriber so it doesn't think this is a new change
@@ -796,6 +875,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const restoredProjects = JSON.parse(JSON.stringify(nextState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(nextState.habitGroups));
         
+        const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
           habits: restoredHabits,
@@ -803,6 +883,8 @@ export const usePlannerStore = create<PlannerStore>()(
           habitGroups: restoredGroups,
           canUndo: true,
           canRedo: historyIndex < historyStack.length - 1,
+          actionLog: info.actionLog,
+          historyIndex: info.currentIndex,
         });
         
         // Update the baseline for the subscriber so it doesn't think this is a new change
@@ -863,11 +945,14 @@ usePlannerStore.subscribe((state) => {
   // Only save if data actually changed (not just view state)
   if (prevStateJson && currentStateJson !== prevStateJson) {
     saveToHistory(currentState);
-    // Update canUndo/canRedo after saving (prevent recursive trigger)
+    // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
     isUpdatingUndoRedo = true;
+    const info = getHistoryInfo();
     usePlannerStore.setState({
       canUndo: historyIndex > 0,
       canRedo: false,
+      actionLog: info.actionLog,
+      historyIndex: info.currentIndex,
     });
     isUpdatingUndoRedo = false;
   }

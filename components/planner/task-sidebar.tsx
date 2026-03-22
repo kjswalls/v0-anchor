@@ -32,6 +32,7 @@ import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { ActionFeed } from './action-feed';
 
 const priorityLabels: Record<Priority, string> = {
   high: 'High',
@@ -790,6 +791,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
           </ScrollArea>
         </>
       )}
+      
+      {/* Action feed at bottom */}
+      <ActionFeed />
     </aside>
   );
 }

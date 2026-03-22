@@ -40,8 +40,9 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
       // Check for Cmd/Ctrl + Z (undo) or Cmd/Ctrl + Shift + Z (redo)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+      if ((e.metaKey || e.ctrlKey) && key === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
           redo();
@@ -50,7 +51,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
         }
       }
       // Also support Cmd/Ctrl + Y for redo (Windows convention)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+      if ((e.metaKey || e.ctrlKey) && key === 'y') {
         e.preventDefault();
         redo();
       }
