@@ -349,7 +349,7 @@ export const usePlannerStore = create<PlannerStore>()(
       setNavDirection: (direction) => set({ navDirection: direction }),
       chillMode: false,
       setChillMode: (chill) => set({ chillMode: chill }),
-      showCurrentTimeIndicator: false,
+      showCurrentTimeIndicator: true,
       setShowCurrentTimeIndicator: (show) => set({ showCurrentTimeIndicator: show }),
       hoveredItemId: null,
       hoveredItemType: null,
