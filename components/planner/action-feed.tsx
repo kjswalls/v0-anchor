@@ -81,22 +81,16 @@ export function ActionFeed() {
   const displayActions = actionLog.slice(0, isExpanded ? 10 : 2);
   
   // Calculate which action is "current" (the one we'd undo to)
-  // historyIndex points to current state, so historyIndex - 1 is what we'd undo to
-  // But actionLog is reversed (newest first), so we need to map it
   const currentActionIndex = actionLog.length > 0 ? actionLog.length - historyIndex - 1 : -1;
-
-  if (actionLog.length === 0) {
-    return null; // Don't show if no actions yet
-  }
 
   return (
     <div 
-      className="border-t border-border/30 p-2"
+      className="relative flex items-center gap-3"
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
     >
       {/* Keyboard shortcut indicators */}
-      <div className="flex items-center gap-2 mb-2 px-1">
+      <div className="flex items-center gap-2">
         <button
           onClick={() => canUndo && undo()}
           disabled={!canUndo}
@@ -150,40 +144,53 @@ export function ActionFeed() {
         </button>
       </div>
 
-      {/* Action feed */}
-      <div 
-        className={cn(
-          'overflow-hidden transition-all duration-200 ease-out',
-          isExpanded ? 'max-h-60' : 'max-h-10'
-        )}
-      >
-        <div className="space-y-0.5">
-          {displayActions.map((action, idx) => {
-            // The first action in displayActions (idx 0) is the most recent
-            // currentActionIndex is the index in the full actionLog of the current position
-            const isCurrentPosition = idx === currentActionIndex;
-            const isUndone = idx < currentActionIndex;
-            
-            return (
-              <div
-                key={action.id}
-                className={cn(
-                  'px-1 py-0.5 text-[11px] font-mono leading-tight truncate transition-colors',
-                  isCurrentPosition && 'text-foreground/80',
-                  !isCurrentPosition && !isUndone && 'text-muted-foreground/60',
-                  isUndone && 'text-muted-foreground/30 line-through'
-                )}
-                title={action.label}
-              >
-                <span className="opacity-40 mr-1.5">
-                  {isCurrentPosition ? '>' : ' '}
-                </span>
-                {action.label}
+      {/* Expandable action feed - only show if there are actions */}
+      {actionLog.length > 0 && (
+        <>
+          <span className="text-muted-foreground/30">|</span>
+          
+          {/* Collapsed view - inline recent action */}
+          <div className={cn(
+            'text-[11px] font-mono text-muted-foreground/60 max-w-[200px] truncate transition-opacity',
+            isExpanded && 'opacity-0'
+          )}>
+            {displayActions[0]?.label || 'No actions'}
+          </div>
+
+          {/* Expanded dropdown - appears below */}
+          {isExpanded && (
+            <div className="absolute top-full left-0 mt-2 z-50 bg-card border border-border rounded-lg shadow-lg p-2 min-w-[280px]">
+              <div className="text-[10px] font-medium text-muted-foreground mb-1.5 px-1">
+                Action History
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div className="space-y-0.5 max-h-60 overflow-y-auto">
+                {displayActions.map((action, idx) => {
+                  const isCurrentPosition = idx === currentActionIndex;
+                  const isUndone = idx < currentActionIndex;
+                  
+                  return (
+                    <div
+                      key={action.id}
+                      className={cn(
+                        'px-1.5 py-1 text-[11px] font-mono leading-tight truncate rounded transition-colors',
+                        isCurrentPosition && 'text-foreground bg-secondary/50',
+                        !isCurrentPosition && !isUndone && 'text-muted-foreground/60',
+                        isUndone && 'text-muted-foreground/30 line-through'
+                      )}
+                      title={action.label}
+                    >
+                      <span className="opacity-40 mr-1.5">
+                        {isCurrentPosition ? '>' : ' '}
+                      </span>
+                      {action.label}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

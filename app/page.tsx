@@ -10,6 +10,7 @@ import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
+import { ActionFeed } from '@/components/planner/action-feed';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -255,8 +256,8 @@ export default function PlannerPage() {
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col overflow-hidden">
-            {/* Item visibility toggle - centered above timeline, respects sidebar */}
-            <div className="flex justify-center items-center px-4 border-b border-border flex-shrink-0 h-16">
+            {/* Item visibility toggle and action feed - centered above timeline */}
+            <div className="flex justify-center items-center px-4 border-b border-border flex-shrink-0 h-16 gap-6">
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary">
                 <Button
                   variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
@@ -283,6 +284,9 @@ export default function PlannerPage() {
                   Habits
                 </Button>
               </div>
+              
+              {/* Action feed near undo/redo */}
+              <ActionFeed />
             </div>
 
             <div className="flex-1 flex flex-col bg-background overflow-hidden">
