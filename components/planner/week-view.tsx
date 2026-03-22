@@ -314,7 +314,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
           compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
         )}>
           {/* Week header with day names and dates */}
-          <div className="grid grid-cols-8 gap-1 flex-shrink-0">
+          <div className="grid grid-cols-9 gap-1 flex-shrink-0">
             {/* Empty cell for time labels */}
             <div className="h-12" />
             
@@ -338,6 +338,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 </span>
               </button>
             ))}
+            
+            {/* Empty cell for symmetry with left time labels */}
+            <div className="h-12" />
           </div>
 
           {/* Time buckets grid */}
@@ -345,7 +348,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             <div
               key={bucket}
               className={cn(
-                'grid grid-cols-8 gap-1',
+                'grid grid-cols-9 gap-1',
                 !compactMode && 'flex-1 min-h-0'
               )}
             >
@@ -485,6 +488,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   </DroppableCell>
                 );
               })}
+              
+              {/* Empty cell for symmetry with left time labels */}
+              <div />
             </div>
           ))}
         </div>
