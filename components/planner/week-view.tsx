@@ -6,11 +6,13 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { Check, Clock, Flame } from 'lucide-react';
+import { Check, Clock, Flame, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  onAddClick?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
 const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
@@ -29,7 +31,7 @@ const bucketTimes: Record<TimeBucket, string> = {
   evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
-export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
+export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
   const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
 
   // Track current time for the indicator
@@ -172,12 +174,41 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                 <div
                   key={`${day.toISOString()}-${bucket}`}
                   className={cn(
-                    'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
+                    'group/cell relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
                     compactMode ? 'min-h-[80px]' : 'min-h-0',
                     isSelected && 'border-primary/30 bg-primary/5',
                     isToday(day) && !isSelected && 'bg-secondary/30'
                   )}
                 >
+                  {/* Add buttons on hover */}
+                  {onAddClick && (
+                    <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 opacity-0 group-hover/cell:opacity-100 transition-opacity z-10">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddClick(bucket, 'task');
+                        }}
+                        title="Add task"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-primary/70 hover:text-primary hover:bg-primary/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddClick(bucket, 'habit');
+                        }}
+                        title="Add habit"
+                      >
+                        <Flame className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                   {/* Current time indicator */}
                   {isCurrentCell && (
                     <div
