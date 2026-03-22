@@ -1452,12 +1452,12 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ left: 'calc(50% - 31rem)' }}
       >
-        {/* Chevron hint — gradient fades toward the time buckets (right side) */}
-        <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none bg-gradient-to-r from-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Chevron hint — gradient fades toward the center (most opaque on outer left edge) */}
+        <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none bg-gradient-to-l from-transparent to-background/60 opacity-0 group-hover:opacity-100 transition-opacity">
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />
         </div>
-        {/* Fade mask toward the right edge */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Fade mask — most opaque on outer left edge */}
+        <div className="absolute inset-0 bg-gradient-to-l from-transparent via-background/30 to-background/90 z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
         <div
           key={`prev-${selectedDate.toISOString()}`}
@@ -1559,12 +1559,12 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ left: 'calc(50% + 24rem)' }}
       >
-        {/* Chevron hint — gradient fades toward the time buckets (left side) */}
-        <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none bg-gradient-to-l from-background/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Chevron hint — gradient fades toward the center (most opaque on outer right edge) */}
+        <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none bg-gradient-to-r from-transparent to-background/60 opacity-0 group-hover:opacity-100 transition-opacity">
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
-        {/* Fade mask toward the left edge */}
-        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Fade mask — most opaque on outer right edge */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-background/30 to-background/90 z-10 pointer-events-none" />
         {/* Bucket skeletons — vertically centered */}
         <div
           key={`next-${selectedDate.toISOString()}`}
