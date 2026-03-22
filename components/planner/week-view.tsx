@@ -281,18 +281,11 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   const nextWeekDate = useMemo(() => addWeeks(selectedDate, 1), [selectedDate]);
 
   // Helper to normalize date to yyyy-MM-dd string
-  // Handles both Date objects and strings (ISO or yyyy-MM-dd format)
-  const normalizeDateStr = (dateValue: Date | string): string => {
-    if (typeof dateValue === 'string') {
-      // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
-      // For ISO strings, extract just the date part (ignore timezone)
-      return dateValue.includes('T') 
-        ? dateValue.split('T')[0]
-        : dateValue;
-    } else {
-      // For Date objects, use format which respects local timezone
-      return format(dateValue, 'yyyy-MM-dd');
-    }
+  // startDate is always a string; handle legacy ISO format just in case
+  const normalizeDateStr = (dateValue: string): string => {
+    return dateValue.includes('T')
+      ? dateValue.split('T')[0]
+      : dateValue;
   };
 
   // Get tasks and habits for a specific day

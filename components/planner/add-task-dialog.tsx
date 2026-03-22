@@ -185,7 +185,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       title: taskTitle.trim(),
       priority: taskPriority,
       project: taskProject || undefined,
-      startDate: taskStartDate,
+      startDate: taskStartDate ? format(taskStartDate, 'yyyy-MM-dd') : undefined,
       duration: taskDuration ? parseInt(taskDuration) : undefined,
       timeBucket: taskTimeBucket,
       startTime: taskStartTime || undefined,

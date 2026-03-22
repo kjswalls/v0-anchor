@@ -75,16 +75,12 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       // Parse date string as local date, not UTC
       // "2026-03-22" should be March 22 local time, not UTC midnight which shows as March 21
       if (task.startDate) {
-        if (typeof task.startDate === 'string') {
-          // Extract just the date part (handles both "2026-03-22" and "2026-03-22T..." formats)
-          const dateStr = task.startDate.includes('T') 
-            ? task.startDate.split('T')[0] 
-            : task.startDate;
-          const [year, month, day] = dateStr.split('-').map(Number);
-          setStartDate(new Date(year, month - 1, day)); // month is 0-indexed
-        } else {
-          setStartDate(new Date(task.startDate));
-        }
+        // startDate is always a string; handle legacy ISO format just in case
+        const dateStr = task.startDate.includes('T')
+          ? task.startDate.split('T')[0]
+          : task.startDate;
+        const [year, month, day] = dateStr.split('-').map(Number);
+        setStartDate(new Date(year, month - 1, day)); // month is 0-indexed
       } else {
         setStartDate(undefined);
       }
