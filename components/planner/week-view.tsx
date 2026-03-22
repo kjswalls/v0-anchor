@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, isToday, startOfDay, isBefore } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
@@ -174,38 +174,26 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 <div
                   key={`${day.toISOString()}-${bucket}`}
                   className={cn(
-                    'group/cell relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
+                    'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
                     compactMode ? 'min-h-[80px]' : 'min-h-0',
                     isSelected && 'border-primary/30 bg-primary/5',
                     isToday(day) && !isSelected && 'bg-secondary/30'
                   )}
                 >
-                  {/* Add buttons on hover */}
-                  {onAddClick && (
-                    <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 opacity-0 group-hover/cell:opacity-100 transition-opacity z-10">
+                  {/* Add button - only for today and future days */}
+                  {onAddClick && !isBefore(startOfDay(day), startOfDay(new Date())) && (
+                    <div className="flex justify-center mb-1">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        className="h-5 w-5 text-muted-foreground/40 hover:text-foreground hover:bg-secondary"
                         onClick={(e) => {
                           e.stopPropagation();
                           onAddClick(bucket, 'task');
                         }}
-                        title="Add task"
+                        title="Add item"
                       >
                         <Plus className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-primary/70 hover:text-primary hover:bg-primary/10"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAddClick(bucket, 'habit');
-                        }}
-                        title="Add habit"
-                      >
-                        <Flame className="h-3 w-3" />
                       </Button>
                     </div>
                   )}
