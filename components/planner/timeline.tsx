@@ -1452,6 +1452,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ left: 'calc(50% - 31rem)' }}
       >
+        {/* Fade mask — fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Date label on hover */}
+        <div className="absolute top-3 left-0 right-0 flex justify-start pl-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-[10px] font-medium text-muted-foreground/70 leading-tight text-left">
+            {prevDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          </span>
+        </div>
         {/* Chevron with circular gradient background */}
         <div className="absolute inset-0 flex items-center justify-start pl-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="relative flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent shadow-sm">
@@ -1559,6 +1567,14 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         className="group absolute top-0 bottom-0 w-28 z-10 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ left: 'calc(50% + 24rem)' }}
       >
+        {/* Fade mask — fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Date label on hover */}
+        <div className="absolute top-3 left-0 right-0 flex justify-end pr-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-[10px] font-medium text-muted-foreground/70 leading-tight text-right">
+            {nextDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+          </span>
+        </div>
         {/* Chevron with circular gradient background */}
         <div className="absolute inset-0 flex items-center justify-end pr-3 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="relative flex items-center justify-center h-8 w-8 rounded-full bg-gradient-radial from-background via-background/80 to-transparent shadow-sm">
