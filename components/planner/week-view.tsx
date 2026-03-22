@@ -405,7 +405,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       isToday(day) && !isSelected && style.bgClass
                     )}
                     style={isCurrentCell ? { 
-                      boxShadow: `0 0 20px 0px ${style.glowColor}, inset 0 0 0 2px ${style.glowColor}`,
+                      boxShadow: `0 0 25px -3px ${style.glowColor}`,
                     } as React.CSSProperties : undefined}
                   >
                     {/* Add button - only for today and future days */}
