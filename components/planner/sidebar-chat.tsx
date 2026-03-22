@@ -79,7 +79,7 @@ export function SidebarChat() {
         )}
       >
         {/* Text input area */}
-        <div className={cn('px-3', shouldExpand ? 'pt-3 pb-2' : 'py-2')}>
+        <div className={cn('px-3', shouldExpand ? 'pt-3 pb-2' : 'py-0')}>
           <textarea
             ref={inputRef}
             value={inputValue}
@@ -90,11 +90,11 @@ export function SidebarChat() {
             }}
             onBlur={() => setIsFocused(false)}
             onKeyDown={handleKeyDown}
-            placeholder={shouldExpand ? 'Ask anything...' : 'Chat with AI...'}
+            placeholder={shouldExpand ? 'Ask anything...' : 'Do all this for me'}
             rows={1}
             className={cn(
               'w-full resize-none bg-transparent placeholder:text-muted-foreground/60 focus:outline-none',
-              shouldExpand ? 'min-h-[24px] text-sm' : 'min-h-[20px] text-xs'
+              shouldExpand ? 'min-h-[24px] text-sm' : 'min-h-[32px] text-xs flex items-center leading-[32px]'
             )}
           />
         </div>
