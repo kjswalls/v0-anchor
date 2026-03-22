@@ -1136,6 +1136,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     return () => clearInterval(id);
   }, [isCurrentBucket, bucket]);
   
+  console.log('[v0] TimelineBucket:', { bucket, isCurrentBucket, showCurrentTimeIndicator, timeProgress });
+  
   // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
