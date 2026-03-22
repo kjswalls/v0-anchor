@@ -443,6 +443,10 @@ export const usePlannerStore = create<PlannerStore>()(
                   isScheduled: true, 
                   timeBucket: finalBucket, 
                   startTime: time,
+                  // Clear project block state when scheduling to a bucket
+                  inProjectBlock: false,
+                  previousStartTime: undefined,
+                  previousStartDate: undefined,
                   ...(date ? { startDate: date } : {})
                 }
               : t
@@ -456,7 +460,16 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
-              ? { ...t, isScheduled: false, timeBucket: bucket, startTime: undefined }
+              ? { 
+                  ...t, 
+                  isScheduled: false, 
+                  timeBucket: bucket, 
+                  startTime: undefined,
+                  // Clear project block state when assigning to a bucket
+                  inProjectBlock: false,
+                  previousStartTime: undefined,
+                  previousStartDate: undefined,
+                }
               : t
           ),
         }));
