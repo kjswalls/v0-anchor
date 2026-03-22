@@ -1,16 +1,18 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, isToday, startOfDay, isBefore } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { Check, Clock, Flame } from 'lucide-react';
+import { Check, Clock, Flame, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  onAddClick?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
 const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
@@ -29,7 +31,7 @@ const bucketTimes: Record<TimeBucket, string> = {
   evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
-export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
+export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
   const { selectedDate, setSelectedDate, tasks, habits, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
 
   // Track current time for the indicator
@@ -178,6 +180,23 @@ export function WeekView({ onTaskClick, onHabitClick }: WeekViewProps) {
                     isToday(day) && !isSelected && 'bg-secondary/30'
                   )}
                 >
+                  {/* Add button - only for today and future days */}
+                  {onAddClick && !isBefore(startOfDay(day), startOfDay(new Date())) && (
+                    <div className="flex justify-end mb-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-muted-foreground/40 hover:text-foreground hover:bg-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddClick(bucket, 'task');
+                        }}
+                        title="Add item"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                   {/* Current time indicator */}
                   {isCurrentCell && (
                     <div

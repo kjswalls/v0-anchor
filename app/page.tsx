@@ -306,6 +306,7 @@ export default function PlannerPage() {
                 <WeekView
                   onTaskClick={handleTaskClick}
                   onHabitClick={handleHabitClick}
+                  onAddClick={handleAddFromTimeline}
                 />
               )}
             </div>

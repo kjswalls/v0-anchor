@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Plus, Sparkles, ArrowUp } from 'lucide-react';
+import { Plus, Sparkles, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -149,22 +149,6 @@ export function SidebarChat() {
             <ArrowUp className="h-4 w-4" />
           </Button>
         </div>
-
-        {/* Collapsed send button */}
-        {!shouldExpand && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={handleSubmit}
-              disabled={!inputValue.trim()}
-              className="h-6 w-6 text-muted-foreground hover:text-foreground disabled:opacity-30"
-            >
-              <Send className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );

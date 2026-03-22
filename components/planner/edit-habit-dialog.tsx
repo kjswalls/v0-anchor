@@ -142,7 +142,15 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
+              e.preventDefault();
+              handleSave();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="text-foreground">Edit Habit</DialogTitle>
             <DialogDescription className="sr-only">
@@ -181,6 +189,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="bg-background border-border"
+                autoFocus
               />
             </div>
             
@@ -214,10 +223,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                     </Popover>
                     <Input
                       placeholder="Name"
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      className="bg-background border-border flex-1"
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="bg-background border-border flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                  data-sub-input
                     />
                     <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
                       <Plus className="h-4 w-4" />
