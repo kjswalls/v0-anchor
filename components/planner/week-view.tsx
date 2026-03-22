@@ -283,12 +283,12 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   };
 
   return (
-    <div className="flex-1 h-full relative overflow-hidden">
-      {/* Previous week preview - positioned at left edge */}
+    <div className="flex-1 h-full flex">
+      {/* Previous week preview */}
       <button
         onClick={navigateToPrevWeek}
         aria-label="Go to previous week"
-        className="group absolute top-0 bottom-0 left-0 w-20 z-10 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
         {/* Fade mask */}
         <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
@@ -322,14 +322,14 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         </div>
       </button>
 
-      {/* Main week content - centered with max width, padded to avoid preview buttons */}
-      <div className={cn('h-full flex flex-col max-w-6xl mx-auto px-24', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
+      {/* Main week content */}
+      <div className={cn('h-full flex-1 flex flex-col', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
         <div className={cn(
           'p-4 flex flex-col',
           compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
         )}>
           {/* Week header with day names and dates */}
-          <div className="grid grid-cols-9 gap-1 flex-shrink-0">
+          <div className="grid grid-cols-8 gap-1 flex-shrink-0">
             {/* Empty cell for time labels */}
             <div className="h-12" />
             
@@ -353,9 +353,6 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 </span>
               </button>
             ))}
-            
-            {/* Empty cell for symmetry with left time labels */}
-            <div className="h-12" />
           </div>
 
           {/* Time buckets grid */}
@@ -363,7 +360,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             <div
               key={bucket}
               className={cn(
-                'grid grid-cols-9 gap-1',
+                'grid grid-cols-8 gap-1',
                 !compactMode && 'flex-1 min-h-0'
               )}
             >
@@ -503,19 +500,16 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   </DroppableCell>
                 );
               })}
-              
-              {/* Empty cell for symmetry with left time labels */}
-              <div />
             </div>
           ))}
         </div>
       </div>
 
-      {/* Next week preview - positioned at right edge */}
+      {/* Next week preview */}
       <button
         onClick={navigateToNextWeek}
         aria-label="Go to next week"
-        className="group absolute top-0 bottom-0 right-0 w-20 z-10 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
         {/* Fade mask */}
         <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
