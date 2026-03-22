@@ -201,9 +201,11 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
-      // Compare date strings directly to avoid timezone issues
-      // task.startDate is already in 'yyyy-MM-dd' format
-      return task.startDate === dateStr;
+      // Handle both Date objects and string formats for startDate
+      const taskDateStr = typeof task.startDate === 'string' 
+        ? task.startDate 
+        : format(task.startDate, 'yyyy-MM-dd');
+      return taskDateStr === dateStr;
     });
 
     // For habits, check if they should show on this day

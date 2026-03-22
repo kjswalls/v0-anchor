@@ -20,7 +20,7 @@ import type { Task, Habit, TimeBucket, Priority, HabitStatus, Project } from '@/
 import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
-import { isSameDay } from 'date-fns';
+import { isSameDay, format } from 'date-fns';
 
 const bucketConfig: Record<TimeBucket, {
   icon: typeof Clock;
@@ -1338,11 +1338,15 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
 
   // Filter tasks by selected date and search query
   const tasksForDate = useMemo(() => {
+    const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
     return filteredTasks.filter((task) => {
       // If no start date, show in sidebar only (not on timeline)
       if (!task.startDate) return false;
-      // Check if task's start date matches selected date
-      const matchesDate = isSameDay(new Date(task.startDate), selectedDate);
+      // Handle both Date objects and string formats for startDate
+      const taskDateStr = typeof task.startDate === 'string' 
+        ? task.startDate 
+        : format(task.startDate, 'yyyy-MM-dd');
+      const matchesDate = taskDateStr === selectedDateStr;
       // Check search query
       const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesDate && matchesSearch;
