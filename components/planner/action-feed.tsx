@@ -38,6 +38,7 @@ export function ActionFeed() {
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -91,8 +92,18 @@ export function ActionFeed() {
   const currentActionIndex = actionLog.length > 0 ? actionLog.length - historyIndex - 1 : -1;
 
   const handleMouseEnter = () => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
     updateDropdownPos();
     setIsExpanded(true);
+  };
+
+  const handleMouseLeave = () => {
+    closeTimeoutRef.current = setTimeout(() => {
+      setIsExpanded(false);
+    }, 100);
   };
 
   return (
@@ -100,7 +111,7 @@ export function ActionFeed() {
       ref={containerRef}
       className="relative flex items-center gap-1"
       onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setIsExpanded(false)}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Undo button */}
       <Button
@@ -148,7 +159,7 @@ export function ActionFeed() {
           className="fixed z-[9999] bg-card border border-border rounded-lg shadow-xl p-2 min-w-[240px]"
           style={{ top: dropdownPos.top, right: dropdownPos.right }}
           onMouseEnter={handleMouseEnter}
-          onMouseLeave={() => setIsExpanded(false)}
+          onMouseLeave={handleMouseLeave}
         >
           {/* Keyboard shortcut indicators */}
           <div className="flex items-center gap-3 mb-2 px-1 pb-2 border-b border-border">
