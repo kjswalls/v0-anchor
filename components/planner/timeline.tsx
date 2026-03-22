@@ -1392,9 +1392,16 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       // If no start date, show in sidebar only (not on timeline)
       if (!task.startDate) return false;
       // Handle both Date objects and string formats for startDate
-      const taskDateStr = typeof task.startDate === 'string' 
-        ? task.startDate 
-        : format(task.startDate, 'yyyy-MM-dd');
+      // ISO strings like "2026-03-22T00:00:00.000Z" need to extract just the date part
+      let taskDateStr: string;
+      if (typeof task.startDate === 'string') {
+        // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
+        taskDateStr = task.startDate.includes('T') 
+          ? task.startDate.split('T')[0]
+          : task.startDate;
+      } else {
+        taskDateStr = format(task.startDate, 'yyyy-MM-dd');
+      }
       const matchesDate = taskDateStr === selectedDateStr;
       // Check search query
       const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());

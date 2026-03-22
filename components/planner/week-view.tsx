@@ -287,9 +287,16 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
       // Handle both Date objects and string formats for startDate
-      const taskDateStr = typeof task.startDate === 'string' 
-        ? task.startDate 
-        : format(task.startDate, 'yyyy-MM-dd');
+      // ISO strings like "2026-03-22T00:00:00.000Z" need to extract just the date part
+      let taskDateStr: string;
+      if (typeof task.startDate === 'string') {
+        // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
+        taskDateStr = task.startDate.includes('T') 
+          ? task.startDate.split('T')[0]
+          : task.startDate;
+      } else {
+        taskDateStr = format(task.startDate, 'yyyy-MM-dd');
+      }
       return taskDateStr === dateStr;
     });
 
