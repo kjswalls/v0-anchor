@@ -542,11 +542,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     // Evening: 5pm-12am (7 hours)
                     isCurrentCell = true;
                     minuteProgress = ((hour - 17) * 60 + minute) / (7 * 60);
-                  } else if (bucket === 'anytime') {
-                    // Anytime is always "current" if viewing today
-                    isCurrentCell = true;
-                    minuteProgress = (hour * 60 + minute) / (24 * 60);
-                  }
+  // Anytime bucket is never the "current" time bucket - it has no specific hours
+  }
                 }
                 
                 // Generate drop ID that matches the format expected by DnD handler
@@ -587,16 +584,16 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     {/* Uses white in dark mode, dark gray in light mode for visibility */}
                     {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
-                        className="absolute -left-4 -right-1 pointer-events-none z-10"
+                        className="absolute -left-4 -right-1 z-10 group/indicator"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        {/* Clock icon to the left, centered vertically with dot */}
-                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={3} />
-                        {/* Glowing dot */}
-                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50" />
+                        {/* Clock icon to the left - only visible on hover of the dot area */}
+                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
+                        {/* Glowing dot - interactive area for hover */}
+                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 cursor-default" />
                         {/* Dashed line */}
                         <div
-                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50"
+                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 pointer-events-none"
                         />
                       </div>
                     )}
