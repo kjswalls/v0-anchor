@@ -32,6 +32,30 @@ const bucketTimes: Record<TimeBucket, string> = {
   evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
+// Bucket styling config matching the day view
+const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowColor: string }> = {
+  anytime: {
+    borderClass: 'border-anytime/50',
+    bgClass: 'bg-anytime/30',
+    glowColor: 'hsl(var(--anytime))',
+  },
+  morning: {
+    borderClass: 'border-morning/40',
+    bgClass: 'bg-morning/20',
+    glowColor: 'hsl(var(--morning))',
+  },
+  afternoon: {
+    borderClass: 'border-afternoon/40',
+    bgClass: 'bg-afternoon/20',
+    glowColor: 'hsl(var(--afternoon))',
+  },
+  evening: {
+    borderClass: 'border-evening/40',
+    bgClass: 'bg-evening/20',
+    glowColor: 'hsl(var(--evening))',
+  },
+};
+
 // Draggable task pill for week view
 interface DraggableTaskPillProps {
   task: Task;
@@ -143,9 +167,10 @@ interface DroppableCellProps {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
+  style?: React.CSSProperties;
 }
 
-function DroppableCell({ dropId, children, className, disabled }: DroppableCellProps) {
+function DroppableCell({ dropId, children, className, disabled, style }: DroppableCellProps) {
   const { isOver, setNodeRef } = useDroppable({ 
     id: dropId,
     disabled: disabled,
@@ -158,6 +183,7 @@ function DroppableCell({ dropId, children, className, disabled }: DroppableCellP
         className,
         !disabled && isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
       )}
+      style={style}
     >
       {children}
     </div>
@@ -364,6 +390,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 
                 // Generate drop ID that matches the format expected by DnD handler
                 const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
+                const style = bucketStyles[bucket];
                 
                 return (
                   <DroppableCell
@@ -371,11 +398,17 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     dropId={dropId}
                     disabled={isPastDay}
                     className={cn(
-                      'relative rounded-lg border border-border/50 p-1.5 space-y-1 overflow-y-auto',
+                      'relative rounded-lg border-2 border-dashed p-1.5 space-y-1 overflow-y-auto transition-all',
+                      style.borderClass,
                       compactMode ? 'min-h-[80px]' : 'min-h-0',
                       isSelected && 'border-primary/30 bg-primary/5',
-                      isToday(day) && !isSelected && 'bg-secondary/30'
+                      isToday(day) && !isSelected && style.bgClass,
+                      isCurrentCell && 'ring-2 ring-offset-1 ring-offset-background'
                     )}
+                    style={isCurrentCell ? { 
+                      boxShadow: `0 0 20px -4px ${style.glowColor}`,
+                      '--tw-ring-color': style.glowColor,
+                    } as React.CSSProperties : undefined}
                   >
                     {/* Add button - only for today and future days */}
                     {onAddClick && !isPastDay && (

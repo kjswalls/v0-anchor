@@ -28,6 +28,7 @@ const bucketConfig: Record<TimeBucket, {
   timeRange: string;
   bgClass: string;
   borderClass: string;
+  glowColor: string;
 }> = {
   anytime: {
     icon: Sparkles,
@@ -35,6 +36,7 @@ const bucketConfig: Record<TimeBucket, {
     timeRange: 'Flexible',
     bgClass: 'bg-anytime/30',
     borderClass: 'border-anytime/50',
+    glowColor: 'hsl(var(--anytime))',
   },
   morning: {
     icon: Sunrise,
@@ -42,6 +44,7 @@ const bucketConfig: Record<TimeBucket, {
     timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning),
     bgClass: 'bg-morning/20',
     borderClass: 'border-morning/40',
+    glowColor: 'hsl(var(--morning))',
   },
   afternoon: {
     icon: Sun,
@@ -49,6 +52,7 @@ const bucketConfig: Record<TimeBucket, {
     timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon),
     bgClass: 'bg-afternoon/20',
     borderClass: 'border-afternoon/40',
+    glowColor: 'hsl(var(--afternoon))',
   },
   evening: {
     icon: Moon,
@@ -56,6 +60,7 @@ const bucketConfig: Record<TimeBucket, {
     timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening),
     bgClass: 'bg-evening/20',
     borderClass: 'border-evening/40',
+    glowColor: 'hsl(var(--evening))',
   },
 };
 
@@ -1131,8 +1136,12 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         'rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
-        isCurrentBucket && 'shadow-[0_0_25px_-3px] shadow-primary/30'
+        isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background'
       )}
+      style={isCurrentBucket ? { 
+        boxShadow: `0 0 25px -3px ${config.glowColor}`,
+        '--tw-ring-color': config.glowColor,
+      } as React.CSSProperties : undefined}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
