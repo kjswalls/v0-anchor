@@ -36,6 +36,7 @@ import {
   DragOverlay,
 } from '@dnd-kit/core';
 import { GripVertical, Circle } from 'lucide-react';
+import { format } from 'date-fns';
 
 function DraggableTaskOverlay({ title }: { title: string }) {
   return (
@@ -50,7 +51,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 }
 
 export default function PlannerPage() {
-  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock } = usePlannerStore();
+  const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -121,15 +122,19 @@ export default function PlannerPage() {
           dropTime = inferDropTime(bucket, position, refTime);
         }
         
+        // Pass the selected date for day view scheduling
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         if (itemType === 'task') {
-          scheduleTask(itemId, bucket, dropTime);
+          scheduleTask(itemId, bucket, dropTime, selectedDateStr);
         } else if (itemType === 'habit') {
           scheduleHabit(itemId, bucket, dropTime);
         }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
         // Dropping on bucket without specific time - assign to bucket but keep unscheduled
+        // Pass the selected date for day view scheduling
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         if (itemType === 'task') {
-          assignTaskToBucket(itemId, target as TimeBucket);
+          scheduleTask(itemId, target as TimeBucket, undefined, selectedDateStr);
         } else if (itemType === 'habit') {
           assignHabitToBucket(itemId, target as TimeBucket);
         }
@@ -144,6 +149,20 @@ export default function PlannerPage() {
         // Only allow tasks that belong to this project
         if (itemType === 'task' && draggedTask?.project === projectName) {
           moveTaskToProjectBlock(itemId);
+        }
+      } else if (target.startsWith('week:')) {
+        // Dropping on a week view cell
+        // Format: week:{date}:{bucket}
+        const parts = target.split(':');
+        const dateStr = parts[1];
+        const bucket = parts[2] as TimeBucket;
+        
+        if (itemType === 'task') {
+          // Schedule the task for that date and bucket
+          scheduleTask(itemId, bucket, undefined, dateStr);
+        } else if (itemType === 'habit') {
+          // Schedule the habit for that bucket
+          scheduleHabit(itemId, bucket);
         }
       }
     }

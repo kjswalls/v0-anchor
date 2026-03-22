@@ -44,7 +44,7 @@ interface PlannerStore {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string) => void;
-  scheduleTask: (id: string, bucket: TimeBucket, time?: string) => void;
+  scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
   reorderTasks: (taskIds: string[]) => void;
@@ -423,7 +423,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
       },
       
-      scheduleTask: (id, bucket, time) => {
+      scheduleTask: (id, bucket, time, date) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
         // Auto-correct bucket based on time
@@ -438,7 +438,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id
-              ? { ...t, isScheduled: true, timeBucket: finalBucket, startTime: time }
+              ? { 
+                  ...t, 
+                  isScheduled: true, 
+                  timeBucket: finalBucket, 
+                  startTime: time,
+                  ...(date ? { startDate: date } : {})
+                }
               : t
           ),
         }));
