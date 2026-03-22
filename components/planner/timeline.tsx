@@ -1044,20 +1044,6 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
               {formatHour(hour)}
             </div>
             <div className={cn('flex-1 border-l border-border/30 pl-3 relative', compactMode ? 'py-0.5' : 'py-1')}>
-              {/* Current time indicator */}
-              {isCurrentHour && showCurrentTimeIndicator && (
-                <div 
-                  className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
-                  style={{ top: `${minuteProgress * 100}%` }}
-                >
-                  <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-primary shadow-[0_0_8px_2px] shadow-primary/50" />
-                  <div className="absolute left-2 right-0 h-0.5 bg-primary/60 shadow-[0_0_6px_1px] shadow-primary/30" 
-                    style={{ 
-                      background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.3) 100%)'
-                    }} 
-                  />
-                </div>
-              )}
               <div className={compactMode ? 'space-y-1' : 'space-y-1.5'}>
                 {/* Combine all items sorted by time for drop zone placement */}
                 {(() => {
@@ -1113,7 +1099,43 @@ interface TimelineBucketProps {
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
   const config = bucketConfig[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode } = usePlannerStore();
+  const { compactMode, chillMode, showCurrentTimeIndicator } = usePlannerStore();
+  
+  // Calculate time progress within bucket for the indicator
+  const [timeProgress, setTimeProgress] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isCurrentBucket) {
+      setTimeProgress(null);
+      return;
+    }
+    const update = () => {
+      const now = new Date();
+      let hour = now.getHours();
+      const minute = now.getMinutes();
+      
+      // Calculate progress based on bucket
+      let progress = 0;
+      if (bucket === 'morning') {
+        // Morning: 5am-12pm (7 hours)
+        progress = ((hour - 5) * 60 + minute) / (7 * 60);
+      } else if (bucket === 'afternoon') {
+        // Afternoon: 12pm-5pm (5 hours)
+        progress = ((hour - 12) * 60 + minute) / (5 * 60);
+      } else if (bucket === 'evening') {
+        // Evening: 5pm-12am (7 hours)
+        progress = ((hour - 17) * 60 + minute) / (7 * 60);
+      } else if (bucket === 'anytime') {
+        // Full day
+        progress = (hour * 60 + minute) / (24 * 60);
+      }
+      
+      setTimeProgress(Math.max(0, Math.min(1, progress)));
+    };
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, [isCurrentBucket, bucket]);
+  
   // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
   const [isHovered, setIsHovered] = useState(false);
@@ -1133,7 +1155,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   return (
     <div
       className={cn(
-        'rounded-xl border-2 border-dashed transition-all',
+        'relative rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
         isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background'
@@ -1145,6 +1167,24 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* Current time indicator - subtle glowing line extending past bucket edges */}
+      {/* Uses white in dark mode, dark gray in light mode for visibility */}
+      {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
+        <div
+          className="absolute -left-3 -right-3 pointer-events-none z-10"
+          style={{ top: `${timeProgress * 100}%` }}
+        >
+          {/* Clock icon to the left, centered vertically with dot */}
+          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={2.5} />
+          {/* Glowing dot */}
+          <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50" />
+          {/* Dashed line */}
+          <div
+            className="absolute left-2.5 right-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50"
+          />
+        </div>
+      )}
+      
       {/* Header + untimed section wrapped together as the unscheduled drop zone */}
       <div ref={setNodeRef}>
         {/* Header */}

@@ -191,7 +191,7 @@ function DroppableCell({ dropId, children, className, disabled, style }: Droppab
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -283,32 +283,68 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   };
 
   return (
-    <div className="flex-1 h-full relative">
-      {/* Previous week navigation - positioned relative to centered content */}
-      <div 
-        className="absolute top-1/2 -translate-y-1/2 z-10 flex flex-col items-center justify-center cursor-pointer group"
-        style={{ left: 'calc(50% - 36rem - 2rem)' }}
+    <div className="flex-1 h-full relative overflow-hidden">
+      {/* Previous week preview - positioned near the centered content */}
+      <button
         onClick={navigateToPrevWeek}
-        onMouseEnter={() => setPrevWeekHovered(true)}
-        onMouseLeave={() => setPrevWeekHovered(false)}
+        aria-label="Go to previous week"
+        className="group absolute top-0 bottom-0 w-24 z-10 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        style={{ right: 'calc(50% + 36rem - 3.5rem)' }}
       >
-        {/* Chevron - always centered */}
-        <div className="relative flex flex-col items-center">
-          {/* Label appears above chevron on hover */}
-          <div className={cn(
-            'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
-            prevWeekHovered ? 'opacity-100' : 'opacity-0'
-          )}>
-            Previous<br />week
+        {/* Week wireframe skeleton - single day column aligned with timeline */}
+        <div className={cn(
+          'flex flex-col w-full h-full',
+          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
+        )}>
+          {/* Date header placeholder */}
+          <div className="h-12 flex-shrink-0 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-muted/60" />
           </div>
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background/80 hover:bg-muted transition-colors">
+          {/* Time buckets - aligned with main timeline */}
+          <div className={cn(
+            'flex flex-col',
+            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+          )}>
+            {TIME_BUCKETS.map((bucket) => {
+              const style = bucketStyles[bucket];
+              return (
+                <div 
+                  key={bucket} 
+                  className={cn(
+                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
+                    style.borderClass,
+                    !compactMode && 'flex-1 min-h-0',
+                    compactMode && 'min-h-[50px]'
+                  )}
+                >
+                  {/* Colored header */}
+                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Placeholder item rows */}
+                  <div className="px-1 py-1 space-y-1">
+                    <div className="h-4 rounded bg-muted/60" />
+                    <div className="h-4 rounded bg-muted/60" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Fade mask - always visible, fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Chevron on hover */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-medium text-muted-foreground">Previous</span>
+            <span className="text-[9px] font-medium text-muted-foreground">week</span>
             <ChevronLeft className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>
-      </div>
+      </button>
 
       {/* Main week content - centered with max width */}
-      <div className={cn('h-full flex flex-col max-w-6xl mx-auto', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
+      <div className={cn('h-full flex flex-col max-w-6xl w-full mx-auto', compactMode ? 'overflow-auto' : 'overflow-hidden')}>
         <div className={cn(
           'p-4 flex flex-col',
           compactMode ? 'space-y-2' : 'flex-1 gap-2 min-h-0'
@@ -370,22 +406,33 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 const tasksNotInBlocks = bucketTasks.filter(t => !projectBlocks.some(p => p.id === t.project));
                 
                 // Determine if the current time falls in this bucket for today
-                const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
-                  anytime: { start: 0, end: 24 },
-                  morning: { start: 5, end: 12 },
-                  afternoon: { start: 12, end: 17 },
-                  evening: { start: 17, end: 24 },
-                };
-                const range = bucketRanges[bucket];
                 const style = bucketStyles[bucket];
-                // Show glow for current time bucket (independent of showCurrentTimeIndicator setting)
-                const isCurrentCell = isToday(day) &&
-                  currentTime !== null &&
-                  currentTime.hour >= range.start &&
-                  currentTime.hour < range.end;
-                const minuteProgress = currentTime
-                  ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
-                  : 0;
+                
+                // Determine if this is the current time bucket
+                // Evening wraps around midnight (5pm-5am)
+                let isCurrentCell = false;
+                let minuteProgress = 0;
+                
+                if (isToday(day) && currentTime !== null) {
+                  const hour = currentTime.hour;
+                  const minute = currentTime.minute;
+                  
+                  if (bucket === 'morning' && hour >= 5 && hour < 12) {
+                    isCurrentCell = true;
+                    minuteProgress = ((hour - 5) * 60 + minute) / (7 * 60);
+                  } else if (bucket === 'afternoon' && hour >= 12 && hour < 17) {
+                    isCurrentCell = true;
+                    minuteProgress = ((hour - 12) * 60 + minute) / (5 * 60);
+                  } else if (bucket === 'evening' && hour >= 17 && hour < 24) {
+                    // Evening: 5pm-12am (7 hours)
+                    isCurrentCell = true;
+                    minuteProgress = ((hour - 17) * 60 + minute) / (7 * 60);
+                  } else if (bucket === 'anytime') {
+                    // Anytime is always "current" if viewing today
+                    isCurrentCell = true;
+                    minuteProgress = (hour * 60 + minute) / (24 * 60);
+                  }
+                }
                 
                 // Generate drop ID that matches the format expected by DnD handler
                 const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
@@ -423,16 +470,20 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         </Button>
                       </div>
                     )}
-                    {/* Current time indicator */}
-                    {isCurrentCell && (
+                    {/* Current time indicator - subtle glowing line */}
+                    {/* Uses white in dark mode, dark gray in light mode for visibility */}
+                    {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
-                        className="absolute left-0 right-0 h-0.5 pointer-events-none z-20"
+                        className="absolute -left-4 -right-1 pointer-events-none z-10"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-primary shadow-[0_0_6px_2px] shadow-primary/50" />
+                        {/* Clock icon to the left, centered vertically with dot */}
+                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)]" strokeWidth={3} />
+                        {/* Glowing dot */}
+                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50" />
+                        {/* Dashed line */}
                         <div
-                          className="absolute left-1.5 right-0 h-0.5"
-                          style={{ background: 'linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.2) 100%)' }}
+                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50"
                         />
                       </div>
                     )}
@@ -475,28 +526,64 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         </div>
       </div>
 
-      {/* Next week navigation - positioned relative to centered content */}
-      <div 
-        className="absolute top-1/2 -translate-y-1/2 z-10 flex flex-col items-center justify-center cursor-pointer group"
-        style={{ left: 'calc(50% + 36rem + 1rem)' }}
+      {/* Next week preview - positioned near the centered content */}
+      <button
         onClick={navigateToNextWeek}
-        onMouseEnter={() => setNextWeekHovered(true)}
-        onMouseLeave={() => setNextWeekHovered(false)}
+        aria-label="Go to next week"
+        className="group absolute top-0 bottom-0 w-24 z-10 flex flex-col cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        style={{ left: 'calc(50% + 36rem + 0.5rem)' }}
       >
-        {/* Chevron - always centered */}
-        <div className="relative flex flex-col items-center">
-          {/* Label appears above chevron on hover */}
-          <div className={cn(
-            'absolute bottom-full mb-2 text-[10px] font-medium text-muted-foreground/70 text-center leading-tight whitespace-nowrap transition-opacity',
-            nextWeekHovered ? 'opacity-100' : 'opacity-0'
-          )}>
-            Next<br />week
+        {/* Week wireframe skeleton - single day column aligned with timeline */}
+        <div className={cn(
+          'flex flex-col w-full h-full',
+          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
+        )}>
+          {/* Date header placeholder */}
+          <div className="h-12 flex-shrink-0 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-muted/60" />
           </div>
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-background/80 hover:bg-muted transition-colors">
+          {/* Time buckets - aligned with main timeline */}
+          <div className={cn(
+            'flex flex-col',
+            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+          )}>
+            {TIME_BUCKETS.map((bucket) => {
+              const style = bucketStyles[bucket];
+              return (
+                <div 
+                  key={bucket} 
+                  className={cn(
+                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
+                    style.borderClass,
+                    !compactMode && 'flex-1 min-h-0',
+                    compactMode && 'min-h-[50px]'
+                  )}
+                >
+                  {/* Colored header */}
+                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Placeholder item rows */}
+                  <div className="px-1 py-1 space-y-1">
+                    <div className="h-4 rounded bg-muted/60" />
+                    <div className="h-4 rounded bg-muted/60" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Fade mask - always visible, fades toward center */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
+        {/* Chevron on hover */}
+        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-medium text-muted-foreground">Next</span>
+            <span className="text-[9px] font-medium text-muted-foreground">week</span>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>
-      </div>
+      </button>
     </div>
   );
 }
