@@ -379,6 +379,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   evening: { start: 17, end: 24 },
                 };
                 const range = bucketRanges[bucket];
+                const style = bucketStyles[bucket];
                 const isCurrentCell = showCurrentTimeIndicator &&
                   isToday(day) &&
                   currentTime !== null &&
@@ -402,7 +403,6 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 
                 // Generate drop ID that matches the format expected by DnD handler
                 const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
-                const style = bucketStyles[bucket];
                 
                 return (
                   <DroppableCell
