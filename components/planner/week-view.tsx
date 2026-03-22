@@ -587,10 +587,12 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         className="absolute -left-4 -right-1 z-10 group/indicator"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
-                        {/* Clock icon to the left - only visible on hover of the dot area */}
+                        {/* Invisible hover area covering the entire indicator */}
+                        <div className="absolute left-0 right-0 -top-1.5 -bottom-1.5 cursor-default" />
+                        {/* Clock icon to the left - only visible on hover of the indicator area */}
                         <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
-                        {/* Glowing dot - interactive area for hover */}
-                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 cursor-default" />
+                        {/* Glowing dot */}
+                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 pointer-events-none" />
                         {/* Dashed line */}
                         <div
                           className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 pointer-events-none"
