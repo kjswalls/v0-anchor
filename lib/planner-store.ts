@@ -424,6 +424,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
       
       scheduleTask: (id, bucket, time, date) => {
+        console.log('[v0] scheduleTask called - id:', id, 'bucket:', bucket, 'time:', time, 'date:', date);
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
         // Auto-correct bucket based on time
@@ -435,8 +436,8 @@ export const usePlannerStore = create<PlannerStore>()(
           }
         }
         
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
+        set((state) => {
+          const updatedTasks = state.tasks.map((t) =>
             t.id === id
               ? { 
                   ...t, 
@@ -446,8 +447,11 @@ export const usePlannerStore = create<PlannerStore>()(
                   ...(date ? { startDate: date } : {})
                 }
               : t
-          ),
-        }));
+          );
+          const updatedTask = updatedTasks.find(t => t.id === id);
+          console.log('[v0] Task after update - startDate:', updatedTask?.startDate, 'isScheduled:', updatedTask?.isScheduled);
+          return { tasks: updatedTasks };
+        });
       },
       
       assignTaskToBucket: (id, bucket) => {
