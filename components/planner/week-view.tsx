@@ -33,30 +33,26 @@ const bucketTimes: Record<TimeBucket, string> = {
 };
 
 // Bucket styling config matching the day view
-const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowClass: string; glowColor: string }> = {
+const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowColor: string }> = {
   anytime: {
     borderClass: 'border-anytime/50',
     bgClass: 'bg-anytime/30',
-    glowClass: 'ring-2 ring-anytime/40',
-    glowColor: 'var(--anytime)',
+    glowColor: 'hsl(var(--anytime))',
   },
   morning: {
     borderClass: 'border-morning/40',
     bgClass: 'bg-morning/20',
-    glowClass: 'ring-2 ring-morning/50',
-    glowColor: 'var(--morning)',
+    glowColor: 'hsl(var(--morning))',
   },
   afternoon: {
     borderClass: 'border-afternoon/40',
     bgClass: 'bg-afternoon/20',
-    glowClass: 'ring-2 ring-afternoon/50',
-    glowColor: 'var(--afternoon)',
+    glowColor: 'hsl(var(--afternoon))',
   },
   evening: {
     borderClass: 'border-evening/40',
     bgClass: 'bg-evening/20',
-    glowClass: 'ring-2 ring-evening/50',
-    glowColor: 'var(--evening)',
+    glowColor: 'hsl(var(--evening))',
   },
 };
 
@@ -407,9 +403,12 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       compactMode ? 'min-h-[80px]' : 'min-h-0',
                       isSelected && 'border-primary/30 bg-primary/5',
                       isToday(day) && !isSelected && style.bgClass,
-                      isCurrentCell && style.glowClass
+                      isCurrentCell && 'ring-2 ring-offset-1 ring-offset-background'
                     )}
-                    style={isCurrentCell ? { boxShadow: `0 0 16px -2px ${style.glowColor}` } : undefined}
+                    style={isCurrentCell ? { 
+                      boxShadow: `0 0 20px -4px ${style.glowColor}`,
+                      '--tw-ring-color': style.glowColor,
+                    } as React.CSSProperties : undefined}
                   >
                     {/* Add button - only for today and future days */}
                     {onAddClick && !isPastDay && (
