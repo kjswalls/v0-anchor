@@ -146,7 +146,15 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
   return (
   <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
+            e.preventDefault();
+            handleSave();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-foreground">Edit Task</DialogTitle>
           <DialogDescription className="sr-only">
@@ -212,10 +220,11 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                   </Popover>
                   <Input
                     placeholder="Name"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    className="bg-background border-border flex-1"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="bg-background border-border flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                  data-sub-input
                   />
                   <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
                     <Plus className="h-4 w-4" />

@@ -227,7 +227,15 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
+              e.preventDefault();
+              activeTab === 'task' ? handleAddTask() : handleAddHabit();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle className="text-foreground">Add New</DialogTitle>
             <DialogDescription className="sr-only">
@@ -298,10 +306,11 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                       </Popover>
                       <Input
                         placeholder="Name"
-                        value={newProjectName}
-                        onChange={(e) => setNewProjectName(e.target.value)}
-                        className="bg-background border-border flex-1"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  className="bg-background border-border flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                  data-sub-input
                       />
                       <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
                         <Plus className="h-4 w-4" />
@@ -517,10 +526,11 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                       </Popover>
                       <Input
                         placeholder="Name"
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        className="bg-background border-border flex-1"
-                        onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  className="bg-background border-border flex-1"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                  data-sub-input
                       />
                       <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
                         <Plus className="h-4 w-4" />
