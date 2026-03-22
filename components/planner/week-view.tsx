@@ -333,6 +333,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       scheduledHabits,
       unscheduledTasks,
       scheduledTasks,
+      dayTasks, // All tasks for this day (for project block available tasks)
     };
   };
 
@@ -502,7 +503,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   unscheduledHabits, 
                   scheduledHabits,
                   unscheduledTasks, 
-                  scheduledTasks 
+                  scheduledTasks,
+                  dayTasks 
                 } = getItemsByBucket(day, bucket);
                 const projectBlocks = getProjectBlocksForBucket(day, bucket);
                 const recurringProjects = getRecurringProjectsForDate(day).filter(p => p.timeBucket === bucket);
@@ -626,7 +628,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         key={project.id}
                         project={project}
                         tasks={bucketTasks}
-                        allTasks={tasks}
+                        allTasks={dayTasks}
                         onTaskClick={onTaskClick}
                       />
                     ))}
