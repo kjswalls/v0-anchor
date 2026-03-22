@@ -152,8 +152,6 @@ export default function PlannerPage() {
         const dateStr = parts[1];
         const bucket = parts[2] as TimeBucket;
         
-        console.log('[v0] Week drop - target:', target, 'dateStr:', dateStr, 'bucket:', bucket);
-        
         if (itemType === 'task') {
           // Schedule the task for that date and bucket
           scheduleTask(itemId, bucket, undefined, dateStr);
