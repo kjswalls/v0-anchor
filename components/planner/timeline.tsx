@@ -1122,26 +1122,37 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       setTimeProgress(null);
       return;
     }
-    const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
-      anytime: { start: 0, end: 24 },
-      morning: { start: 5, end: 12 },
-      afternoon: { start: 12, end: 17 },
-      evening: { start: 17, end: 24 },
-    };
-    const range = bucketRanges[bucket];
     const update = () => {
       const now = new Date();
-      const hour = now.getHours();
+      let hour = now.getHours();
       const minute = now.getMinutes();
-      const progress = ((hour - range.start) * 60 + minute) / ((range.end - range.start) * 60);
+      
+      // Calculate progress based on bucket
+      let progress = 0;
+      if (bucket === 'morning') {
+        // Morning: 5am-12pm (7 hours)
+        progress = ((hour - 5) * 60 + minute) / (7 * 60);
+      } else if (bucket === 'afternoon') {
+        // Afternoon: 12pm-5pm (5 hours)
+        progress = ((hour - 12) * 60 + minute) / (5 * 60);
+      } else if (bucket === 'evening') {
+        // Evening: 5pm-5am (12 hours, wraps around midnight)
+        // For hours 0-4, treat as 24-28 for calculation
+        if (hour < 5) {
+          hour = hour + 24;
+        }
+        progress = ((hour - 17) * 60 + minute) / (12 * 60);
+      } else if (bucket === 'anytime') {
+        // Full day
+        progress = (hour * 60 + minute) / (24 * 60);
+      }
+      
       setTimeProgress(Math.max(0, Math.min(1, progress)));
     };
     update();
     const id = setInterval(update, 60_000);
     return () => clearInterval(id);
   }, [isCurrentBucket, bucket]);
-  
-  console.log('[v0] TimelineBucket debug:', { bucket, isCurrentBucket, showCurrentTimeIndicator, timeProgress });
   
   // The outer droppable covers the entire bucket for unscheduled assignment
   const { isOver, setNodeRef } = useDroppable({ id: bucket });
@@ -1174,20 +1185,20 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Current time indicator - subtle white glowing line */}
+      {/* Current time indicator - subtle white glowing line extending past bucket edges */}
       {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
         <div
-          className="absolute left-0 right-0 pointer-events-none z-10"
+          className="absolute -left-3 -right-3 pointer-events-none z-10"
           style={{ top: `${timeProgress * 100}%` }}
         >
           {/* Glowing dot */}
-          <div className="absolute left-2 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/60" />
+          <div className="absolute left-1 w-2.5 h-2.5 -mt-[4px] rounded-full bg-white/90 shadow-[0_0_10px_3px] shadow-white/70" />
           {/* Glowing line */}
           <div
-            className="absolute left-4 right-2 h-[2px] rounded-full"
+            className="absolute left-4 right-1 h-[2px] rounded-full"
             style={{ 
-              background: 'linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 100%)',
-              boxShadow: '0 0 6px 1px rgba(255,255,255,0.4)'
+              background: 'linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 80%, rgba(255,255,255,0.3) 100%)',
+              boxShadow: '0 0 8px 2px rgba(255,255,255,0.5)'
             }}
           />
         </div>

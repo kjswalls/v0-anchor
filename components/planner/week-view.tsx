@@ -370,22 +370,34 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 const tasksNotInBlocks = bucketTasks.filter(t => !projectBlocks.some(p => p.id === t.project));
                 
                 // Determine if the current time falls in this bucket for today
-                const bucketRanges: Record<TimeBucket, { start: number; end: number }> = {
-                  anytime: { start: 0, end: 24 },
-                  morning: { start: 5, end: 12 },
-                  afternoon: { start: 12, end: 17 },
-                  evening: { start: 17, end: 24 },
-                };
-                const range = bucketRanges[bucket];
                 const style = bucketStyles[bucket];
-                // Show glow for current time bucket (independent of showCurrentTimeIndicator setting)
-                const isCurrentCell = isToday(day) &&
-                  currentTime !== null &&
-                  currentTime.hour >= range.start &&
-                  currentTime.hour < range.end;
-                const minuteProgress = currentTime
-                  ? ((currentTime.hour - range.start) * 60 + currentTime.minute) / ((range.end - range.start) * 60)
-                  : 0;
+                
+                // Determine if this is the current time bucket
+                // Evening wraps around midnight (5pm-5am)
+                let isCurrentCell = false;
+                let minuteProgress = 0;
+                
+                if (isToday(day) && currentTime !== null) {
+                  const hour = currentTime.hour;
+                  const minute = currentTime.minute;
+                  
+                  if (bucket === 'morning' && hour >= 5 && hour < 12) {
+                    isCurrentCell = true;
+                    minuteProgress = ((hour - 5) * 60 + minute) / (7 * 60);
+                  } else if (bucket === 'afternoon' && hour >= 12 && hour < 17) {
+                    isCurrentCell = true;
+                    minuteProgress = ((hour - 12) * 60 + minute) / (5 * 60);
+                  } else if (bucket === 'evening' && (hour >= 17 || hour < 5)) {
+                    isCurrentCell = true;
+                    // For hours 0-4, treat as 24-28 for calculation
+                    const adjustedHour = hour < 5 ? hour + 24 : hour;
+                    minuteProgress = ((adjustedHour - 17) * 60 + minute) / (12 * 60);
+                  } else if (bucket === 'anytime') {
+                    // Anytime is always "current" if viewing today
+                    isCurrentCell = true;
+                    minuteProgress = (hour * 60 + minute) / (24 * 60);
+                  }
+                }
                 
                 // Generate drop ID that matches the format expected by DnD handler
                 const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
@@ -424,19 +436,19 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       </div>
                     )}
                     {/* Current time indicator - subtle white glowing line */}
-                    {showCurrentTimeIndicator && isCurrentCell && (
+                    {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
-                        className="absolute left-0 right-0 pointer-events-none z-10"
+                        className="absolute -left-1 -right-1 pointer-events-none z-10"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
                         {/* Glowing dot */}
-                        <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/60" />
+                        <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-white/90 shadow-[0_0_8px_2px] shadow-white/70" />
                         {/* Glowing line */}
                         <div
                           className="absolute left-2 right-0 h-[2px] rounded-full"
                           style={{ 
-                            background: 'linear-gradient(to right, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 100%)',
-                            boxShadow: '0 0 6px 1px rgba(255,255,255,0.4)'
+                            background: 'linear-gradient(to right, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 80%, rgba(255,255,255,0.3) 100%)',
+                            boxShadow: '0 0 8px 2px rgba(255,255,255,0.5)'
                           }}
                         />
                       </div>
