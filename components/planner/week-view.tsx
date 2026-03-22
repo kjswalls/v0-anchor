@@ -288,37 +288,31 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       <button
         onClick={navigateToPrevWeek}
         aria-label="Go to previous week"
-        className="group relative flex-shrink-0 w-24 flex flex-col overflow-hidden cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
-        {/* Fade mask */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
-        {/* Date label + chevron on hover */}
-        <div className="absolute inset-0 flex items-center justify-start pl-2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex flex-col items-center gap-0 leading-tight">
-              <span className="text-[9px] font-medium text-muted-foreground/70">Previous</span>
-              <span className="text-[9px] font-medium text-muted-foreground/70">week</span>
-            </div>
-            <div className="flex items-center justify-center h-7 w-7 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
-              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
         {/* Week wireframe skeleton */}
-        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1 gap-1' : 'p-1.5 gap-1.5')}>
+        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1' : 'p-2 gap-1.5')}>
           {TIME_BUCKETS.map((bucket) => {
             const style = bucketStyles[bucket];
             return (
-              <div key={bucket} className={cn('rounded border border-dashed overflow-hidden opacity-60', style.borderClass)}>
+              <div key={bucket} className={cn('flex-1 min-h-[20px] rounded border border-dashed', style.borderClass, style.bgClass)}>
                 {/* Mini grid representing 7 days */}
-                <div className="grid grid-cols-7 gap-px p-0.5">
+                <div className="grid grid-cols-7 gap-0.5 p-1 h-full">
                   {Array.from({ length: 7 }).map((_, i) => (
-                    <div key={i} className="h-2 rounded-sm bg-muted/40" />
+                    <div key={i} className="rounded-sm bg-muted/30" />
                   ))}
                 </div>
               </div>
             );
           })}
+        </div>
+        {/* Fade mask + chevron on hover */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-medium text-muted-foreground">Previous</span>
+            <span className="text-[9px] font-medium text-muted-foreground">week</span>
+            <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+          </div>
         </div>
       </button>
 
@@ -509,37 +503,31 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       <button
         onClick={navigateToNextWeek}
         aria-label="Go to next week"
-        className="group relative flex-shrink-0 w-24 flex flex-col overflow-hidden cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
-        {/* Fade mask */}
-        <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
-        {/* Date label + chevron on hover */}
-        <div className="absolute inset-0 flex items-center justify-end pr-2 z-20 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="flex flex-col items-center gap-1">
-            <div className="flex flex-col items-center gap-0 leading-tight">
-              <span className="text-[9px] font-medium text-muted-foreground/70">Next</span>
-              <span className="text-[9px] font-medium text-muted-foreground/70">week</span>
-            </div>
-            <div className="flex items-center justify-center h-7 w-7 rounded-full bg-gradient-radial from-background via-background/80 to-transparent">
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
         {/* Week wireframe skeleton */}
-        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1 gap-1' : 'p-1.5 gap-1.5')}>
+        <div className={cn('flex flex-col w-full h-full justify-center', compactMode ? 'p-1.5 gap-1' : 'p-2 gap-1.5')}>
           {TIME_BUCKETS.map((bucket) => {
             const style = bucketStyles[bucket];
             return (
-              <div key={bucket} className={cn('rounded border border-dashed overflow-hidden opacity-60', style.borderClass)}>
+              <div key={bucket} className={cn('flex-1 min-h-[20px] rounded border border-dashed', style.borderClass, style.bgClass)}>
                 {/* Mini grid representing 7 days */}
-                <div className="grid grid-cols-7 gap-px p-0.5">
+                <div className="grid grid-cols-7 gap-0.5 p-1 h-full">
                   {Array.from({ length: 7 }).map((_, i) => (
-                    <div key={i} className="h-2 rounded-sm bg-muted/40" />
+                    <div key={i} className="rounded-sm bg-muted/30" />
                   ))}
                 </div>
               </div>
             );
           })}
+        </div>
+        {/* Fade mask + chevron on hover */}
+        <div className="absolute inset-0 bg-gradient-to-l from-background/80 via-background/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-[9px] font-medium text-muted-foreground">Next</span>
+            <span className="text-[9px] font-medium text-muted-foreground">week</span>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
         </div>
       </button>
     </div>
