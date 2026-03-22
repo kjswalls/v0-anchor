@@ -182,7 +182,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 >
                   {/* Add button - only for today and future days */}
                   {onAddClick && !isBefore(startOfDay(day), startOfDay(new Date())) && (
-                    <div className="flex justify-center mb-1">
+                    <div className="flex justify-end mb-1">
                       <Button
                         variant="ghost"
                         size="icon"
