@@ -37,22 +37,22 @@ const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; g
   anytime: {
     borderClass: 'border-anytime/50',
     bgClass: 'bg-anytime/30',
-    glowColor: 'hsl(var(--anytime))',
+    glowColor: 'oklch(0.92 0.02 240 / 0.5)',
   },
   morning: {
     borderClass: 'border-morning/40',
     bgClass: 'bg-morning/20',
-    glowColor: 'hsl(var(--morning))',
+    glowColor: 'oklch(0.88 0.12 85 / 0.6)',
   },
   afternoon: {
     borderClass: 'border-afternoon/40',
     bgClass: 'bg-afternoon/20',
-    glowColor: 'hsl(var(--afternoon))',
+    glowColor: 'oklch(0.85 0.12 45 / 0.6)',
   },
   evening: {
     borderClass: 'border-evening/40',
     bgClass: 'bg-evening/20',
-    glowColor: 'hsl(var(--evening))',
+    glowColor: 'oklch(0.75 0.12 280 / 0.6)',
   },
 };
 
@@ -191,7 +191,7 @@ function DroppableCell({ dropId, children, className, disabled, style }: Droppab
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -379,8 +379,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   evening: { start: 17, end: 24 },
                 };
                 const range = bucketRanges[bucket];
-                const isCurrentCell = showCurrentTimeIndicator &&
-                  isToday(day) &&
+                const style = bucketStyles[bucket];
+                // Show glow for current time bucket (independent of showCurrentTimeIndicator setting)
+                const isCurrentCell = isToday(day) &&
                   currentTime !== null &&
                   currentTime.hour >= range.start &&
                   currentTime.hour < range.end;
@@ -390,7 +391,6 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 
                 // Generate drop ID that matches the format expected by DnD handler
                 const dropId = `week:${format(day, 'yyyy-MM-dd')}:${bucket}`;
-                const style = bucketStyles[bucket];
                 
                 return (
                   <DroppableCell
@@ -398,16 +398,14 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     dropId={dropId}
                     disabled={isPastDay}
                     className={cn(
-                      'relative rounded-lg border-2 border-dashed p-1.5 space-y-1 overflow-y-auto transition-all',
+                      'relative rounded-lg border-2 border-dashed p-1.5 space-y-1 transition-all',
                       style.borderClass,
-                      compactMode ? 'min-h-[80px]' : 'min-h-0',
+                      compactMode ? 'min-h-[80px] overflow-y-auto' : 'min-h-0',
                       isSelected && 'border-primary/30 bg-primary/5',
-                      isToday(day) && !isSelected && style.bgClass,
-                      isCurrentCell && 'ring-2 ring-offset-1 ring-offset-background'
+                      isToday(day) && !isSelected && style.bgClass
                     )}
                     style={isCurrentCell ? { 
-                      boxShadow: `0 0 20px -4px ${style.glowColor}`,
-                      '--tw-ring-color': style.glowColor,
+                      boxShadow: `0 0 20px 0px ${style.glowColor}, inset 0 0 0 2px ${style.glowColor}`,
                     } as React.CSSProperties : undefined}
                   >
                     {/* Add button - only for today and future days */}
