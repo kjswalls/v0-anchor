@@ -442,14 +442,25 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
                         {/* Glowing dot - white in dark mode, dark in light mode */}
-                        <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-white/60 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-white/40 dark:shadow-white/50" />
-                        {/* Glowing line */}
+                        <div className="absolute left-0 w-1.5 h-1.5 -mt-[2px] rounded-full bg-white/60 dark:bg-white/70 dark:shadow-[0_0_4px_1px] dark:shadow-white/40 dark:shadow-white/50 bg-gray-600/70 shadow-[0_0_4px_1px] shadow-gray-600/40" />
+                        {/* Glowing dashed line */}
                         <div
-                          className="absolute left-2 right-0 h-[1.5px] rounded-full dark:bg-white/40 bg-gray-500/50"
+                          className="absolute left-2 right-0 h-[1.5px]"
                           style={{ 
-                            boxShadow: 'var(--tw-shadow, 0 0 3px 1px rgba(255,255,255,0.2))'
+                            borderTop: '1.5px dashed currentColor',
+                            opacity: 0.6,
+                            color: 'rgb(255 255 255 / 0.4)',
+                            filter: 'drop-shadow(0 0 2px rgba(255, 255, 255, 0.2))'
                           }}
                         />
+                        <style jsx>{`
+                          @media (prefers-color-scheme: light) {
+                            [style*="borderTop: 1.5px dashed"] {
+                              color: rgb(107 114 128 / 0.5);
+                              filter: drop-shadow(0 0 2px rgba(107, 114, 128, 0.2));
+                            }
+                          }
+                        `}</style>
                       </div>
                     )}
                     

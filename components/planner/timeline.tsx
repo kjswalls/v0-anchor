@@ -1175,14 +1175,25 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           style={{ top: `${timeProgress * 100}%` }}
         >
           {/* Glowing dot - white in dark mode, dark in light mode */}
-          <div className="absolute left-1 w-2 h-2 -mt-[3px] rounded-full bg-white/60 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-white/40 dark:shadow-white/50 light:bg-gray-600/70 light:shadow-gray-600/40" />
-          {/* Glowing line */}
+          <div className="absolute left-1 w-2 h-2 -mt-[3px] rounded-full bg-white/60 dark:bg-white/70 dark:shadow-[0_0_6px_2px] dark:shadow-white/40 dark:shadow-white/50 bg-gray-600/70 shadow-[0_0_6px_2px] shadow-gray-600/40" />
+          {/* Glowing dashed line */}
           <div
-            className="absolute left-3 right-1 h-[1.5px] rounded-full dark:bg-white/40 bg-gray-500/50"
+            className="absolute left-3 right-1 h-[1.5px]"
             style={{ 
-              boxShadow: 'var(--tw-shadow, 0 0 4px 1px rgba(255,255,255,0.3))'
+              borderTop: '1.5px dashed currentColor',
+              opacity: 0.6,
+              color: 'rgb(255 255 255 / 0.4)',
+              filter: 'drop-shadow(0 0 3px rgba(255, 255, 255, 0.2))'
             }}
           />
+          <style jsx>{`
+            @media (prefers-color-scheme: light) {
+              [style*="borderTop: 1.5px dashed"] {
+                color: rgb(107 114 128 / 0.5);
+                filter: drop-shadow(0 0 3px rgba(107, 114, 128, 0.2));
+              }
+            }
+          `}</style>
         </div>
       )}
       
