@@ -16,7 +16,7 @@ interface WeekViewProps {
   onAddClick?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
 }
 
-const TIME_BUCKETS: TimeBucket[] = ['morning', 'afternoon', 'evening'];
+const TIME_BUCKETS: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
 
 const bucketLabels: Record<TimeBucket, string> = {
   anytime: 'Anytime',
@@ -167,23 +167,39 @@ interface DroppableCellProps {
   children: React.ReactNode;
   className?: string;
   disabled?: boolean;
-  style?: React.CSSProperties;
+  glowColor?: string;
 }
 
-function DroppableCell({ dropId, children, className, disabled, style }: DroppableCellProps) {
+function DroppableCell({ dropId, children, className, disabled, glowColor }: DroppableCellProps) {
   const { isOver, setNodeRef } = useDroppable({ 
     id: dropId,
     disabled: disabled,
   });
+  
+  // Combine glow effect with drop zone ring effect
+  // Both use box-shadow, so we need to merge them
+  const combinedStyle: React.CSSProperties | undefined = (() => {
+    const glowShadow = glowColor ? `0 0 25px -3px ${glowColor}` : null;
+    const ringShadow = !disabled && isOver ? 'inset 0 0 0 2px oklch(0.546 0.245 262.881)' : null;
+    
+    if (glowShadow && ringShadow) {
+      return { boxShadow: `${glowShadow}, ${ringShadow}` };
+    } else if (glowShadow) {
+      return { boxShadow: glowShadow };
+    } else if (ringShadow) {
+      return { boxShadow: ringShadow };
+    }
+    return undefined;
+  })();
   
   return (
     <div
       ref={setNodeRef}
       className={cn(
         className,
-        !disabled && isOver && 'ring-2 ring-primary ring-inset bg-primary/5'
+        !disabled && isOver && 'bg-primary/5'
       )}
-      style={style}
+      style={combinedStyle}
     >
       {children}
     </div>
@@ -272,6 +288,34 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     // Find projects that have tasks in this bucket
     const projectIds = [...new Set(bucketTasks.filter(t => t.project).map(t => t.project!))];
     return projects.filter(p => projectIds.includes(p.id) && p.startTime && p.timeBucket === bucket);
+  };
+
+  // Get recurring project blocks for a specific date
+  const getRecurringProjectsForDate = (date: Date) => {
+    const dayOfWeek = date.getDay(); // 0 = Sunday
+    const dateOfMonth = date.getDate(); // 1-31
+    return projects.filter((p) => {
+      if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
+      
+      switch (p.repeatFrequency) {
+        case 'daily':
+          return true;
+        case 'weekdays':
+          return dayOfWeek >= 1 && dayOfWeek <= 5;
+        case 'weekends':
+          return dayOfWeek === 0 || dayOfWeek === 6;
+        case 'weekly':
+          return p.repeatDays?.includes(dayOfWeek) ?? false;
+        case 'monthly':
+          const targetDay = p.repeatMonthDay || 1;
+          const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+          return dateOfMonth === Math.min(targetDay, lastDayOfMonth);
+        case 'custom':
+          return p.repeatDays?.includes(dayOfWeek) ?? false;
+        default:
+          return false;
+      }
+    });
   };
 
   const navigateToPrevWeek = () => {
@@ -399,11 +443,18 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
               {weekDays.map((day) => {
                 const { tasks: bucketTasks, habits: bucketHabits } = getItemsByBucket(day, bucket);
                 const projectBlocks = getProjectBlocksForBucket(day, bucket);
+                const recurringProjects = getRecurringProjectsForDate(day).filter(p => p.timeBucket === bucket);
                 const isSelected = isSameDay(day, selectedDate);
                 const isPastDay = isBefore(startOfDay(day), startOfDay(new Date()));
                 
+                // Combine project blocks and recurring projects (avoid duplicates)
+                const allProjectBlocks = [
+                  ...projectBlocks,
+                  ...recurringProjects.filter(rp => !projectBlocks.some(pb => pb.id === rp.id))
+                ];
+                
                 // Get tasks not in project blocks
-                const tasksNotInBlocks = bucketTasks.filter(t => !projectBlocks.some(p => p.id === t.project));
+                const tasksNotInBlocks = bucketTasks.filter(t => !allProjectBlocks.some(p => p.id === t.project));
                 
                 // Determine if the current time falls in this bucket for today
                 const style = bucketStyles[bucket];
@@ -449,9 +500,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       isSelected && 'border-primary/30 bg-primary/5',
                       isToday(day) && !isSelected && style.bgClass
                     )}
-                    style={isCurrentCell ? { 
-                      boxShadow: `0 0 25px -3px ${style.glowColor}`,
-                    } as React.CSSProperties : undefined}
+                    glowColor={isCurrentCell ? style.glowColor : undefined}
                   >
                     {/* Add button - only for today and future days */}
                     {onAddClick && !isPastDay && (
@@ -488,8 +537,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                       </div>
                     )}
                     
-                    {/* Project blocks */}
-                    {projectBlocks.map((project) => (
+                    {/* Project blocks (including recurring) */}
+                    {allProjectBlocks.map((project) => (
                       <WeekProjectBlock
                         key={project.id}
                         project={project}
