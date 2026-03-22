@@ -288,21 +288,21 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       <button
         onClick={navigateToPrevWeek}
         aria-label="Go to previous week"
-        className="group relative flex-shrink-0 w-20 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
         {/* Week wireframe skeleton - single day column aligned with timeline */}
         <div className={cn(
           'flex flex-col w-full h-full',
-          compactMode ? 'p-1.5 gap-2' : 'p-2 gap-2'
+          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
         )}>
           {/* Date header placeholder */}
           <div className="h-12 flex-shrink-0 flex items-center justify-center">
-            <div className="w-8 h-8 rounded-lg bg-muted/40" />
+            <div className="w-10 h-10 rounded-lg bg-muted/60" />
           </div>
           {/* Time buckets - aligned with main timeline */}
           <div className={cn(
             'flex flex-col',
-            compactMode ? 'gap-2' : 'flex-1 gap-2 min-h-0'
+            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
           )}>
             {TIME_BUCKETS.map((bucket) => {
               const style = bucketStyles[bucket];
@@ -310,16 +310,20 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 <div 
                   key={bucket} 
                   className={cn(
-                    'rounded-lg border border-dashed p-1',
+                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
                     style.borderClass,
                     !compactMode && 'flex-1 min-h-0',
-                    compactMode && 'min-h-[60px]'
+                    compactMode && 'min-h-[50px]'
                   )}
                 >
-                  {/* Placeholder content lines */}
-                  <div className="space-y-1">
-                    <div className="h-1.5 w-3/4 rounded bg-muted/30" />
-                    <div className="h-1.5 w-1/2 rounded bg-muted/20" />
+                  {/* Colored header */}
+                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Placeholder item rows */}
+                  <div className="px-1 py-1 space-y-1">
+                    <div className="h-4 rounded bg-muted/60" />
+                    <div className="h-4 rounded bg-muted/60" />
                   </div>
                 </div>
               );
@@ -523,21 +527,21 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       <button
         onClick={navigateToNextWeek}
         aria-label="Go to next week"
-        className="group relative flex-shrink-0 w-20 flex flex-col cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
+        className="group relative flex-shrink-0 w-24 flex flex-col cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
       >
         {/* Week wireframe skeleton - single day column aligned with timeline */}
         <div className={cn(
           'flex flex-col w-full h-full',
-          compactMode ? 'p-1.5 gap-2' : 'p-2 gap-2'
+          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
         )}>
           {/* Date header placeholder */}
           <div className="h-12 flex-shrink-0 flex items-center justify-center">
-            <div className="w-8 h-8 rounded-lg bg-muted/40" />
+            <div className="w-10 h-10 rounded-lg bg-muted/60" />
           </div>
           {/* Time buckets - aligned with main timeline */}
           <div className={cn(
             'flex flex-col',
-            compactMode ? 'gap-2' : 'flex-1 gap-2 min-h-0'
+            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
           )}>
             {TIME_BUCKETS.map((bucket) => {
               const style = bucketStyles[bucket];
@@ -545,16 +549,20 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 <div 
                   key={bucket} 
                   className={cn(
-                    'rounded-lg border border-dashed p-1',
+                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
                     style.borderClass,
                     !compactMode && 'flex-1 min-h-0',
-                    compactMode && 'min-h-[60px]'
+                    compactMode && 'min-h-[50px]'
                   )}
                 >
-                  {/* Placeholder content lines */}
-                  <div className="space-y-1">
-                    <div className="h-1.5 w-3/4 rounded bg-muted/30" />
-                    <div className="h-1.5 w-1/2 rounded bg-muted/20" />
+                  {/* Colored header */}
+                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Placeholder item rows */}
+                  <div className="px-1 py-1 space-y-1">
+                    <div className="h-4 rounded bg-muted/60" />
+                    <div className="h-4 rounded bg-muted/60" />
                   </div>
                 </div>
               );
