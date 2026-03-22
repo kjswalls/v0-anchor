@@ -146,6 +146,14 @@ function WeekProjectBlock({ project, tasks, allTasks, onTaskClick }: WeekProject
     t => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
   );
   
+  // Debug
+  if (tasksInBlock.length > 0) {
+    console.log('[v0] WeekProjectBlock tasksInBlock:', {
+      projectName: project.name,
+      tasksInBlock: tasksInBlock.map(t => ({ title: t.title, startDate: t.startDate })),
+    });
+  }
+  
   // Show block if there are tasks inside or available tasks
   const hasContent = tasksInBlock.length > 0 || availableTasks.length > 0;
   
@@ -298,6 +306,23 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   // Get tasks and habits for a specific day
   const getItemsForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
+    
+    // Debug: Log task filtering for dates of interest
+    if (dateStr === '2026-03-21' || dateStr === '2026-03-22') {
+      const matchingTasks = tasks.filter(task => {
+        if (!task.startDate) return false;
+        const taskDateStr = normalizeDateStr(task.startDate);
+        return taskDateStr === dateStr;
+      });
+      console.log(`[v0] getItemsForDay(${dateStr}):`, {
+        totalTasks: tasks.length,
+        matchingTasks: matchingTasks.map(t => ({ 
+          title: t.title, 
+          startDate: t.startDate, 
+          normalized: t.startDate ? normalizeDateStr(t.startDate) : null 
+        })),
+      });
+    }
     
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
@@ -520,6 +545,16 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                 // Get tasks not in project blocks - only unscheduled tasks outside blocks
                 const tasksNotInBlocks = unscheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project));
                 
+                // Debug: Log tasks being rendered in each cell
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if ((dayStr === '2026-03-21' || dayStr === '2026-03-22') && bucket === 'morning') {
+                  console.log(`[v0] Cell ${dayStr} ${bucket}:`, {
+                    bucketTasks: bucketTasks.map(t => ({ title: t.title, startDate: t.startDate })),
+                    unscheduledTasks: unscheduledTasks.map(t => ({ title: t.title, startDate: t.startDate })),
+                    tasksNotInBlocks: tasksNotInBlocks.map(t => ({ title: t.title, startDate: t.startDate })),
+                  });
+                }
+                
                 // Determine if the current time falls in this bucket for today
                 const style = bucketStyles[bucket];
                 
@@ -628,7 +663,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         key={project.id}
                         project={project}
                         tasks={bucketTasks}
-                        allTasks={dayTasks}
+                        allTasks={tasks}
                         onTaskClick={onTaskClick}
                       />
                     ))}
