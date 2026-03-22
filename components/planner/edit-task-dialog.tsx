@@ -163,6 +163,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="bg-background border-border"
+              autoFocus
             />
           </div>
           

@@ -250,6 +250,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
                   className="bg-background border-border"
+                  autoFocus
                 />
               </div>
               

@@ -181,6 +181,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="bg-background border-border"
+                autoFocus
               />
             </div>
             
