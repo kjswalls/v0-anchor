@@ -1174,8 +1174,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           className="absolute -left-3 -right-3 pointer-events-none z-10"
           style={{ top: `${timeProgress * 100}%` }}
         >
-          {/* Glowing dot - white in dark mode, dark in light mode */}
-          <div className="absolute left-1 w-2 h-2 -mt-[3px] rounded-full bg-white/60 dark:bg-white/70 dark:shadow-[0_0_6px_2px] dark:shadow-white/40 dark:shadow-white/50 bg-gray-600/70 shadow-[0_0_6px_2px] shadow-gray-600/40" />
+          {/* Glowing dot with clock icon - white in dark mode, dark in light mode */}
+          <div className="absolute left-1 w-2 h-2 -mt-[3px] rounded-full bg-white/60 dark:bg-white/70 dark:shadow-[0_0_6px_2px] dark:shadow-white/40 dark:shadow-white/50 bg-gray-600/70 shadow-[0_0_6px_2px] shadow-gray-600/40 flex items-center justify-center">
+            <Clock className="w-1 h-1 text-white dark:text-white text-gray-800 -ml-0.5" strokeWidth={3} />
+          </div>
           {/* Glowing dashed line */}
           <div
             className="absolute left-3 right-1 h-[1.5px]"
