@@ -280,42 +280,35 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
   const prevWeekDate = useMemo(() => subWeeks(selectedDate, 1), [selectedDate]);
   const nextWeekDate = useMemo(() => addWeeks(selectedDate, 1), [selectedDate]);
 
+  // Helper to normalize date to yyyy-MM-dd string
+  // Handles both Date objects and strings (ISO or yyyy-MM-dd format)
+  const normalizeDateStr = (dateValue: Date | string): string => {
+    if (typeof dateValue === 'string') {
+      // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
+      // For ISO strings, extract just the date part (ignore timezone)
+      return dateValue.includes('T') 
+        ? dateValue.split('T')[0]
+        : dateValue;
+    } else {
+      // For Date objects, use format which respects local timezone
+      return format(dateValue, 'yyyy-MM-dd');
+    }
+  };
+
   // Get tasks and habits for a specific day
   const getItemsForDay = (date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
-      // Handle both Date objects and string formats for startDate
-      // ISO strings like "2026-03-22T00:00:00.000Z" need to extract just the date part
-      let taskDateStr: string;
-      if (typeof task.startDate === 'string') {
-        // Handle ISO format (from JSON serialization) or yyyy-MM-dd format
-        taskDateStr = task.startDate.includes('T') 
-          ? task.startDate.split('T')[0]
-          : task.startDate;
-      } else {
-        taskDateStr = format(task.startDate, 'yyyy-MM-dd');
-      }
+      const taskDateStr = normalizeDateStr(task.startDate);
       return taskDateStr === dateStr;
     });
 
-    // For habits, check if they should show on this day
-    const dayOfWeek = date.getDay();
-    const dayHabits = habits.filter((habit) => {
-      switch (habit.repeatFrequency) {
-        case 'daily':
-          return true;
-        case 'weekdays':
-          return dayOfWeek >= 1 && dayOfWeek <= 5;
-        case 'weekends':
-          return dayOfWeek === 0 || dayOfWeek === 6;
-        case 'weekly':
-          return habit.repeatDays?.includes(dayOfWeek) ?? false;
-        default:
-          return false;
-      }
-    });
+    // For habits - show all habits to match the day view behavior
+    // The day view shows all habits regardless of repeat frequency
+    // Individual habit filtering by day is handled elsewhere if needed
+    const dayHabits = habits;
 
     return { tasks: dayTasks, habits: dayHabits };
   };
