@@ -16,7 +16,25 @@ import type {
   Project,
   HabitGroupType,
 } from './planner-types';
-import { DEFAULT_PROJECTS, DEFAULT_HABIT_GROUPS, TIME_BUCKET_RANGES } from './planner-types';
+import { TIME_BUCKET_RANGES } from './planner-types';
+import {
+  fetchTasks,
+  fetchHabits,
+  fetchProjects,
+  fetchHabitGroups,
+  createTask as dbCreateTask,
+  updateTask as dbUpdateTask,
+  deleteTask as dbDeleteTask,
+  createHabit as dbCreateHabit,
+  updateHabit as dbUpdateHabit,
+  deleteHabit as dbDeleteHabit,
+  createProject as dbCreateProject,
+  updateProject as dbUpdateProject,
+  deleteProject as dbDeleteProject,
+  createHabitGroup as dbCreateHabitGroup,
+  updateHabitGroup as dbUpdateHabitGroup,
+  deleteHabitGroup as dbDeleteHabitGroup,
+} from './db';
 
 interface PlannerStore {
   tasks: Task[];
@@ -40,6 +58,16 @@ interface PlannerStore {
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
   setHoveredItem: (id: string | null, type: 'task' | 'habit' | null) => void;
+
+  // Supabase state
+  userId: string | null;
+  isLoading: boolean;
+  error: string | null;
+
+  // Store lifecycle
+  initializeStore: (userId: string) => Promise<void>;
+  clearStore: () => void;
+
   // Task actions
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
@@ -49,7 +77,7 @@ interface PlannerStore {
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
   reorderTasks: (taskIds: string[]) => void;
-  
+
   // Habit actions
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
@@ -58,7 +86,7 @@ interface PlannerStore {
   scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
   assignHabitToBucket: (id: string, bucket: TimeBucket) => void;
   resetHabitStreak: (id: string) => void;
-  
+
   // View actions
   setSelectedDate: (date: Date) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -66,7 +94,7 @@ interface PlannerStore {
   setFilters: (filters: FilterState) => void;
   clearFilters: () => void;
   setTimelineItemFilter: (filter: 'all' | 'tasks' | 'habits') => void;
-  
+
   // Project actions
   addProject: (name: string, emoji: string) => void;
   updateProject: (name: string, updates: Partial<Project>) => void;
@@ -77,30 +105,28 @@ interface PlannerStore {
   moveTaskToProjectBlock: (taskId: string) => void;
   moveTasksToProjectBlock: (taskIds: string[]) => void;
   moveTaskOutOfProjectBlock: (taskId: string) => void;
-  
+
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (name: string, updates: Partial<HabitGroupType>) => void;
   removeHabitGroup: (name: string) => void;
   getHabitGroupEmoji: (name: string) => string;
   getHabitGroupColor: (name: string) => string;
-  
+
   // Cleanup orphaned references
   cleanupOrphanedReferences: () => void;
-  
+
   // Undo/Redo
   canUndo: boolean;
   canRedo: boolean;
   undo: () => void;
   redo: () => void;
-  
+
   // Action log for displaying undo/redo history
   actionLog: ActionLogEntry[];
   historyIndex: number;
   refreshActionLog: () => void;
 }
-
-const generateId = () => Math.random().toString(36).substr(2, 9);
 
 const getDateString = (date: Date) => date.toISOString().split('T')[0];
 
@@ -144,13 +170,13 @@ export const getHistoryInfo = () => ({
 
 const saveToHistory = (state: HistoryState) => {
   if (isUndoRedoAction) return;
-  
+
   // If we're not at the end of history, truncate forward history
   if (historyIndex < historyStack.length - 1) {
     historyStack = historyStack.slice(0, historyIndex + 1);
     actionLog = actionLog.slice(0, historyIndex + 1);
   }
-  
+
   // Deep clone the state to avoid reference issues
   const snapshot: HistoryState = {
     tasks: JSON.parse(JSON.stringify(state.tasks)),
@@ -158,17 +184,17 @@ const saveToHistory = (state: HistoryState) => {
     projects: JSON.parse(JSON.stringify(state.projects)),
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
   };
-  
+
   historyStack.push(snapshot);
-  
+
   // Add action log entry
   actionLog.push({
-    id: generateId(),
+    id: crypto.randomUUID(),
     label: pendingActionLabel || 'Session start',
     timestamp: Date.now(),
   });
   pendingActionLabel = null;
-  
+
   // Limit history size
   if (historyStack.length > MAX_HISTORY_SIZE) {
     historyStack.shift();
@@ -191,153 +217,17 @@ const getBucketForTime = (time: string): TimeBucket => {
   return 'anytime';
 };
 
-// Sample data for demonstration
-// Store dates as yyyy-MM-dd strings to avoid timezone/serialization issues
-const todayStr = format(new Date(), 'yyyy-MM-dd');
-const initialTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Review project requirements',
-    priority: 'high',
-    project: 'Work',
-    status: 'pending',
-    isScheduled: true,
-    timeBucket: 'morning',
-    startTime: '09:00',
-    startDate: todayStr,
-    duration: 60,
-    repeatFrequency: 'weekdays',
-    order: 0,
-  },
-  {
-    id: '2',
-    title: 'Meditation session',
-    priority: 'medium',
-    project: 'Wellness',
-    status: 'pending',
-    isScheduled: true,
-    timeBucket: 'morning',
-    startDate: todayStr,
-    duration: 20,
-    order: 1,
-  },
-  {
-    id: '3',
-    title: 'Respond to emails',
-    priority: 'low',
-    project: 'Work',
-    status: 'pending',
-    isScheduled: false,
-    startDate: todayStr,
-    order: 2,
-  },
-  {
-    id: '4',
-    title: 'Afternoon walk',
-    priority: 'medium',
-    project: 'Wellness',
-    status: 'pending',
-    isScheduled: true,
-    timeBucket: 'afternoon',
-    startTime: '14:00',
-    startDate: todayStr,
-    duration: 30,
-    order: 3,
-  },
-  {
-    id: '5',
-    title: 'Read a chapter',
-    priority: 'low',
-    project: 'Personal',
-    status: 'pending',
-    isScheduled: true,
-    timeBucket: 'evening',
-    startDate: todayStr,
-    duration: 45,
-    order: 4,
-  },
-  {
-    id: '6',
-    title: 'Plan tomorrow',
-    status: 'pending',
-    isScheduled: false,
-    startDate: todayStr,
-    order: 5,
-  },
-];
-
-const initialHabits: Habit[] = [
-  {
-    id: 'h1',
-    title: 'Morning stretch',
-    group: 'wellness',
-    streak: 12,
-    status: 'pending',
-    completedDates: [],
-    skippedDates: [],
-    dailyCounts: {},
-    timeBucket: 'morning',
-    startTime: '07:00',
-    repeatFrequency: 'daily',
-    timesPerDay: 1,
-    currentDayCount: 0,
-  },
-  {
-    id: 'h2',
-    title: 'Drink water',
-    group: 'wellness',
-    streak: 5,
-    status: 'pending',
-    completedDates: [],
-    skippedDates: [],
-    dailyCounts: {},
-    timeBucket: 'anytime',
-    repeatFrequency: 'daily',
-    timesPerDay: 8,
-    currentDayCount: 0,
-  },
-  {
-    id: 'h3',
-    title: 'Daily standup',
-    group: 'work',
-    streak: 8,
-    status: 'pending',
-    completedDates: [],
-    skippedDates: [],
-    dailyCounts: {},
-    timeBucket: 'morning',
-    startTime: '09:30',
-    repeatFrequency: 'weekdays',
-    timesPerDay: 1,
-    currentDayCount: 0,
-  },
-  {
-    id: 'h4',
-    title: 'Journal',
-    group: 'Personal',
-    streak: 3,
-    status: 'pending',
-    completedDates: [],
-    skippedDates: [],
-    dailyCounts: {},
-    timeBucket: 'evening',
-    repeatFrequency: 'daily',
-    timesPerDay: 1,
-    currentDayCount: 0,
-  },
-];
-
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => ({
-      tasks: initialTasks,
-      habits: initialHabits,
+      tasks: [],
+      habits: [],
       selectedDate: new Date(),
       viewMode: 'day',
       groupBy: 'none',
       filters: {},
-      projects: DEFAULT_PROJECTS,
-      habitGroups: DEFAULT_HABIT_GROUPS,
+      projects: [],
+      habitGroups: [],
       timelineItemFilter: 'all' as const,
       actionLog: [] as ActionLogEntry[],
       historyIndex: -1,
@@ -356,7 +246,88 @@ export const usePlannerStore = create<PlannerStore>()(
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
-      
+
+      // Supabase state
+      userId: null,
+      isLoading: false,
+      error: null,
+
+      initializeStore: async (userId: string) => {
+        // Reset history for new session
+        historyStack = [];
+        historyIndex = -1;
+        actionLog = [];
+        prevStateJson = null;
+
+        set({ userId, isLoading: true, error: null });
+
+        try {
+          const [tasks, habits, projects, habitGroups] = await Promise.all([
+            fetchTasks(userId),
+            fetchHabits(userId),
+            fetchProjects(userId),
+            fetchHabitGroups(userId),
+          ]);
+
+          const snapshot = { tasks, habits, projects, habitGroups };
+
+          // Manually push the initial state to history (session start)
+          historyStack.push(JSON.parse(JSON.stringify(snapshot)));
+          actionLog.push({
+            id: crypto.randomUUID(),
+            label: 'Session start',
+            timestamp: Date.now(),
+          });
+          historyIndex = 0;
+
+          // Set prevStateJson so the subscriber doesn't double-save
+          prevStateJson = JSON.stringify(snapshot);
+
+          isUpdatingUndoRedo = true;
+          set({
+            tasks,
+            habits,
+            projects,
+            habitGroups,
+            isLoading: false,
+            canUndo: false,
+            canRedo: false,
+            actionLog: [...actionLog].reverse(),
+            historyIndex: 0,
+          });
+          isUpdatingUndoRedo = false;
+        } catch (err) {
+          isUpdatingUndoRedo = false;
+          set({
+            isLoading: false,
+            error: err instanceof Error ? err.message : 'Failed to load data',
+          });
+        }
+      },
+
+      clearStore: () => {
+        historyStack = [];
+        historyIndex = -1;
+        actionLog = [];
+        prevStateJson = null;
+
+        isUpdatingUndoRedo = true;
+        set({
+          userId: null,
+          tasks: [],
+          habits: [],
+          projects: [],
+          habitGroups: [],
+          isLoading: false,
+          error: null,
+          canUndo: false,
+          canRedo: false,
+          actionLog: [],
+          historyIndex: -1,
+        });
+        isUpdatingUndoRedo = false;
+      },
+
       addTask: (taskData) => {
         setNextActionLabel(`Add task: ${taskData.title}`);
         // Auto-correct bucket based on start time
@@ -367,27 +338,30 @@ export const usePlannerStore = create<PlannerStore>()(
             timeBucket = correctBucket;
           }
         }
-        
+
         const task: Task = {
           ...taskData,
           timeBucket,
-          id: generateId(),
+          id: crypto.randomUUID(),
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
         };
         set((state) => ({ tasks: [...state.tasks, task] }));
+
+        const userId = get().userId;
+        if (userId) dbCreateTask(userId, task).catch(console.error);
       },
-      
+
       updateTask: (id, updates) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
-            
+
             let newUpdates = { ...updates };
-            
+
             // Auto-correct bucket if start time changes
             if (updates.startTime && (t.timeBucket || updates.timeBucket)) {
               const bucket = updates.timeBucket || t.timeBucket;
@@ -398,23 +372,27 @@ export const usePlannerStore = create<PlannerStore>()(
                 }
               }
             }
-            
+
             return { ...t, ...newUpdates };
           }),
         }));
+
+        dbUpdateTask(id, updates).catch(console.error);
       },
-      
+
       deleteTask: (id) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Delete task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.filter((t) => t.id !== id),
         }));
+
+        dbDeleteTask(id).catch(console.error);
       },
-      
+
       toggleTaskStatus: (id) => {
         const task = get().tasks.find((t) => t.id === id);
-        const newStatus = task?.status === 'completed' ? 'pending' : 'completed';
+        const newStatus: TaskStatus = task?.status === 'completed' ? 'pending' : 'completed';
         setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task?.title || 'Unknown'}`);
         set((state) => ({
           tasks: state.tasks.map((t) =>
@@ -423,8 +401,10 @@ export const usePlannerStore = create<PlannerStore>()(
               : t
           ),
         }));
+
+        dbUpdateTask(id, { status: newStatus }).catch(console.error);
       },
-      
+
       scheduleTask: (id, bucket, time, date) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
@@ -436,69 +416,75 @@ export const usePlannerStore = create<PlannerStore>()(
             finalBucket = correctBucket;
           }
         }
-        
+
+        const updates: Partial<Task> = {
+          isScheduled: true,
+          timeBucket: finalBucket,
+          startTime: time,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+          ...(date ? { startDate: date } : {}),
+        };
+
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { 
-                  ...t, 
-                  isScheduled: true, 
-                  timeBucket: finalBucket, 
-                  startTime: time,
-                  // Clear project block state when scheduling to a bucket
-                  inProjectBlock: false,
-                  previousStartTime: undefined,
-                  previousStartDate: undefined,
-                  ...(date ? { startDate: date } : {})
-                }
-              : t
+            t.id === id ? { ...t, ...updates } : t
           ),
         }));
+
+        dbUpdateTask(id, updates).catch(console.error);
       },
-      
+
       assignTaskToBucket: (id, bucket) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
+        const updates: Partial<Task> = {
+          isScheduled: false,
+          timeBucket: bucket,
+          startTime: undefined,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+        };
+
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { 
-                  ...t, 
-                  isScheduled: false, 
-                  timeBucket: bucket, 
-                  startTime: undefined,
-                  // Clear project block state when assigning to a bucket
-                  inProjectBlock: false,
-                  previousStartTime: undefined,
-                  previousStartDate: undefined,
-                }
-              : t
+            t.id === id ? { ...t, ...updates } : t
           ),
         }));
+
+        dbUpdateTask(id, updates).catch(console.error);
       },
-      
+
       unscheduleTask: (id) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Unschedule task: ${task?.title || 'Unknown'}`);
+        const updates: Partial<Task> = { isScheduled: false, timeBucket: undefined, startTime: undefined };
+
         set((state) => ({
           tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, isScheduled: false, timeBucket: undefined, startTime: undefined }
-              : t
+            t.id === id ? { ...t, ...updates } : t
           ),
         }));
+
+        dbUpdateTask(id, updates).catch(console.error);
       },
-      
+
       reorderTasks: (taskIds) => {
         setNextActionLabel('Reorder tasks');
-        set((state) => ({
-          tasks: taskIds.map((id, index) => {
-            const task = state.tasks.find((t) => t.id === id);
-            return task ? { ...task, order: index } : null;
-          }).filter(Boolean) as Task[],
-        }));
+        const updatedTasks = taskIds.map((id, index) => {
+          const task = get().tasks.find((t) => t.id === id);
+          return task ? { ...task, order: index } : null;
+        }).filter(Boolean) as Task[];
+
+        set({ tasks: updatedTasks });
+
+        updatedTasks.forEach((t) =>
+          dbUpdateTask(t.id, { order: t.order }).catch(console.error)
+        );
       },
-      
+
       addHabit: (habitData) => {
         setNextActionLabel(`Add habit: ${habitData.title}`);
         // Auto-correct bucket based on start time
@@ -509,11 +495,11 @@ export const usePlannerStore = create<PlannerStore>()(
             timeBucket = correctBucket;
           }
         }
-        
+
         const habit: Habit = {
           ...habitData,
           timeBucket,
-          id: generateId(),
+          id: crypto.randomUUID(),
           streak: 0,
           status: 'pending',
           completedDates: [],
@@ -522,17 +508,20 @@ export const usePlannerStore = create<PlannerStore>()(
           currentDayCount: 0,
         };
         set((state) => ({ habits: [...state.habits, habit] }));
+
+        const userId = get().userId;
+        if (userId) dbCreateHabit(userId, habit).catch(console.error);
       },
-      
+
       updateHabit: (id, updates) => {
         const habit = get().habits.find((h) => h.id === id);
         setNextActionLabel(`Edit habit: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
-            
+
             let newUpdates = { ...updates };
-            
+
             // Auto-correct bucket if start time changes
             if (updates.startTime && (h.timeBucket || updates.timeBucket)) {
               const bucket = updates.timeBucket || h.timeBucket;
@@ -543,25 +532,32 @@ export const usePlannerStore = create<PlannerStore>()(
                 }
               }
             }
-            
+
             return { ...h, ...newUpdates };
           }),
         }));
+
+        dbUpdateHabit(id, updates).catch(console.error);
       },
-      
+
       deleteHabit: (id) => {
         const habit = get().habits.find((h) => h.id === id);
         setNextActionLabel(`Delete habit: ${habit?.title || 'Unknown'}`);
         set((state) => ({
           habits: state.habits.filter((h) => h.id !== id),
         }));
+
+        dbDeleteHabit(id).catch(console.error);
       },
-      
+
       toggleHabitStatus: (id, status, count, date) => {
         const habit = get().habits.find((h) => h.id === id);
         const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
         setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
         const dateStr = getDateString(date ?? new Date());
+
+        let updatedHabit: Habit | null = null;
+
         set((state) => ({
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
@@ -594,7 +590,7 @@ export const usePlannerStore = create<PlannerStore>()(
               newDailyCounts[dateStr] = count;
             }
 
-            return {
+            updatedHabit = {
               ...h,
               status,
               completedDates: newCompletedDates,
@@ -603,10 +599,22 @@ export const usePlannerStore = create<PlannerStore>()(
               currentDayCount: count !== undefined ? count : h.currentDayCount || 0,
               streak: newStreak,
             };
+            return updatedHabit;
           }),
         }));
+
+        if (updatedHabit) {
+          dbUpdateHabit(id, {
+            status: (updatedHabit as Habit).status,
+            completedDates: (updatedHabit as Habit).completedDates,
+            skippedDates: (updatedHabit as Habit).skippedDates,
+            dailyCounts: (updatedHabit as Habit).dailyCounts,
+            currentDayCount: (updatedHabit as Habit).currentDayCount,
+            streak: (updatedHabit as Habit).streak,
+          }).catch(console.error);
+        }
       },
-      
+
       scheduleHabit: (id, bucket, time) => {
         // Auto-correct bucket based on time
         let finalBucket = bucket;
@@ -616,54 +624,63 @@ export const usePlannerStore = create<PlannerStore>()(
             finalBucket = correctBucket;
           }
         }
-        
+
+        const updates: Partial<Habit> = { timeBucket: finalBucket, startTime: time };
+
         set((state) => ({
           habits: state.habits.map((h) =>
-            h.id === id
-              ? { ...h, timeBucket: finalBucket, startTime: time }
-              : h
+            h.id === id ? { ...h, ...updates } : h
           ),
         }));
+
+        dbUpdateHabit(id, updates).catch(console.error);
       },
-      
+
       assignHabitToBucket: (id, bucket) => {
         const habit = get().habits.find((h) => h.id === id);
         setNextActionLabel(`Move habit to ${bucket}: ${habit?.title || 'Unknown'}`);
+        const updates: Partial<Habit> = { timeBucket: bucket, startTime: undefined };
+
         set((state) => ({
           habits: state.habits.map((h) =>
-            h.id === id
-              ? { ...h, timeBucket: bucket, startTime: undefined }
-              : h
+            h.id === id ? { ...h, ...updates } : h
           ),
         }));
+
+        dbUpdateHabit(id, updates).catch(console.error);
       },
 
       resetHabitStreak: (id) => {
         const habit = get().habits.find((h) => h.id === id);
         setNextActionLabel(`Reset streak: ${habit?.title || 'Unknown'}`);
+        const updates: Partial<Habit> = { streak: 0, completedDates: [] };
+
         set((state) => ({
           habits: state.habits.map((h) =>
-            h.id === id
-              ? { ...h, streak: 0, completedDates: [] }
-              : h
+            h.id === id ? { ...h, ...updates } : h
           ),
         }));
+
+        dbUpdateHabit(id, updates).catch(console.error);
       },
-      
+
       setSelectedDate: (date) => set({ selectedDate: date }),
       setViewMode: (viewMode) => set({ viewMode }),
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilters: (filters) => set({ filters }),
       clearFilters: () => set({ filters: {} }),
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
-      
+
       addProject: (name, emoji) => {
         setNextActionLabel(`Add project: ${name}`);
-        set((state) => ({
-          projects: state.projects.some((p) => p.name === name)
-            ? state.projects
-            : [...state.projects, { name, emoji }],
-        }));
+        const alreadyExists = get().projects.some((p) => p.name === name);
+        if (alreadyExists) return;
+
+        const project: Project = { name, emoji };
+        set((state) => ({ projects: [...state.projects, project] }));
+
+        const userId = get().userId;
+        if (userId) dbCreateProject(userId, project).catch(console.error);
       },
 
       updateProject: (name, updates) => {
@@ -673,17 +690,22 @@ export const usePlannerStore = create<PlannerStore>()(
             p.name === name ? { ...p, ...updates } : p
           ),
         }));
+
+        const userId = get().userId;
+        if (userId) dbUpdateProject(userId, name, updates).catch(console.error);
       },
-      
+
       removeProject: (name) => {
         setNextActionLabel(`Delete project: ${name}`);
         set((state) => ({
           projects: state.projects.filter((p) => p.name !== name),
-          // Also remove project from tasks
-          tasks: state.tasks.map((t) => 
+          tasks: state.tasks.map((t) =>
             t.project === name ? { ...t, project: undefined } : t
           ),
         }));
+
+        const userId = get().userId;
+        if (userId) dbDeleteProject(userId, name).catch(console.error);
       },
 
       getProjectEmoji: (name) => {
@@ -704,89 +726,104 @@ export const usePlannerStore = create<PlannerStore>()(
 
       moveTaskToProjectBlock: (taskId) => {
         const selectedDate = get().selectedDate;
-        // Store date as string to avoid serialization issues with Date objects
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        let taskUpdates: Partial<Task> | null = null;
+
         set((state) => {
           const task = state.tasks.find((t) => t.id === taskId);
           if (!task || !task.project) return state;
-          
+
           const project = state.projects.find((p) => p.name === task.project);
           if (!project || !project.startTime || !project.timeBucket) return state;
-          
+
+          taskUpdates = {
+            inProjectBlock: true,
+            previousStartTime: task.startTime,
+            previousStartDate: task.startDate,
+            startTime: undefined,
+            timeBucket: project.timeBucket,
+            isScheduled: true,
+            startDate: selectedDateStr,
+          };
+
           return {
             tasks: state.tasks.map((t) =>
-              t.id === taskId
-                ? {
-                    ...t,
-                    inProjectBlock: true,
-                    previousStartTime: t.startTime,
-                    previousStartDate: t.startDate,
-                    startTime: undefined, // Clear start time when in project block
-                    timeBucket: project.timeBucket,
-                    isScheduled: true,
-                    startDate: selectedDateStr, // Store as string to avoid timezone issues
-                  }
-                : t
+              t.id === taskId ? { ...t, ...taskUpdates! } : t
             ),
           };
         });
+
+        if (taskUpdates) dbUpdateTask(taskId, taskUpdates).catch(console.error);
       },
 
       moveTasksToProjectBlock: (taskIds) => {
         const selectedDate = get().selectedDate;
-        // Store date as string to avoid serialization issues with Date objects
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        const updatesMap = new Map<string, Partial<Task>>();
+
         set((state) => {
-          // Get the project from the first task
           const firstTask = state.tasks.find(t => taskIds.includes(t.id));
           if (!firstTask || !firstTask.project) return state;
-          
+
           const project = state.projects.find((p) => p.name === firstTask.project);
           if (!project || !project.startTime || !project.timeBucket) return state;
-          
+
           return {
-            tasks: state.tasks.map((t) =>
-              taskIds.includes(t.id)
-                ? {
-                    ...t,
-                    inProjectBlock: true,
-                    previousStartTime: t.startTime,
-                    previousStartDate: t.startDate,
-                    startTime: undefined, // Clear start time when in project block
-                    timeBucket: project.timeBucket,
-                    isScheduled: true,
-                    startDate: selectedDateStr, // Store as string to avoid timezone issues
-                  }
-                : t
-            ),
+            tasks: state.tasks.map((t) => {
+              if (!taskIds.includes(t.id)) return t;
+              const updates: Partial<Task> = {
+                inProjectBlock: true,
+                previousStartTime: t.startTime,
+                previousStartDate: t.startDate,
+                startTime: undefined,
+                timeBucket: project.timeBucket,
+                isScheduled: true,
+                startDate: selectedDateStr,
+              };
+              updatesMap.set(t.id, updates);
+              return { ...t, ...updates };
+            }),
           };
         });
+
+        updatesMap.forEach((updates, id) =>
+          dbUpdateTask(id, updates).catch(console.error)
+        );
       },
 
       moveTaskOutOfProjectBlock: (taskId) => {
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  inProjectBlock: false,
-                  startTime: t.previousStartTime,
-                  startDate: t.previousStartDate,
-                  previousStartTime: undefined,
-                  previousStartDate: undefined,
-                }
-              : t
-          ),
-        }));
+        let taskUpdates: Partial<Task> | null = null;
+
+        set((state) => {
+          const task = state.tasks.find(t => t.id === taskId);
+          if (!task) return state;
+          taskUpdates = {
+            inProjectBlock: false,
+            startTime: task.previousStartTime,
+            startDate: task.previousStartDate,
+            previousStartTime: undefined,
+            previousStartDate: undefined,
+          };
+          return {
+            tasks: state.tasks.map((t) =>
+              t.id === taskId ? { ...t, ...taskUpdates! } : t
+            ),
+          };
+        });
+
+        if (taskUpdates) dbUpdateTask(taskId, taskUpdates).catch(console.error);
       },
-      
+
       addHabitGroup: (name, emoji, color) => {
         const normalized = name.toLowerCase();
-        set((state) => ({
-          habitGroups: state.habitGroups.some((g) => g.name.toLowerCase() === normalized)
-            ? state.habitGroups
-            : [...state.habitGroups, { name, emoji, color }],
-        }));
+        const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
+        if (alreadyExists) return;
+
+        const group: HabitGroupType = { name, emoji, color };
+        set((state) => ({ habitGroups: [...state.habitGroups, group] }));
+
+        const userId = get().userId;
+        if (userId) dbCreateHabitGroup(userId, group).catch(console.error);
       },
 
       updateHabitGroup: (name, updates) => {
@@ -796,19 +833,24 @@ export const usePlannerStore = create<PlannerStore>()(
             g.name.toLowerCase() === normalized ? { ...g, ...updates } : g
           ),
         }));
+
+        const userId = get().userId;
+        if (userId) dbUpdateHabitGroup(userId, name, updates).catch(console.error);
       },
-      
+
       removeHabitGroup: (name) => {
         const normalized = name.toLowerCase();
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.name.toLowerCase() !== normalized),
-          // Move habits to first available group or 'Personal'
-          habits: state.habits.map((h) => 
-            h.group.toLowerCase() === normalized 
-              ? { ...h, group: state.habitGroups.find(g => g.name.toLowerCase() !== normalized)?.name || 'Personal' } 
+          habits: state.habits.map((h) =>
+            h.group.toLowerCase() === normalized
+              ? { ...h, group: state.habitGroups.find(g => g.name.toLowerCase() !== normalized)?.name || 'Personal' }
               : h
           ),
         }));
+
+        const userId = get().userId;
+        if (userId) dbDeleteHabitGroup(userId, name).catch(console.error);
       },
 
       getHabitGroupEmoji: (name) => {
@@ -821,7 +863,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const normalized = name.toLowerCase();
         const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
         if (group?.color) return group.color;
-        
+
         // Generate consistent color from group name
         const colorMap: Record<string, string> = {
           wellness: 'oklch(0.7 0.15 160)',
@@ -829,26 +871,26 @@ export const usePlannerStore = create<PlannerStore>()(
           personal: 'oklch(0.7 0.15 320)',
         };
         if (colorMap[normalized]) return colorMap[normalized];
-        
+
         const hash = normalized.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
         const hues = [160, 250, 320, 30, 200]; // teal, blue, pink, orange, cyan
         return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
       },
-      
+
       cleanupOrphanedReferences: () => {
         const state = get();
         const projectNames = new Set(state.projects.map(p => p.name));
         const groupNames = new Set(state.habitGroups.map(g => g.name));
-        
+
         set({
-          tasks: state.tasks.map(t => 
-            t.project && !projectNames.has(t.project) 
-              ? { ...t, project: undefined } 
+          tasks: state.tasks.map(t =>
+            t.project && !projectNames.has(t.project)
+              ? { ...t, project: undefined }
               : t
           ),
-          habits: state.habits.map(h => 
-            !groupNames.has(h.group) 
-              ? { ...h, group: state.habitGroups[0]?.name || 'Personal' } 
+          habits: state.habits.map(h =>
+            !groupNames.has(h.group)
+              ? { ...h, group: state.habitGroups[0]?.name || 'Personal' }
               : h
           ),
         });
@@ -857,19 +899,19 @@ export const usePlannerStore = create<PlannerStore>()(
       // Undo/Redo
       canUndo: false,
       canRedo: false,
-      
+
       undo: () => {
         if (historyIndex <= 0) return;
-        
+
         isUndoRedoAction = true;
         historyIndex--;
         const prevState = historyStack[historyIndex];
-        
+
         const restoredTasks = JSON.parse(JSON.stringify(prevState.tasks));
         const restoredHabits = JSON.parse(JSON.stringify(prevState.habits));
         const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
-        
+
         const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
@@ -881,25 +923,24 @@ export const usePlannerStore = create<PlannerStore>()(
           actionLog: info.actionLog,
           historyIndex: info.currentIndex,
         });
-        
-        // Update the baseline for the subscriber so it doesn't think this is a new change
+
         updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
-        
+
         isUndoRedoAction = false;
       },
-      
+
       redo: () => {
         if (historyIndex >= historyStack.length - 1) return;
-        
+
         isUndoRedoAction = true;
         historyIndex++;
         const nextState = historyStack[historyIndex];
-        
+
         const restoredTasks = JSON.parse(JSON.stringify(nextState.tasks));
         const restoredHabits = JSON.parse(JSON.stringify(nextState.habits));
         const restoredProjects = JSON.parse(JSON.stringify(nextState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(nextState.habitGroups));
-        
+
         const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
@@ -911,37 +952,22 @@ export const usePlannerStore = create<PlannerStore>()(
           actionLog: info.actionLog,
           historyIndex: info.currentIndex,
         });
-        
-        // Update the baseline for the subscriber so it doesn't think this is a new change
+
         updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
-        
+
         isUndoRedoAction = false;
       },
     }),
     {
       name: 'planner-storage',
       partialize: (state) => ({
-        tasks: state.tasks,
-        habits: state.habits,
-        projects: state.projects,
-        habitGroups: state.habitGroups,
+        compactMode: state.compactMode,
+        viewMode: state.viewMode,
+        chillMode: state.chillMode,
         groupBy: state.groupBy,
+        showCurrentTimeIndicator: state.showCurrentTimeIndicator,
+        timelineItemFilter: state.timelineItemFilter,
       }),
-      onRehydrateStorage: () => (state) => {
-        // After rehydrating, clean up orphaned references
-        if (state) {
-          setTimeout(() => state.cleanupOrphanedReferences(), 0);
-          // Initialize history with current state
-          setTimeout(() => {
-            saveToHistory({
-              tasks: state.tasks,
-              habits: state.habits,
-              projects: state.projects,
-              habitGroups: state.habitGroups,
-            });
-          }, 100);
-        }
-      },
     }
   )
 );
@@ -957,16 +983,16 @@ const updatePrevStateBaseline = (state: { tasks: Task[]; habits: Habit[]; projec
 
 usePlannerStore.subscribe((state) => {
   if (isUndoRedoAction || isUpdatingUndoRedo) return;
-  
+
   const currentState = {
     tasks: state.tasks,
     habits: state.habits,
     projects: state.projects,
     habitGroups: state.habitGroups,
   };
-  
+
   const currentStateJson = JSON.stringify(currentState);
-  
+
   // Only save if data actually changed (not just view state)
   if (prevStateJson && currentStateJson !== prevStateJson) {
     saveToHistory(currentState);
@@ -981,6 +1007,6 @@ usePlannerStore.subscribe((state) => {
     });
     isUpdatingUndoRedo = false;
   }
-  
+
   prevStateJson = currentStateJson;
 });
