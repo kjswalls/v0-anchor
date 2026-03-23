@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { format, addDays, subDays, isToday } from 'date-fns';
-import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Settings, Search, X, CheckCircle2, Flame } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Plus, Sun, Moon, Search, X, CheckCircle2, Flame } from 'lucide-react';
+import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -459,15 +460,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           )}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenSettings}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title="Settings"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
+        <UserProfileDropdown onOpenSettings={onOpenSettings} />
         
         <Button
           size="sm"
