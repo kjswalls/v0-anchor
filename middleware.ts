@@ -4,6 +4,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Allow disabling auth for v0 preview / local dev without a real session
+  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true') {
+    return NextResponse.next({ request });
+  }
+
   // If env vars are missing, skip auth checks entirely (e.g. build/preview without vars)
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return NextResponse.next({ request });
