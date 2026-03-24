@@ -11,6 +11,7 @@ import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { ActionFeed } from '@/components/planner/action-feed';
+import { MorningCheck } from '@/components/ai/morning-check';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -312,6 +313,8 @@ export default function PlannerPage() {
                 <ActionFeed />
               </div>
             </div>
+
+            <MorningCheck />
 
             <div className="flex-1 flex flex-col bg-background overflow-hidden">
               {viewMode === 'day' ? (
