@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import OpenAI from 'openai'
 
 const SYSTEM_PROMPT =
   'You are Guma, an AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
@@ -41,7 +42,6 @@ export async function POST(req: NextRequest) {
   ]
 
   // Call OpenAI with streaming
-  const { OpenAI } = await import('openai')
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
   const stream = new ReadableStream({
