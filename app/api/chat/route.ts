@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 
 const SYSTEM_PROMPT =
-  'You are Guma, an AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
-  'You help users plan their day, break down tasks, stay focused, and reflect on their progress. ' +
-  'Be warm, concise, and encouraging. Never judgmental.'
+  'You are Beacon, a warm and encouraging AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
+  "You have full visibility into the user's current tasks, habits, and projects. " +
+  'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
+  'Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they\'re working on.'
 
 const MOCK_RESPONSE =
   "Hi! I'm your Anchor AI assistant. (AI not configured yet — add OPENAI_API_KEY to .env.local to enable me.)"
@@ -32,9 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Build message array for OpenAI
-  const systemMessage = context
-    ? `${SYSTEM_PROMPT}\n\nCurrent context:\n${context}`
-    : SYSTEM_PROMPT
+  const systemMessage = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT
 
   const openaiMessages = [
     { role: 'system', content: systemMessage },
