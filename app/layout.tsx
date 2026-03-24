@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
-import { ChatSidebar } from '@/components/ai/chat-sidebar'
 import './globals.css'
 
 const inter = Inter({ 
@@ -57,7 +56,6 @@ export default function RootLayout({
         >
           <SupabaseProvider>
             {children}
-            <ChatSidebar />
           </SupabaseProvider>
         </ThemeProvider>
         <Analytics />
