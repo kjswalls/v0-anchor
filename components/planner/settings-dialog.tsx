@@ -34,7 +34,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { createClient } from '@/lib/supabase';
 import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
 import { useEODStore } from '@/lib/eod-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAISettingsStore, AIProvider } from '@/lib/ai-settings-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -240,6 +240,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     assistantName, setAssistantName,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
+    openclawWebhookUrl, setOpenclawWebhookUrl,
+    openclawApiKey, setOpenclawApiKey,
   } = useAISettingsStore();
 
   return (
@@ -483,15 +485,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="AI Assistant"
               icon={<Sparkles className="h-4 w-4" />}
             >
-              <SettingRow label="Provider" description="Choose your AI provider">
-                <Select value={provider} onValueChange={(v) => setProvider(v as typeof provider)}>
+              <SettingRow label="Provider" description="Which AI service powers the assistant">
+                <Select value={provider} onValueChange={(v) => setProvider(v as AIProvider)}>
                   <SelectTrigger className="w-44 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None (disabled)</SelectItem>
                     <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="openclaw" disabled>OpenClaw (coming soon)</SelectItem>
+                    <SelectItem value="openclaw">OpenClaw</SelectItem>
                     <SelectItem value="anthropic" disabled>Anthropic (coming soon)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -524,11 +526,39 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </SettingRow>
               )}
 
+              {provider === 'openclaw' && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-foreground">OpenClaw Webhook URL</Label>
+                    <Input
+                      type="url"
+                      value={openclawWebhookUrl}
+                      onChange={(e) => setOpenclawWebhookUrl(e.target.value)}
+                      placeholder="https://your-instance.ts.net/webhook/anchor"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-foreground">API Key</Label>
+                    <Input
+                      type="password"
+                      value={openclawApiKey}
+                      onChange={(e) => setOpenclawApiKey(e.target.value)}
+                      placeholder="Optional auth token"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Your OpenClaw agent will respond using its own memory and personality. Your tasks, habits, and projects are shared automatically as context.
+                  </p>
+                </div>
+              )}
+
               <SettingRow label="Assistant name" description="Name shown in the chat UI">
                 <Input
                   value={assistantName}
                   onChange={(e) => setAssistantName(e.target.value)}
-                  placeholder="Guma"
+                  placeholder="Beacon"
                   className="w-44 h-8 text-xs"
                 />
               </SettingRow>

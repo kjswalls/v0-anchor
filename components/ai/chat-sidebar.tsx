@@ -10,6 +10,7 @@ import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
 import { isOnboardingComplete, getUserProfile } from '@/lib/user-profile'
 import { OnboardingChat } from './onboarding-chat'
+import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -102,11 +103,23 @@ export function ChatSidebar() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups, userProfile: userProfile ?? undefined })
+      const { provider, apiKey, model, personality, systemPrompt, openclawWebhookUrl, openclawApiKey } =
+        useAISettingsStore.getState()
+      const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
 
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages, context }),
+        body: JSON.stringify({
+          messages: updatedMessages,
+          context,
+          provider,
+          apiKey,
+          model,
+          systemPrompt: effectiveSystemPrompt,
+          openclawWebhookUrl,
+          openclawApiKey,
+        }),
       })
 
       if (!res.body) throw new Error('No response body')
