@@ -1,0 +1,22 @@
+{
+  "id": "anchor-context",
+  "kind": "plugin",
+  "name": "Anchor Context",
+  "description": "Cache-backed Anchor task/habit/project context injected into every OpenClaw prompt. Subscribes to Anchor change webhooks for zero-latency freshness.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "anchor-context": {
+        "type": "object",
+        "required": ["anchorUrl", "apiKey"],
+        "properties": {
+          "anchorUrl":      { "type": "string", "description": "Base URL of your Anchor deployment (e.g. https://anchor.yourdomain.com)" },
+          "apiKey":         { "type": "string", "description": "Your personal Anchor API key — generate it in Anchor → Settings → AI Assistant → OpenClaw" },
+          "webhookSecret":  { "type": "string", "description": "Optional HMAC secret for verifying change event payloads" },
+          "cacheTtlMs":     { "type": "number", "description": "Max cache age before forcing a re-fetch (default: 300000ms = 5 min)" }
+        }
+      }
+    }
+  }
+}
