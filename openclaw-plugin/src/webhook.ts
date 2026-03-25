@@ -1,4 +1,5 @@
-import type { PluginConfig } from './types.js'
+import type { PluginConfig } from './plugin-types.js'
+import { AnchorChangeEventSchema } from '@anchor-app/types'
 import { fetchContext } from './cache.js'
 
 export async function verifyHmac(secret: string, body: string, sigHeader: string): Promise<boolean> {
@@ -50,15 +51,22 @@ export function makeWebhookHandler(cfg: PluginConfig, logger: { info: (s: string
   return async (req: Request): Promise<Response> => {
     let eventName = 'unknown'
 
+    let rawPayload: unknown
     if (cfg.webhookSecret) {
       const body = await req.text()
       const sig = req.headers.get('x-anchor-signature') ?? ''
       const valid = await verifyHmac(cfg.webhookSecret, body, sig)
       if (!valid) return new Response('Unauthorized', { status: 401 })
-      eventName = (JSON.parse(body) as { event: string }).event
+      rawPayload = JSON.parse(body)
     } else {
-      const payload = await (req as Request).json() as { event: string }
-      eventName = payload.event
+      rawPayload = await (req as Request).json()
+    }
+
+    const parsed = AnchorChangeEventSchema.safeParse(rawPayload)
+    if (parsed.success) {
+      eventName = parsed.data.event
+    } else {
+      logger.warn('anchor-context: unrecognised webhook payload shape')
     }
 
     logger.info(`anchor-context: cache invalidated (${eventName})`)

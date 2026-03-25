@@ -1,5 +1,5 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
-import type { PluginConfig } from './types.js'
+import type { PluginConfig } from './plugin-types.js'
 import { fetchContext, isCacheFresh } from './cache.js'
 import { isPlanning, buildHeader, buildFullContext } from './context.js'
 import { registerWithAnchor, deregisterFromAnchor, makeWebhookHandler } from './webhook.js'

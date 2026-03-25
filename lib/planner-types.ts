@@ -1,71 +1,32 @@
-export type Priority = 'low' | 'medium' | 'high';
-export type TimeBucket = 'anytime' | 'morning' | 'afternoon' | 'evening';
-export type TaskStatus = 'pending' | 'completed' | 'cancelled';
-export type HabitStatus = 'pending' | 'done' | 'skipped';
+/**
+ * planner-types.ts
+ *
+ * Core entity types (Task, Habit, Project, HabitGroupType) are the source of
+ * truth in @anchor-app/types and re-exported from there.
+ *
+ * This file adds Anchor app-specific types and constants that don't need to
+ * be shared externally (ViewMode, FilterState, UI helpers, etc.).
+ */
+
+// ── Re-export shared types from @anchor-app/types ─────────────────────────────
+export type {
+  Priority,
+  TimeBucket,
+  TaskStatus,
+  HabitStatus,
+  RepeatFrequency,
+  Task,
+  Habit,
+  Project,
+  HabitGroupType,
+} from '@anchor-app/types'
+
+// ── App-only types ────────────────────────────────────────────────────────────
+
 export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
-export type RepeatFrequency = 'none' | 'daily' | 'weekly' | 'weekdays' | 'weekends' | 'monthly' | 'custom';
-
-export interface Project {
-  name: string;
-  emoji: string;
-  // Optional scheduling for project time blocks
-  repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
-  repeatMonthDay?: number; // 1-31 for monthly repeat
-  timeBucket?: TimeBucket;
-  startTime?: string; // HH:mm format
-  duration?: number; // in minutes
-}
-
-export interface HabitGroupType {
-  name: string;
-  emoji: string;
-  color?: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  priority?: Priority;
-  project?: string;
-  startDate?: string; // yyyy-MM-dd string - determines which day this shows on
-  status: TaskStatus;
-  timeBucket?: TimeBucket;
-  startTime?: string; // Renamed from scheduledTime - HH:mm format
-  duration?: number; // in minutes
-  isScheduled: boolean;
-  // Repeat configuration
-  repeatFrequency?: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
-  repeatMonthDay?: number; // 1-31 for monthly repeat
-  order: number;
-  // Project block tracking
-  inProjectBlock?: boolean; // Whether task is inside its project's time block
-  previousStartTime?: string; // Stored start time before moving into project block
-  previousStartDate?: string; // Stored start date before moving into project block
-}
-
-export interface Habit {
-  id: string;
-  title: string;
-  group: HabitGroup;
-  streak: number;
-  status: HabitStatus;
-  completedDates: string[]; // ISO date strings (YYYY-MM-DD)
-  skippedDates: string[];   // ISO date strings (YYYY-MM-DD)
-  dailyCounts: Record<string, number>; // date string -> count for multi-complete habits
-  timeBucket?: TimeBucket;
-  startTime?: string; // Renamed from scheduledTime - HH:mm format
-  // Repeat configuration
-  repeatFrequency: RepeatFrequency;
-  repeatDays?: number[]; // 0-6 for custom weekly (0 = Sunday)
-  repeatMonthDay?: number; // 1-31 for monthly repeat
-  timesPerDay?: number; // for habits that need to be done multiple times
-  currentDayCount?: number; // how many times completed today
-}
 
 export interface FilterState {
   project?: string;
@@ -86,11 +47,15 @@ export interface PlannerState {
   habitGroups: HabitGroupType[];
 }
 
+// ── UI helpers ────────────────────────────────────────────────────────────────
+
+import type { Priority, TimeBucket, RepeatFrequency, TaskStatus, Task, Habit, Project, HabitGroupType } from '@anchor-app/types'
+
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
-  anytime: { start: 0, end: 24, label: 'Anytime' },
-  morning: { start: 0, end: 12, label: 'Morning' },
+  anytime:   { start: 0,  end: 24, label: 'Anytime'   },
+  morning:   { start: 0,  end: 12, label: 'Morning'   },
   afternoon: { start: 12, end: 17, label: 'Afternoon' },
-  evening: { start: 17, end: 24, label: 'Evening' },
+  evening:   { start: 17, end: 24, label: 'Evening'   },
 };
 
 export function formatBucketHour(hour: number): string {
@@ -105,31 +70,29 @@ export function formatBucketRange(range: { start: number; end: number }): string
 }
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
+  low: 'Low', medium: 'Medium', high: 'High',
 };
 
 export const DEFAULT_PROJECTS: Project[] = [
-  { name: 'Work', emoji: '💼' },
+  { name: 'Work',     emoji: '💼' },
   { name: 'Wellness', emoji: '🧘' },
   { name: 'Personal', emoji: '🏠' },
 ];
 
 export const DEFAULT_HABIT_GROUPS: HabitGroupType[] = [
   { name: 'Wellness', emoji: '💚' },
-  { name: 'Work', emoji: '💼' },
+  { name: 'Work',     emoji: '💼' },
   { name: 'Personal', emoji: '⭐' },
 ];
 
 export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
-  none: 'No repeat',
-  daily: 'Daily',
+  none:     'No repeat',
+  daily:    'Daily',
   weekdays: 'Weekdays',
   weekends: 'Weekends',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  custom: 'Custom days',
+  weekly:   'Weekly',
+  monthly:  'Monthly',
+  custom:   'Custom days',
 };
 
 export const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
