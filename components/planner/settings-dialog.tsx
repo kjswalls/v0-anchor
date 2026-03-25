@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -11,9 +10,11 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -30,10 +31,10 @@ import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase';
 import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
 import { useEODStore } from '@/lib/eod-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -232,6 +233,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setTimeout(() => setProfileSaved(false), 2000);
   };
   const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
+  const {
+    provider, setProvider,
+    apiKey, setApiKey,
+    model, setModel,
+    assistantName, setAssistantName,
+    personality, setPersonality,
+    systemPrompt, setSystemPrompt,
+  } = useAISettingsStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -467,6 +476,89 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   disabled={!eodReviewEnabled}
                 />
               </SettingRow>
+            </SettingsSection>
+
+            {/* AI Assistant */}
+            <SettingsSection
+              title="AI Assistant"
+              icon={<Sparkles className="h-4 w-4" />}
+            >
+              <SettingRow label="Provider" description="Choose your AI provider">
+                <Select value={provider} onValueChange={(v) => setProvider(v as typeof provider)}>
+                  <SelectTrigger className="w-44 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (disabled)</SelectItem>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                    <SelectItem value="openclaw" disabled>OpenClaw (coming soon)</SelectItem>
+                    <SelectItem value="anthropic" disabled>Anthropic (coming soon)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              {provider === 'openai' && (
+                <SettingRow label="API Key" description="Your OpenAI API key (stored locally only)">
+                  <Input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-44 h-8 text-xs"
+                  />
+                </SettingRow>
+              )}
+
+              {provider === 'openai' && (
+                <SettingRow label="Model" description="Which OpenAI model to use">
+                  <Select value={model} onValueChange={setModel}>
+                    <SelectTrigger className="w-44 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
+                      <SelectItem value="gpt-4o">gpt-4o</SelectItem>
+                      <SelectItem value="gpt-4-turbo">gpt-4-turbo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              )}
+
+              <SettingRow label="Assistant name" description="Name shown in the chat UI">
+                <Input
+                  value={assistantName}
+                  onChange={(e) => setAssistantName(e.target.value)}
+                  placeholder="Guma"
+                  className="w-44 h-8 text-xs"
+                />
+              </SettingRow>
+
+              <SettingRow label="Personality" description="Tone and style of responses">
+                <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
+                  <SelectTrigger className="w-44 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="motivational">Motivational</SelectItem>
+                    <SelectItem value="minimal">Minimal</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              {personality === 'custom' && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm text-foreground">Custom system prompt</Label>
+                  <Textarea
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    placeholder="You are a helpful AI assistant in Anchor..."
+                    className="text-xs resize-none min-h-[80px]"
+                  />
+                </div>
+              )}
             </SettingsSection>
 
             {/* Calendar */}

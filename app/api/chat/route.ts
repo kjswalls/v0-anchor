@@ -7,27 +7,41 @@ const SYSTEM_PROMPT =
   'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
   'Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they\'re working on.'
 
+const COMING_SOON_MESSAGE =
+  'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
+
 const MOCK_RESPONSE =
-  "Hi! I'm your Anchor AI assistant. (AI not configured yet — add OPENAI_API_KEY to .env.local to enable me.)"
+  "Hi! I'm your Anchor AI assistant. (AI not configured — add your OpenAI API key in Settings → AI Assistant to enable me.)"
+
+function streamText(text: string, encoder: TextEncoder) {
+  return new ReadableStream({
+    async start(controller) {
+      for (const char of text) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: char })}\n\n`))
+        await new Promise((r) => setTimeout(r, 18))
+      }
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      controller.close()
+    },
+  })
+}
 
 export async function POST(req: NextRequest) {
-  const { messages, context } = await req.json()
+  const { messages, provider, model, apiKey, systemPrompt } = await req.json()
 
   const encoder = new TextEncoder()
 
-  // No API key — stream a friendly mock response
-  if (!process.env.OPENAI_API_KEY) {
-    const stream = new ReadableStream({
-      async start(controller) {
-        for (const char of MOCK_RESPONSE) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: char })}\n\n`))
-          await new Promise((r) => setTimeout(r, 18))
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
-      },
+  // Coming soon providers
+  if (provider === 'openclaw' || provider === 'anthropic') {
+    return new Response(streamText(COMING_SOON_MESSAGE, encoder), {
+      headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
-    return new Response(stream, {
+  }
+
+  // No API key or provider disabled — stream mock response
+  const effectiveApiKey = apiKey || process.env.OPENAI_API_KEY
+  if (!effectiveApiKey || provider === 'none') {
+    return new Response(streamText(MOCK_RESPONSE, encoder), {
       headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
   }
@@ -35,19 +49,21 @@ export async function POST(req: NextRequest) {
   // Build message array for OpenAI
   const systemMessage = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT
 
-  const openaiMessages = [
-    { role: 'system', content: systemMessage },
-    ...messages,
-  ]
+  const effectiveSystemPrompt =
+    systemPrompt ||
+    'You are Guma, an AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
+      'You help users plan their day, break down tasks, stay focused, and reflect on their progress. ' +
+      'Be warm, concise, and encouraging. Never judgmental.'
 
-  // Call OpenAI with streaming
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const openaiMessages = [{ role: 'system', content: effectiveSystemPrompt }, ...messages]
+  const effectiveModel = model || 'gpt-4o-mini'
+  const openai = new OpenAI({ apiKey: effectiveApiKey })
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
+          model: effectiveModel,
           messages: openaiMessages,
           stream: true,
         })
