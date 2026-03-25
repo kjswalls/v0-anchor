@@ -1,7 +1,8 @@
 {
-  "name": "my-project",
+  "name": "anchor-workspace",
   "version": "0.1.0",
   "private": true,
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -63,6 +64,7 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
+    "@anchor-app/types": "workspace:*",
     "zod": "^3.24.1",
     "zustand": "^5.0.3"
   },
