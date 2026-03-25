@@ -12,7 +12,9 @@ import { ManageCategoriesDialog } from '@/components/planner/manage-categories-d
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
+import { EODReview } from '@/components/ai/eod-review';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
@@ -36,7 +38,7 @@ import {
   DragStartEvent,
   DragOverlay,
 } from '@dnd-kit/core';
-import { GripVertical, Circle } from 'lucide-react';
+import { GripVertical, Circle, Moon } from 'lucide-react';
 import { format } from 'date-fns';
 
 function DraggableTaskOverlay({ title }: { title: string }) {
@@ -53,6 +55,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
+  const openEOD = useEODStore((s) => s.open);
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -308,9 +311,18 @@ export default function PlannerPage() {
                 </div>
               </div>
               
-              {/* Action feed positioned on the right */}
-              <div className="ml-auto z-10">
+              {/* Action feed + EOD trigger on the right */}
+              <div className="ml-auto z-10 flex items-center gap-2">
                 <ActionFeed />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                  title="End of day review"
+                  onClick={openEOD}
+                >
+                  <Moon className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 
@@ -368,6 +380,8 @@ export default function PlannerPage() {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
       />
+
+      <EODReview />
 
       {/* Keyboard shortcut delete confirmation */}
       <AlertDialog

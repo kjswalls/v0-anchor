@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase';
 import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
+import { useEODStore } from '@/lib/eod-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -229,6 +231,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
   };
+  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -435,6 +438,35 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   {profileSaved ? 'Saved!' : profileSaving ? 'Saving…' : 'Save'}
                 </Button>
               </div>
+            </SettingsSection>
+
+            {/* End of Day Review */}
+            <SettingsSection
+              title="End of Day Review"
+              icon={<Moon className="h-4 w-4" />}
+            >
+              <p className="text-xs text-muted-foreground -mt-1 mb-1">
+                A gentle daily check-in to celebrate wins and carry forward what&apos;s unfinished.
+              </p>
+              <SettingRow label="Enable end of day review" description="Show a review prompt each evening">
+                <Switch
+                  checked={eodReviewEnabled}
+                  onCheckedChange={setEodReviewEnabled}
+                />
+              </SettingRow>
+              <SettingRow
+                label="Review time"
+                description="When to prompt the review (your local time)"
+                disabled={!eodReviewEnabled}
+              >
+                <Input
+                  type="time"
+                  value={eodReviewTime}
+                  onChange={(e) => setEodReviewTime(e.target.value)}
+                  className="w-28 h-8 text-xs"
+                  disabled={!eodReviewEnabled}
+                />
+              </SettingRow>
             </SettingsSection>
 
             {/* Calendar */}
