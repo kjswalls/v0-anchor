@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { X, Send, Sparkles } from 'lucide-react'
+import { usePlannerStore } from '@/lib/planner-store'
+import { buildAnchorContext } from '@/lib/ai-context'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -70,10 +72,13 @@ export function ChatSidebar() {
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
     try {
+      const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
+      const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: updatedMessages, context }),
       })
 
       if (!res.body) throw new Error('No response body')
@@ -137,7 +142,7 @@ export function ChatSidebar() {
       {/* Toggle button — fixed to right edge */}
       <button
         onClick={() => setIsOpen((o) => !o)}
-        aria-label="Toggle Guma AI assistant"
+        aria-label="Toggle Beacon AI assistant"
         className={[
           'fixed right-0 top-1/2 -translate-y-1/2 z-50',
           'flex items-center gap-1.5 px-2 py-3',
@@ -164,7 +169,7 @@ export function ChatSidebar() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm">Guma ✨</span>
+            <span className="font-semibold text-sm">Beacon ✨</span>
           </div>
           <Button
             variant="ghost"
@@ -181,7 +186,7 @@ export function ChatSidebar() {
         <ScrollArea className="flex-1 px-3 py-3" ref={scrollRef}>
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center mt-8 px-4 leading-relaxed">
-              Hi! I&apos;m Guma, your AI planning assistant. Ask me to help break down tasks, plan your day, or just think out loud. 🌿
+              Hi! I&apos;m Beacon, your AI planning assistant. Ask me to help break down tasks, plan your day, or just think out loud. 🌿
             </p>
           )}
 
@@ -231,7 +236,7 @@ export function ChatSidebar() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Guma anything…"
+              placeholder="Ask Beacon anything…"
               rows={1}
               className="resize-none min-h-0 text-sm leading-6 py-2 flex-1"
               disabled={isLoading}
