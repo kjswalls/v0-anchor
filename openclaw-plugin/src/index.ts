@@ -1,8 +1,9 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
 import { fetchContext, isCacheFresh } from './cache.js'
-import { isPlanning, buildHeader, buildFullContext } from './context.js'
-import { registerWithAnchor, deregisterFromAnchor, makeWebhookHandler } from './webhook.js'
+import { buildHeader, buildFullContext } from './context.js'
+import { registerWithAnchor, deregisterFromAnchor, parseWebhookBody, verifyHmac } from './webhook.js'
 import { runSetup } from './setup.js'
 
 export default definePluginEntry({
@@ -36,9 +37,10 @@ export default definePluginEntry({
 
     // ── Seed cache + register webhook on startup ──────────────────────────────
     fetchContext(cfg).then(async () => {
-      const cache = (await import('./cache.js')).getCache()
+      const { getCache } = await import('./cache.js')
+      const c = getCache()
       api.logger.info(
-        `anchor-context: ready — ${cache?.tasks.length ?? 0} tasks, ${cache?.habits.length ?? 0} habits`
+        `anchor-context: ready — ${c?.tasks.length ?? 0} tasks, ${c?.habits.length ?? 0} habits`
       )
 
       const gatewayPublicUrl = (
@@ -59,30 +61,56 @@ export default definePluginEntry({
 
     // ── Deregister on shutdown ────────────────────────────────────────────────
     api.registerService({
-      name: 'anchor-context-lifecycle',
-      async stop() {
+      id: 'anchor-context-lifecycle',
+      start: async () => { /* nothing to start */ },
+      stop: async () => {
         await deregisterFromAnchor(cfg, api.logger)
       },
     })
 
     // ── Webhook listener: Anchor → cache invalidation ─────────────────────────
+    // OpenClaw uses Node's IncomingMessage/ServerResponse, not the Web Fetch API
     api.registerHttpRoute({
-      method: 'POST',
       path: '/plugins/anchor/webhook',
-      handler: makeWebhookHandler(cfg, api.logger),
+      auth: 'plugin',
+      async handler(req: IncomingMessage, res: ServerResponse) {
+        const { body, eventName } = await parseWebhookBody(req, cfg)
+
+        if (cfg.webhookSecret) {
+          const sig = (req.headers['x-anchor-signature'] as string) ?? ''
+          const valid = await verifyHmac(cfg.webhookSecret, body, sig)
+          if (!valid) {
+            res.writeHead(401)
+            res.end('Unauthorized')
+            return
+          }
+        }
+
+        api.logger.info(`anchor-context: cache invalidated (${eventName})`)
+        fetchContext(cfg).catch((err: Error) => {
+          api.logger.warn(`anchor-context: post-change refresh failed — ${err.message}`)
+        })
+
+        res.writeHead(200)
+        res.end('ok')
+      },
     })
 
     // ── Inject context into every prompt turn ─────────────────────────────────
-    api.registerMemoryPromptSection(async ({ lastUserMessage }: { lastUserMessage?: string }) => {
+    // registerMemoryPromptSection: sync builder, returns string[], params have availableTools
+    api.registerMemoryPromptSection((_params) => {
+      // Kick off async refresh if stale (fire-and-forget — builder must be sync)
       if (!isCacheFresh(ttlMs)) {
-        try { await fetchContext(cfg) } catch { /* serve stale */ }
+        fetchContext(cfg).catch((err: Error) => {
+          api.logger.warn(`anchor-context: background refresh failed — ${err.message}`)
+        })
       }
 
-      const content = isPlanning(lastUserMessage ?? '')
-        ? buildFullContext()
-        : buildHeader()
-
-      return content ? { role: 'system' as const, content } : null
+      // Note: lastUserMessage isn't available in this builder signature.
+      // We default to full context here; a future OpenClaw version may expose
+      // the current message for relevance gating.
+      const content = buildFullContext() || buildHeader()
+      return content ? [content] : []
     })
   },
 })
