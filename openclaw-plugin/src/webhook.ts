@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
 import { AnchorChangeEventSchema } from '@anchor-app/types'
 import { fetchContext } from './cache.js'
@@ -47,33 +48,26 @@ export async function deregisterFromAnchor(
   }).catch((err: Error) => logger.warn(`anchor-context: deregister failed — ${err.message}`))
 }
 
-export function makeWebhookHandler(cfg: PluginConfig, logger: { info: (s: string) => void; warn: (s: string) => void }) {
-  return async (req: Request): Promise<Response> => {
-    let eventName = 'unknown'
+/** Read full body from a Node IncomingMessage */
+export function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
 
-    let rawPayload: unknown
-    if (cfg.webhookSecret) {
-      const body = await req.text()
-      const sig = req.headers.get('x-anchor-signature') ?? ''
-      const valid = await verifyHmac(cfg.webhookSecret, body, sig)
-      if (!valid) return new Response('Unauthorized', { status: 401 })
-      rawPayload = JSON.parse(body)
-    } else {
-      rawPayload = await (req as Request).json()
-    }
-
-    const parsed = AnchorChangeEventSchema.safeParse(rawPayload)
-    if (parsed.success) {
-      eventName = parsed.data.event
-    } else {
-      logger.warn('anchor-context: unrecognised webhook payload shape')
-    }
-
-    logger.info(`anchor-context: cache invalidated (${eventName})`)
-    fetchContext(cfg).catch((err: Error) => {
-      logger.warn(`anchor-context: post-change refresh failed — ${err.message}`)
-    })
-
-    return new Response('ok', { status: 200 })
-  }
+/** Parse webhook body and return event name + raw body string */
+export async function parseWebhookBody(
+  req: IncomingMessage,
+  _cfg: PluginConfig
+): Promise<{ body: string; eventName: string }> {
+  const body = await readBody(req)
+  let eventName = 'unknown'
+  try {
+    const parsed = AnchorChangeEventSchema.safeParse(JSON.parse(body))
+    if (parsed.success) eventName = parsed.data.event
+  } catch { /* ignore parse errors */ }
+  return { body, eventName }
 }

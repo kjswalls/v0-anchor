@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -206,7 +206,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
-  const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
+  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime } = useMorningStore();
   const [profileMd, setProfileMd] = useState('');
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -214,14 +214,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   useEffect(() => {
     if (!open) return;
+    setProfileMd(''); // reset while loading
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       const uid = data.user?.id;
-      if (!uid) return;
+      if (!uid) { console.warn('[Settings] No authenticated user found'); return; }
       setProfileUserId(uid);
       const profile = await getUserProfile(uid);
       setProfileMd(profile ?? '');
-    });
+    }).catch((err) => console.error('[Settings] Failed to load profile:', err));
   }, [open]);
 
   const handleSaveProfile = async () => {
@@ -237,16 +238,28 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   // OpenClaw API key management
   const [anchorApiKey, setAnchorApiKey] = useState<string | null>(null);
   const [anchorApiKeyLoading, setAnchorApiKeyLoading] = useState(false);
+  const [anchorApiKeyError, setAnchorApiKeyError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    fetch('/api/openclaw/apikey').then(r => r.json()).then(d => setAnchorApiKey(d.apiKey ?? null));
+    setAnchorApiKeyError(null);
+    fetch('/api/openclaw/apikey')
+      .then(r => r.json())
+      .then(d => setAnchorApiKey(d.apiKey ?? null))
+      .catch(() => setAnchorApiKeyError('Failed to load API key'));
   }, [open]);
   const handleGenerateApiKey = async () => {
     setAnchorApiKeyLoading(true);
-    const res = await fetch('/api/openclaw/apikey', { method: 'POST' });
-    const d = await res.json();
-    setAnchorApiKey(d.apiKey ?? null);
-    setAnchorApiKeyLoading(false);
+    setAnchorApiKeyError(null);
+    try {
+      const res = await fetch('/api/openclaw/apikey', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Failed to generate key');
+      setAnchorApiKey(d.apiKey ?? null);
+    } catch (err) {
+      setAnchorApiKeyError((err as Error).message);
+    } finally {
+      setAnchorApiKeyLoading(false);
+    }
   };
   const {
     provider, setProvider,
@@ -423,18 +436,38 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
             </SettingsSection>
 
-            {/* AI Assist */}
+            {/* Daily Reviews */}
             <SettingsSection
-              title="AI Assist"
-              icon={<Sparkles className="h-4 w-4" />}
+              title="Daily Reviews"
+              icon={<Sun className="h-4 w-4" />}
             >
-              <SettingRow
-                label="Morning task check"
-                description="A gentle morning nudge if you have tasks left over from yesterday."
-              >
-                <Switch
-                  checked={morningCheckEnabled}
-                  onCheckedChange={setMorningCheckEnabled}
+              <p className="text-xs text-muted-foreground -mt-1 mb-2">Gentle daily check-ins to start and end your day right.</p>
+
+              <SettingRow label="Morning task check" description="A gentle nudge if you have tasks left over from yesterday">
+                <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
+              </SettingRow>
+              <SettingRow label="Morning time" description="When to show the morning check" disabled={!morningCheckEnabled}>
+                <Input
+                  type="time"
+                  value={morningCheckTime}
+                  onChange={(e) => setMorningCheckTime(e.target.value)}
+                  className="w-28 h-8 text-xs"
+                  disabled={!morningCheckEnabled}
+                />
+              </SettingRow>
+
+              <div className="border-t border-border my-2" />
+
+              <SettingRow label="End of day review" description="Celebrate wins and carry forward what's unfinished">
+                <Switch checked={eodReviewEnabled} onCheckedChange={setEodReviewEnabled} />
+              </SettingRow>
+              <SettingRow label="Review time" description="When to prompt the review (your local time)" disabled={!eodReviewEnabled}>
+                <Input
+                  type="time"
+                  value={eodReviewTime}
+                  onChange={(e) => setEodReviewTime(e.target.value)}
+                  className="w-28 h-8 text-xs"
+                  disabled={!eodReviewEnabled}
                 />
               </SettingRow>
             </SettingsSection>
@@ -464,35 +497,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   {profileSaved ? 'Saved!' : profileSaving ? 'Saving…' : 'Save'}
                 </Button>
               </div>
-            </SettingsSection>
-
-            {/* End of Day Review */}
-            <SettingsSection
-              title="End of Day Review"
-              icon={<Moon className="h-4 w-4" />}
-            >
-              <p className="text-xs text-muted-foreground -mt-1 mb-1">
-                A gentle daily check-in to celebrate wins and carry forward what&apos;s unfinished.
-              </p>
-              <SettingRow label="Enable end of day review" description="Show a review prompt each evening">
-                <Switch
-                  checked={eodReviewEnabled}
-                  onCheckedChange={setEodReviewEnabled}
-                />
-              </SettingRow>
-              <SettingRow
-                label="Review time"
-                description="When to prompt the review (your local time)"
-                disabled={!eodReviewEnabled}
-              >
-                <Input
-                  type="time"
-                  value={eodReviewTime}
-                  onChange={(e) => setEodReviewTime(e.target.value)}
-                  className="w-28 h-8 text-xs"
-                  disabled={!eodReviewEnabled}
-                />
-              </SettingRow>
             </SettingsSection>
 
             {/* AI Assistant */}
@@ -592,8 +596,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       onClick={handleGenerateApiKey}
                       disabled={anchorApiKeyLoading}
                     >
-                      {anchorApiKey ? '↺ Regenerate key' : '+ Generate key'}
+                      {anchorApiKeyLoading ? 'Generating…' : anchorApiKey ? '↺ Regenerate key' : '+ Generate key'}
                     </Button>
+                    {anchorApiKeyError && (
+                      <p className="text-xs text-destructive">{anchorApiKeyError}</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -623,13 +630,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </SettingRow>
 
               {personality === 'custom' && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 relative z-10">
                   <Label className="text-sm text-foreground">Custom system prompt</Label>
                   <Textarea
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
                     placeholder="You are a helpful AI assistant in Anchor..."
-                    className="text-xs resize-none min-h-[80px]"
+                    className="text-xs resize-none min-h-[80px] pointer-events-auto"
+                    onClick={(e) => e.stopPropagation()}
                   />
                 </div>
               )}

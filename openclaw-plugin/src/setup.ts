@@ -1,6 +1,7 @@
 import * as readline from 'node:readline/promises'
 import { stdin as input, stdout as output } from 'node:process'
-import { writeConfigFile, readConfigFileSnapshotForWrite } from 'openclaw/plugin-sdk/config-runtime'
+import { readConfigFileSnapshotForWrite, writeConfigFile } from 'openclaw/plugin-sdk/config-runtime'
+import type { OpenClawConfig } from 'openclaw/plugin-sdk/config-runtime'
 
 export async function runSetup(): Promise<void> {
   const rl = readline.createInterface({ input, output })
@@ -25,7 +26,7 @@ export async function runSetup(): Promise<void> {
   const webhookSecret = (await rl.question('Webhook secret for payload verification (optional, Enter to skip): ')).trim()
   rl.close()
 
-  // Validate key
+  // Validate key by calling the context endpoint
   console.log('\n🔍  Validating key...')
   try {
     const res = await fetch(`${anchorUrl}/api/openclaw/context`, {
@@ -43,12 +44,14 @@ export async function runSetup(): Promise<void> {
     process.exit(1)
   }
 
-  // Write to openclaw.json
-  const snapshot = await readConfigFileSnapshotForWrite()
-  const config = snapshot.config as Record<string, unknown>
-  const plugins = (config.plugins ?? {}) as Record<string, unknown>
-  const entries = (plugins.entries ?? {}) as Record<string, unknown>
-  const existing = (entries['anchor-context'] ?? {}) as Record<string, unknown>
+  // Read current config, patch, and write back
+  const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite()
+
+  // Deep-patch the config
+  const config = snapshot.config as OpenClawConfig & Record<string, unknown>
+  const plugins = ((config.plugins ?? {}) as Record<string, unknown>)
+  const entries = ((plugins.entries ?? {}) as Record<string, unknown>)
+  const existing = ((entries['anchor-context'] ?? {}) as Record<string, unknown>)
 
   entries['anchor-context'] = {
     ...existing,
@@ -62,9 +65,9 @@ export async function runSetup(): Promise<void> {
     },
   }
   plugins.entries = entries
-  config.plugins = plugins
+  ;(config as Record<string, unknown>).plugins = plugins
 
-  await writeConfigFile(snapshot.path, config)
+  await writeConfigFile(config, writeOptions)
 
   console.log('\n✅  Config saved!')
   console.log('🔄  Restart the gateway to activate: openclaw gateway restart')

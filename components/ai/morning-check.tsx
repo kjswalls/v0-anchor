@@ -10,13 +10,16 @@ import { useMorningStore } from '@/lib/morning-store';
 
 export function MorningCheck() {
   const { tasks, updateTask } = usePlannerStore();
-  const { morningCheckEnabled, dismiss, isDismissedToday } = useMorningStore();
+  const { morningCheckEnabled, morningCheckTime, dismiss, isDismissedToday } = useMorningStore();
   const [expanded, setExpanded] = useState(true);
   const [handledIds, setHandledIds] = useState<Set<string>>(new Set());
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const hour = new Date().getHours();
-  const isMorning = hour < 12;
+  const now = new Date();
+  const [checkHour, checkMinute] = (morningCheckTime ?? '08:00').split(':').map(Number);
+  const checkTime = new Date(); checkTime.setHours(checkHour, checkMinute, 0, 0);
+  const endTime = new Date(); endTime.setHours(12, 0, 0, 0);
+  const isMorningWindow = now >= checkTime && now < endTime;
 
   const overdueTask = useMemo(() => {
     const todayStart = startOfDay(new Date());
@@ -32,7 +35,7 @@ export function MorningCheck() {
 
   // Visibility conditions
   if (!morningCheckEnabled) return null;
-  if (!isMorning) return null;
+  if (!isMorningWindow) return null;
   if (isDismissedToday()) return null;
   if (overdueTask.length === 0) return null;
 
