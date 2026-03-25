@@ -41,6 +41,12 @@ export const useMorningStore = create<MorningStore>()(
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
+      partialize: (state) => ({
+        dismissedDate: state.dismissedDate,
+        morningCheckEnabled: state.morningCheckEnabled,
+        morningCheckTime: state.morningCheckTime,
+        // _hasHydrated intentionally excluded — must always start false
+      }),
     }
   )
 );
