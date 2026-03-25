@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase';
 import type { Task, Habit, Project, HabitGroupType } from './planner-types';
+import { notifyPlugins } from './openclaw-registry';
 
 // ---- Task row type ----
 interface TaskRow {
@@ -104,20 +105,23 @@ export async function createTask(userId: string, task: Task): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from('tasks').insert(taskToRow(userId, task));
   if (error) throw error;
+  notifyPlugins(userId, 'tasks.updated', { action: 'create', task });
 }
 
-export async function updateTask(id: string, updates: Partial<Task>): Promise<void> {
+export async function updateTask(id: string, updates: Partial<Task>, userId?: string): Promise<void> {
   const row = taskUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = createClient();
   const { error } = await supabase.from('tasks').update(row).eq('id', id);
   if (error) throw error;
+  if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'update', id, updates });
 }
 
-export async function deleteTask(id: string): Promise<void> {
+export async function deleteTask(id: string, userId?: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from('tasks').delete().eq('id', id);
   if (error) throw error;
+  if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'delete', id });
 }
 
 // ---- Habit row type ----
@@ -214,20 +218,23 @@ export async function createHabit(userId: string, habit: Habit): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from('habits').insert(habitToRow(userId, habit));
   if (error) throw error;
+  notifyPlugins(userId, 'habits.updated', { action: 'create', habit });
 }
 
-export async function updateHabit(id: string, updates: Partial<Habit>): Promise<void> {
+export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string): Promise<void> {
   const row = habitUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = createClient();
   const { error } = await supabase.from('habits').update(row).eq('id', id);
   if (error) throw error;
+  if (userId) notifyPlugins(userId, 'habits.updated', { action: 'update', id, updates });
 }
 
-export async function deleteHabit(id: string): Promise<void> {
+export async function deleteHabit(id: string, userId?: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase.from('habits').delete().eq('id', id);
   if (error) throw error;
+  if (userId) notifyPlugins(userId, 'habits.updated', { action: 'delete', id });
 }
 
 // ---- Project row type ----
@@ -299,6 +306,7 @@ export async function createProject(userId: string, project: Project): Promise<v
   const supabase = createClient();
   const { error } = await supabase.from('projects').insert(projectToRow(userId, project));
   if (error) throw error;
+  notifyPlugins(userId, 'projects.updated', { action: 'create', project });
 }
 
 export async function updateProject(userId: string, name: string, updates: Partial<Project>): Promise<void> {
@@ -311,6 +319,7 @@ export async function updateProject(userId: string, name: string, updates: Parti
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
+  notifyPlugins(userId, 'projects.updated', { action: 'update', name, updates });
 }
 
 export async function deleteProject(userId: string, name: string): Promise<void> {
@@ -321,6 +330,7 @@ export async function deleteProject(userId: string, name: string): Promise<void>
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
+  notifyPlugins(userId, 'projects.updated', { action: 'delete', name });
 }
 
 // ---- HabitGroup row type ----
@@ -372,6 +382,7 @@ export async function createHabitGroup(userId: string, group: HabitGroupType): P
   const supabase = createClient();
   const { error } = await supabase.from('habit_groups').insert(habitGroupToRow(userId, group));
   if (error) throw error;
+  notifyPlugins(userId, 'habitGroups.updated', { action: 'create', group });
 }
 
 export async function updateHabitGroup(userId: string, name: string, updates: Partial<HabitGroupType>): Promise<void> {
@@ -384,6 +395,7 @@ export async function updateHabitGroup(userId: string, name: string, updates: Pa
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
+  notifyPlugins(userId, 'habitGroups.updated', { action: 'update', name, updates });
 }
 
 export async function deleteHabitGroup(userId: string, name: string): Promise<void> {
@@ -394,4 +406,5 @@ export async function deleteHabitGroup(userId: string, name: string): Promise<vo
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
+  notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', name });
 }
