@@ -38,7 +38,7 @@
     "extensions": ["./dist/index.js"]
   },
   "dependencies": {
-    "@anchor-app/types": "*"
+    "@anchor-app/types": "workspace:*"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"
