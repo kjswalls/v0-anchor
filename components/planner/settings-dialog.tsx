@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useMorningStore } from '@/lib/morning-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -199,6 +200,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
+  const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -364,9 +366,25 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
             </SettingsSection>
 
+            {/* AI Assist */}
+            <SettingsSection
+              title="AI Assist"
+              icon={<Sparkles className="h-4 w-4" />}
+            >
+              <SettingRow
+                label="Morning task check"
+                description="A gentle morning nudge if you have tasks left over from yesterday."
+              >
+                <Switch
+                  checked={morningCheckEnabled}
+                  onCheckedChange={setMorningCheckEnabled}
+                />
+              </SettingRow>
+            </SettingsSection>
+
             {/* Calendar */}
-            <SettingsSection 
-              title="Calendar" 
+            <SettingsSection
+              title="Calendar"
               icon={<Calendar className="h-4 w-4" />}
             >
               <SettingRow label="Week starts on" description="First day of the week" disabled>
