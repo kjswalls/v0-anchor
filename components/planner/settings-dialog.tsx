@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
