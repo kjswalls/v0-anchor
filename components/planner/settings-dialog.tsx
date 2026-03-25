@@ -591,7 +591,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               )}
             </SettingsSection>
 
-            {/* Calendar */}}
+            {/* Calendar */}
             <SettingsSection
               title="Calendar"
               icon={<Calendar className="h-4 w-4" />}
