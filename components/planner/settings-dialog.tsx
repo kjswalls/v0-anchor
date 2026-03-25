@@ -206,7 +206,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
-  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime } = useMorningStore();
+  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime, _hasHydrated: morningHydrated } = useMorningStore();
   const [profileMd, setProfileMd] = useState('');
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -233,7 +233,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
   };
-  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
+  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime, _hasHydrated: eodHydrated } = useEODStore();
 
   // OpenClaw API key management
   const [anchorApiKey, setAnchorApiKey] = useState<string | null>(null);
@@ -447,13 +447,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
               </SettingRow>
               <SettingRow label="Morning time" description="When to show the morning check" disabled={!morningCheckEnabled}>
-                <Input
-                  type="time"
-                  value={morningCheckTime}
-                  onChange={(e) => setMorningCheckTime(e.target.value)}
-                  className="w-28 h-8 text-xs"
-                  disabled={!morningCheckEnabled}
-                />
+                {morningHydrated ? (
+                  <Input
+                    type="time"
+                    value={morningCheckTime}
+                    onChange={(e) => setMorningCheckTime(e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    disabled={!morningCheckEnabled}
+                  />
+                ) : (
+                  <div className="w-28 h-8 rounded-md bg-muted animate-pulse" />
+                )}
               </SettingRow>
 
               <div className="border-t border-border my-2" />
@@ -462,13 +466,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Switch checked={eodReviewEnabled} onCheckedChange={setEodReviewEnabled} />
               </SettingRow>
               <SettingRow label="Review time" description="When to prompt the review (your local time)" disabled={!eodReviewEnabled}>
-                <Input
-                  type="time"
-                  value={eodReviewTime}
-                  onChange={(e) => setEodReviewTime(e.target.value)}
-                  className="w-28 h-8 text-xs"
-                  disabled={!eodReviewEnabled}
-                />
+                {eodHydrated ? (
+                  <Input
+                    type="time"
+                    value={eodReviewTime}
+                    onChange={(e) => setEodReviewTime(e.target.value)}
+                    className="w-28 h-8 text-xs"
+                    disabled={!eodReviewEnabled}
+                  />
+                ) : (
+                  <div className="w-28 h-8 rounded-md bg-muted animate-pulse" />
+                )}
               </SettingRow>
             </SettingsSection>
 

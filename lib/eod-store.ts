@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 import { createClient } from '@/lib/supabase';
 
 interface EODStore {
+  _hasHydrated: boolean;
+  setHasHydrated: (v: boolean) => void;
   isOpen: boolean;
   eodReviewEnabled: boolean;
   eodReviewTime: string; // HH:mm
@@ -17,6 +19,9 @@ interface EODStore {
 export const useEODStore = create<EODStore>()(
   persist(
     (set) => ({
+      _hasHydrated: false,
+      setHasHydrated: (v) => set({ _hasHydrated: v }),
+
       isOpen: false,
       eodReviewEnabled: false,
       eodReviewTime: '21:00',
@@ -45,6 +50,9 @@ export const useEODStore = create<EODStore>()(
     }),
     {
       name: 'anchor-eod-store',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
       partialize: (state) => ({
         eodReviewEnabled: state.eodReviewEnabled,
         eodReviewTime: state.eodReviewTime,
