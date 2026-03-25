@@ -7,6 +7,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { X, Send, Sparkles } from 'lucide-react'
 import { usePlannerStore } from '@/lib/planner-store'
 import { buildAnchorContext } from '@/lib/ai-context'
+import { createClient } from '@/lib/supabase'
+import { isOnboardingComplete, getUserProfile } from '@/lib/user-profile'
+import { OnboardingChat } from './onboarding-chat'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -20,9 +23,34 @@ export function ChatSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userProfile, setUserProfile] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Check auth + onboarding on mount
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id
+      if (!uid) return
+      setUserId(uid)
+      const done = await isOnboardingComplete(uid)
+      if (!done) {
+        setShowOnboarding(true)
+      } else {
+        const profile = await getUserProfile(uid)
+        setUserProfile(profile)
+      }
+    })
+  }, [])
+
+  const handleOnboardingComplete = (profileMd: string | null) => {
+    setShowOnboarding(false)
+    setUserProfile(profileMd)
+  }
 
   // Restore open state from localStorage
   useEffect(() => {
@@ -73,7 +101,7 @@ export function ChatSidebar() {
 
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
-      const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
+      const context = buildAnchorContext({ tasks, habits, projects, habitGroups, userProfile: userProfile ?? undefined })
 
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -182,8 +210,15 @@ export function ChatSidebar() {
           </Button>
         </div>
 
+        {/* Onboarding or message list */}
+        {showOnboarding && userId ? (
+          <div className="flex-1 overflow-y-auto">
+            <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
+          </div>
+        ) : null}
+
         {/* Message list */}
-        <ScrollArea className="flex-1 px-3 py-3" ref={scrollRef}>
+        <ScrollArea className={['flex-1 px-3 py-3', showOnboarding ? 'hidden' : ''].join(' ')} ref={scrollRef}>
           {messages.length === 0 && (
             <p className="text-xs text-muted-foreground text-center mt-8 px-4 leading-relaxed">
               Hi! I&apos;m Beacon, your AI planning assistant. Ask me to help break down tasks, plan your day, or just think out loud. 🌿
@@ -229,7 +264,7 @@ export function ChatSidebar() {
         </ScrollArea>
 
         {/* Input area */}
-        <div className="px-3 py-3 border-t border-border shrink-0">
+        <div className={['px-3 py-3 border-t border-border shrink-0', showOnboarding ? 'hidden' : ''].join(' ')}>
           <div className="flex items-end gap-2">
             <Textarea
               ref={textareaRef}

@@ -6,10 +6,17 @@ export function buildAnchorContext(state: {
   habits: Habit[]
   projects: Project[]
   habitGroups: HabitGroupType[]
+  userProfile?: string
 }): string {
   const today = new Date()
   const todayStr = format(today, 'yyyy-MM-dd')
   const lines: string[] = []
+
+  if (state.userProfile) {
+    lines.push('## About You')
+    lines.push(state.userProfile)
+    lines.push('')
+  }
 
   lines.push('## Anchor Context')
   lines.push(`Date: ${format(today, 'EEEE, MMMM d yyyy')}`)

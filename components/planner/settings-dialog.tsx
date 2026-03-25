@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Moon, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,9 @@ import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { Textarea } from '@/components/ui/textarea';
+import { createClient } from '@/lib/supabase';
+import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -201,6 +204,31 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
+  const [profileMd, setProfileMd] = useState('');
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      setProfileUserId(uid);
+      const profile = await getUserProfile(uid);
+      setProfileMd(profile ?? '');
+    });
+  }, [open]);
+
+  const handleSaveProfile = async () => {
+    if (!profileUserId) return;
+    setProfileSaving(true);
+    await saveUserProfile(profileUserId, profileMd);
+    setProfileSaving(false);
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2000);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -380,6 +408,33 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   onCheckedChange={setMorningCheckEnabled}
                 />
               </SettingRow>
+            </SettingsSection>
+
+            {/* About Me */}
+            <SettingsSection
+              title="About Me"
+              icon={<User className="h-4 w-4" />}
+            >
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Beacon uses this to give you more personalized help.
+                </p>
+                <Textarea
+                  value={profileMd}
+                  onChange={(e) => setProfileMd(e.target.value)}
+                  placeholder={"Name: Alex\nFocus: Product design, side projects\nGoals: Ship my app by Q2"}
+                  rows={4}
+                  className="text-xs resize-none"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving || !profileUserId}
+                >
+                  {profileSaved ? 'Saved!' : profileSaving ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
             </SettingsSection>
 
             {/* Calendar */}
