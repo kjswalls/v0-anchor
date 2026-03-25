@@ -32,7 +32,6 @@ import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase';
 import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
 import { useEODStore } from '@/lib/eod-store';
