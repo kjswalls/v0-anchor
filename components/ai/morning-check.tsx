@@ -18,8 +18,7 @@ export function MorningCheck() {
   const now = new Date();
   const [checkHour, checkMinute] = (morningCheckTime ?? '08:00').split(':').map(Number);
   const checkTime = new Date(); checkTime.setHours(checkHour, checkMinute, 0, 0);
-  const endTime = new Date(); endTime.setHours(12, 0, 0, 0);
-  const isMorningWindow = now >= checkTime && now < endTime;
+  const isPastCheckTime = now >= checkTime;
 
   const overdueTask = useMemo(() => {
     const todayStart = startOfDay(new Date());
@@ -35,7 +34,7 @@ export function MorningCheck() {
 
   // Visibility conditions
   if (!morningCheckEnabled) return null;
-  if (!isMorningWindow) return null;
+  if (!isPastCheckTime) return null;
   if (isDismissedToday()) return null;
   if (overdueTask.length === 0) return null;
 
