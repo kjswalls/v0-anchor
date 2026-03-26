@@ -365,24 +365,101 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
                   <Button variant="outline" size="sm" className={cn('h-8 px-3 text-xs', hasActiveFilters && 'border-primary text-primary')}>
                     <Filter className="h-3.5 w-3.5 mr-1" />
                     Filter
+                    {hasActiveFilters && (
+                      <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+                        {Object.keys(filters).length}
+                      </span>
+                    )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-48 p-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground px-2">Project</p>
-                    {projects.map((p) => (
-                      <button
-                        key={p.name}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-md hover:bg-accent',
-                          filters.project === p.name && 'bg-accent'
-                        )}
-                        onClick={() => setFilters({ ...filters, project: p.name })}
-                      >
-                        <span>{getProjectEmoji(p.name)}</span>
-                        <span>{p.name}</span>
-                      </button>
-                    ))}
+                <PopoverContent align="start" className="w-56 p-2">
+                  <div className="space-y-3">
+                    {/* Project filter */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground px-2">Project</p>
+                      <div className="flex flex-wrap gap-1 px-1">
+                        {projects.map((p) => (
+                          <button
+                            key={p.name}
+                            className={cn(
+                              'flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors',
+                              filters.project === p.name 
+                                ? 'bg-primary text-primary-foreground border-primary' 
+                                : 'border-border hover:bg-accent'
+                            )}
+                            onClick={() => setFilters({ 
+                              ...filters, 
+                              project: filters.project === p.name ? undefined : p.name 
+                            })}
+                          >
+                            <span>{getProjectEmoji(p.name)}</span>
+                            <span>{p.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Priority filter */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground px-2">Priority</p>
+                      <div className="flex flex-wrap gap-1 px-1">
+                        {(['high', 'medium', 'low'] as const).map((priority) => (
+                          <button
+                            key={priority}
+                            className={cn(
+                              'px-2 py-1 text-xs rounded-md border transition-colors',
+                              filters.priority === priority 
+                                ? 'bg-primary text-primary-foreground border-primary' 
+                                : 'border-border hover:bg-accent'
+                            )}
+                            onClick={() => setFilters({ 
+                              ...filters, 
+                              priority: filters.priority === priority ? undefined : priority 
+                            })}
+                          >
+                            {priorityLabels[priority]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Status filter */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground px-2">Status</p>
+                      <div className="flex flex-wrap gap-1 px-1">
+                        {(['pending', 'completed'] as const).map((status) => (
+                          <button
+                            key={status}
+                            className={cn(
+                              'px-2 py-1 text-xs rounded-md border transition-colors capitalize',
+                              filters.status === status 
+                                ? 'bg-primary text-primary-foreground border-primary' 
+                                : 'border-border hover:bg-accent'
+                            )}
+                            onClick={() => setFilters({ 
+                              ...filters, 
+                              status: filters.status === status ? undefined : status 
+                            })}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Clear filters */}
+                    {hasActiveFilters && (
+                      <>
+                        <div className="h-px bg-border" />
+                        <button
+                          className="w-full flex items-center justify-center px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-md"
+                          onClick={() => clearFilters()}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Clear all filters
+                        </button>
+                      </>
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -418,8 +495,24 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {filters.project && (
                   <Badge variant="secondary" className="text-xs h-6 px-2 gap-1">
-                    {filters.project}
+                    {getProjectEmoji(filters.project)} {filters.project}
                     <button onClick={() => setFilters({ ...filters, project: undefined })} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {filters.priority && (
+                  <Badge variant="secondary" className="text-xs h-6 px-2 gap-1">
+                    {priorityLabels[filters.priority]}
+                    <button onClick={() => setFilters({ ...filters, priority: undefined })} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )}
+                {filters.status && (
+                  <Badge variant="secondary" className="text-xs h-6 px-2 gap-1 capitalize">
+                    {filters.status}
+                    <button onClick={() => setFilters({ ...filters, status: undefined })} className="hover:text-destructive">
                       <X className="h-3 w-3" />
                     </button>
                   </Badge>
