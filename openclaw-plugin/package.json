@@ -40,7 +40,7 @@
     ]
   },
   "dependencies": {
-    "@anchor-app/types": "file:../packages/types"
+    "@anchor-app/types": "workspace:*"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"
