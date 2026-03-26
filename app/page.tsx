@@ -55,7 +55,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
-  const { open: openEOD, eodReviewEnabled, eodReviewTime, lastEodReviewDate } = useEODStore();
+  const { open: openEOD } = useEODStore();
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -72,28 +72,8 @@ export default function PlannerPage() {
     setMounted(true);
   }, []);
 
-  // Auto-trigger EOD review at configured time
-  useEffect(() => {
-    if (!eodReviewEnabled) return;
-
-    const checkEOD = () => {
-      const now = new Date();
-      const today = now.toISOString().slice(0, 10);
-      if (lastEodReviewDate === today) return; // already reviewed today
-
-      const [hours, minutes] = eodReviewTime.split(':').map(Number);
-      const triggerTime = new Date();
-      triggerTime.setHours(hours, minutes, 0, 0);
-
-      if (now >= triggerTime) {
-        openEOD();
-      }
-    };
-
-    checkEOD(); // check immediately on mount
-    const interval = setInterval(checkEOD, 60_000); // check every minute
-    return () => clearInterval(interval);
-  }, [eodReviewEnabled, eodReviewTime, lastEodReviewDate, openEOD]);
+  // EOD auto-trigger intentionally removed for web — needs push notifications (PWA/mobile).
+  // The EOD review can still be triggered manually via the toolbar button.
   
   const sensors = useSensors(
     useSensor(PointerSensor, {

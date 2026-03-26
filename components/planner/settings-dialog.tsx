@@ -206,7 +206,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
-  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime, _hasHydrated: morningHydrated } = useMorningStore();
+  const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
   const [profileMd, setProfileMd] = useState('');
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -233,7 +233,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
   };
-  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime, _hasHydrated: eodHydrated } = useEODStore();
+  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
 
   // OpenClaw API key management
   const [anchorApiKey, setAnchorApiKey] = useState<string | null>(null);
@@ -441,43 +441,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="Daily Reviews"
               icon={<Sun className="h-4 w-4" />}
             >
-              <p className="text-xs text-muted-foreground -mt-1 mb-2">Gentle daily check-ins to start and end your day right.</p>
-
-              <SettingRow label="Morning task check" description="A gentle nudge if you have tasks left over from yesterday">
+              <p className="text-xs text-muted-foreground -mt-1 mb-2">
+                Shows a banner on your first visit each day if you have leftover tasks.
+              </p>
+              <SettingRow label="Morning task check" description="Remind me about unfinished tasks from yesterday">
                 <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
               </SettingRow>
-              <SettingRow label="Morning time" description="When to show the morning check" disabled={!morningCheckEnabled}>
-                {morningHydrated ? (
-                  <Input
-                    type="time"
-                    value={morningCheckTime}
-                    onChange={(e) => setMorningCheckTime(e.target.value)}
-                    className="w-28 h-8 text-xs"
-                    disabled={!morningCheckEnabled}
-                  />
-                ) : (
-                  <div className="w-28 h-8 rounded-md bg-muted animate-pulse" />
-                )}
-              </SettingRow>
-
-              <div className="border-t border-border my-2" />
-
-              <SettingRow label="End of day review" description="Celebrate wins and carry forward what's unfinished">
-                <Switch checked={eodReviewEnabled} onCheckedChange={setEodReviewEnabled} />
-              </SettingRow>
-              <SettingRow label="Review time" description="When to prompt the review (your local time)" disabled={!eodReviewEnabled}>
-                {eodHydrated ? (
-                  <Input
-                    type="time"
-                    value={eodReviewTime}
-                    onChange={(e) => setEodReviewTime(e.target.value)}
-                    className="w-28 h-8 text-xs"
-                    disabled={!eodReviewEnabled}
-                  />
-                ) : (
-                  <div className="w-28 h-8 rounded-md bg-muted animate-pulse" />
-                )}
-              </SettingRow>
+              {/* EOD review hidden until mobile/PWA push notifications are supported */}
             </SettingsSection>
 
             {/* About Me */}
