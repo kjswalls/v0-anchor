@@ -418,7 +418,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
       {/* Date header */}
       <div className="px-4 py-3 border-b border-border bg-card">
         <h2 className="text-lg font-semibold text-foreground">
-          {isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEEE, MMMM d')}
+          {format(selectedDate, 'EEEE, MMMM d')}
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5">
           {totalItems} {totalItems === 1 ? 'item' : 'items'} scheduled
