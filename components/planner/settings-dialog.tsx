@@ -589,17 +589,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </SettingRow>
 
               {personality === 'custom' && (
-                <div className="space-y-1.5 relative z-10">
+                <div className="space-y-1.5">
                   <Label className="text-sm text-foreground">Custom system prompt</Label>
-                  <Textarea
+                  <textarea
                     value={systemPrompt}
                     onChange={(e) => setSystemPrompt(e.target.value)}
                     placeholder="You are a helpful AI assistant in Anchor..."
-                    className="text-xs resize-none min-h-[80px] pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    onFocus={(e) => e.stopPropagation()}
+                    rows={4}
+                    style={{ pointerEvents: 'all', position: 'relative', zIndex: 50 }}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
                   />
                 </div>
               )}
