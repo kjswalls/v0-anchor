@@ -32,7 +32,7 @@ import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { SidebarChat } from './sidebar-chat';
+
 
 const priorityLabels: Record<Priority, string> = {
   high: 'High',
@@ -792,8 +792,6 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         </>
       )}
       
-      {/* AI Chat at bottom */}
-      <SidebarChat />
     </aside>
   );
 }
