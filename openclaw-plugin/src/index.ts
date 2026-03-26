@@ -4,6 +4,7 @@ import type { PluginConfig } from './plugin-types.js'
 import { fetchContext, isCacheFresh } from './cache.js'
 import { buildHeader, buildFullContext } from './context.js'
 import { registerWithAnchor, deregisterFromAnchor, parseWebhookBody, verifyHmac } from './webhook.js'
+import { handleChatRequest } from './chat.js'
 import { runSetup } from './setup.js'
 
 export default definePluginEntry({
@@ -65,6 +66,20 @@ export default definePluginEntry({
       start: async () => { /* nothing to start */ },
       stop: async () => {
         await deregisterFromAnchor(cfg, api.logger)
+      },
+    })
+
+    // ── Chat route: Anchor sidebar → agent turn → SSE stream ─────────────────
+    api.registerHttpRoute({
+      path: '/plugins/anchor/chat',
+      auth: 'plugin',
+      async handler(req: IncomingMessage, res: ServerResponse) {
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          res.end('Method Not Allowed')
+          return
+        }
+        await handleChatRequest(req, res, cfg, api.runtime, api.logger)
       },
     })
 
