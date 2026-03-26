@@ -284,7 +284,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     model, setModel,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
-    openclawApiKey, setOpenclawApiKey,
   } = useAISettingsStore();
 
   return (
@@ -486,16 +485,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                   {provider === 'openclaw' && (
                     <div className="space-y-2 pt-1 border-t border-border">
-                      <div className="space-y-1">
-                        <Label className="text-xs text-foreground">API Key</Label>
-                        <Input
-                          type="password"
-                          value={openclawApiKey}
-                          onChange={(e) => setOpenclawApiKey(e.target.value)}
-                          placeholder="Optional auth token"
-                          className="h-8 text-xs"
-                        />
-                      </div>
                       <div className="space-y-1 pt-1 border-t border-border">
                         <Label className="text-xs text-foreground">Your Anchor API Key</Label>
                         <p className="text-xs text-muted-foreground">Paste this into your OpenClaw plugin config.</p>

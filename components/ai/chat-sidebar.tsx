@@ -60,12 +60,18 @@ export function ChatSidebar() {
     setUserProfile(profileMd)
   }
 
-  // Fetch stored OpenClaw chat URL when provider is openclaw
+  // Fetch stored OpenClaw chat URL + Anchor API key when provider is openclaw
   useEffect(() => {
     if (aiProvider !== 'openclaw') return
-    fetch('/api/openclaw/chat-url')
-      .then((r) => r.json())
-      .then((d) => setOpenclawChatUrl(d.chatUrl ?? null))
+    Promise.all([
+      fetch('/api/openclaw/chat-url').then((r) => r.json()),
+      fetch('/api/openclaw/apikey').then((r) => r.json()),
+    ])
+      .then(([chatData, keyData]) => {
+        setOpenclawChatUrl(chatData.chatUrl ?? null)
+        // Store the Anchor API key so we can use it for auth without the user pasting it
+        if (keyData.apiKey) useAISettingsStore.getState().setOpenclawApiKey(keyData.apiKey)
+      })
       .catch(() => setOpenclawChatUrl(null))
   }, [aiProvider])
 
