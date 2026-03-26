@@ -44,17 +44,15 @@ export default definePluginEntry({
         `anchor-context: ready — ${c?.tasks.length ?? 0} tasks, ${c?.habits.length ?? 0} habits`
       )
 
-      const gatewayPublicUrl = (
-        (api.config as Record<string, unknown>)?.gateway as Record<string, unknown> | undefined
-      )?.publicUrl as string | undefined
+      const gatewayPublicUrl = cfg.publicUrl?.replace(/\/$/, '')
 
       if (gatewayPublicUrl) {
         await registerWithAnchor(cfg, `${gatewayPublicUrl}/plugins/anchor/webhook`, api.logger)
         await registerChatUrl(cfg, `${gatewayPublicUrl}/plugins/anchor/chat`, api.logger)
       } else {
         api.logger.warn(
-          'anchor-context: gateway.publicUrl not set — push invalidation disabled. ' +
-          'Set it in openclaw.json for real-time cache updates.'
+          'anchor-context: publicUrl not set in plugin config — webhook push and chat URL registration disabled. ' +
+          'Add publicUrl to your anchor-context plugin config in openclaw.json.'
         )
       }
     }).catch((err: Error) => {

@@ -13,6 +13,7 @@
         "properties": {
           "anchorUrl":      { "type": "string", "description": "Base URL of your Anchor deployment (e.g. https://anchor.yourdomain.com)" },
           "apiKey":         { "type": "string", "description": "Your personal Anchor API key — generate it in Anchor → Settings → AI Assistant → OpenClaw" },
+          "publicUrl":      { "type": "string", "description": "Your gateway's public URL (e.g. https://your-machine.ts.net) — used to register the chat endpoint with Anchor" },
           "webhookSecret":  { "type": "string", "description": "Optional HMAC secret for verifying change event payloads" },
           "cacheTtlMs":     { "type": "number", "description": "Max cache age before forcing a re-fetch (default: 300000ms = 5 min)" }
         }

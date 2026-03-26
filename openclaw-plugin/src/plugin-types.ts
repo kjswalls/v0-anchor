@@ -14,6 +14,7 @@ export interface AnchorCache {
 export interface PluginConfig {
   anchorUrl: string
   apiKey: string
+  publicUrl?: string   // Gateway's public URL (e.g. https://midgar-1b4eaa3.turkey-rockhopper.ts.net)
   webhookSecret?: string
   cacheTtlMs?: number
 }
