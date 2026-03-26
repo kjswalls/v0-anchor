@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { format, addDays } from 'date-fns';
-import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles } from 'lucide-react';
+import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -72,6 +72,15 @@ export function EODReview() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(pendingTasks.map((t) => t.id))
   );
+
+  // Tasks marked complete during this EOD session
+  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
+
+  const handleMarkDone = (id: string) => {
+    updateTask(id, { status: 'completed' });
+    setJustCompletedIds((prev) => new Set(prev).add(id));
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+  };
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -180,25 +189,49 @@ export function EODReview() {
               </p>
               <ul className="space-y-2">
                 {pendingTasks.map((task) => (
-                  <li key={task.id} className="flex items-start gap-2.5">
-                    <Checkbox
-                      id={`eod-task-${task.id}`}
-                      checked={selectedIds.has(task.id)}
-                      onCheckedChange={() => toggleSelected(task.id)}
-                      className="mt-0.5 shrink-0"
-                    />
-                    <label
-                      htmlFor={`eod-task-${task.id}`}
+                  <li key={task.id} className={cn(
+                    'flex items-center gap-2.5 rounded-lg px-2 py-1.5 -mx-2 transition-colors',
+                    justCompletedIds.has(task.id) ? 'opacity-50' : ''
+                  )}>
+                    {/* Mark done button */}
+                    <button
+                      onClick={() => handleMarkDone(task.id)}
+                      disabled={justCompletedIds.has(task.id)}
                       className={cn(
-                        'text-sm leading-snug cursor-pointer select-none',
-                        selectedIds.has(task.id) ? 'text-foreground' : 'text-muted-foreground'
+                        'shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors',
+                        justCompletedIds.has(task.id)
+                          ? 'border-emerald-500 bg-emerald-500 text-white'
+                          : 'border-border hover:border-emerald-400 hover:bg-emerald-400/10'
                       )}
+                      title="Mark as done"
                     >
+                      {justCompletedIds.has(task.id) && <Check className="h-3 w-3" />}
+                    </button>
+
+                    {/* Task title */}
+                    <span className={cn(
+                      'flex-1 text-sm leading-snug',
+                      justCompletedIds.has(task.id) ? 'line-through text-muted-foreground' : 'text-foreground'
+                    )}>
                       {task.title}
-                    </label>
+                    </span>
+
+                    {/* Carry forward checkbox — only if not completed */}
+                    {!justCompletedIds.has(task.id) && (
+                      <Checkbox
+                        id={`eod-task-${task.id}`}
+                        checked={selectedIds.has(task.id)}
+                        onCheckedChange={() => toggleSelected(task.id)}
+                        className="shrink-0"
+                        title="Carry to tomorrow"
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                ○ mark done · ☑ carry to tomorrow
+              </p>
               {selectedIds.size > 0 && (
                 <Button
                   variant="outline"
