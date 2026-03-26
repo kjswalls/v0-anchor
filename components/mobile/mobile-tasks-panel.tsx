@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, Clock, Repeat, Plus, FolderOpen } from 'lucide-react';
+import { Filter, ChevronDown, X, Check, Trash2, Clock, Repeat, Plus, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -27,15 +27,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, GroupBy, Priority, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable } from '@dnd-kit/core';
 
@@ -43,13 +36,6 @@ const priorityLabels: Record<Priority, string> = {
   high: 'High',
   medium: 'Medium',
   low: 'Low',
-};
-
-const bucketLabels: Record<TimeBucket, string> = {
-  anytime: 'Anytime',
-  morning: 'Morning',
-  afternoon: 'Afternoon',
-  evening: 'Evening',
 };
 
 interface MobileTasksPanelProps {
@@ -61,8 +47,8 @@ interface MobileTasksPanelProps {
 }
 
 // Mobile Task Item with long-press drag support
-function MobileTaskItem({ task, onClick, onQuickSchedule }: { task: Task; onClick: () => void; onQuickSchedule: (task: Task) => void }) {
-  const { toggleTaskStatus, deleteTask, getProjectEmoji, setHoveredItem } = usePlannerStore();
+function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) {
+  const { toggleTaskStatus, deleteTask, getProjectEmoji } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
@@ -157,17 +143,17 @@ function MobileTaskItem({ task, onClick, onQuickSchedule }: { task: Task; onClic
         </div>
       </div>
       
-      {/* Quick schedule button */}
+      {/* Delete button */}
       <Button
         variant="ghost"
-        size="sm"
-        className="h-8 px-2 text-xs text-muted-foreground"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-destructive"
         onClick={(e) => {
           e.stopPropagation();
-          onQuickSchedule(task);
+          setShowDeleteConfirm(true);
         }}
       >
-        Schedule
+        <Trash2 className="h-4 w-4" />
       </Button>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
@@ -272,62 +258,11 @@ function MobileHabitItem({ habit, onClick }: { habit: Habit; onClick: () => void
   );
 }
 
-// Quick Schedule Sheet
-function QuickScheduleSheet({ 
-  task, 
-  open, 
-  onOpenChange 
-}: { 
-  task: Task | null; 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { scheduleTask } = usePlannerStore();
-
-  const handleSchedule = (bucket: TimeBucket) => {
-    if (!task) return;
-    scheduleTask(task.id, bucket);
-    onOpenChange(false);
-  };
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-2xl">
-        <SheetHeader className="text-left">
-          <SheetTitle className="text-base">Schedule Task</SheetTitle>
-          {task && (
-            <p className="text-sm text-muted-foreground line-clamp-1">{task.title}</p>
-          )}
-        </SheetHeader>
-        <div className="grid grid-cols-2 gap-3 mt-6 pb-4">
-          {(['anytime', 'morning', 'afternoon', 'evening'] as TimeBucket[]).map((bucket) => (
-            <Button
-              key={bucket}
-              variant="outline"
-              className="h-14 flex flex-col items-center justify-center gap-1"
-              onClick={() => handleSchedule(bucket)}
-            >
-              <span className="text-sm font-medium">{bucketLabels[bucket]}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {bucket === 'anytime' && 'Flexible'}
-                {bucket === 'morning' && '5am - 12pm'}
-                {bucket === 'afternoon' && '12pm - 5pm'}
-                {bucket === 'evening' && '5pm - 12am'}
-              </span>
-            </Button>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: MobileTasksPanelProps) {
   const { tasks, habits, groupBy, setGroupBy, filters, setFilters, clearFilters, projects, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'pending' | 'done' | 'skipped'>('all');
   const [habitGroupBy, setHabitGroupBy] = useState<'group' | 'status' | 'repeat' | 'bucket' | 'none'>('group');
-  const [quickScheduleTask, setQuickScheduleTask] = useState<Task | null>(null);
 
   const hasActiveFilters = Object.keys(filters).length > 0;
 
@@ -516,7 +451,6 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
                         key={task.id} 
                         task={task} 
                         onClick={() => onTaskClick(task)}
-                        onQuickSchedule={setQuickScheduleTask}
                       />
                     ))}
                   </div>

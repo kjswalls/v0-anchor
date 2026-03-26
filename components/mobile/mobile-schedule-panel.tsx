@@ -3,14 +3,7 @@
 import { useMemo, useState } from 'react';
 import { format, isToday, isSameDay } from 'date-fns';
 import { Check, Clock, Repeat, ChevronDown, ChevronUp, MoreHorizontal, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,65 +40,8 @@ interface MobileSchedulePanelProps {
   activeId: string | null;
 }
 
-const bucketLabels: Record<TimeBucket, string> = {
-  anytime: 'Anytime',
-  morning: 'Morning',
-  afternoon: 'Afternoon',
-  evening: 'Evening',
-};
-
-// Quick Reschedule Sheet for scheduled tasks
-function QuickRescheduleSheet({ 
-  task, 
-  open, 
-  onOpenChange 
-}: { 
-  task: Task | null; 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { scheduleTask } = usePlannerStore();
-
-  const handleReschedule = (bucket: TimeBucket) => {
-    if (!task) return;
-    scheduleTask(task.id, bucket);
-    onOpenChange(false);
-  };
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="rounded-t-2xl">
-        <SheetHeader className="text-left">
-          <SheetTitle className="text-base">Reschedule Task</SheetTitle>
-          {task && (
-            <p className="text-sm text-muted-foreground line-clamp-1">{task.title}</p>
-          )}
-        </SheetHeader>
-        <div className="grid grid-cols-2 gap-3 mt-6 pb-4">
-          {(['anytime', 'morning', 'afternoon', 'evening'] as TimeBucket[]).map((bucket) => (
-            <Button
-              key={bucket}
-              variant={task?.timeBucket === bucket ? 'default' : 'outline'}
-              className="h-14 flex flex-col items-center justify-center gap-1"
-              onClick={() => handleReschedule(bucket)}
-            >
-              <span className="text-sm font-medium">{bucketLabels[bucket]}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {bucket === 'anytime' && 'Flexible'}
-                {bucket === 'morning' && '5am - 12pm'}
-                {bucket === 'afternoon' && '12pm - 5pm'}
-                {bucket === 'evening' && '5pm - 12am'}
-              </span>
-            </Button>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 // Mobile Scheduled Task Item
-function MobileScheduledTask({ task, onClick, onReschedule }: { task: Task; onClick: () => void; onReschedule: (task: Task) => void }) {
+function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => void }) {
   const { toggleTaskStatus, deleteTask, unscheduleTask, getProjectEmoji } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -157,9 +93,6 @@ function MobileScheduledTask({ task, onClick, onReschedule }: { task: Task; onCl
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onReschedule(task); }}>
-                Reschedule
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); unscheduleTask(task.id); }}>
                 Move to sidebar
               </DropdownMenuItem>
@@ -281,7 +214,6 @@ function TimeBucketSection({
   onTaskClick,
   onHabitClick,
   onAddClick,
-  onReschedule,
   isActive,
 }: { 
   bucket: TimeBucket;
@@ -290,7 +222,6 @@ function TimeBucketSection({
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
   onAddClick: () => void;
-  onReschedule: (task: Task) => void;
   isActive: boolean;
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -334,7 +265,7 @@ function TimeBucketSection({
       {!isCollapsed && (
         <div className="p-3 space-y-2 bg-background/50">
           {tasks.map((task) => (
-            <MobileScheduledTask key={task.id} task={task} onClick={() => onTaskClick(task)} onReschedule={onReschedule} />
+            <MobileScheduledTask key={task.id} task={task} onClick={() => onTaskClick(task)} />
           ))}
           {habits.map((habit) => (
             <MobileScheduledHabit key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
@@ -356,7 +287,6 @@ function TimeBucketSection({
 
 export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, activeId }: MobileSchedulePanelProps) {
   const { tasks, habits, selectedDate, timelineItemFilter } = usePlannerStore();
-  const [rescheduleTask, setRescheduleTask] = useState<Task | null>(null);
 
   // Get items for selected date
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -437,19 +367,11 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
               onTaskClick={onTaskClick}
               onHabitClick={onHabitClick}
               onAddClick={() => onAddClick(bucket, 'task')}
-              onReschedule={setRescheduleTask}
               isActive={!!activeId}
             />
           ))}
         </div>
       </ScrollArea>
-
-      {/* Reschedule Sheet */}
-      <QuickRescheduleSheet 
-        task={rescheduleTask} 
-        open={!!rescheduleTask} 
-        onOpenChange={(open) => !open && setRescheduleTask(null)} 
-      />
     </div>
   );
 }
