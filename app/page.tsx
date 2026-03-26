@@ -14,6 +14,8 @@ import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { EODReview } from '@/components/ai/eod-review';
 import { ChatSidebar } from '@/components/ai/chat-sidebar';
+import { useEODStore } from '@/lib/eod-store';
+import { Moon } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -55,6 +57,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
+  const openEOD = useEODStore((s) => s.open);
 
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -317,7 +320,10 @@ export default function PlannerPage() {
               {/* Action feed on the right */}
               <div className="ml-auto z-10 flex items-center gap-2">
                 <ActionFeed />
-                {/* EOD button hidden until PWA/mobile push notifications */}
+                {/* TODO: remove before launch — temp EOD test trigger */}
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" title="Test EOD review" onClick={openEOD}>
+                  <Moon className="h-4 w-4" />
+                </Button>
               </div>
             </div>
 
