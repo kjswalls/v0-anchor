@@ -472,135 +472,108 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               title="AI Assistant"
               icon={<Sparkles className="h-4 w-4" />}
             >
-              <SettingRow label="Provider" description="Which AI service powers the assistant">
-                <Select value={provider} onValueChange={(v) => setProvider(v as AIProvider)}>
-                  <SelectTrigger className="w-44 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (disabled)</SelectItem>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="openclaw">OpenClaw</SelectItem>
-                    <SelectItem value="anthropic" disabled>Anthropic (coming soon)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-
-              {provider === 'openai' && (
-                <SettingRow label="API Key" description="Your OpenAI API key (stored locally only)">
-                  <Input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-..."
-                    className="w-44 h-8 text-xs"
-                  />
-                </SettingRow>
-              )}
-
-              {provider === 'openai' && (
-                <SettingRow label="Model" description="Which OpenAI model to use">
-                  <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="w-44 h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                      <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                      <SelectItem value="gpt-4-turbo">gpt-4-turbo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </SettingRow>
-              )}
-
-              {provider === 'openclaw' && (
-                <div className="space-y-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-foreground">OpenClaw Webhook URL</Label>
-                    <Input
-                      type="url"
-                      value={openclawWebhookUrl}
-                      onChange={(e) => setOpenclawWebhookUrl(e.target.value)}
-                      placeholder="https://your-instance.ts.net/webhook/anchor"
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-foreground">API Key</Label>
-                    <Input
-                      type="password"
-                      value={openclawApiKey}
-                      onChange={(e) => setOpenclawApiKey(e.target.value)}
-                      placeholder="Optional auth token"
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Your OpenClaw agent will respond using its own memory and personality. Your tasks, habits, and projects are shared automatically as context.
-                  </p>
-                  <div className="space-y-1.5 pt-1">
-                    <Label className="text-xs text-foreground">Your Anchor API Key</Label>
-                    <p className="text-xs text-muted-foreground">Paste this into your OpenClaw plugin config so it can access your data.</p>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        readOnly
-                        value={anchorApiKey ?? '—'}
-                        className="h-8 text-xs font-mono flex-1 bg-muted"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs shrink-0"
-                        onClick={() => anchorApiKey && navigator.clipboard.writeText(anchorApiKey)}
-                        disabled={!anchorApiKey}
-                      >
-                        Copy
-                      </Button>
+              {/* OpenClaw — primary, shown first */}
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-foreground">OpenClaw</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Connect your personal AI agent — uses your memory, personality, and context.</p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs text-muted-foreground"
-                      onClick={handleGenerateApiKey}
-                      disabled={anchorApiKeyLoading}
-                    >
-                      {anchorApiKeyLoading ? 'Generating…' : anchorApiKey ? '↺ Regenerate key' : '+ Generate key'}
-                    </Button>
-                    {anchorApiKeyError && (
-                      <p className="text-xs text-destructive">{anchorApiKeyError}</p>
-                    )}
+                    <Switch
+                      checked={provider === 'openclaw'}
+                      onCheckedChange={(v) => setProvider(v ? 'openclaw' : 'none')}
+                    />
                   </div>
-                </div>
-              )}
 
-              <SettingRow label="Personality" description="Tone and style of responses">
-                <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
-                  <SelectTrigger className="w-44 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    <SelectItem value="professional">Professional</SelectItem>
-                    <SelectItem value="motivational">Motivational</SelectItem>
-                    <SelectItem value="minimal">Minimal</SelectItem>
-                    <SelectItem value="custom">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-
-              {personality === 'custom' && (
-                <div className="space-y-1.5">
-                  <Label className="text-sm text-foreground">Custom system prompt</Label>
-                  <textarea
-                    value={systemPrompt}
-                    onChange={(e) => setSystemPrompt(e.target.value)}
-                    placeholder="You are a helpful AI assistant in Anchor..."
-                    rows={4}
-                    style={{ pointerEvents: 'all', position: 'relative', zIndex: 50 }}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-                  />
+                  {provider === 'openclaw' && (
+                    <div className="space-y-2 pt-1 border-t border-border">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-foreground">Webhook URL</Label>
+                        <Input
+                          type="url"
+                          value={openclawWebhookUrl}
+                          onChange={(e) => setOpenclawWebhookUrl(e.target.value)}
+                          placeholder="https://your-instance.ts.net/webhook/anchor"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-foreground">API Key</Label>
+                        <Input
+                          type="password"
+                          value={openclawApiKey}
+                          onChange={(e) => setOpenclawApiKey(e.target.value)}
+                          placeholder="Optional auth token"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1 pt-1 border-t border-border">
+                        <Label className="text-xs text-foreground">Your Anchor API Key</Label>
+                        <p className="text-xs text-muted-foreground">Paste this into your OpenClaw plugin config.</p>
+                        <div className="flex items-center gap-2">
+                          <Input readOnly value={anchorApiKey ?? '—'} className="h-8 text-xs font-mono flex-1 bg-muted" />
+                          <Button size="sm" variant="outline" className="h-8 text-xs shrink-0"
+                            onClick={() => anchorApiKey && navigator.clipboard.writeText(anchorApiKey)}
+                            disabled={!anchorApiKey}>
+                            Copy
+                          </Button>
+                        </div>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground"
+                          onClick={handleGenerateApiKey} disabled={anchorApiKeyLoading}>
+                          {anchorApiKeyLoading ? 'Generating…' : anchorApiKey ? '↺ Regenerate' : '+ Generate key'}
+                        </Button>
+                        {anchorApiKeyError && <p className="text-xs text-destructive">{anchorApiKeyError}</p>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* Beacon fallback — secondary */}
+                <div className="rounded-lg border border-border px-3 py-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-foreground">Beacon <span className="text-muted-foreground font-normal">(OpenAI fallback)</span></p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Use when OpenClaw isn't connected.</p>
+                    </div>
+                    <Switch
+                      checked={provider === 'openai'}
+                      onCheckedChange={(v) => setProvider(v ? 'openai' : 'none')}
+                      disabled={provider === 'openclaw'}
+                    />
+                  </div>
+
+                  {provider === 'openai' && (
+                    <div className="space-y-2 pt-1 border-t border-border">
+                      <SettingRow label="API Key" description="Stored locally only">
+                        <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+                          placeholder="sk-..." className="w-44 h-8 text-xs" />
+                      </SettingRow>
+                      <SettingRow label="Model" description="">
+                        <Select value={model} onValueChange={setModel}>
+                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
+                            <SelectItem value="gpt-4o">gpt-4o</SelectItem>
+                            <SelectItem value="gpt-4-turbo">gpt-4-turbo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                      <SettingRow label="Personality" description="">
+                        <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
+                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Default</SelectItem>
+                            <SelectItem value="professional">Professional</SelectItem>
+                            <SelectItem value="motivational">Motivational</SelectItem>
+                            <SelectItem value="minimal">Minimal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="border-t border-border pt-3 mt-1 space-y-2">
                 <div className="flex items-center gap-1.5">

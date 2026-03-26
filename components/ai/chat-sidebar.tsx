@@ -19,6 +19,8 @@ interface Message {
 
 const STORAGE_KEY = 'anchor-chat-sidebar-open'
 const ASSISTANT_NAME = 'Beacon'
+const OPENCLAW_NAME = 'OpenClaw'
+const OPENCLAW_NAME = 'OpenClaw'
 
 export function ChatSidebar() {
   const [isOpen, setIsOpen] = useState(false)
@@ -30,6 +32,8 @@ export function ChatSidebar() {
   const [userProfile, setUserProfile] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const aiProvider = useAISettingsStore((s) => s.provider)
+  const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
   // Check auth + load profile (don't gate on onboarding completion)
   useEffect(() => {
@@ -182,7 +186,7 @@ export function ChatSidebar() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
           <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">
-            {ASSISTANT_NAME}
+            {displayName}
           </span>
           <div className="flex items-center gap-0.5">
             {messages.length > 0 && (
@@ -223,9 +227,16 @@ export function ChatSidebar() {
                     <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">Plan with {ASSISTANT_NAME}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {aiProvider === 'openclaw' ? 'Your OpenClaw agent is ready' : `Plan with ${displayName}`}
+                    </p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Ask me to break down tasks, plan your day,<br />or think through what to tackle next.
+                      {aiProvider === 'openclaw'
+                        ? 'Ask anything — your agent knows your tasks, habits, and projects.'
+                        : aiProvider === 'none'
+                        ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
+                        : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
+                      }
                     </p>
                   </div>
                 </div>
@@ -264,7 +275,7 @@ export function ChatSidebar() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={`Ask ${ASSISTANT_NAME} anything…`}
+                  placeholder={`Ask ${displayName} anything…`}
                   rows={1}
                   className="resize-none min-h-0 text-sm leading-6 py-3 px-3 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
                   disabled={isLoading}
