@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Send, Sparkles } from 'lucide-react'
+import { X, Send, Sparkles, MessageSquarePlus, Trash2 } from 'lucide-react'
 import { usePlannerStore } from '@/lib/planner-store'
 import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
@@ -27,7 +27,6 @@ export function ChatSidebar() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<string | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -53,26 +52,18 @@ export function ChatSidebar() {
     setUserProfile(profileMd)
   }
 
-  // Restore open state from localStorage
+  // Restore open state
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored === 'true') setIsOpen(true)
-    } catch {
-      // ignore
-    }
+      if (localStorage.getItem(STORAGE_KEY) === 'true') setIsOpen(true)
+    } catch { /* ignore */ }
   }, [])
 
-  // Persist open state
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(isOpen))
-    } catch {
-      // ignore
-    }
+    try { localStorage.setItem(STORAGE_KEY, String(isOpen)) } catch { /* ignore */ }
   }, [isOpen])
 
-  // Auto-scroll to latest message
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isLoading])
@@ -82,10 +73,10 @@ export function ChatSidebar() {
     const ta = textareaRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    const lineHeight = 24
-    const maxHeight = lineHeight * 3 + 16 // 3 lines + padding
-    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
   }, [input])
+
+  const assistantName = useAISettingsStore((s) => s.assistantName) || 'Beacon'
 
   const sendMessage = useCallback(async () => {
     const text = input.trim()
@@ -96,8 +87,6 @@ export function ChatSidebar() {
     setMessages(updatedMessages)
     setInput('')
     setIsLoading(true)
-
-    // Placeholder for streaming assistant message
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
     try {
@@ -110,16 +99,7 @@ export function ChatSidebar() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: updatedMessages,
-          context,
-          provider,
-          apiKey,
-          model,
-          systemPrompt: effectiveSystemPrompt,
-          openclawWebhookUrl,
-          openclawApiKey,
-        }),
+        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt, openclawWebhookUrl, openclawApiKey }),
       })
 
       if (!res.body) throw new Error('No response body')
@@ -132,10 +112,8 @@ export function ChatSidebar() {
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
-
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
-
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue
           const payload = line.slice(6).trim()
@@ -146,18 +124,14 @@ export function ChatSidebar() {
               setMessages((prev) => {
                 const next = [...prev]
                 const last = next[next.length - 1]
-                if (last?.role === 'assistant') {
-                  next[next.length - 1] = { ...last, content: last.content + content }
-                }
+                if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: last.content + content }
                 return next
               })
             }
-          } catch {
-            // skip malformed chunks
-          }
+          } catch { /* skip malformed */ }
         }
       }
-    } catch (err) {
+    } catch {
       setMessages((prev) => {
         const next = [...prev]
         const last = next[next.length - 1]
@@ -169,61 +143,72 @@ export function ChatSidebar() {
     } finally {
       setIsLoading(false)
     }
-  }, [input, isLoading, messages])
+  }, [input, isLoading, messages, userProfile])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
   return (
     <>
-      {/* Toggle button — fixed to right edge */}
+      {/* Toggle tab — absolute on right edge of parent (main area) */}
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label="Toggle Beacon AI assistant"
         className={[
-          'fixed right-0 top-1/2 -translate-y-1/2 z-50',
-          'flex items-center gap-1.5 px-2 py-3',
-          'rounded-l-xl border border-r-0 border-border',
+          'absolute right-0 top-1/2 -translate-y-1/2 z-30',
+          'flex items-center gap-1.5 px-1.5 py-3',
+          'rounded-l-lg border border-r-0 border-border',
           'bg-card text-foreground shadow-md',
           'hover:bg-accent transition-colors duration-200',
           isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100',
         ].join(' ')}
       >
-        <Sparkles className="h-4 w-4 text-primary" />
+        <Sparkles className="h-3.5 w-3.5 text-primary" />
       </button>
 
-      {/* Sidebar panel */}
+      {/* Sidebar panel — absolute, scoped to parent height */}
       <div
         className={[
-          'fixed right-0 top-0 h-full w-80 z-40',
+          'absolute right-0 top-0 h-full w-[320px] z-20',
           'flex flex-col',
           'bg-card border-l border-border shadow-2xl',
           'transition-transform duration-300 ease-in-out',
           isOpen ? 'translate-x-0' : 'translate-x-full',
         ].join(' ')}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        {/* Header — Codespaces style */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="font-semibold text-sm">Beacon ✨</span>
+            <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">
+              {assistantName}
+            </span>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsOpen(false)}
-            aria-label="Close chat"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={() => setMessages([])}
+                title="Clear conversation"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setIsOpen(false)}
+              aria-label="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* Onboarding or message list */}
+        {/* Onboarding */}
         {showOnboarding && userId ? (
           <div className="flex-1 overflow-y-auto">
             <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
@@ -231,87 +216,77 @@ export function ChatSidebar() {
         ) : null}
 
         {/* Message list */}
-        <ScrollArea className={['flex-1 px-3 py-3', showOnboarding ? 'hidden' : ''].join(' ')} ref={scrollRef}>
-          {messages.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center mt-8 px-4 leading-relaxed">
-              Hi! I&apos;m Beacon, your AI planning assistant. Ask me to help break down tasks, plan your day, or just think out loud. 🌿
-            </p>
-          )}
-
-          <div className="flex flex-col gap-3">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={[
-                  'flex',
-                  msg.role === 'user' ? 'justify-end' : 'justify-start',
-                ].join(' ')}
-              >
-                <div
-                  className={[
-                    'max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap',
+        <ScrollArea className={['flex-1', showOnboarding ? 'hidden' : ''].join(' ')}>
+          {messages.length === 0 ? (
+            /* Empty state — Codespaces inspired */
+            <div className="flex flex-col items-center justify-center h-full min-h-[300px] px-6 text-center gap-3 pt-16">
+              <div className="relative">
+                <MessageSquarePlus className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
+                <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Plan with {assistantName}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Ask me to break down tasks, plan your day,<br />or think through what to tackle next.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2 px-4 py-4">
+              {messages.map((msg, i) => (
+                <div key={i} className={['flex', msg.role === 'user' ? 'justify-end' : 'justify-start'].join(' ')}>
+                  <div className={[
+                    'max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap',
                     msg.role === 'user'
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
                       : 'bg-muted text-foreground rounded-bl-sm',
-                  ].join(' ')}
-                >
-                  {msg.content || (msg.role === 'assistant' && isLoading && i === messages.length - 1
-                    ? <LoadingDots />
-                    : null
-                  )}
+                  ].join(' ')}>
+                    {msg.content || (msg.role === 'assistant' && isLoading && i === messages.length - 1
+                      ? <LoadingDots />
+                      : null
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-
-            {/* Loading indicator when no placeholder yet */}
-            {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl rounded-bl-sm px-3 py-2">
-                  <LoadingDots />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-2xl rounded-bl-sm px-3 py-2"><LoadingDots /></div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div ref={bottomRef} />
+              )}
+              <div ref={bottomRef} />
+            </div>
+          )}
         </ScrollArea>
 
-        {/* Input area */}
-        <div className={['px-3 py-3 border-t border-border shrink-0', showOnboarding ? 'hidden' : ''].join(' ')}>
-          <div className="flex items-end gap-2">
+        {/* Input area — Codespaces style: bordered card */}
+        <div className={['px-3 pb-3 pt-2 shrink-0', showOnboarding ? 'hidden' : ''].join(' ')}>
+          <div className="rounded-xl border border-border bg-background focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-colors">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Beacon anything…"
+              placeholder={`Ask ${assistantName} anything…`}
               rows={1}
-              className="resize-none min-h-0 text-sm leading-6 py-2 flex-1"
+              className="resize-none min-h-0 text-sm leading-6 py-3 px-3 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
               disabled={isLoading}
             />
-            <Button
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
-              aria-label="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            {/* Input toolbar */}
+            <div className="flex items-center justify-between px-2 pb-2">
+              <span className="text-[10px] text-muted-foreground/50 pl-1">⏎ send · ⇧⏎ newline</span>
+              <Button
+                size="icon"
+                className="h-7 w-7 rounded-lg"
+                onClick={sendMessage}
+                disabled={!input.trim() || isLoading}
+                aria-label="Send message"
+              >
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-            Enter to send · Shift+Enter for newline
-          </p>
         </div>
       </div>
-
-      {/* Backdrop (mobile) */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm md:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
     </>
   )
 }
@@ -320,11 +295,8 @@ function LoadingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-label="Loading">
       {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce"
-          style={{ animationDelay: `${i * 0.15}s` }}
-        />
+        <span key={i} className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s` }} />
       ))}
     </span>
   )

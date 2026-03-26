@@ -281,7 +281,7 @@ export default function PlannerPage() {
         />
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
-          <main className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 flex flex-col overflow-hidden relative">
             {/* Item visibility toggle and action feed - toggle centered, feed on right */}
             <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
               {/* Centered visibility toggle */}
@@ -339,6 +339,7 @@ export default function PlannerPage() {
                 />
               )}
             </div>
+            <ChatSidebar />
           </main>
         </div>
       </div>
@@ -377,7 +378,6 @@ export default function PlannerPage() {
       />
 
       <EODReview />
-      <ChatSidebar />
 
       {/* Keyboard shortcut delete confirmation */}
       <AlertDialog
