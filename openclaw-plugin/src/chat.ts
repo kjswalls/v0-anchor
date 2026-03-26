@@ -93,6 +93,7 @@ export async function handleChatRequest(
     const { runId } = await runtime.subagent.run({
       sessionKey,
       message,
+      idempotencyKey: `anchor-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...(extraContext ? { extraSystemPrompt: extraContext } : {}),
     })
 
