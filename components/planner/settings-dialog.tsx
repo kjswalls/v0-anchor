@@ -226,12 +226,25 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [open]);
 
   const handleSaveProfile = async () => {
-    if (!profileUserId) return;
+    // If userId not loaded yet, try one more time
+    let uid = profileUserId;
+    if (!uid) {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      uid = data.user?.id ?? null;
+      if (uid) setProfileUserId(uid);
+    }
+    if (!uid) { console.error('[Settings] Cannot save — no user ID'); return; }
     setProfileSaving(true);
-    await saveUserProfile(profileUserId, profileMd);
-    setProfileSaving(false);
-    setProfileSaved(true);
-    setTimeout(() => setProfileSaved(false), 2000);
+    try {
+      await saveUserProfile(uid, profileMd);
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 2000);
+    } catch (err) {
+      console.error('[Settings] Failed to save profile:', err);
+    } finally {
+      setProfileSaving(false);
+    }
   };
   const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
 
@@ -450,33 +463,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {/* EOD review hidden until mobile/PWA push notifications are supported */}
             </SettingsSection>
 
-            {/* About Me */}
-            <SettingsSection
-              title="About Me"
-              icon={<User className="h-4 w-4" />}
-            >
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Beacon uses this to give you more personalized help.
-                </p>
-                <Textarea
-                  value={profileMd}
-                  onChange={(e) => setProfileMd(e.target.value)}
-                  placeholder={"Name: Alex\nFocus: Product design, side projects\nGoals: Ship my app by Q2"}
-                  rows={4}
-                  className="text-xs resize-none"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 px-3 text-xs"
-                  onClick={handleSaveProfile}
-                  disabled={profileSaving || !profileUserId}
-                >
-                  {profileSaved ? 'Saved!' : profileSaving ? 'Saving…' : 'Save'}
-                </Button>
-              </div>
-            </SettingsSection>
-
             {/* AI Assistant */}
             <SettingsSection
               title="AI Assistant"
@@ -619,6 +605,31 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   />
                 </div>
               )}
+
+              <div className="border-t border-border pt-3 mt-1 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  <Label className="text-xs font-medium text-foreground">About Me</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Helps {assistantName || 'Beacon'} give you more personalized responses.
+                </p>
+                <Textarea
+                  value={profileMd}
+                  onChange={(e) => setProfileMd(e.target.value)}
+                  placeholder={"Name: Kirby\nFocus: Building Anchor\nGoals: Launch by Q2"}
+                  rows={3}
+                  className="text-xs resize-none"
+                />
+                <Button
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={handleSaveProfile}
+                  disabled={profileSaving}
+                >
+                  {profileSaved ? 'Saved! ✓' : profileSaving ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
             </SettingsSection>
 
             {/* Calendar */}
