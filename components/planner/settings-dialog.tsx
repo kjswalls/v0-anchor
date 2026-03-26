@@ -211,6 +211,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -236,12 +237,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     }
     if (!uid) { console.error('[Settings] Cannot save — no user ID'); return; }
     setProfileSaving(true);
+    setProfileError(null);
     try {
       await saveUserProfile(uid, profileMd);
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 2000);
     } catch (err) {
-      console.error('[Settings] Failed to save profile:', err);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[Settings] Failed to save profile:', msg);
+      setProfileError(msg);
     } finally {
       setProfileSaving(false);
     }
@@ -617,18 +621,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Textarea
                   value={profileMd}
                   onChange={(e) => setProfileMd(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
                   placeholder={"Name: Kirby\nFocus: Building Anchor\nGoals: Launch by Q2"}
                   rows={3}
-                  className="text-xs resize-none"
+                  className="text-xs resize-none pointer-events-auto relative z-10"
                 />
                 <Button
                   size="sm"
                   className="h-7 px-3 text-xs"
-                  onClick={handleSaveProfile}
+                  onClick={(e) => { e.stopPropagation(); handleSaveProfile(); }}
                   disabled={profileSaving}
                 >
                   {profileSaved ? 'Saved! ✓' : profileSaving ? 'Saving…' : 'Save'}
                 </Button>
+                {profileError && (
+                  <p className="text-xs text-destructive mt-1">{profileError}</p>
+                )}
               </div>
             </SettingsSection>
 

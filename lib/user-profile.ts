@@ -12,9 +12,10 @@ export async function getUserProfile(userId: string): Promise<string | null> {
 
 export async function saveUserProfile(userId: string, profileMd: string): Promise<void> {
   const supabase = createClient()
-  await supabase
+  const { error } = await supabase
     .from('user_settings')
     .upsert({ user_id: userId, profile_md: profileMd }, { onConflict: 'user_id' })
+  if (error) throw new Error(`saveUserProfile failed: ${error.message} (code: ${error.code})`)
 }
 
 export async function isOnboardingComplete(userId: string): Promise<boolean> {
