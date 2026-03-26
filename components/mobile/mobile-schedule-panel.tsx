@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { format, isToday, isSameDay } from 'date-fns';
 import { Check, Clock, Repeat, ChevronDown, ChevronUp, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   DropdownMenu,
