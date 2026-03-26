@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
-import { Calendar, Plus, Sun, Moon, Settings } from 'lucide-react';
+import { Calendar, Plus, Sun, Moon } from 'lucide-react';
+import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -88,14 +89,7 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
           )}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenSettings}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
+        <UserProfileDropdown onOpenSettings={onOpenSettings} />
         
         <Button
           size="sm"
