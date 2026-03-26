@@ -18,6 +18,8 @@ interface Message {
 }
 
 const STORAGE_KEY = 'anchor-chat-sidebar-open'
+const HISTORY_KEY = 'anchor-chat-history'
+const HISTORY_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const ASSISTANT_NAME = 'Beacon'
 const OPENCLAW_NAME = 'OpenClaw'
 
@@ -74,6 +76,29 @@ export function ChatSidebar() {
       })
       .catch(() => setOpenclawChatUrl(null))
   }, [aiProvider])
+
+  // Load chat history from localStorage on mount (24h TTL)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed?.savedAt && Date.now() - parsed.savedAt < HISTORY_TTL_MS && Array.isArray(parsed.messages)) {
+          setMessages(parsed.messages)
+        } else {
+          localStorage.removeItem(HISTORY_KEY)
+        }
+      }
+    } catch { localStorage.removeItem(HISTORY_KEY) }
+  }, [])
+
+  // Save chat history to localStorage whenever messages change
+  useEffect(() => {
+    if (messages.length === 0) return
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify({ messages, savedAt: Date.now() }))
+    } catch { /* ignore */ }
+  }, [messages])
 
   // Restore open state
   useEffect(() => {
