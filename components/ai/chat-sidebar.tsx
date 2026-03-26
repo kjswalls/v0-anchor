@@ -20,7 +20,6 @@ interface Message {
 const STORAGE_KEY = 'anchor-chat-sidebar-open'
 const ASSISTANT_NAME = 'Beacon'
 const OPENCLAW_NAME = 'OpenClaw'
-const OPENCLAW_NAME = 'OpenClaw'
 
 export function ChatSidebar() {
   const [isOpen, setIsOpen] = useState(false)
