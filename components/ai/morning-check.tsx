@@ -39,7 +39,8 @@ export function MorningCheck() {
   };
 
   const handleDismissTask = (id: string) => {
-    updateTask(id, { startDate: undefined });
+    // Unschedule fully so the task appears in the sidebar backlog
+    updateTask(id, { startDate: undefined, isScheduled: false, timeBucket: undefined, startTime: undefined });
     setHandledIds((prev) => new Set(prev).add(id));
   };
 
