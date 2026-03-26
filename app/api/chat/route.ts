@@ -50,89 +50,16 @@ export async function POST(req: NextRequest) {
     apiKey,
     systemPrompt,
     context,
-    openclawWebhookUrl,
-    openclawApiKey,
   } = await req.json()
 
   const encoder = new TextEncoder()
 
-  // ── OpenClaw provider ──────────────────────────────────────────────────────
+  // ── OpenClaw provider — handled client-side (browser-direct to gateway) ────
   if (provider === 'openclaw') {
-    if (!openclawWebhookUrl) {
-      return new Response(
-        streamChars('Add your OpenClaw webhook URL in Settings → AI Assistant to connect your OpenClaw agent.'),
-        { headers: SSE_HEADERS }
-      )
-    }
-
-    const lastUserMessage =
-      [...messages].reverse().find((m: { role: string; content: string }) => m.role === 'user')
-        ?.content ?? ''
-    const history = messages.slice(0, -1)
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-          if (openclawApiKey) fetchHeaders['Authorization'] = `Bearer ${openclawApiKey}`
-
-          const res = await fetch(openclawWebhookUrl, {
-            method: 'POST',
-            headers: fetchHeaders,
-            body: JSON.stringify({
-              message: lastUserMessage,
-              context: context ?? '',
-              history,
-              source: 'anchor',
-            }),
-          })
-
-          const contentType = res.headers.get('content-type') ?? ''
-
-          if (contentType.includes('text/event-stream')) {
-            const reader = res.body!.getReader()
-            const decoder = new TextDecoder()
-            let buffer = ''
-
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              buffer += decoder.decode(value, { stream: true })
-
-              const lines = buffer.split('\n')
-              buffer = lines.pop() ?? ''
-
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  controller.enqueue(encoder.encode(`${line}\n\n`))
-                }
-              }
-            }
-          } else {
-            const json = await res.json()
-            const text = typeof json.text === 'string' ? json.text : JSON.stringify(json)
-            for (const char of text) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: char })}\n\n`))
-              await new Promise((r) => setTimeout(r, 8))
-            }
-          }
-
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Unknown error'
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ content: `Sorry, I couldn't reach your OpenClaw agent. (${msg})` })}\n\n`
-            )
-          )
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        } finally {
-          controller.close()
-        }
-      },
-    })
-
-    return new Response(stream, { headers: SSE_HEADERS })
+    return new Response(
+      streamChars('OpenClaw chat is handled directly from the browser. This server route should not be called for the openclaw provider.'),
+      { status: 400, headers: SSE_HEADERS }
+    )
   }
 
   // ── Anthropic (coming soon) / none ─────────────────────────────────────────

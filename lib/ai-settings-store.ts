@@ -24,7 +24,6 @@ interface AISettings {
   assistantName: string;
   systemPrompt: string;
   personality: AIPersonality;
-  openclawWebhookUrl: string;
   openclawApiKey: string;
 }
 
@@ -35,7 +34,6 @@ export interface AISettingsStore extends AISettings {
   setAssistantName: (name: string) => void;
   setSystemPrompt: (prompt: string) => void;
   setPersonality: (personality: AIPersonality) => void;
-  setOpenclawWebhookUrl: (url: string) => void;
   setOpenclawApiKey: (key: string) => void;
 }
 
@@ -48,7 +46,6 @@ export const useAISettingsStore = create<AISettingsStore>()(
       assistantName: 'Beacon',
       systemPrompt: '',
       personality: 'default',
-      openclawWebhookUrl: '',
       openclawApiKey: '',
       setProvider: (provider) => set({ provider }),
       setApiKey: (apiKey) => set({ apiKey }),
@@ -56,7 +53,6 @@ export const useAISettingsStore = create<AISettingsStore>()(
       setAssistantName: (assistantName) => set({ assistantName }),
       setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
       setPersonality: (personality) => set({ personality }),
-      setOpenclawWebhookUrl: (openclawWebhookUrl) => set({ openclawWebhookUrl }),
       setOpenclawApiKey: (openclawApiKey) => set({ openclawApiKey }),
     }),
     {

@@ -284,7 +284,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     model, setModel,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
-    openclawWebhookUrl, setOpenclawWebhookUrl,
     openclawApiKey, setOpenclawApiKey,
   } = useAISettingsStore();
 
@@ -487,16 +486,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
                   {provider === 'openclaw' && (
                     <div className="space-y-2 pt-1 border-t border-border">
-                      <div className="space-y-1">
-                        <Label className="text-xs text-foreground">Webhook URL</Label>
-                        <Input
-                          type="url"
-                          value={openclawWebhookUrl}
-                          onChange={(e) => setOpenclawWebhookUrl(e.target.value)}
-                          placeholder="https://your-instance.ts.net/webhook/anchor"
-                          className="h-8 text-xs"
-                        />
-                      </div>
                       <div className="space-y-1">
                         <Label className="text-xs text-foreground">API Key</Label>
                         <Input

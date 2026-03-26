@@ -23,6 +23,16 @@ export async function handleChatRequest(
   runtime: PluginRuntime,
   logger: { info: (s: string) => void; warn: (s: string) => void; error: (s: string) => void }
 ): Promise<void> {
+  // Validate Anchor API key — the route uses auth: 'plugin' so the gateway
+  // doesn't enforce its own auth; the plugin must validate the caller.
+  const authHeader = (req.headers['authorization'] as string | undefined) ?? ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!token || token !== cfg.apiKey) {
+    res.writeHead(401, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'Unauthorized' }))
+    return
+  }
+
   // Parse body
   let message: string
   let sessionKey: string

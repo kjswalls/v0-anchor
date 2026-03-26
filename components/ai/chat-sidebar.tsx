@@ -29,6 +29,7 @@ export function ChatSidebar() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [userProfile, setUserProfile] = useState<string | null>(null)
+  const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
@@ -58,6 +59,15 @@ export function ChatSidebar() {
     setShowOnboarding(false)
     setUserProfile(profileMd)
   }
+
+  // Fetch stored OpenClaw chat URL when provider is openclaw
+  useEffect(() => {
+    if (aiProvider !== 'openclaw') return
+    fetch('/api/openclaw/chat-url')
+      .then((r) => r.json())
+      .then((d) => setOpenclawChatUrl(d.chatUrl ?? null))
+      .catch(() => setOpenclawChatUrl(null))
+  }, [aiProvider])
 
   // Restore open state
   useEffect(() => {
@@ -97,15 +107,46 @@ export function ChatSidebar() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups, userProfile: userProfile ?? undefined })
-      const { provider, apiKey, model, personality, systemPrompt, openclawWebhookUrl, openclawApiKey } =
+      const { provider, apiKey, model, personality, systemPrompt, openclawApiKey } =
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
 
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt, openclawWebhookUrl, openclawApiKey }),
-      })
+      let res: Response
+
+      if (provider === 'openclaw') {
+        // Browser-direct: POST straight to the OpenClaw gateway chat endpoint
+        if (!openclawChatUrl) {
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') {
+              next[next.length - 1] = {
+                role: 'assistant',
+                content: 'OpenClaw not connected yet — run `openclaw anchor-context setup` to connect.',
+              }
+            }
+            return next
+          })
+          setIsLoading(false)
+          return
+        }
+
+        const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (openclawApiKey) fetchHeaders['Authorization'] = `Bearer ${openclawApiKey}`
+
+        res = await fetch(openclawChatUrl, {
+          method: 'POST',
+          headers: fetchHeaders,
+          body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
+        })
+      } else {
+        // All other providers go through the /api/chat server route
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
+        })
+      }
 
       if (!res.body) throw new Error('No response body')
 
@@ -148,7 +189,7 @@ export function ChatSidebar() {
     } finally {
       setIsLoading(false)
     }
-  }, [input, isLoading, messages, userProfile])
+  }, [input, isLoading, messages, userProfile, openclawChatUrl])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
