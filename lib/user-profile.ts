@@ -1,15 +1,5 @@
 import { createClient } from './supabase'
 
-export async function getUserProfile(userId: string): Promise<string | null> {
-  const supabase = createClient()
-  const { data } = await supabase
-    .from('user_settings')
-    .select('profile_md')
-    .eq('user_id', userId)
-    .single()
-  return data?.profile_md ?? null
-}
-
 export async function saveUserProfile(userId: string, profileMd: string): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase

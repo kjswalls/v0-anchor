@@ -8,7 +8,7 @@ import { X, Send, Sparkles, MessageSquarePlus, Trash2 } from 'lucide-react'
 import { usePlannerStore } from '@/lib/planner-store'
 import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
-import { isOnboardingComplete, getUserProfile } from '@/lib/user-profile'
+import { isOnboardingComplete } from '@/lib/user-profile'
 import { OnboardingChat } from './onboarding-chat'
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
 
@@ -30,14 +30,13 @@ export function ChatSidebar() {
   const [isLoading, setIsLoading] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
-  const [userProfile, setUserProfile] = useState<string | null>(null)
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
-  // Check auth + load profile (don't gate on onboarding completion)
+  // Check auth + onboarding status
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data }) => {
@@ -45,21 +44,13 @@ export function ChatSidebar() {
       if (!uid) return
       setUserId(uid)
 
-      // Always load profile if it exists
-      const profile = await getUserProfile(uid)
-      setUserProfile(profile)
-
-      // Only show onboarding if not complete AND no profile yet
-      if (!profile) {
-        const done = await isOnboardingComplete(uid)
-        if (!done) setShowOnboarding(true)
-      }
+      const done = await isOnboardingComplete(uid)
+      if (!done) setShowOnboarding(true)
     })
   }, [])
 
-  const handleOnboardingComplete = (profileMd: string | null) => {
+  const handleOnboardingComplete = (_profileMd: string | null) => {
     setShowOnboarding(false)
-    setUserProfile(profileMd)
   }
 
   // Fetch stored OpenClaw chat URL + Anchor API key when provider is openclaw
@@ -137,7 +128,7 @@ export function ChatSidebar() {
 
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
-      const context = buildAnchorContext({ tasks, habits, projects, habitGroups, userProfile: userProfile ?? undefined })
+      const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
       const { provider, apiKey, model, personality, systemPrompt, openclawApiKey } =
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
@@ -220,7 +211,7 @@ export function ChatSidebar() {
     } finally {
       setIsLoading(false)
     }
-  }, [input, isLoading, messages, userProfile, openclawChatUrl])
+  }, [input, isLoading, messages, openclawChatUrl])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }

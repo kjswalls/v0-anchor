@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Keyboard, RotateCcw, Sparkles, User } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -31,8 +30,6 @@ import { cn } from '@/lib/utils';
 import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { createClient } from '@/lib/supabase';
-import { getUserProfile, saveUserProfile } from '@/lib/user-profile';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore, AIProvider } from '@/lib/ai-settings-store';
 
@@ -207,49 +204,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
-  const [profileMd, setProfileMd] = useState('');
-  const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileSaved, setProfileSaved] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setProfileMd(''); // reset while loading
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      const uid = data.user?.id;
-      if (!uid) { console.warn('[Settings] No authenticated user found'); return; }
-      setProfileUserId(uid);
-      const profile = await getUserProfile(uid);
-      setProfileMd(profile ?? '');
-    }).catch((err) => console.error('[Settings] Failed to load profile:', err));
-  }, [open]);
-
-  const handleSaveProfile = async () => {
-    // If userId not loaded yet, try one more time
-    let uid = profileUserId;
-    if (!uid) {
-      const supabase = createClient();
-      const { data } = await supabase.auth.getUser();
-      uid = data.user?.id ?? null;
-      if (uid) setProfileUserId(uid);
-    }
-    if (!uid) { console.error('[Settings] Cannot save — no user ID'); return; }
-    setProfileSaving(true);
-    setProfileError(null);
-    try {
-      await saveUserProfile(uid, profileMd);
-      setProfileSaved(true);
-      setTimeout(() => setProfileSaved(false), 2000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[Settings] Failed to save profile:', msg);
-      setProfileError(msg);
-    } finally {
-      setProfileSaving(false);
-    }
-  };
   const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
 
   const {
@@ -505,37 +459,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </div>
               </div>
 
-              <div className="border-t border-border pt-3 mt-1 space-y-2">
-                <div className="flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-muted-foreground" />
-                  <Label className="text-xs font-medium text-foreground">About Me</Label>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Helps Beacon give you more personalized responses.
-                </p>
-                <Textarea
-                  value={profileMd}
-                  onChange={(e) => setProfileMd(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  onFocus={(e) => e.stopPropagation()}
-                  placeholder={"Name: Kirby\nFocus: Building Anchor\nGoals: Launch by Q2"}
-                  rows={3}
-                  className="text-xs resize-none pointer-events-auto relative z-10"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 px-3 text-xs"
-                  onClick={(e) => { e.stopPropagation(); handleSaveProfile(); }}
-                  disabled={profileSaving}
-                >
-                  {profileSaved ? 'Saved! ✓' : profileSaving ? 'Saving…' : 'Save'}
-                </Button>
-                {profileError && (
-                  <p className="text-xs text-destructive mt-1">{profileError}</p>
-                )}
-              </div>
             </SettingsSection>
 
             {/* Calendar */}
