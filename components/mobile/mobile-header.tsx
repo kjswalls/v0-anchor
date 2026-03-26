@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import { Calendar, Plus, Sun, Moon } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
@@ -52,7 +52,11 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
               className="h-8 px-2 text-sm font-medium text-foreground hover:bg-secondary"
             >
               <Calendar className="h-4 w-4 mr-1.5 text-muted-foreground" />
-              {mounted ? format(selectedDate, 'EEE, MMM d') : <span className="w-16" />}
+              {mounted ? (
+                isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')
+              ) : (
+                <span className="w-16" />
+              )}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
