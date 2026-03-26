@@ -65,7 +65,7 @@ function SettingsSection({ title, icon, children, defaultOpen = false }: Setting
           )} />
         </button>
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      <CollapsibleContent className="data-[state=open]:overflow-visible">
         <div className="px-4 pb-4 pt-2 space-y-4 ml-7">
           {children}
         </div>
