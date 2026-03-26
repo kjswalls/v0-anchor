@@ -16,6 +16,12 @@ const SESSION_KEY_PREFIX = 'anchor-chat'
  *   data: [DONE]               — end of stream
  *   data: {"error": "..."}     — on failure
  */
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
 export async function handleChatRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -23,12 +29,19 @@ export async function handleChatRequest(
   runtime: PluginRuntime,
   logger: { info: (s: string) => void; warn: (s: string) => void; error: (s: string) => void }
 ): Promise<void> {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS)
+    res.end()
+    return
+  }
+
   // Validate Anchor API key — the route uses auth: 'plugin' so the gateway
   // doesn't enforce its own auth; the plugin must validate the caller.
   const authHeader = (req.headers['authorization'] as string | undefined) ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (!token || token !== cfg.apiKey) {
-    res.writeHead(401, { 'Content-Type': 'application/json' })
+    res.writeHead(401, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Unauthorized' }))
     return
   }
@@ -42,7 +55,7 @@ export async function handleChatRequest(
     const raw = await readBody(req)
     const body = JSON.parse(raw) as { message?: string; sessionKey?: string; context?: string }
     if (!body.message?.trim()) {
-      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'Missing message' }))
       return
     }
@@ -51,13 +64,14 @@ export async function handleChatRequest(
     sessionKey = body.sessionKey ?? `${SESSION_KEY_PREFIX}:${cfg.apiKey.slice(-8)}`
     extraContext = body.context
   } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' })
+    res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'Invalid JSON body' }))
     return
   }
 
   // Set up SSE response
   res.writeHead(200, {
+    ...CORS_HEADERS,
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',

@@ -73,7 +73,7 @@ export default definePluginEntry({
       path: '/plugins/anchor/chat',
       auth: 'plugin',
       async handler(req: IncomingMessage, res: ServerResponse) {
-        if (req.method !== 'POST') {
+        if (req.method !== 'POST' && req.method !== 'OPTIONS') {
           res.writeHead(405)
           res.end('Method Not Allowed')
           return
