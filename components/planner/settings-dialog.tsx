@@ -282,7 +282,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     provider, setProvider,
     apiKey, setApiKey,
     model, setModel,
-    assistantName, setAssistantName,
+    assistantName,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
     openclawWebhookUrl, setOpenclawWebhookUrl,
@@ -573,15 +573,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </div>
               )}
 
-              <SettingRow label="Assistant name" description="Name shown in the chat UI">
-                <Input
-                  value={assistantName}
-                  onChange={(e) => setAssistantName(e.target.value)}
-                  placeholder="Beacon"
-                  className="w-44 h-8 text-xs"
-                />
-              </SettingRow>
-
               <SettingRow label="Personality" description="Tone and style of responses">
                 <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
                   <SelectTrigger className="w-44 h-8 text-xs">
@@ -606,6 +597,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     placeholder="You are a helpful AI assistant in Anchor..."
                     className="text-xs resize-none min-h-[80px] pointer-events-auto"
                     onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onFocus={(e) => e.stopPropagation()}
                   />
                 </div>
               )}
@@ -616,12 +610,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <Label className="text-xs font-medium text-foreground">About Me</Label>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Helps {assistantName || 'Beacon'} give you more personalized responses.
+                  Helps Beacon give you more personalized responses.
                 </p>
                 <Textarea
                   value={profileMd}
                   onChange={(e) => setProfileMd(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  onFocus={(e) => e.stopPropagation()}
                   placeholder={"Name: Kirby\nFocus: Building Anchor\nGoals: Launch by Q2"}
                   rows={3}
                   className="text-xs resize-none pointer-events-auto relative z-10"
