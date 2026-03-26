@@ -26,7 +26,6 @@ interface AISettings {
   personality: AIPersonality;
   openclawWebhookUrl: string;
   openclawApiKey: string;
-  openclawAgentName: string;
 }
 
 export interface AISettingsStore extends AISettings {
@@ -38,13 +37,12 @@ export interface AISettingsStore extends AISettings {
   setPersonality: (personality: AIPersonality) => void;
   setOpenclawWebhookUrl: (url: string) => void;
   setOpenclawApiKey: (key: string) => void;
-  setOpenclawAgentName: (name: string) => void;
 }
 
 export const useAISettingsStore = create<AISettingsStore>()(
   persist(
     (set) => ({
-      provider: 'none',
+      provider: 'openclaw',
       apiKey: '',
       model: 'gpt-4o-mini',
       assistantName: 'Beacon',
@@ -52,15 +50,14 @@ export const useAISettingsStore = create<AISettingsStore>()(
       personality: 'default',
       openclawWebhookUrl: '',
       openclawApiKey: '',
-      openclawAgentName: '',
       setProvider: (provider) => set({ provider }),
       setApiKey: (apiKey) => set({ apiKey }),
       setModel: (model) => set({ model }),
       setAssistantName: (assistantName) => set({ assistantName }),
+      setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
       setPersonality: (personality) => set({ personality }),
       setOpenclawWebhookUrl: (openclawWebhookUrl) => set({ openclawWebhookUrl }),
       setOpenclawApiKey: (openclawApiKey) => set({ openclawApiKey }),
-      setOpenclawAgentName: (openclawAgentName) => set({ openclawAgentName }),
     }),
     {
       name: 'anchor-ai-settings',

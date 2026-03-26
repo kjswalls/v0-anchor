@@ -35,16 +35,18 @@
     "url": "https://github.com/kjswalls/v0-anchor/issues"
   },
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "dependencies": {
-    "@anchor-app/types": "workspace:*"
+    "@anchor-app/types": "file:../packages/types"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "openclaw": "*"
+    "openclaw": "*",
+    "typescript": "^5.4.0"
   }
 }

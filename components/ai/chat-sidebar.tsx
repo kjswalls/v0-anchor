@@ -32,10 +32,7 @@ export function ChatSidebar() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
-  const openclawAgentName = useAISettingsStore((s) => s.openclawAgentName)
-  const displayName = aiProvider === 'openclaw'
-    ? (openclawAgentName.trim() || OPENCLAW_NAME)
-    : ASSISTANT_NAME
+  const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
   // Check auth + load profile (don't gate on onboarding completion)
   useEffect(() => {
