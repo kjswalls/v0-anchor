@@ -2,16 +2,24 @@
 
 import { ListTodo, CalendarDays, Sparkles } from 'lucide-react';
 import { useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { cn } from '@/lib/utils';
 
-const tabs: { id: MobileTab; label: string; icon: typeof ListTodo }[] = [
-  { id: 'tasks', label: 'Tasks', icon: ListTodo },
-  { id: 'schedule', label: 'Schedule', icon: CalendarDays },
-  { id: 'chat', label: 'Beacon', icon: Sparkles },
-];
+function getAITabLabel(provider: string): string {
+  if (provider === 'openclaw') return 'OpenClaw';
+  if (provider === 'none') return 'AI Magic';
+  return 'Beacon';
+}
 
 export function MobileTabBar() {
   const { activeTab, setActiveTab } = useMobileNavStore();
+  const { provider } = useAISettingsStore();
+
+  const tabs: { id: MobileTab; label: string; icon: typeof ListTodo }[] = [
+    { id: 'tasks', label: 'To Do', icon: ListTodo },
+    { id: 'schedule', label: 'Schedule', icon: CalendarDays },
+    { id: 'chat', label: getAITabLabel(provider), icon: Sparkles },
+  ];
 
   return (
     <nav className="flex items-center justify-around border-t border-border bg-card pb-safe">
