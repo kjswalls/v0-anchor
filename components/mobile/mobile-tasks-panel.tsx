@@ -546,13 +546,6 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
           </ScrollArea>
         </>
       )}
-
-      {/* Quick Schedule Sheet */}
-      <QuickScheduleSheet 
-        task={quickScheduleTask} 
-        open={!!quickScheduleTask} 
-        onOpenChange={(open) => !open && setQuickScheduleTask(null)} 
-      />
     </div>
   );
 }
