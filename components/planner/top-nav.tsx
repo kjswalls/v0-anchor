@@ -25,7 +25,7 @@ interface TopNavProps {
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
   const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection } = usePlannerStore();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -449,12 +449,12 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           size="icon"
           onClick={() => {
             if (!mounted) return;
-            setTheme(theme === 'dark' ? 'light' : 'dark');
+            setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
           }}
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
         >
           {mounted ? (
-            theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
+            resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
           ) : (
             <span className="h-4 w-4" />
           )}

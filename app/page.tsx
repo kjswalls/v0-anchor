@@ -14,6 +14,12 @@ import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { EODReview } from '@/components/ai/eod-review';
 import { ChatSidebar } from '@/components/ai/chat-sidebar';
+import { MobileHeader } from '@/components/mobile/mobile-header';
+import { MobileTabBar } from '@/components/mobile/mobile-tab-bar';
+import { MobileTasksPanel } from '@/components/mobile/mobile-tasks-panel';
+import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
+import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -32,6 +38,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -55,6 +62,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
+  const { activeTab } = useMobileNavStore();
 
 
   const [mounted, setMounted] = useState(false);
@@ -80,6 +88,12 @@ export default function PlannerPage() {
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     })
   );
@@ -254,13 +268,22 @@ export default function PlannerPage() {
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
     return (
-      <div className="h-screen flex flex-col bg-background">
-        <div className="h-14 border-b border-border bg-card" />
-        <div className="flex-1 flex overflow-hidden">
-          <div className="w-80 border-r border-border bg-sidebar" />
-          <main className="flex-1 bg-background" />
+      <>
+        {/* Desktop skeleton */}
+        <div className="hidden md:flex h-screen flex-col bg-background">
+          <div className="h-14 border-b border-border bg-card" />
+          <div className="flex-1 flex overflow-hidden">
+            <div className="w-80 border-r border-border bg-sidebar" />
+            <main className="flex-1 bg-background" />
+          </div>
         </div>
-      </div>
+        {/* Mobile skeleton */}
+        <div className="flex md:hidden h-screen flex-col bg-background">
+          <div className="h-14 border-b border-border bg-card" />
+          <div className="flex-1 bg-background" />
+          <div className="h-14 border-t border-border bg-card" />
+        </div>
+      </>
     );
   }
 
@@ -272,7 +295,8 @@ export default function PlannerPage() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="h-screen flex flex-col bg-background">
+      {/* Desktop Layout */}
+      <div className="hidden md:flex h-screen flex-col bg-background">
         <TopNav 
           onAddClick={handleAddFromTopNav} 
           onManageCategories={handleManageCategories}
@@ -342,6 +366,37 @@ export default function PlannerPage() {
             <ChatSidebar />
           </main>
         </div>
+      </div>
+
+      {/* Mobile Layout */}
+      <div className="flex md:hidden h-screen flex-col bg-background">
+        <MobileHeader 
+          onAddClick={handleAddFromTopNav}
+          onOpenSettings={handleOpenSettings}
+        />
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'tasks' && (
+            <MobileTasksPanel
+              onTaskClick={handleTaskClick}
+              onHabitClick={handleHabitClick}
+              onAddClick={handleAddFromSidebar}
+              onAddHabitClick={handleAddHabitFromSidebar}
+              onManageCategories={handleManageCategories}
+            />
+          )}
+          {activeTab === 'schedule' && (
+            <MobileSchedulePanel
+              onTaskClick={handleTaskClick}
+              onHabitClick={handleHabitClick}
+              onAddClick={handleAddFromTimeline}
+              activeId={activeId}
+            />
+          )}
+          {activeTab === 'chat' && (
+            <MobileChatPanel />
+          )}
+        </div>
+        <MobileTabBar />
       </div>
       
       <DragOverlay>

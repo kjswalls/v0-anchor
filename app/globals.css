@@ -220,3 +220,18 @@
 .bg-gradient-radial {
   background: radial-gradient(circle, var(--tw-gradient-from) 0%, var(--tw-gradient-via) 50%, var(--tw-gradient-to) 100%);
 }
+
+/* Safe area padding for iOS devices with notches/home indicators */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Touch target minimum size for accessibility */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
