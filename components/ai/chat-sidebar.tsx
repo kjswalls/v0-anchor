@@ -33,7 +33,10 @@ export function ChatSidebar() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
-  const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
+  const openclawAgentName = useAISettingsStore((s) => s.openclawAgentName)
+  const displayName = aiProvider === 'openclaw'
+    ? (openclawAgentName.trim() || OPENCLAW_NAME)
+    : ASSISTANT_NAME
 
   // Check auth + load profile (don't gate on onboarding completion)
   useEffect(() => {
@@ -228,11 +231,11 @@ export function ChatSidebar() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-foreground">
-                      {aiProvider === 'openclaw' ? 'Your OpenClaw agent is ready' : `Plan with ${displayName}`}
+                      {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
                     </p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       {aiProvider === 'openclaw'
-                        ? 'Ask anything — your agent knows your tasks, habits, and projects.'
+                        ? `Ask anything — ${displayName} knows your tasks, habits, and projects.`
                         : aiProvider === 'none'
                         ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
                         : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'

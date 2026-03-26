@@ -287,6 +287,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     systemPrompt, setSystemPrompt,
     openclawWebhookUrl, setOpenclawWebhookUrl,
     openclawApiKey, setOpenclawApiKey,
+    openclawAgentName, setOpenclawAgentName,
   } = useAISettingsStore();
 
   return (
@@ -505,6 +506,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                           value={openclawApiKey}
                           onChange={(e) => setOpenclawApiKey(e.target.value)}
                           placeholder="Optional auth token"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-foreground">Agent name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                        <Input
+                          value={openclawAgentName}
+                          onChange={(e) => setOpenclawAgentName(e.target.value)}
+                          placeholder="e.g. Guma"
                           className="h-8 text-xs"
                         />
                       </div>
