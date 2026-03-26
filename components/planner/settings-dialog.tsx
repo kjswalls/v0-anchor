@@ -252,32 +252,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   };
   const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
 
-  // OpenClaw API key management
-  const [anchorApiKey, setAnchorApiKey] = useState<string | null>(null);
-  const [anchorApiKeyLoading, setAnchorApiKeyLoading] = useState(false);
-  const [anchorApiKeyError, setAnchorApiKeyError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    setAnchorApiKeyError(null);
-    fetch('/api/openclaw/apikey')
-      .then(r => r.json())
-      .then(d => setAnchorApiKey(d.apiKey ?? null))
-      .catch(() => setAnchorApiKeyError('Failed to load API key'));
-  }, [open]);
-  const handleGenerateApiKey = async () => {
-    setAnchorApiKeyLoading(true);
-    setAnchorApiKeyError(null);
-    try {
-      const res = await fetch('/api/openclaw/apikey', { method: 'POST' });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? 'Failed to generate key');
-      setAnchorApiKey(d.apiKey ?? null);
-    } catch (err) {
-      setAnchorApiKeyError((err as Error).message);
-    } finally {
-      setAnchorApiKeyLoading(false);
-    }
-  };
   const {
     provider, setProvider,
     apiKey, setApiKey,
@@ -483,27 +457,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     />
                   </div>
 
-                  {provider === 'openclaw' && (
-                    <div className="space-y-2 pt-1 border-t border-border">
-                      <div className="space-y-1 pt-1 border-t border-border">
-                        <Label className="text-xs text-foreground">Your Anchor API Key</Label>
-                        <p className="text-xs text-muted-foreground">Paste this into your OpenClaw plugin config.</p>
-                        <div className="flex items-center gap-2">
-                          <Input readOnly value={anchorApiKey ?? '—'} className="h-8 text-xs font-mono flex-1 bg-muted" />
-                          <Button size="sm" variant="outline" className="h-8 text-xs shrink-0"
-                            onClick={() => anchorApiKey && navigator.clipboard.writeText(anchorApiKey)}
-                            disabled={!anchorApiKey}>
-                            Copy
-                          </Button>
-                        </div>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground"
-                          onClick={handleGenerateApiKey} disabled={anchorApiKeyLoading}>
-                          {anchorApiKeyLoading ? 'Generating…' : anchorApiKey ? '↺ Regenerate' : '+ Generate key'}
-                        </Button>
-                        {anchorApiKeyError && <p className="text-xs text-destructive">{anchorApiKeyError}</p>}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Beacon fallback — secondary */}

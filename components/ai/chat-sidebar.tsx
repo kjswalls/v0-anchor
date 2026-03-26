@@ -296,7 +296,10 @@ export function ChatSidebar() {
                           ? 'bg-primary text-primary-foreground rounded-br-sm'
                           : 'bg-muted text-foreground rounded-bl-sm',
                       ].join(' ')}>
-                        {msg.content || (msg.role === 'assistant' && isLoading && i === messages.length - 1
+                        {(msg.role === 'assistant'
+                          ? msg.content?.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')
+                          : msg.content
+                        ) || (msg.role === 'assistant' && isLoading && i === messages.length - 1
                           ? <LoadingDots />
                           : null
                         )}
