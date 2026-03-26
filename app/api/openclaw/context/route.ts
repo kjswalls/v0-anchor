@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { resolveUserIdFromApiKey } from '@/lib/supabase-service'
+import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { fetchTasks, fetchHabits, fetchProjects, fetchHabitGroups } from '@/lib/db'
 
 /**
@@ -15,16 +15,20 @@ import { fetchTasks, fetchHabits, fetchProjects, fetchHabitGroups } from '@/lib/
  *   B) Supabase session cookie    — in-browser / logged-in user
  */
 export async function GET(req: NextRequest) {
-  const userId = await resolveUserId(req)
+  const { userId, isBearer } = await resolveUserId(req)
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Bearer token (plugin/server-to-server) → use service client to bypass RLS
+  // Session cookie (in-browser) → RLS handles it naturally, no service client needed
+  const dbClient = isBearer ? createServiceClient() : undefined
+
   const [tasks, habits, projects, habitGroups] = await Promise.all([
-    fetchTasks(userId),
-    fetchHabits(userId),
-    fetchProjects(userId),
-    fetchHabitGroups(userId),
+    fetchTasks(userId, dbClient),
+    fetchHabits(userId, dbClient),
+    fetchProjects(userId, dbClient),
+    fetchHabitGroups(userId, dbClient),
   ])
 
   return NextResponse.json({
@@ -37,16 +41,17 @@ export async function GET(req: NextRequest) {
   })
 }
 
-async function resolveUserId(req: NextRequest): Promise<string | null> {
+async function resolveUserId(req: NextRequest): Promise<{ userId: string | null; isBearer: boolean }> {
   // 1. Bearer token → look up by openclaw_api_key (plugin / server-to-server)
   const authHeader = req.headers.get('authorization')
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7)
-    return resolveUserIdFromApiKey(token)
+    const userId = await resolveUserIdFromApiKey(token)
+    return { userId, isBearer: true }
   }
 
   // 2. Supabase session cookie (in-browser)
   const supabase = await createClient()
   const { data } = await supabase.auth.getUser()
-  return data.user?.id ?? null
+  return { userId: data.user?.id ?? null, isBearer: false }
 }

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbClient = any;
 import type { Task, Habit, Project, HabitGroupType } from './planner-types';
 import { notifyPlugins } from './openclaw-registry';
 
@@ -90,8 +92,8 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   return row;
 }
 
-export async function fetchTasks(userId: string): Promise<Task[]> {
-  const supabase = createClient();
+export async function fetchTasks(userId: string, client?: DbClient): Promise<Task[]> {
+  const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('tasks')
     .select('*')
@@ -204,8 +206,8 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   return row;
 }
 
-export async function fetchHabits(userId: string): Promise<Habit[]> {
-  const supabase = createClient();
+export async function fetchHabits(userId: string, client?: DbClient): Promise<Habit[]> {
+  const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('habits')
     .select('*')
@@ -292,8 +294,8 @@ function projectUpdatesToRow(updates: Partial<Project>): Record<string, unknown>
   return row;
 }
 
-export async function fetchProjects(userId: string): Promise<Project[]> {
-  const supabase = createClient();
+export async function fetchProjects(userId: string, client?: DbClient): Promise<Project[]> {
+  const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('projects')
     .select('*')
@@ -368,8 +370,8 @@ function habitGroupUpdatesToRow(updates: Partial<HabitGroupType>): Record<string
   return row;
 }
 
-export async function fetchHabitGroups(userId: string): Promise<HabitGroupType[]> {
-  const supabase = createClient();
+export async function fetchHabitGroups(userId: string, client?: DbClient): Promise<HabitGroupType[]> {
+  const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('habit_groups')
     .select('*')
