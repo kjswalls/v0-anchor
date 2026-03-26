@@ -47,7 +47,7 @@ export async function handleChatRequest(
       return
     }
     message = body.message.trim()
-    // Derive a stable session key per API key so chat history persists across browser reloads
+    // Stable session key per user so chat history persists across page loads
     sessionKey = body.sessionKey ?? `${SESSION_KEY_PREFIX}:${cfg.apiKey.slice(-8)}`
     extraContext = body.context
   } catch {
@@ -66,27 +66,6 @@ export async function handleChatRequest(
 
   const send = (data: string) => res.write(`data: ${data}\n\n`)
 
-  // Subscribe to transcript updates BEFORE running the turn to avoid missing tokens.
-  // onSessionTranscriptUpdate fires globally — filter to our session key.
-  let unsubscribe: (() => void) | null = null
-  let resolveStream!: () => void
-  const streamDone = new Promise<void>((resolve) => { resolveStream = resolve })
-
-  unsubscribe = runtime.events.onSessionTranscriptUpdate((update) => {
-    if (update.sessionKey !== sessionKey) return
-
-    const msg = update.message as Record<string, unknown> | undefined
-    if (!msg) return
-
-    // Stream assistant token deltas
-    if (msg.role === 'assistant' && typeof msg.content === 'string') {
-      // Full assistant message written — extract content and send it
-      // (transcript events fire once per complete message, not per token)
-      send(JSON.stringify({ content: msg.content }))
-      resolveStream()
-    }
-  })
-
   try {
     logger.info(`anchor-context: chat turn — session ${sessionKey}`)
 
@@ -97,27 +76,53 @@ export async function handleChatRequest(
       ...(extraContext ? { extraSystemPrompt: extraContext } : {}),
     })
 
-    // Wait for the run to complete (up to 2 min)
+    // Wait for run to finish (up to 2 min)
     const result = await runtime.subagent.waitForRun({ runId, timeoutMs: 120_000 })
-
-    // Also wait for transcript event to arrive (it may come slightly after waitForRun)
-    await Promise.race([
-      streamDone,
-      new Promise<void>((resolve) => setTimeout(resolve, 3_000)),
-    ])
-
-    if (unsubscribe) { unsubscribe(); unsubscribe = null }
 
     if (result.status === 'error') {
       logger.warn(`anchor-context: chat run errored — ${result.error ?? 'unknown'}`)
       send(JSON.stringify({ error: result.error ?? 'Agent run failed' }))
+      return
     }
+
+    // Fetch the last few messages from the session to find the assistant reply
+    const { messages } = await runtime.subagent.getSessionMessages({ sessionKey, limit: 10 })
+
+    // Find the last assistant message
+    const lastAssistant = [...messages].reverse().find((m) => {
+      const msg = m as Record<string, unknown>
+      return msg.role === 'assistant'
+    }) as Record<string, unknown> | undefined
+
+    if (!lastAssistant) {
+      send(JSON.stringify({ error: 'No response received' }))
+      return
+    }
+
+    // Extract text content — content can be a string or an array of content blocks
+    let text = ''
+    const content = lastAssistant.content
+    if (typeof content === 'string') {
+      text = content
+    } else if (Array.isArray(content)) {
+      text = content
+        .filter((block): block is Record<string, unknown> => typeof block === 'object' && block !== null)
+        .filter((block) => block.type === 'text')
+        .map((block) => block.text as string)
+        .join('')
+    }
+
+    if (text) {
+      send(JSON.stringify({ content: text }))
+    } else {
+      send(JSON.stringify({ error: 'Empty response' }))
+    }
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
     logger.error(`anchor-context: chat handler error — ${msg}`)
     send(JSON.stringify({ error: msg }))
   } finally {
-    if (unsubscribe) { unsubscribe(); unsubscribe = null }
     send('[DONE]')
     res.end()
   }
