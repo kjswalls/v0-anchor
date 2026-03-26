@@ -359,29 +359,32 @@ function FilterButton() {
       <PopoverContent align="start" className="w-48 p-1">
         <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Filter by</div>
         
-        <Popover open={activeSubmenu === 'project'}>
-          <PopoverTrigger asChild>
-            <button 
-              className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm"
+        {/* Project filter - only show if there are projects */}
+        {projects.length > 0 && (
+          <Popover open={activeSubmenu === 'project'}>
+            <PopoverTrigger asChild>
+              <button 
+                className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm"
+                onMouseEnter={() => handleMouseEnter('project')}
+                onMouseLeave={handleMouseLeave}
+              >
+                <span>Project</span>
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent 
+              side="right" align="start" className="w-36 p-1" sideOffset={0}
               onMouseEnter={() => handleMouseEnter('project')}
               onMouseLeave={handleMouseLeave}
             >
-              <span>Project</span>
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent 
-            side="right" align="start" className="w-36 p-1" sideOffset={0}
-            onMouseEnter={() => handleMouseEnter('project')}
-            onMouseLeave={handleMouseLeave}
-          >
-            {projects.map((project) => (
-              <button key={project.name} className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectProject(project.name)}>
-                {project.emoji} {project.name}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+              {projects.map((project) => (
+                <button key={project.name} className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectProject(project.name)}>
+                  {project.emoji} {project.name}
+                </button>
+              ))}
+            </PopoverContent>
+          </Popover>
+        )}
 
         <Popover open={activeSubmenu === 'priority'}>
           <PopoverTrigger asChild>

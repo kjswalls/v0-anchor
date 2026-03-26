@@ -374,30 +374,32 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-56 p-2">
                   <div className="space-y-3">
-                    {/* Project filter */}
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground px-2">Project</p>
-                      <div className="flex flex-wrap gap-1 px-1">
-                        {projects.map((p) => (
-                          <button
-                            key={p.name}
-                            className={cn(
-                              'flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors',
-                              filters.project === p.name 
-                                ? 'bg-primary text-primary-foreground border-primary' 
-                                : 'border-border hover:bg-accent'
-                            )}
-                            onClick={() => setFilters({ 
-                              ...filters, 
-                              project: filters.project === p.name ? undefined : p.name 
-                            })}
-                          >
-                            <span>{getProjectEmoji(p.name)}</span>
-                            <span>{p.name}</span>
-                          </button>
-                        ))}
+                    {/* Project filter - only show if there are projects */}
+                    {projects.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground px-2">Project</p>
+                        <div className="flex flex-wrap gap-1 px-1">
+                          {projects.map((p) => (
+                            <button
+                              key={p.name}
+                              className={cn(
+                                'flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors',
+                                filters.project === p.name 
+                                  ? 'bg-primary text-primary-foreground border-primary' 
+                                  : 'border-border hover:bg-accent'
+                              )}
+                              onClick={() => setFilters({ 
+                                ...filters, 
+                                project: filters.project === p.name ? undefined : p.name 
+                              })}
+                            >
+                              <span>{getProjectEmoji(p.name)}</span>
+                              <span>{p.name}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Priority filter */}
                     <div className="space-y-1">
