@@ -1154,6 +1154,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
   return (
     <div
+      ref={setNodeRef}
       className={cn(
         'relative rounded-xl border-2 border-dashed transition-all',
         config.borderClass,
@@ -1194,8 +1195,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         </>
       )}
       
-      {/* Header + untimed section wrapped together as the unscheduled drop zone */}
-      <div ref={setNodeRef}>
+      {/* Header + untimed section */}
+      <div>
         {/* Header */}
         <div className={cn(
           'rounded-t-lg flex items-center justify-between',

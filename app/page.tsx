@@ -45,6 +45,7 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
+  MeasuringStrategy,
 } from '@dnd-kit/core';
 import { GripVertical, Circle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -85,6 +86,7 @@ export default function PlannerPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogTab, setAddDialogTab] = useState<'task' | 'habit'>('task');
   const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
+  const [addDialogDate, setAddDialogDate] = useState<Date | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Keyboard shortcut delete confirmation
@@ -230,27 +232,31 @@ export default function PlannerPage() {
     setEditingHabit(habit);
   };
 
-  const handleAddFromTopNav = () => {
+const handleAddFromTopNav = () => {
     setAddDialogTab('task');
     setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
+    setAddDialogOpen(true);
+  };
+  
+  const handleAddFromSidebar = () => {
+    setAddDialogTab('task');
+    setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
     setAddDialogOpen(true);
   };
 
   const handleAddHabitFromSidebar = () => {
     setAddDialogTab('habit');
     setAddDialogBucket(undefined);
-    setAddDialogOpen(true);
-  };
-
-  const handleAddFromSidebar = () => {
-    setAddDialogTab('task');
-    setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
     setAddDialogOpen(true);
   };
 
   const handleAddFromTimeline = (bucket: TimeBucket, type: 'task' | 'habit') => {
     setAddDialogTab(type);
     setAddDialogBucket(bucket);
+    setAddDialogDate(selectedDate);
     setAddDialogOpen(true);
   };
 
@@ -326,6 +332,11 @@ export default function PlannerPage() {
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      measuring={{
+        droppable: {
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
     >
       {/* Desktop Layout */}
       <div className="hidden md:flex h-screen flex-col bg-background">
@@ -457,6 +468,7 @@ export default function PlannerPage() {
         onOpenChange={setAddDialogOpen}
         defaultTab={addDialogTab}
         defaultBucket={addDialogBucket}
+        defaultDate={addDialogDate}
       />
       
       <EditTaskDialog

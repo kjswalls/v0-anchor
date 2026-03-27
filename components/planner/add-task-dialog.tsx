@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -47,9 +47,10 @@ interface AddTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   defaultTab?: 'task' | 'habit';
   defaultBucket?: TimeBucket;
+  defaultDate?: Date;
 }
 
-export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket }: AddTaskDialogProps) {
+export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket, defaultDate }: AddTaskDialogProps) {
   const { 
     addTask, addHabit, projects, habitGroups, scheduleTask, 
     addProject, removeProject, addHabitGroup, removeHabitGroup,
@@ -61,7 +62,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPriority, setTaskPriority] = useState<Priority | undefined>();
   const [taskProject, setTaskProject] = useState<string>('');
-  const [taskStartDate, setTaskStartDate] = useState<Date | undefined>(selectedDate);
+  const [taskStartDate, setTaskStartDate] = useState<Date | undefined>(undefined);
   const [taskDuration, setTaskDuration] = useState<string>('30');
   const [taskTimeBucket, setTaskTimeBucket] = useState<TimeBucket | undefined>(defaultBucket);
   const [taskStartTime, setTaskStartTime] = useState<string>('');
@@ -96,15 +97,16 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       setActiveTab(defaultTab);
       setTaskTimeBucket(defaultBucket);
       setHabitTimeBucket(defaultBucket || 'anytime');
-      setTaskStartDate(selectedDate);
+      // Set date if defaultDate is provided (e.g., when adding from a bucket)
+      setTaskStartDate(defaultDate);
     }
-  }, [open, defaultTab, defaultBucket, selectedDate]);
+  }, [open, defaultTab, defaultBucket, defaultDate]);
 
   const resetForm = () => {
     setTaskTitle('');
     setTaskPriority(undefined);
     setTaskProject('');
-    setTaskStartDate(selectedDate);
+    setTaskStartDate(undefined);
     setTaskDuration('30');
     setTaskTimeBucket(defaultBucket);
     setTaskStartTime('');
@@ -181,26 +183,28 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const handleAddTask = () => {
     if (!taskTitle.trim()) return;
     
-    addTask({
-      title: taskTitle.trim(),
-      priority: taskPriority,
-      project: taskProject || undefined,
-      startDate: taskStartDate ? format(taskStartDate, 'yyyy-MM-dd') : undefined,
-      duration: taskDuration ? parseInt(taskDuration) : undefined,
-      timeBucket: taskTimeBucket,
-      startTime: taskStartTime || undefined,
-      repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
-      repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
-      repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
-    });
-
-    // If a bucket was provided, schedule the task
-    if (taskTimeBucket) {
-      const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
-      if (newTaskId) {
-        scheduleTask(newTaskId, taskTimeBucket, taskStartTime || undefined);
-      }
+const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : undefined;
+  
+  addTask({
+    title: taskTitle.trim(),
+    priority: taskPriority,
+    project: taskProject || undefined,
+    startDate: taskStartDate ? format(taskStartDate, 'yyyy-MM-dd') : undefined,
+    duration: taskDuration ? parseInt(taskDuration) : undefined,
+    timeBucket: effectiveTimeBucket,
+    startTime: taskStartTime || undefined,
+    repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
+    repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
+    repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
+  });
+  
+  // If a date was selected, schedule the task
+  if (taskStartDate && effectiveTimeBucket) {
+    const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
+    if (newTaskId) {
+      scheduleTask(newTaskId, effectiveTimeBucket, taskStartTime || undefined);
     }
+  }
     
     resetForm();
     onOpenChange(false);
@@ -228,7 +232,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
 <DialogContent
-  className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+  className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
               e.preventDefault();
@@ -351,38 +355,56 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               {/* Scheduling Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
-                            !taskStartDate && 'text-muted-foreground'
-                          )}
+                    <div className="relative">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2 pr-7',
+                              !taskStartDate && 'text-muted-foreground'
+                            )}
+                          >
+                            <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}</span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={taskStartDate}
+                            onSelect={setTaskStartDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      {taskStartDate && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                          onClick={(e) => { e.stopPropagation(); setTaskStartDate(undefined); }}
                         >
-                          <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-                          {taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={taskStartDate}
-                          onSelect={setTaskStartDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
-                    <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
-                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
-                        <SelectValue placeholder="None" />
+                    <Select 
+                      value={taskStartDate ? (taskTimeBucket || 'anytime') : ''} 
+                      onValueChange={(v) => setTaskTimeBucket(v as TimeBucket)}
+                      disabled={!taskStartDate}
+                    >
+                      <SelectTrigger className={cn(
+                        "w-full bg-background border-border h-9 text-sm truncate",
+                        !taskStartDate && "opacity-50"
+                      )}>
+                        <SelectValue placeholder="--" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="anytime">Anytime</SelectItem>
@@ -411,7 +433,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </div>
                 </div>
                 
-                {taskTimeBucket && taskTimeBucket !== 'anytime' && (
+                {taskStartDate && taskTimeBucket && taskTimeBucket !== 'anytime' && (
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Specific Time (optional)</Label>
                     <Input

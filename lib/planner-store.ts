@@ -460,7 +460,7 @@ export const usePlannerStore = create<PlannerStore>()(
       unscheduleTask: (id) => {
         const task = get().tasks.find((t) => t.id === id);
         setNextActionLabel(`Unschedule task: ${task?.title || 'Unknown'}`);
-        const updates: Partial<Task> = { isScheduled: false, timeBucket: undefined, startTime: undefined };
+        const updates: Partial<Task> = { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined };
 
         set((state) => ({
           tasks: state.tasks.map((t) =>
