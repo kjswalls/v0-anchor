@@ -21,6 +21,7 @@ import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
@@ -63,6 +64,16 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
   const { activeTab } = useMobileNavStore();
+  const { 
+    leftSidebarOpen, 
+    rightSidebarOpen, 
+    leftSidebarHovered, 
+    rightSidebarHovered,
+    toggleLeftSidebar, 
+    toggleRightSidebar,
+    setLeftSidebarHovered,
+    setRightSidebarHovered 
+  } = useSidebarStore();
 
 
   const [mounted, setMounted] = useState(false);
@@ -83,6 +94,25 @@ export default function PlannerPage() {
 
   // EOD auto-trigger intentionally removed for web — needs push notifications (PWA/mobile).
   // The EOD review can still be triggered manually via the toolbar button.
+  
+  // Keyboard shortcuts for sidebars
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd/Ctrl + [ for left sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === '[') {
+        e.preventDefault();
+        toggleLeftSidebar();
+      }
+      // Check for Cmd/Ctrl + ] for right sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === ']') {
+        e.preventDefault();
+        toggleRightSidebar();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleLeftSidebar, toggleRightSidebar]);
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -307,6 +337,14 @@ export default function PlannerPage() {
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col overflow-hidden relative">
+            {/* Left hover zone - shows task sidebar when collapsed */}
+            {!leftSidebarOpen && (
+              <div
+                className="absolute left-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
+                onMouseEnter={() => setLeftSidebarHovered(true)}
+              />
+            )}
+
             {/* Item visibility toggle and action feed - toggle centered, feed on right */}
             <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
               {/* Centered visibility toggle */}
@@ -363,6 +401,15 @@ export default function PlannerPage() {
                 />
               )}
             </div>
+            
+            {/* Right hover zone - shows chat sidebar when collapsed */}
+            {!rightSidebarOpen && (
+              <div
+                className="absolute right-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
+                onMouseEnter={() => setRightSidebarHovered(true)}
+              />
+            )}
+            
             <ChatSidebar />
           </main>
         </div>

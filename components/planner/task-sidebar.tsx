@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen, Clock, Repeat } from 'lucide-react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen, Clock, Repeat, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { useSidebarStore } from '@/lib/sidebar-store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -458,6 +459,8 @@ interface TaskSidebarProps {
 
 export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: TaskSidebarProps) {
   const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode, timelineItemFilter } = usePlannerStore();
+  const { leftSidebarOpen, leftSidebarHovered, toggleLeftSidebar, setLeftSidebarHovered } = useSidebarStore();
+  const isVisible = leftSidebarOpen || leftSidebarHovered;
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [isHovered, setIsHovered] = useState(false);
   const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'done' | 'pending' | 'skipped'>('all');
@@ -557,17 +560,23 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
   }, [habits, habitStatusFilter, habitGroupBy]);
 
   return (
-    <aside 
-      ref={setDroppableRef}
-      className={cn(
-        'w-80 border-r border-border bg-sidebar flex flex-col h-full transition-colors',
-        isOver && 'bg-primary/5 border-primary'
-      )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <div 
+      className="relative flex h-full"
+      onMouseLeave={() => leftSidebarHovered && setLeftSidebarHovered(false)}
     >
-      {/* Tab switcher */}
-      <div className="flex border-b border-border h-16 items-center">
+      <aside 
+        ref={setDroppableRef}
+        className={cn(
+          'border-r border-border bg-sidebar flex flex-col h-full transition-all duration-300',
+          isVisible ? 'w-80' : 'w-0 border-r-0 overflow-hidden',
+          leftSidebarHovered && !leftSidebarOpen && 'shadow-xl z-20 absolute left-0 top-0 bottom-0',
+          isOver && 'bg-primary/5 border-primary'
+        )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        {/* Tab switcher */}
+      <div className={cn('flex border-b border-border h-16 items-center', !isVisible && 'hidden')}>
         <button
           className={cn(
             'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
@@ -595,7 +604,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       </div>
 
       {/* Tasks pane */}
-      {activeTab === 'tasks' && (
+      {isVisible && activeTab === 'tasks' && (
         <>
           <div className={cn('p-4 border-b border-border transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
             <div className="flex items-center gap-2">
@@ -695,7 +704,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       )}
 
       {/* Habits pane */}
-      {activeTab === 'habits' && (
+      {isVisible && activeTab === 'habits' && (
         <>
           <div className={cn('p-4 border-b border-border space-y-3 transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
             <div className="flex items-center gap-2">
@@ -795,6 +804,27 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         </>
       )}
       
-    </aside>
+</aside>
+
+      {/* Toggle button - positioned outside the aside so it's always visible */}
+      <button
+        onClick={toggleLeftSidebar}
+        className={cn(
+          'absolute top-1/2 -translate-y-1/2 z-30',
+          'flex items-center gap-1.5 px-1.5 py-3',
+          'rounded-r-lg border border-l-0 border-border',
+          'bg-card text-foreground shadow-md',
+          'hover:bg-accent transition-colors duration-200',
+        )}
+        style={{ left: isVisible ? 'calc(20rem - 2px)' : '-2px' }}
+        title={leftSidebarOpen ? 'Collapse sidebar (Cmd+[)' : 'Expand sidebar (Cmd+[)'}
+      >
+        {leftSidebarOpen ? (
+          <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+      </button>
+    </div>
   );
-}
+  }

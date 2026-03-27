@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase'
 import { isOnboardingComplete } from '@/lib/user-profile'
 import { OnboardingChat } from './onboarding-chat'
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
+import { useSidebarStore } from '@/lib/sidebar-store'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import ReactMarkdown from 'react-markdown'
@@ -31,7 +32,8 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 380
 
 export function ChatSidebar() {
-  const [isOpen, setIsOpen] = useState(false)
+  const { rightSidebarOpen: isOpen, rightSidebarHovered, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
+  const isVisible = isOpen || rightSidebarHovered
   const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -279,8 +281,9 @@ export function ChatSidebar() {
     <TooltipProvider delayDuration={300}>
       {/* Toggle tab - always visible, positions at sidebar edge when open */}
       <button
-        onClick={() => setIsOpen((o) => !o)}
+        onClick={toggleRightSidebar}
         aria-label="Toggle AI assistant"
+        title={isOpen ? 'Collapse chat (Cmd+])' : 'Expand chat (Cmd+])'}
         className={cn(
           'absolute top-1/2 -translate-y-1/2 z-30',
           'flex items-center gap-1.5 px-1.5 py-3',
@@ -288,17 +291,21 @@ export function ChatSidebar() {
           'bg-card text-foreground shadow-md',
           'hover:bg-accent transition-colors duration-200',
         )}
-        style={{ right: isOpen ? sidebarWidth : 0 }}
+        style={{ right: isVisible ? sidebarWidth : 0 }}
       >
         <Sparkles className="h-3.5 w-3.5 text-primary" />
       </button>
 
       {/* Sidebar panel */}
-      {isOpen && (
+      {isVisible && (
         <div
           ref={sidebarRef}
-          className="absolute right-0 top-0 h-full z-20 flex"
+          className={cn(
+            "absolute right-0 top-0 h-full z-20 flex transition-all duration-200",
+            rightSidebarHovered && !isOpen && "shadow-xl"
+          )}
           style={{ width: sidebarWidth }}
+          onMouseLeave={() => rightSidebarHovered && setRightSidebarHovered(false)}
         >
           {/* Resize handle */}
           <div
