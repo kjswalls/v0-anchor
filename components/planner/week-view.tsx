@@ -594,8 +594,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                           style={{
                             top: `${minuteProgress * 100}%`,
                             transform: 'translateY(-50%)',
-                            maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,0.25) 20%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,1) 88%, rgba(0,0,0,1) 100%)',
-                            WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,0.25) 20%, rgba(0,0,0,0.25) 80%, rgba(0,0,0,1) 88%, rgba(0,0,0,1) 100%)',
+                            maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 92%, rgba(0,0,0,1) 100%)',
+                            WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 92%, rgba(0,0,0,1) 100%)',
                           }}
                         >
                           {/* Spacer for clock icon area */}
