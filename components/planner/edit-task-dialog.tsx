@@ -177,9 +177,20 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
         </DialogHeader>
         
         <div className="py-4">
-          {/* Title - Primary Input */}
+          {/* Title with Delete button */}
           <div className="space-y-1.5 mb-5">
-            <Label htmlFor="edit-task-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="edit-task-title" className="text-xs text-muted-foreground">Title</Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                onClick={handleDelete}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Delete
+              </Button>
+            </div>
             <Input
               id="edit-task-title"
               placeholder="What needs to be done?"
@@ -193,8 +204,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           {/* Organization Section */}
           <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
             <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Priority</Label>
                 <Select value={priority} onValueChange={(v) => setPriority(v as Priority | 'none')}>
                   <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -209,7 +220,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 </Select>
               </div>
               
-              <div className="space-y-1.5">
+              <div className="flex-1 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Project</Label>
                 {showNewProject ? (
                   <div className="flex gap-1">
@@ -280,8 +291,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           {/* Scheduling Section */}
           <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
             <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5">
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -307,7 +318,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 </Popover>
               </div>
               
-              <div className="space-y-1.5">
+              <div className="flex-1 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Time</Label>
                 <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
                   <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -323,7 +334,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="flex-1 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Duration</Label>
                 <Select value={duration} onValueChange={setDuration}>
                   <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -358,7 +369,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           <div className="space-y-3">
             <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
             <Select value={repeatFrequency} onValueChange={(v) => setRepeatFrequency(v as RepeatFrequency)}>
-              <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
+              <SelectTrigger className="bg-background border-border h-9 text-sm w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -417,23 +428,13 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           </div>
         </div>
         
-        <DialogFooter className="flex justify-between">
-          <Button
-            variant="ghost"
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={handleDelete}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
+        <DialogFooter className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
+            Cancel
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave}>
-              Save Changes
-            </Button>
-          </div>
+          <Button onClick={handleSave} className="w-full">
+            Save Changes
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

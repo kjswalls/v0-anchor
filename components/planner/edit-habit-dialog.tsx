@@ -181,9 +181,20 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
               </div>
             )}
 
-            {/* Title - Primary Input */}
+            {/* Title with Delete button */}
             <div className="space-y-1.5 mb-5">
-              <Label htmlFor="edit-habit-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="edit-habit-title" className="text-xs text-muted-foreground">Title</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Delete
+                </Button>
+              </div>
               <Input
                 id="edit-habit-title"
                 placeholder="What habit to track?"
@@ -197,8 +208,8 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             {/* Organization Section */}
             <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
               <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Group</Label>
                   {showNewGroup ? (
                     <div className="flex gap-1">
@@ -263,7 +274,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                   )}
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="flex-1 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Times per day</Label>
                   <Select value={timesPerDay} onValueChange={setTimesPerDay}>
                     <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -282,8 +293,8 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             {/* Scheduling Section */}
             <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
               <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Time</Label>
                   <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
                     <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -300,7 +311,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                 </div>
 
                 {timeBucket !== 'none' && timeBucket !== 'anytime' && (
-                  <div className="space-y-1.5">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Specific Time</Label>
                     <Input
                       type="time"
@@ -317,7 +328,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             <div className="space-y-3">
               <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
               <Select value={repeatFrequency} onValueChange={(v) => setRepeatFrequency(v as RepeatFrequency)}>
-                <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
+                <SelectTrigger className="bg-background border-border h-9 text-sm w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -378,23 +389,13 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             </div>
           </div>
           
-          <DialogFooter className="flex justify-between">
-            <Button
-              variant="ghost"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+          <DialogFooter className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSave}>
-                Save Changes
-              </Button>
-            </div>
+            <Button onClick={handleSave} className="w-full">
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -250,9 +250,9 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
             </TabsList>
             
             <TabsContent value="task" className="mt-4">
-              {/* Title - Primary Input */}
+              {/* Title */}
               <div className="space-y-1.5 mb-5">
-                <Label htmlFor="task-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
+                <Label htmlFor="task-title" className="text-xs text-muted-foreground">Title</Label>
                 <Input
                   id="task-title"
                   placeholder="What needs to be done?"
@@ -266,8 +266,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               {/* Organization Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Priority</Label>
                     <Select value={taskPriority || ''} onValueChange={(v) => setTaskPriority(v as Priority || undefined)}>
                       <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -281,7 +281,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Select>
                   </div>
                   
-                  <div className="space-y-1.5">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Project</Label>
                     {showNewProject ? (
                       <div className="flex gap-1">
@@ -351,8 +351,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               {/* Scheduling Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Date</Label>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -378,7 +378,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Popover>
                   </div>
                   
-                  <div className="space-y-1.5">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
                     <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
                       <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -393,7 +393,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Select>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Duration</Label>
                     <Select value={taskDuration} onValueChange={setTaskDuration}>
                       <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -428,7 +428,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
                 <Select value={taskRepeatFrequency} onValueChange={(v) => setTaskRepeatFrequency(v as RepeatFrequency)}>
-                  <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
+                  <SelectTrigger className="bg-background border-border h-9 text-sm w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -486,15 +486,20 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 )}
               </div>
               
-              <Button onClick={handleAddTask} className="w-full mt-6 h-10">
-                Add Task
-              </Button>
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full h-10">
+                  Cancel
+                </Button>
+                <Button onClick={handleAddTask} className="w-full h-10">
+                  Add Task
+                </Button>
+              </div>
             </TabsContent>
             
             <TabsContent value="habit" className="mt-4">
-              {/* Title - Primary Input */}
+              {/* Title */}
               <div className="space-y-1.5 mb-5">
-                <Label htmlFor="habit-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
+                <Label htmlFor="habit-title" className="text-xs text-muted-foreground">Title</Label>
                 <Input
                   id="habit-title"
                   placeholder="What habit to track?"
@@ -507,8 +512,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               {/* Organization Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Group</Label>
                     {showNewGroup ? (
                       <div className="flex gap-1">
@@ -573,7 +578,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Times per day</Label>
                     <Select value={habitTimesPerDay} onValueChange={setHabitTimesPerDay}>
                       <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -592,8 +597,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               {/* Scheduling Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
                     <Select value={habitTimeBucket} onValueChange={(v) => setHabitTimeBucket(v as TimeBucket)}>
                       <SelectTrigger className="bg-background border-border h-9 text-sm">
@@ -609,7 +614,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </div>
 
                   {habitTimeBucket !== 'anytime' && (
-                    <div className="space-y-1.5">
+                    <div className="flex-1 space-y-1.5">
                       <Label className="text-xs text-muted-foreground">Specific Time</Label>
                       <Input
                         type="time"
@@ -626,7 +631,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
                 <Select value={habitRepeatFrequency} onValueChange={(v) => setHabitRepeatFrequency(v as RepeatFrequency)}>
-                  <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
+                  <SelectTrigger className="bg-background border-border h-9 text-sm w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -686,9 +691,14 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 )}
               </div>
               
-              <Button onClick={handleAddHabit} className="w-full mt-6 h-10">
-                Add Habit
-              </Button>
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full h-10">
+                  Cancel
+                </Button>
+                <Button onClick={handleAddHabit} className="w-full h-10">
+                  Add Habit
+                </Button>
+              </div>
             </TabsContent>
           </Tabs>
         </DialogContent>
