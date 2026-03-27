@@ -249,12 +249,7 @@ const handleAddFromTopNav = () => {
   const handleAddHabitFromSidebar = () => {
     setAddDialogTab('habit');
     setAddDialogBucket(undefined);
-    setAddDialogOpen(true);
-  };
-
-  const handleAddFromSidebar = () => {
-    setAddDialogTab('task');
-    setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
     setAddDialogOpen(true);
   };
 
