@@ -23,6 +23,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useUndoToast } from '@/hooks/use-undo-toast';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
   AlertDialog,
@@ -65,6 +66,10 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 export default function PlannerPage() {
   const { tasks, habits, scheduleTask, assignTaskToBucket, unscheduleTask, scheduleHabit, assignHabitToBucket, deleteTask, deleteHabit, hoveredItemId, hoveredItemType, viewMode, timelineItemFilter, setTimelineItemFilter, moveTaskToProjectBlock, selectedDate } = usePlannerStore();
   const { activeTab } = useMobileNavStore();
+  
+  // Show toast with undo button for significant actions on mobile
+  useUndoToast();
+  
   const { 
     leftSidebarOpen, 
     rightSidebarOpen, 

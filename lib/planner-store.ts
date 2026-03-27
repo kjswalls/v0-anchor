@@ -973,8 +973,18 @@ export const usePlannerStore = create<PlannerStore>()(
 );
 
 // Subscribe to changes and save to history
-let prevStateJson: string | null = null;
 let isUpdatingUndoRedo = false;
+let hasInitializedHistory = false;
+
+// Initialize prevStateJson eagerly with the store's initial state
+// This captures the "before" state so we can properly undo the first action
+const initialStoreState = usePlannerStore.getState();
+let prevStateJson: string = JSON.stringify({
+  tasks: initialStoreState.tasks,
+  habits: initialStoreState.habits,
+  projects: initialStoreState.projects,
+  habitGroups: initialStoreState.habitGroups,
+});
 
 // Function to update baseline from undo/redo actions
 const updatePrevStateBaseline = (state: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] }) => {
@@ -993,8 +1003,23 @@ usePlannerStore.subscribe((state) => {
 
   const currentStateJson = JSON.stringify(currentState);
 
+  // Initialize history with baseline state if not already done
+  // This handles the case when no user is logged in (initializeStore not called)
+  if (!hasInitializedHistory && historyStack.length === 0) {
+    hasInitializedHistory = true;
+    // Save the PREVIOUS state as baseline (captured before this change)
+    const baselineState = JSON.parse(prevStateJson);
+    historyStack.push(JSON.parse(JSON.stringify(baselineState)));
+    actionLog.push({
+      id: crypto.randomUUID(),
+      label: 'Session start',
+      timestamp: Date.now(),
+    });
+    historyIndex = 0;
+  }
+
   // Only save if data actually changed (not just view state)
-  if (prevStateJson && currentStateJson !== prevStateJson) {
+  if (currentStateJson !== prevStateJson) {
     saveToHistory(currentState);
     // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
     isUpdatingUndoRedo = true;
