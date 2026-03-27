@@ -517,6 +517,8 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
   }, [recurringProjectsForDate]);
 
   const scheduledItems = useMemo(() => {
+    console.log('[v0] scheduledItems recalculating - tasks:', tasks.map(t => ({ id: t.id, title: t.title, timeBucket: t.timeBucket })));
+    
     const buckets: Record<TimeBucket, { tasks: Task[]; habits: Habit[] }> = {
       anytime: { tasks: [], habits: [] },
       morning: { tasks: [], habits: [] },

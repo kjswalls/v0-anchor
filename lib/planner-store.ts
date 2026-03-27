@@ -912,6 +912,8 @@ export const usePlannerStore = create<PlannerStore>()(
         const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
 
+        console.log('[v0] Undo - historyIndex:', historyIndex, 'tasks restored:', restoredTasks.map((t: Task) => ({ id: t.id, title: t.title, timeBucket: t.timeBucket })));
+
         const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
