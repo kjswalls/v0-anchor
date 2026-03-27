@@ -575,25 +575,37 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         </Button>
                       </div>
                     )}
-                    {/* Current time indicator - subtle glowing line */}
-                    {/* Uses white in dark mode, dark gray in light mode for visibility */}
-                    {/* z-0 ensures it renders behind task/habit cards */}
+                    {/* Current time indicator - renders in front of cards with gradient fade */}
                     {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
-                      <div
-                        className="absolute -left-4 -right-1 z-0 group/indicator"
-                        style={{ top: `${minuteProgress * 100}%` }}
-                      >
-                        {/* Invisible hover area covering the entire indicator */}
-                        <div className="absolute left-0 right-0 -top-1.5 -bottom-1.5 cursor-default" />
-                        {/* Clock icon to the left - only visible on hover of the indicator area */}
-                        <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={3} />
-                        {/* Glowing dot */}
-                        <div className="absolute left-3.5 w-1.5 h-1.5 -mt-[2px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 pointer-events-none" />
-                        {/* Dashed line */}
+                      <>
+                        {/* Clock icon - z-20 to show above everything */}
                         <div
-                          className="absolute left-5.5 right-0 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 pointer-events-none"
-                        />
-                      </div>
+                          className="absolute -left-4 -right-1 z-20 group/indicator pointer-events-none"
+                          style={{ top: `${minuteProgress * 100}%` }}
+                        >
+                          {/* Invisible hover area */}
+                          <div className="absolute left-0 right-0 -top-1.5 -bottom-1.5 cursor-default pointer-events-auto" />
+                          {/* Clock icon */}
+                          <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={3} />
+                        </div>
+                        {/* Dashed line and dot - z-10 with gradient opacity */}
+                        <div
+                          className="absolute -left-4 -right-1 z-10 pointer-events-none h-2 flex items-center"
+                          style={{
+                            top: `${minuteProgress * 100}%`,
+                            transform: 'translateY(-50%)',
+                            maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,0.25) 25%, rgba(0,0,0,0.25) 75%, rgba(0,0,0,1) 85%, rgba(0,0,0,1) 100%)',
+                            WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,0.25) 25%, rgba(0,0,0,0.25) 75%, rgba(0,0,0,1) 85%, rgba(0,0,0,1) 100%)',
+                          }}
+                        >
+                          {/* Spacer for clock icon area */}
+                          <div className="w-3.5 shrink-0" />
+                          {/* Glowing dot */}
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
+                          {/* Dashed line */}
+                          <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 ml-0.5" />
+                        </div>
+                      </>
                     )}
                     
                     {/* 1. Unscheduled habits first (matching day view order) */}
