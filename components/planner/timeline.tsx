@@ -1352,7 +1352,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, navDirection, setNavDirection } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -1580,34 +1580,36 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
             </div>
           </div>
         </div>
-        {/* Bucket skeletons — vertically centered */}
-        <div
-          key={`prev-${selectedDate.toISOString()}`}
-          className={cn(
-            'flex flex-col w-full h-full justify-center',
-            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
-            navDirection === 'right' && 'animate-slide-in-from-left'
-          )}
-        >
-          {bucketOrder.map((b) => {
-            const cfg = bucketConfig[b];
-            const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
-            return (
-              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
-                {/* Header */}
-                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
-                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+        {/* Bucket skeletons — vertically centered (hidden in chill mode) */}
+        {!chillMode && (
+          <div
+            key={`prev-${selectedDate.toISOString()}`}
+            className={cn(
+              'flex flex-col w-full h-full justify-center',
+              compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+              navDirection === 'right' && 'animate-slide-in-from-left'
+            )}
+          >
+            {bucketOrder.map((b) => {
+              const cfg = bucketConfig[b];
+              const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
+              return (
+                <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
+                  {/* Header */}
+                  <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                    <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Item rows */}
+                  <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                    {Array.from({ length: count }).map((_, i) => (
+                      <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                    ))}
+                  </div>
                 </div>
-                {/* Item rows */}
-                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
-                  {Array.from({ length: count }).map((_, i) => (
-                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </button>
 
       <ScrollArea className="absolute inset-0 h-full overflow-hidden">
@@ -1699,34 +1701,36 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
             </div>
           </div>
         </div>
-        {/* Bucket skeletons — vertically centered */}
-        <div
-          key={`next-${selectedDate.toISOString()}`}
-          className={cn(
-            'flex flex-col w-full h-full justify-center',
-            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
-            navDirection === 'left' && 'animate-slide-in-from-right'
-          )}
-        >
-          {bucketOrder.map((b) => {
-            const cfg = bucketConfig[b];
-            const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);
-            return (
-              <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
-                {/* Header */}
-                <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
-                  <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+        {/* Bucket skeletons — vertically centered (hidden in chill mode) */}
+        {!chillMode && (
+          <div
+            key={`next-${selectedDate.toISOString()}`}
+            className={cn(
+              'flex flex-col w-full h-full justify-center',
+              compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2.5',
+              navDirection === 'left' && 'animate-slide-in-from-right'
+            )}
+          >
+            {bucketOrder.map((b) => {
+              const cfg = bucketConfig[b];
+              const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);
+              return (
+                <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
+                  {/* Header */}
+                  <div className={cn('w-full', cfg.bgClass, compactMode ? 'px-2 py-1' : 'px-2 py-1.5')}>
+                    <div className="h-2 w-10 rounded-full bg-muted-foreground/40" />
+                  </div>
+                  {/* Item rows */}
+                  <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
+                    {Array.from({ length: count }).map((_, i) => (
+                      <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
+                    ))}
+                  </div>
                 </div>
-                {/* Item rows */}
-                <div className={cn(compactMode ? 'px-1.5 py-1 space-y-1' : 'px-2 py-1.5 space-y-1.5')}>
-                  {Array.from({ length: count }).map((_, i) => (
-                    <div key={i} className={cn('rounded bg-muted/60', compactMode ? 'h-5' : 'h-6')} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </button>
     </div>
   );

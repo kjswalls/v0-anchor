@@ -250,7 +250,7 @@ function DroppableCell({ dropId, children, className, disabled, glowColor }: Dro
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -385,46 +385,48 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         className="group absolute top-0 bottom-0 w-24 z-10 flex flex-col cursor-pointer border-r border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ right: 'calc(50% + 36rem - 3.5rem)' }}
       >
-        {/* Week wireframe skeleton - single day column aligned with timeline */}
-        <div className={cn(
-          'flex flex-col w-full h-full',
-          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
-        )}>
-          {/* Date header placeholder */}
-          <div className="h-12 flex-shrink-0 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-lg bg-muted/60" />
-          </div>
-          {/* Time buckets - aligned with main timeline */}
+        {/* Week wireframe skeleton - hidden in chill mode */}
+        {!chillMode && (
           <div className={cn(
-            'flex flex-col',
-            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+            'flex flex-col w-full h-full',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
           )}>
-            {TIME_BUCKETS.map((bucket) => {
-              const style = bucketStyles[bucket];
-              return (
-                <div 
-                  key={bucket} 
-                  className={cn(
-                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
-                    style.borderClass,
-                    !compactMode && 'flex-1 min-h-0',
-                    compactMode && 'min-h-[50px]'
-                  )}
-                >
-                  {/* Colored header */}
-                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
-                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+            {/* Date header placeholder */}
+            <div className="h-12 flex-shrink-0 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg bg-muted/60" />
+            </div>
+            {/* Time buckets - aligned with main timeline */}
+            <div className={cn(
+              'flex flex-col',
+              compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+            )}>
+              {TIME_BUCKETS.map((bucket) => {
+                const style = bucketStyles[bucket];
+                return (
+                  <div 
+                    key={bucket} 
+                    className={cn(
+                      'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
+                      style.borderClass,
+                      !compactMode && 'flex-1 min-h-0',
+                      compactMode && 'min-h-[50px]'
+                    )}
+                  >
+                    {/* Colored header */}
+                    <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                      <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                    </div>
+                    {/* Placeholder item rows */}
+                    <div className="px-1 py-1 space-y-1">
+                      <div className="h-4 rounded bg-muted/60" />
+                      <div className="h-4 rounded bg-muted/60" />
+                    </div>
                   </div>
-                  {/* Placeholder item rows */}
-                  <div className="px-1 py-1 space-y-1">
-                    <div className="h-4 rounded bg-muted/60" />
-                    <div className="h-4 rounded bg-muted/60" />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
         {/* Fade mask - always visible, fades toward center */}
         <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Chevron on hover */}
@@ -662,46 +664,48 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
         className="group absolute top-0 bottom-0 w-24 z-10 flex flex-col cursor-pointer border-l border-border/30 bg-background hover:bg-muted/30 transition-colors"
         style={{ left: 'calc(50% + 36rem + 0.5rem)' }}
       >
-        {/* Week wireframe skeleton - single day column aligned with timeline */}
-        <div className={cn(
-          'flex flex-col w-full h-full',
-          compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
-        )}>
-          {/* Date header placeholder */}
-          <div className="h-12 flex-shrink-0 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-lg bg-muted/60" />
-          </div>
-          {/* Time buckets - aligned with main timeline */}
+        {/* Week wireframe skeleton - hidden in chill mode */}
+        {!chillMode && (
           <div className={cn(
-            'flex flex-col',
-            compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+            'flex flex-col w-full h-full',
+            compactMode ? 'p-1.5 gap-1.5' : 'p-2 gap-2'
           )}>
-            {TIME_BUCKETS.map((bucket) => {
-              const style = bucketStyles[bucket];
-              return (
-                <div 
-                  key={bucket} 
-                  className={cn(
-                    'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
-                    style.borderClass,
-                    !compactMode && 'flex-1 min-h-0',
-                    compactMode && 'min-h-[50px]'
-                  )}
-                >
-                  {/* Colored header */}
-                  <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
-                    <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+            {/* Date header placeholder */}
+            <div className="h-12 flex-shrink-0 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg bg-muted/60" />
+            </div>
+            {/* Time buckets - aligned with main timeline */}
+            <div className={cn(
+              'flex flex-col',
+              compactMode ? 'gap-1.5' : 'flex-1 gap-2 min-h-0'
+            )}>
+              {TIME_BUCKETS.map((bucket) => {
+                const style = bucketStyles[bucket];
+                return (
+                  <div 
+                    key={bucket} 
+                    className={cn(
+                      'rounded-lg border-2 border-dashed overflow-hidden opacity-70',
+                      style.borderClass,
+                      !compactMode && 'flex-1 min-h-0',
+                      compactMode && 'min-h-[50px]'
+                    )}
+                  >
+                    {/* Colored header */}
+                    <div className={cn('w-full px-1.5 py-1', style.bgClass)}>
+                      <div className="h-1.5 w-8 rounded-full bg-muted-foreground/40" />
+                    </div>
+                    {/* Placeholder item rows */}
+                    <div className="px-1 py-1 space-y-1">
+                      <div className="h-4 rounded bg-muted/60" />
+                      <div className="h-4 rounded bg-muted/60" />
+                    </div>
                   </div>
-                  {/* Placeholder item rows */}
-                  <div className="px-1 py-1 space-y-1">
-                    <div className="h-4 rounded bg-muted/60" />
-                    <div className="h-4 rounded bg-muted/60" />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
         {/* Fade mask - always visible, fades toward center */}
         <div className="absolute inset-0 bg-gradient-to-l from-background/90 via-background/30 to-transparent z-10 pointer-events-none" />
         {/* Chevron on hover */}

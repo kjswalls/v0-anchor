@@ -606,8 +606,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {/* Tasks pane */}
       {isVisible && activeTab === 'tasks' && (
         <>
-          <div className={cn('p-4 border-b border-border transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
-            <div className="flex items-center gap-2">
+          <div className="p-4 border-b border-border">
+            <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
               <FilterButton />
               
               <DropdownMenu>
@@ -706,8 +706,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {/* Habits pane */}
       {isVisible && activeTab === 'habits' && (
         <>
-          <div className={cn('p-4 border-b border-border space-y-3 transition-opacity', !showControls && 'opacity-0 h-0 p-0 overflow-hidden')}>
-            <div className="flex items-center gap-2">
+          <div className="p-4 border-b border-border space-y-3">
+            <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
               {/* Status filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
