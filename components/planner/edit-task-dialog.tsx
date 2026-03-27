@@ -133,12 +133,15 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
     });
 
     // Handle scheduling
-    if (timeBucket !== 'none' && timeBucket !== task.timeBucket) {
-      scheduleTask(task.id, timeBucket, startTime || undefined);
-    } else if (timeBucket === 'none' && task.isScheduled) {
+    const effectiveTimeBucket = startDate ? (timeBucket === 'none' ? 'anytime' : timeBucket) : undefined;
+    if (startDate && effectiveTimeBucket) {
+      if (effectiveTimeBucket !== task.timeBucket || !task.isScheduled) {
+        scheduleTask(task.id, effectiveTimeBucket, startTime || undefined);
+      } else if (startTime !== task.startTime) {
+        updateTask(task.id, { startTime: startTime || undefined });
+      }
+    } else if (!startDate && task.isScheduled) {
       unscheduleTask(task.id);
-    } else if (task.isScheduled && startTime !== task.startTime) {
-      updateTask(task.id, { startTime: startTime || undefined });
     }
     
     onOpenChange(false);
@@ -309,12 +312,18 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Time</Label>
-                <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
-                    <SelectValue placeholder="None" />
+                <Select 
+                  value={startDate ? (timeBucket === 'none' ? 'anytime' : timeBucket) : 'none'} 
+                  onValueChange={(v) => setTimeBucket(v as TimeBucket)}
+                  disabled={!startDate}
+                >
+                  <SelectTrigger className={cn(
+                    "w-full bg-background border-border h-9 text-sm truncate",
+                    !startDate && "opacity-50"
+                  )}>
+                    <SelectValue placeholder={startDate ? "Anytime" : "Select date first"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Unscheduled</SelectItem>
                     <SelectItem value="anytime">Anytime</SelectItem>
                     <SelectItem value="morning">Morning</SelectItem>
                     <SelectItem value="afternoon">Afternoon</SelectItem>
@@ -341,7 +350,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               </div>
             </div>
             
-            {timeBucket !== 'none' && timeBucket !== 'anytime' && (
+            {startDate && timeBucket !== 'anytime' && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Specific Time (optional)</Label>
                 <Input

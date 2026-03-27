@@ -181,26 +181,28 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const handleAddTask = () => {
     if (!taskTitle.trim()) return;
     
-    addTask({
-      title: taskTitle.trim(),
-      priority: taskPriority,
-      project: taskProject || undefined,
-      startDate: taskStartDate ? format(taskStartDate, 'yyyy-MM-dd') : undefined,
-      duration: taskDuration ? parseInt(taskDuration) : undefined,
-      timeBucket: taskTimeBucket,
-      startTime: taskStartTime || undefined,
-      repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
-      repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
-      repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
-    });
-
-    // If a bucket was provided, schedule the task
-    if (taskTimeBucket) {
-      const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
-      if (newTaskId) {
-        scheduleTask(newTaskId, taskTimeBucket, taskStartTime || undefined);
-      }
+const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : undefined;
+  
+  addTask({
+    title: taskTitle.trim(),
+    priority: taskPriority,
+    project: taskProject || undefined,
+    startDate: taskStartDate ? format(taskStartDate, 'yyyy-MM-dd') : undefined,
+    duration: taskDuration ? parseInt(taskDuration) : undefined,
+    timeBucket: effectiveTimeBucket,
+    startTime: taskStartTime || undefined,
+    repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
+    repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
+    repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
+  });
+  
+  // If a date was selected, schedule the task
+  if (taskStartDate && effectiveTimeBucket) {
+    const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
+    if (newTaskId) {
+      scheduleTask(newTaskId, effectiveTimeBucket, taskStartTime || undefined);
     }
+  }
     
     resetForm();
     onOpenChange(false);
@@ -380,9 +382,16 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
-                    <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
-                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
-                        <SelectValue placeholder="None" />
+                    <Select 
+                      value={taskStartDate ? (taskTimeBucket || 'anytime') : ''} 
+                      onValueChange={(v) => setTaskTimeBucket(v as TimeBucket)}
+                      disabled={!taskStartDate}
+                    >
+                      <SelectTrigger className={cn(
+                        "w-full bg-background border-border h-9 text-sm",
+                        !taskStartDate && "opacity-50"
+                      )}>
+                        <SelectValue placeholder={taskStartDate ? "Anytime" : "Select date first"} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="anytime">Anytime</SelectItem>
@@ -411,7 +420,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </div>
                 </div>
                 
-                {taskTimeBucket && taskTimeBucket !== 'anytime' && (
+                {taskStartDate && taskTimeBucket && taskTimeBucket !== 'anytime' && (
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Specific Time (optional)</Label>
                     <Input

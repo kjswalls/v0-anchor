@@ -73,7 +73,7 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     task.startDate ? new Date(task.startDate) : new Date()
   );
-  const [scheduleTimeBucket, setScheduleTimeBucket] = useState<TimeBucket | 'none'>(task.timeBucket || 'none');
+  const [scheduleTimeBucket, setScheduleTimeBucket] = useState<TimeBucket>(task.timeBucket || 'anytime');
   const [scheduleDuration, setScheduleDuration] = useState(task.duration?.toString() || '30');
   
   const {
@@ -89,14 +89,19 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
   } : undefined;
 
   const handleScheduleSave = () => {
-    const hasTimeBucket = scheduleTimeBucket !== 'none';
-    const dateStr = scheduleDate ? format(scheduleDate, 'yyyy-MM-dd') : undefined;
+    if (!scheduleDate) {
+      setShowScheduleDrawer(false);
+      return;
+    }
+    
+    const effectiveTimeBucket = scheduleTimeBucket || 'anytime';
+    const dateStr = format(scheduleDate, 'yyyy-MM-dd');
     
     updateTask(task.id, {
-      startDate: hasTimeBucket ? dateStr : undefined,
-      timeBucket: hasTimeBucket ? scheduleTimeBucket : undefined,
+      startDate: dateStr,
+      timeBucket: effectiveTimeBucket,
       duration: parseInt(scheduleDuration, 10),
-      isScheduled: hasTimeBucket,
+      isScheduled: true,
     });
     setShowScheduleDrawer(false);
   };
@@ -245,12 +250,18 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
             {/* Time Bucket */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Time</Label>
-              <Select value={scheduleTimeBucket} onValueChange={(v) => setScheduleTimeBucket(v as TimeBucket | 'none')}>
-                <SelectTrigger className="w-full bg-background border-border h-10">
-                  <SelectValue placeholder="Select time" />
+              <Select 
+                value={scheduleDate ? (scheduleTimeBucket === 'none' ? 'anytime' : scheduleTimeBucket) : ''} 
+                onValueChange={(v) => setScheduleTimeBucket(v as TimeBucket)}
+                disabled={!scheduleDate}
+              >
+                <SelectTrigger className={cn(
+                  "w-full bg-background border-border h-10",
+                  !scheduleDate && "opacity-50"
+                )}>
+                  <SelectValue placeholder={scheduleDate ? "Anytime" : "Select date first"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Unscheduled</SelectItem>
                   <SelectItem value="anytime">Anytime</SelectItem>
                   <SelectItem value="morning">Morning</SelectItem>
                   <SelectItem value="afternoon">Afternoon</SelectItem>
