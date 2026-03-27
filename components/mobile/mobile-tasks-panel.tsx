@@ -54,6 +54,13 @@ const priorityLabels: Record<Priority, string> = {
   low: 'Low',
 };
 
+const bucketLabels: Record<TimeBucket, string> = {
+  anytime: 'Anytime',
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+};
+
 interface MobileTasksPanelProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
@@ -415,7 +422,8 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
   const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'pending' | 'done' | 'skipped'>('all');
   const [habitGroupBy, setHabitGroupBy] = useState<'group' | 'status' | 'repeat' | 'bucket' | 'none'>('group');
 
-  const hasActiveFilters = Object.keys(filters).length > 0;
+  const activeFilterCount = Object.values(filters).filter(v => v !== undefined).length;
+  const hasActiveFilters = activeFilterCount > 0;
 
   // Filter unscheduled tasks
   const unscheduledTasks = useMemo(() => {
@@ -516,11 +524,11 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
                   <Button variant="outline" size="sm" className={cn('h-8 px-3 text-xs', hasActiveFilters && 'border-primary text-primary')}>
                     <Filter className="h-3.5 w-3.5 mr-1" />
                     Filter
-                    {hasActiveFilters && (
-                      <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
-                        {Object.keys(filters).length}
-                      </span>
-                    )}
+{hasActiveFilters && (
+  <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+  {activeFilterCount}
+  </span>
+  )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-56 p-2">
