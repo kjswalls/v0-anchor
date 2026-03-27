@@ -143,7 +143,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+          className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
               e.preventDefault();
@@ -181,20 +181,9 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
               </div>
             )}
 
-            {/* Title with Delete button */}
+            {/* Title */}
             <div className="space-y-1.5 mb-5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="edit-habit-title" className="text-xs text-muted-foreground">Title</Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="h-3 w-3 mr-1" />
-                  Delete
-                </Button>
-              </div>
+              <Label htmlFor="edit-habit-title" className="text-xs text-muted-foreground">Title</Label>
               <Input
                 id="edit-habit-title"
                 placeholder="What habit to track?"
@@ -209,7 +198,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
               <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
               <div className="flex gap-3">
-                <div className="flex-1 space-y-1.5">
+                <div className="flex-1 min-w-0 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Group</Label>
                   {showNewGroup ? (
                     <div className="flex gap-1">
@@ -256,7 +245,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                         setGroup(v as HabitGroup);
                       }
                     }}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -274,10 +263,10 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                   )}
                 </div>
 
-                <div className="flex-1 space-y-1.5">
+                <div className="flex-1 min-w-0 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Times per day</Label>
                   <Select value={timesPerDay} onValueChange={setTimesPerDay}>
-                    <SelectTrigger className="bg-background border-border h-9 text-sm">
+                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -294,10 +283,10 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
               <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
               <div className="flex gap-3">
-                <div className="flex-1 space-y-1.5">
+                <div className="flex-1 min-w-0 space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Time</Label>
                   <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
-                    <SelectTrigger className="bg-background border-border h-9 text-sm">
+                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                       <SelectValue placeholder="Anytime" />
                     </SelectTrigger>
                     <SelectContent>
@@ -311,13 +300,13 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                 </div>
 
                 {timeBucket !== 'none' && timeBucket !== 'anytime' && (
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Specific Time</Label>
                     <Input
                       type="time"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="bg-background border-border h-9 text-sm"
+                      className="w-full bg-background border-border h-9 text-sm"
                     />
                   </div>
                 )}
@@ -389,11 +378,17 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             </div>
           </div>
           
-          <DialogFooter className="grid grid-cols-2 gap-3 sm:grid-cols-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
-              Cancel
+          <DialogFooter className="flex justify-between items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="sr-only">Delete habit</span>
             </Button>
-            <Button onClick={handleSave} className="w-full">
+            <Button onClick={handleSave} className="flex-1">
               Save Changes
             </Button>
           </DialogFooter>

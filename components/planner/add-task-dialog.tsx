@@ -227,8 +227,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent
-          className="sm:max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
+<DialogContent
+  className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
               e.preventDefault();
@@ -267,10 +267,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
                 <div className="flex gap-3">
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Priority</Label>
                     <Select value={taskPriority || ''} onValueChange={(v) => setTaskPriority(v as Priority || undefined)}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
@@ -281,7 +281,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Select>
                   </div>
                   
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Project</Label>
                     {showNewProject ? (
                       <div className="flex gap-1">
@@ -328,7 +328,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                           setTaskProject(v);
                         }
                       }}>
-                        <SelectTrigger className="bg-background border-border h-9 text-sm">
+                        <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                           <SelectValue placeholder="None" />
                         </SelectTrigger>
                         <SelectContent>
@@ -352,7 +352,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
                 <div className="flex gap-3">
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Date</Label>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -378,10 +378,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Popover>
                   </div>
                   
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
                     <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
@@ -393,10 +393,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     </Select>
                   </div>
 
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Duration</Label>
                     <Select value={taskDuration} onValueChange={setTaskDuration}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -486,15 +486,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 )}
               </div>
               
-              <div className="grid grid-cols-2 gap-3 mt-6">
-                <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full h-10">
-                  Cancel
-                </Button>
-                <Button onClick={handleAddTask} className="w-full h-10">
-                  Add Task
-                </Button>
-              </div>
-            </TabsContent>
+<Button onClick={handleAddTask} className="w-full h-10 mt-6">
+  Add Task
+  </Button>
+  </TabsContent>
             
             <TabsContent value="habit" className="mt-4">
               {/* Title */}
@@ -513,7 +508,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
                 <div className="flex gap-3">
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Group</Label>
                     {showNewGroup ? (
                       <div className="flex gap-1">
@@ -560,7 +555,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                           setHabitGroup(v);
                         }
                       }}>
-                        <SelectTrigger className="bg-background border-border h-9 text-sm">
+                        <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -578,10 +573,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     )}
                   </div>
 
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Times per day</Label>
                     <Select value={habitTimesPerDay} onValueChange={setHabitTimesPerDay}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -598,10 +593,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
                 <div className="flex gap-3">
-                  <div className="flex-1 space-y-1.5">
+                  <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Time</Label>
                     <Select value={habitTimeBucket} onValueChange={(v) => setHabitTimeBucket(v as TimeBucket)}>
-                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -614,7 +609,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </div>
 
                   {habitTimeBucket !== 'anytime' && (
-                    <div className="flex-1 space-y-1.5">
+                    <div className="flex-1 min-w-0 space-y-1.5">
                       <Label className="text-xs text-muted-foreground">Specific Time</Label>
                       <Input
                         type="time"
@@ -691,15 +686,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                 )}
               </div>
               
-              <div className="grid grid-cols-2 gap-3 mt-6">
-                <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full h-10">
-                  Cancel
-                </Button>
-                <Button onClick={handleAddHabit} className="w-full h-10">
-                  Add Habit
-                </Button>
-              </div>
-            </TabsContent>
+<Button onClick={handleAddHabit} className="w-full h-10 mt-6">
+  Add Habit
+  </Button>
+  </TabsContent>
           </Tabs>
         </DialogContent>
       </Dialog>
