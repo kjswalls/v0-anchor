@@ -202,7 +202,6 @@ const saveToHistory = (state: HistoryState) => {
   } else {
     historyIndex++;
   }
-  console.log('[v0] saveToHistory complete - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'label:', actionLog[actionLog.length - 1]?.label);
 };
 
 // Get appropriate bucket for a given time
@@ -280,7 +279,6 @@ export const usePlannerStore = create<PlannerStore>()(
             timestamp: Date.now(),
           });
           historyIndex = 0;
-          console.log('[v0] initializeStore complete - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length);
 
           // Set prevStateJson so the subscriber doesn't double-save
           prevStateJson = JSON.stringify(snapshot);
@@ -914,8 +912,6 @@ export const usePlannerStore = create<PlannerStore>()(
         const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
         const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
 
-        console.log('[v0] Undo - historyIndex:', historyIndex, 'tasks restored:', restoredTasks.map((t: Task) => ({ id: t.id, title: t.title, timeBucket: t.timeBucket })));
-
         const info = getHistoryInfo();
         set({
           tasks: restoredTasks,
@@ -1011,7 +1007,7 @@ usePlannerStore.subscribe((state) => {
       timestamp: Date.now(),
     });
     historyIndex = 0;
-    console.log('[v0] History baseline initialized - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length);
+    hasInitializedHistory = true;
   }
 
   // Only save if data actually changed (not just view state)
@@ -1020,7 +1016,6 @@ usePlannerStore.subscribe((state) => {
     // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
     isUpdatingUndoRedo = true;
     const info = getHistoryInfo();
-    console.log('[v0] History saved - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'canUndo will be:', historyIndex > 0);
     usePlannerStore.setState({
       canUndo: historyIndex > 0,
       canRedo: false,

@@ -59,14 +59,9 @@ export function useUndoToast() {
         action: {
           label: 'Undo',
           onClick: () => {
-            console.log('[v0] Toast Undo clicked');
             const state = usePlannerStore.getState();
-            console.log('[v0] Toast Undo - canUndo:', state.canUndo, 'historyIndex:', state.historyIndex);
             if (state.canUndo) {
-              console.log('[v0] Toast Undo - calling undo()');
               state.undo();
-            } else {
-              console.log('[v0] Toast Undo - canUndo is false, not calling undo');
             }
           },
         },
