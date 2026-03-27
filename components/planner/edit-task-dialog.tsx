@@ -176,7 +176,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           </DialogDescription>
         </DialogHeader>
         
-        <div className="py-4">
+        <div className="py-4 w-full overflow-hidden">
           {/* Title */}
           <div className="space-y-1.5 mb-5">
             <Label htmlFor="edit-task-title" className="text-xs text-muted-foreground">Title</Label>
@@ -193,11 +193,11 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           {/* Organization Section */}
           <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
             <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Priority</Label>
                 <Select value={priority} onValueChange={(v) => setPriority(v as Priority | 'none')}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
+                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
@@ -280,7 +280,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
           {/* Scheduling Section */}
           <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
             <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
                 <Popover>
@@ -288,12 +288,12 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                     <Button
                       variant="outline"
                       className={cn(
-                        'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
+                        'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
                         !startDate && 'text-muted-foreground'
                       )}
                     >
-                      <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-                      {startDate ? format(startDate, 'MMM d') : 'None'}
+                      <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{startDate ? format(startDate, 'MMM d') : 'None'}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -310,7 +310,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Time</Label>
                 <Select value={timeBucket} onValueChange={(v) => setTimeBucket(v as TimeBucket | 'none')}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
+                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
@@ -326,7 +326,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Duration</Label>
                 <Select value={duration} onValueChange={setDuration}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
+                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

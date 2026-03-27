@@ -1,9 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Filter, ChevronDown, X, Check, Trash2, Clock, Repeat, Plus, FolderOpen } from 'lucide-react';
+import { Filter, ChevronDown, X, Check, Trash2, Clock, Repeat, Plus, FolderOpen, CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,10 +18,23 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +44,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
+import type { Task, Habit, GroupBy, Priority, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable } from '@dnd-kit/core';
 
@@ -48,9 +64,17 @@ interface MobileTasksPanelProps {
 
 // Mobile Task Item with long-press drag support
 function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { toggleTaskStatus, deleteTask, getProjectEmoji } = usePlannerStore();
+  const { toggleTaskStatus, deleteTask, updateTask, getProjectEmoji } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showScheduleDrawer, setShowScheduleDrawer] = useState(false);
+  
+  // Local state for scheduling
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
+    task.startDate ? new Date(task.startDate) : new Date()
+  );
+  const [scheduleTimeBucket, setScheduleTimeBucket] = useState<TimeBucket | 'none'>(task.timeBucket || 'none');
+  const [scheduleDuration, setScheduleDuration] = useState(task.duration?.toString() || '30');
   
   const {
     attributes,
@@ -64,100 +88,202 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
   } : undefined;
 
+  const handleScheduleSave = () => {
+    updateTask(task.id, {
+      startDate: scheduleDate ? format(scheduleDate, 'yyyy-MM-dd') : undefined,
+      timeBucket: scheduleTimeBucket === 'none' ? undefined : scheduleTimeBucket,
+      duration: parseInt(scheduleDuration, 10),
+      isScheduled: scheduleTimeBucket !== 'none',
+    });
+    setShowScheduleDrawer(false);
+  };
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        'group relative flex items-start gap-3 p-4 rounded-xl bg-card border border-border/50 active:border-border transition-all touch-none',
-        isDragging && 'opacity-50 shadow-lg z-50',
-        task.status === 'completed' && 'opacity-60'
-      )}
-      onClick={onClick}
-    >
-      {/* Large background emoji */}
-      {projectEmoji && (
-        <span
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
-          style={{ lineHeight: 1 }}
-        >
-          {projectEmoji}
-        </span>
-      )}
-      
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleTaskStatus(task.id);
-        }}
+    <>
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
         className={cn(
-          'flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 mt-0.5',
-          task.status === 'completed'
-            ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 active:border-primary'
+          'group relative flex items-start gap-3 p-4 rounded-xl bg-card border border-border/50 active:border-border transition-all touch-none',
+          isDragging && 'opacity-50 shadow-lg z-50',
+          task.status === 'completed' && 'opacity-60'
         )}
+        onClick={onClick}
       >
-        {task.status === 'completed' && (
-          <Check className="h-3.5 w-3.5 text-primary-foreground" />
+        {/* Large background emoji */}
+        {projectEmoji && (
+          <span
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+            style={{ lineHeight: 1 }}
+          >
+            {projectEmoji}
+          </span>
         )}
-      </button>
-      
-      <div className="flex-1 min-w-0 relative z-10">
-        <p
+        
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTaskStatus(task.id);
+          }}
           className={cn(
-            'text-sm font-medium text-foreground leading-tight',
-            task.status === 'completed' && 'line-through text-muted-foreground'
+            'flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 mt-0.5',
+            task.status === 'completed'
+              ? 'bg-primary border-primary'
+              : 'border-muted-foreground/40 active:border-primary'
           )}
         >
-          {task.title}
-        </p>
+          {task.status === 'completed' && (
+            <Check className="h-3.5 w-3.5 text-primary-foreground" />
+          )}
+        </button>
         
-        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
-          {projectEmoji && task.project && (
-            <span className="flex items-center gap-1 leading-none">
-              <span className="text-sm">{projectEmoji}</span>
-              <span>{task.project}</span>
-            </span>
-          )}
-          {task.duration && (
-            <span className="flex items-center gap-0.5">
-              <Clock className="h-3 w-3" />
-              {task.duration}m
-            </span>
-          )}
-          {task.priority && (
-            <span className={cn(
-              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-              task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
-            )}>
-              {priorityLabels[task.priority]}
-            </span>
-          )}
-          {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-            <Repeat className="h-3 w-3" />
-          )}
+        <div className="flex-1 min-w-0 relative z-10">
+          <p
+            className={cn(
+              'text-sm font-medium text-foreground leading-tight',
+              task.status === 'completed' && 'line-through text-muted-foreground'
+            )}
+          >
+            {task.title}
+          </p>
+          
+          <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
+            {projectEmoji && task.project && (
+              <span className="flex items-center gap-1 leading-none">
+                <span className="text-sm">{projectEmoji}</span>
+                <span>{task.project}</span>
+              </span>
+            )}
+            {task.duration && (
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-3 w-3" />
+                {task.duration}m
+              </span>
+            )}
+            {task.priority && (
+              <span className={cn(
+                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
+                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
+                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
+                task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+              )}>
+                {priorityLabels[task.priority]}
+              </span>
+            )}
+            {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+              <Repeat className="h-3 w-3" />
+            )}
+          </div>
         </div>
+        
+        {/* Schedule button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-primary"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowScheduleDrawer(true);
+          }}
+        >
+          <CalendarIcon className="h-4 w-4" />
+        </Button>
+
+        {/* Delete button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowDeleteConfirm(true);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
-      
-      {/* Delete button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation();
-          setShowDeleteConfirm(true);
-        }}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+
+      {/* Schedule Drawer */}
+      <Drawer open={showScheduleDrawer} onOpenChange={setShowScheduleDrawer}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Schedule Task</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6 space-y-4">
+            {/* Date */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      'w-full justify-start text-left font-normal bg-background border-border h-10',
+                      !scheduleDate && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {scheduleDate ? format(scheduleDate, 'EEEE, MMM d') : 'Select date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={scheduleDate}
+                    onSelect={setScheduleDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Time Bucket */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Time</Label>
+              <Select value={scheduleTimeBucket} onValueChange={(v) => setScheduleTimeBucket(v as TimeBucket | 'none')}>
+                <SelectTrigger className="w-full bg-background border-border h-10">
+                  <SelectValue placeholder="Select time" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unscheduled</SelectItem>
+                  <SelectItem value="anytime">Anytime</SelectItem>
+                  <SelectItem value="morning">Morning</SelectItem>
+                  <SelectItem value="afternoon">Afternoon</SelectItem>
+                  <SelectItem value="evening">Evening</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Duration */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Duration</Label>
+              <Select value={scheduleDuration} onValueChange={setScheduleDuration}>
+                <SelectTrigger className="w-full bg-background border-border h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="30">30 min</SelectItem>
+                  <SelectItem value="45">45 min</SelectItem>
+                  <SelectItem value="60">1 hour</SelectItem>
+                  <SelectItem value="90">1.5 hours</SelectItem>
+                  <SelectItem value="120">2 hours</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Save button */}
+            <Button onClick={handleScheduleSave} className="w-full h-11 mt-2">
+              Save Schedule
+            </Button>
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -165,9 +291,9 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { deleteTask(task.id); setShowDeleteConfirm(false); }}
+              onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setShowDeleteConfirm(false); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -175,7 +301,7 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
 
