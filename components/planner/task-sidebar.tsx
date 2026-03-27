@@ -176,7 +176,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { deleteTask(task.id); setShowDeleteConfirm(false); }}
+              onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setShowDeleteConfirm(false); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -275,7 +275,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { deleteHabit(habit.id); setShowDeleteConfirm(false); }}
+              onClick={(e) => { e.stopPropagation(); deleteHabit(habit.id); setShowDeleteConfirm(false); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

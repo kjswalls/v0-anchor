@@ -249,173 +249,186 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
               <TabsTrigger value="habit" className="data-[state=active]:bg-card">Habit</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="task" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="task-title" className="text-sm text-muted-foreground">Title</Label>
+            <TabsContent value="task" className="mt-4">
+              {/* Title - Primary Input */}
+              <div className="space-y-1.5 mb-5">
+                <Label htmlFor="task-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
                 <Input
                   id="task-title"
                   placeholder="What needs to be done?"
                   value={taskTitle}
                   onChange={(e) => setTaskTitle(e.target.value)}
-                  className="bg-background border-border"
+                  className="bg-background border-border text-base h-11"
                   autoFocus
                 />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Priority</Label>
-                  <Select value={taskPriority || ''} onValueChange={(v) => setTaskPriority(v as Priority || undefined)}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Project</Label>
-                  {showNewProject ? (
-                    <div className="flex gap-1">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                            <span>{newProjectEmoji}</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2">
-                          <div className="grid grid-cols-6 gap-1">
-                            {EMOJI_OPTIONS.map((emoji) => (
-                              <button
-                                key={emoji}
-                                className={cn(
-                                  'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                                  newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                                )}
-                                onClick={() => setNewProjectEmoji(emoji)}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                      <Input
-                        placeholder="Name"
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  className="bg-background border-border flex-1"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
-                  data-sub-input
-                      />
-                      <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <Select value={taskProject} onValueChange={(v) => {
-                      if (v === '__new__') {
-                        setShowNewProject(true);
-                      } else {
-                        setTaskProject(v);
-                      }
-                    }}>
-                      <SelectTrigger className="bg-background border-border">
+
+              {/* Organization Section */}
+              <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Priority</Label>
+                    <Select value={taskPriority || ''} onValueChange={(v) => setTaskPriority(v as Priority || undefined)}>
+                      <SelectTrigger className="bg-background border-border h-9 text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.name} value={project.name}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>{project.emoji} {project.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                        <SelectItem value="__new__" className="text-primary">
-                          <Plus className="h-3 w-3 inline mr-1" />
-                          New Project
-                        </SelectItem>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
                       </SelectContent>
                     </Select>
-                  )}
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Project</Label>
+                    {showNewProject ? (
+                      <div className="flex gap-1">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
+                              <span>{newProjectEmoji}</span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-2">
+                            <div className="grid grid-cols-6 gap-1">
+                              {EMOJI_OPTIONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  className={cn(
+                                    'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
+                                    newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
+                                  )}
+                                  onClick={() => setNewProjectEmoji(emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                        <Input
+                          placeholder="Name"
+                          value={newProjectName}
+                          onChange={(e) => setNewProjectName(e.target.value)}
+                          className="bg-background border-border flex-1 h-9 text-sm"
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
+                          data-sub-input
+                        />
+                        <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select value={taskProject} onValueChange={(v) => {
+                        if (v === '__new__') {
+                          setShowNewProject(true);
+                        } else {
+                          setTaskProject(v);
+                        }
+                      }}>
+                        <SelectTrigger className="bg-background border-border h-9 text-sm">
+                          <SelectValue placeholder="None" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.name} value={project.name}>
+                              <span>{project.emoji} {project.name}</span>
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__new__" className="text-primary">
+                            <Plus className="h-3 w-3 inline mr-1" />
+                            New Project
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
                 </div>
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Start Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          'w-full justify-start text-left font-normal bg-background border-border',
-                          !taskStartDate && 'text-muted-foreground'
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {taskStartDate ? format(taskStartDate, 'MMM d') : 'Pick a date'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={taskStartDate}
-                        onSelect={setTaskStartDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+
+              {/* Scheduling Section */}
+              <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
+                            !taskStartDate && 'text-muted-foreground'
+                          )}
+                        >
+                          <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                          {taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={taskStartDate}
+                          onSelect={setTaskStartDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Time</Label>
+                    <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
+                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="anytime">Anytime</SelectItem>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="afternoon">Afternoon</SelectItem>
+                        <SelectItem value="evening">Evening</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Duration</Label>
+                    <Select value={taskDuration} onValueChange={setTaskDuration}>
+                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="15">15 min</SelectItem>
+                        <SelectItem value="30">30 min</SelectItem>
+                        <SelectItem value="45">45 min</SelectItem>
+                        <SelectItem value="60">1 hour</SelectItem>
+                        <SelectItem value="90">1.5 hours</SelectItem>
+                        <SelectItem value="120">2 hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Duration (min)</Label>
-                  <Input
-                    type="number"
-                    placeholder="30"
-                    value={taskDuration}
-                    onChange={(e) => setTaskDuration(e.target.value)}
-                    className="bg-background border-border"
-                  />
-                </div>
+                {taskTimeBucket && taskTimeBucket !== 'anytime' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Specific Time (optional)</Label>
+                    <Input
+                      type="time"
+                      value={taskStartTime}
+                      onChange={(e) => setTaskStartTime(e.target.value)}
+                      className="bg-background border-border h-9 text-sm w-32"
+                    />
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Time Bucket</Label>
-                  <Select value={taskTimeBucket || ''} onValueChange={(v) => setTaskTimeBucket(v as TimeBucket || undefined)}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue placeholder="Unscheduled" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="anytime">Anytime</SelectItem>
-                      <SelectItem value="morning">Morning</SelectItem>
-                      <SelectItem value="afternoon">Afternoon</SelectItem>
-                      <SelectItem value="evening">Evening</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Start Time</Label>
-                  <Input
-                    type="time"
-                    value={taskStartTime}
-                    onChange={(e) => setTaskStartTime(e.target.value)}
-                    className="bg-background border-border"
-                    disabled={!taskTimeBucket || taskTimeBucket === 'anytime'}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Repeat</Label>
+              {/* Repeat Section */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
                 <Select value={taskRepeatFrequency} onValueChange={(v) => setTaskRepeatFrequency(v as RepeatFrequency)}>
-                  <SelectTrigger className="bg-background border-border">
+                  <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -426,13 +439,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
 
-              {(taskRepeatFrequency === 'weekly' || taskRepeatFrequency === 'custom') && (
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">
-                    {taskRepeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
-                  </Label>
+                {(taskRepeatFrequency === 'weekly' || taskRepeatFrequency === 'custom') && (
                   <div className="flex gap-1">
                     {WEEKDAY_LABELS.map((day, index) => (
                       <button
@@ -440,145 +448,185 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                         type="button"
                         onClick={() => toggleTaskDay(index)}
                         className={cn(
-                          'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
+                          'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                           taskRepeatDays.includes(index)
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
                         )}
                       >
                         {day}
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {taskRepeatFrequency === 'monthly' && (
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Day of month</Label>
-                  <div className="grid grid-cols-7 gap-1">
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => setTaskRepeatMonthDay(day)}
-                        className={cn(
-                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
-                          taskRepeatMonthDay === day
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                        )}
-                      >
-                        {day}
-                      </button>
-                    ))}
+                {taskRepeatFrequency === 'monthly' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setTaskRepeatMonthDay(day)}
+                          className={cn(
+                            'w-7 h-7 rounded text-xs font-medium transition-colors',
+                            taskRepeatMonthDay === day
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          )}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      For months with fewer days, it will occur on the last day.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    For months with fewer days, it will occur on the last day.
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
               
-              <Button onClick={handleAddTask} className="w-full mt-4">
+              <Button onClick={handleAddTask} className="w-full mt-6 h-10">
                 Add Task
               </Button>
             </TabsContent>
             
-            <TabsContent value="habit" className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="habit-title" className="text-sm text-muted-foreground">Title</Label>
+            <TabsContent value="habit" className="mt-4">
+              {/* Title - Primary Input */}
+              <div className="space-y-1.5 mb-5">
+                <Label htmlFor="habit-title" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Title</Label>
                 <Input
                   id="habit-title"
                   placeholder="What habit to track?"
                   value={habitTitle}
                   onChange={(e) => setHabitTitle(e.target.value)}
-                  className="bg-background border-border"
+                  className="bg-background border-border text-base h-11"
                 />
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Group</Label>
-                  {showNewGroup ? (
-                    <div className="flex gap-1">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                            <span>{newGroupEmoji}</span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2">
-                          <div className="grid grid-cols-6 gap-1">
-                            {EMOJI_OPTIONS.map((emoji) => (
-                              <button
-                                key={emoji}
-                                className={cn(
-                                  'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                                  newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                                )}
-                                onClick={() => setNewGroupEmoji(emoji)}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                      <Input
-                        placeholder="Name"
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  className="bg-background border-border flex-1"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
-                  data-sub-input
-                      />
-                      <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <Select value={habitGroup} onValueChange={(v) => {
-                      if (v === '__new__') {
-                        setShowNewGroup(true);
-                      } else {
-                        setHabitGroup(v);
-                      }
-                    }}>
-                      <SelectTrigger className="bg-background border-border">
+
+              {/* Organization Section */}
+              <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Group</Label>
+                    {showNewGroup ? (
+                      <div className="flex gap-1">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
+                              <span>{newGroupEmoji}</span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-64 p-2">
+                            <div className="grid grid-cols-6 gap-1">
+                              {EMOJI_OPTIONS.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  className={cn(
+                                    'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
+                                    newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
+                                  )}
+                                  onClick={() => setNewGroupEmoji(emoji)}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                        <Input
+                          placeholder="Name"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          className="bg-background border-border flex-1 h-9 text-sm"
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
+                          data-sub-input
+                        />
+                        <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select value={habitGroup} onValueChange={(v) => {
+                        if (v === '__new__') {
+                          setShowNewGroup(true);
+                        } else {
+                          setHabitGroup(v);
+                        }
+                      }}>
+                        <SelectTrigger className="bg-background border-border h-9 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {habitGroups.map((group) => (
+                            <SelectItem key={group.name} value={group.name}>
+                              <span>{group.emoji} <span className="capitalize">{group.name}</span></span>
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__new__" className="text-primary">
+                            <Plus className="h-3 w-3 inline mr-1" />
+                            New Group
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Times per day</Label>
+                    <Select value={habitTimesPerDay} onValueChange={setHabitTimesPerDay}>
+                      <SelectTrigger className="bg-background border-border h-9 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {habitGroups.map((group) => (
-                          <SelectItem key={group.name} value={group.name}>
-                            <span>{group.emoji} <span className="capitalize">{group.name}</span></span>
-                          </SelectItem>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}x</SelectItem>
                         ))}
-                        <SelectItem value="__new__" className="text-primary">
-                          <Plus className="h-3 w-3 inline mr-1" />
-                          New Group
-                        </SelectItem>
                       </SelectContent>
                     </Select>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Times per day</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={habitTimesPerDay}
-                    onChange={(e) => setHabitTimesPerDay(e.target.value)}
-                    className="bg-background border-border"
-                  />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Repeat</Label>
+              {/* Scheduling Section */}
+              <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Time</Label>
+                    <Select value={habitTimeBucket} onValueChange={(v) => setHabitTimeBucket(v as TimeBucket)}>
+                      <SelectTrigger className="bg-background border-border h-9 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="anytime">Anytime</SelectItem>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="afternoon">Afternoon</SelectItem>
+                        <SelectItem value="evening">Evening</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {habitTimeBucket !== 'anytime' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Specific Time</Label>
+                      <Input
+                        type="time"
+                        value={habitStartTime}
+                        onChange={(e) => setHabitStartTime(e.target.value)}
+                        className="bg-background border-border h-9 text-sm"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Repeat Section */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
                 <Select value={habitRepeatFrequency} onValueChange={(v) => setHabitRepeatFrequency(v as RepeatFrequency)}>
-                  <SelectTrigger className="bg-background border-border">
+                  <SelectTrigger className="bg-background border-border h-9 text-sm w-40">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -591,13 +639,8 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                       ))}
                   </SelectContent>
                 </Select>
-              </div>
 
-              {(habitRepeatFrequency === 'weekly' || habitRepeatFrequency === 'custom') && (
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">
-                    {habitRepeatFrequency === 'weekly' ? 'Repeat on' : 'Select days'}
-                  </Label>
+                {(habitRepeatFrequency === 'weekly' || habitRepeatFrequency === 'custom') && (
                   <div className="flex gap-1">
                     {WEEKDAY_LABELS.map((day, index) => (
                       <button
@@ -605,74 +648,45 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                         type="button"
                         onClick={() => toggleHabitDay(index)}
                         className={cn(
-                          'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
+                          'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                           habitRepeatDays.includes(index)
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
                         )}
                       >
                         {day}
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
 
-              {habitRepeatFrequency === 'monthly' && (
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Day of month</Label>
-                  <div className="grid grid-cols-7 gap-1">
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => setHabitRepeatMonthDay(day)}
-                        className={cn(
-                          'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
-                          habitRepeatMonthDay === day
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                        )}
-                      >
-                        {day}
-                      </button>
-                    ))}
+                {habitRepeatFrequency === 'monthly' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-7 gap-1">
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => setHabitRepeatMonthDay(day)}
+                          className={cn(
+                            'w-7 h-7 rounded text-xs font-medium transition-colors',
+                            habitRepeatMonthDay === day
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          )}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      For months with fewer days, it will occur on the last day.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    For months with fewer days, it will occur on the last day.
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Time Bucket</Label>
-                  <Select value={habitTimeBucket} onValueChange={(v) => setHabitTimeBucket(v as TimeBucket)}>
-                    <SelectTrigger className="bg-background border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="anytime">Anytime</SelectItem>
-                      <SelectItem value="morning">Morning</SelectItem>
-                      <SelectItem value="afternoon">Afternoon</SelectItem>
-                      <SelectItem value="evening">Evening</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Start Time</Label>
-                  <Input
-                    type="time"
-                    value={habitStartTime}
-                    onChange={(e) => setHabitStartTime(e.target.value)}
-                    className="bg-background border-border"
-                    disabled={habitTimeBucket === 'anytime'}
-                  />
-                </div>
+                )}
               </div>
               
-              <Button onClick={handleAddHabit} className="w-full mt-4">
+              <Button onClick={handleAddHabit} className="w-full mt-6 h-10">
                 Add Habit
               </Button>
             </TabsContent>

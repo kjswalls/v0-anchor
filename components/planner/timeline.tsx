@@ -289,7 +289,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { deleteTask(task.id); setShowDeleteConfirm(false); }}
+              onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setShowDeleteConfirm(false); }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

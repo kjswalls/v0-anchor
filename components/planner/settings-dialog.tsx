@@ -93,14 +93,18 @@ function SettingRow({ label, description, children, disabled }: { label: string;
   );
 }
 
-const MODIFIER_LABELS: Record<string, string> = {
-  'ctrl': 'Ctrl',
-  'meta': '⌘',
-  'shift': 'Shift',
-  'alt': 'Alt',
-};
+// OS-aware modifier labels
+function getModifierLabels(isMac: boolean): Record<string, string> {
+  return {
+    'ctrl': isMac ? '⌃' : 'Ctrl',
+    'meta': isMac ? '⌘' : 'Ctrl',
+    'shift': isMac ? '⇧' : 'Shift',
+    'alt': isMac ? '⌥' : 'Alt',
+  };
+}
 
-function ShortcutRow({ binding }: { binding: ShortcutBinding }) {
+function ShortcutRow({ binding, isMac }: { binding: ShortcutBinding; isMac: boolean }) {
+  const MODIFIER_LABELS = getModifierLabels(isMac);
   const { updateShortcut } = useKeyboardShortcutsStore();
   const [recording, setRecording] = useState(false);
   const [recordedKeys, setRecordedKeys] = useState<string[]>([]);
@@ -203,6 +207,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
   const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
+  const [isMac, setIsMac] = useState(false);
+  
+  // Detect OS on mount
+  useEffect(() => {
+    setIsMac(typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
+  }, []);
+  
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
   const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
@@ -383,9 +394,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               icon={<Keyboard className="h-4 w-4" />}
             >
               <div className="space-y-4">
-                {shortcuts.map((binding) => (
-                  <ShortcutRow key={binding.id} binding={binding} />
-                ))}
+{shortcuts.map((binding) => (
+                    <ShortcutRow key={binding.id} binding={binding} isMac={isMac} />
+                  ))}
               </div>
               <div className="pt-1">
                 <Button
