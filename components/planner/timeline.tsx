@@ -1169,9 +1169,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     >
       {/* Current time indicator - subtle glowing line extending past bucket edges */}
       {/* Uses white in dark mode, dark gray in light mode for visibility */}
+      {/* z-0 ensures it renders behind task/habit cards */}
       {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
         <div
-          className="absolute -left-3 -right-3 z-10 group/indicator"
+          className="absolute -left-3 -right-3 z-0 group/indicator"
           style={{ top: `${timeProgress * 100}%` }}
         >
           {/* Invisible hover area covering the entire indicator */}
