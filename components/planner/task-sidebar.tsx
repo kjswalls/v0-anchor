@@ -607,26 +607,30 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {isVisible && activeTab === 'tasks' && (
         <>
           <div className="p-4 border-b border-border">
-            <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
-              <FilterButton />
-              
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                    Group
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-                    <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="project" className="text-xs">Project</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="priority" className="text-xs">Priority</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <div className="flex items-center gap-2">
+              {/* Filter and Group buttons - hidden in chill mode until hovered */}
+              <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
+                <FilterButton />
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
+                      Group
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+                      <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="project" className="text-xs">Project</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="priority" className="text-xs">Priority</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
 
+              {/* Icon buttons - always visible */}
               <div className="flex items-center gap-1 ml-auto">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onManageCategories} title="Manage Projects & Groups">
                   <FolderOpen className="h-3.5 w-3.5" />
@@ -707,44 +711,48 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       {isVisible && activeTab === 'habits' && (
         <>
           <div className="p-4 border-b border-border space-y-3">
-            <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
-              {/* Status filter */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className={cn('h-7 px-2 text-xs', habitStatusFilter !== 'all' && 'border-primary text-primary')}>
-                    <Filter className="h-3.5 w-3.5 mr-1" />
-                    {habitStatusFilter === 'all' ? 'Filter' : habitStatusFilter.charAt(0).toUpperCase() + habitStatusFilter.slice(1)}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuRadioGroup value={habitStatusFilter} onValueChange={(v) => setHabitStatusFilter(v as typeof habitStatusFilter)}>
-                    <DropdownMenuRadioItem value="all" className="text-xs">All statuses</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="pending" className="text-xs">Pending</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="done" className="text-xs">Done</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="skipped" className="text-xs">Skipped</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <div className="flex items-center gap-2">
+              {/* Filter and Group buttons - hidden in chill mode until hovered */}
+              <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
+                {/* Status filter */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn('h-7 px-2 text-xs', habitStatusFilter !== 'all' && 'border-primary text-primary')}>
+                      <Filter className="h-3.5 w-3.5 mr-1" />
+                      {habitStatusFilter === 'all' ? 'Filter' : habitStatusFilter.charAt(0).toUpperCase() + habitStatusFilter.slice(1)}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuRadioGroup value={habitStatusFilter} onValueChange={(v) => setHabitStatusFilter(v as typeof habitStatusFilter)}>
+                      <DropdownMenuRadioItem value="all" className="text-xs">All statuses</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="pending" className="text-xs">Pending</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="done" className="text-xs">Done</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="skipped" className="text-xs">Skipped</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              {/* Group by */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                    Group
-                    <ChevronDown className="h-3 w-3 ml-1" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuRadioGroup value={habitGroupBy} onValueChange={(v) => setHabitGroupBy(v as typeof habitGroupBy)}>
-                    <DropdownMenuRadioItem value="group" className="text-xs">Group</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="repeat" className="text-xs">Repetition</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="bucket" className="text-xs">Time bucket</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                {/* Group by */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
+                      Group
+                      <ChevronDown className="h-3 w-3 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuRadioGroup value={habitGroupBy} onValueChange={(v) => setHabitGroupBy(v as typeof habitGroupBy)}>
+                      <DropdownMenuRadioItem value="group" className="text-xs">Group</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="repeat" className="text-xs">Repetition</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="bucket" className="text-xs">Time bucket</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
 
+              {/* Icon buttons - always visible */}
               <div className="flex items-center gap-1 ml-auto">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onManageCategories} title="Manage Groups">
                   <FolderOpen className="h-3.5 w-3.5" />
