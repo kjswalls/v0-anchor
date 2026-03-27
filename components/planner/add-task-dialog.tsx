@@ -364,9 +364,8 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                           <Button
                             variant="outline"
                             className={cn(
-                              'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
-                              !taskStartDate && 'text-muted-foreground',
-                              taskStartDate && 'pr-7'
+                              'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2 pr-7',
+                              !taskStartDate && 'text-muted-foreground'
                             )}
                           >
                             <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />

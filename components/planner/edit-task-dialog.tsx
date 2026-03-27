@@ -292,9 +292,8 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                       <Button
                         variant="outline"
                         className={cn(
-                          'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
-                          !startDate && 'text-muted-foreground',
-                          startDate && 'pr-7'
+                          'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2 pr-7',
+                          !startDate && 'text-muted-foreground'
                         )}
                       >
                         <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
