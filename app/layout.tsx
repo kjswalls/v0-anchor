@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 const inter = Inter({ 
@@ -62,6 +63,7 @@ export default function RootLayout({
           <SupabaseProvider>
             {children}
           </SupabaseProvider>
+          <Toaster position="bottom-center" />
         </ThemeProvider>
         <Analytics />
       </body>

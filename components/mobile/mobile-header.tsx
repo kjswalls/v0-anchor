@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
-import { Calendar, Plus, Sun, Moon } from 'lucide-react';
+import { Calendar, Plus, Sun, Moon, Undo2, Redo2 } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
   onAddClick: () => void;
@@ -16,7 +17,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
-  const { selectedDate, setSelectedDate } = usePlannerStore();
+  const { selectedDate, setSelectedDate, undo, redo, canUndo, canRedo } = usePlannerStore();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -70,7 +71,37 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
         </Popover>
       </div>
       
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        {/* Undo/Redo buttons */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={undo}
+          disabled={!canUndo}
+          className={cn(
+            'h-8 w-8 text-muted-foreground hover:text-foreground',
+            !canUndo && 'opacity-30'
+          )}
+          title="Undo"
+        >
+          <Undo2 className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={redo}
+          disabled={!canRedo}
+          className={cn(
+            'h-8 w-8 text-muted-foreground hover:text-foreground',
+            !canRedo && 'opacity-30'
+          )}
+          title="Redo"
+        >
+          <Redo2 className="h-4 w-4" />
+        </Button>
+
+        <div className="w-px h-5 bg-border mx-1" />
+
         <Button
           variant="ghost"
           size="icon"
