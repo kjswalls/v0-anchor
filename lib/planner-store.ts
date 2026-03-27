@@ -997,17 +997,18 @@ usePlannerStore.subscribe((state) => {
 
   // Only save if data actually changed (not just view state)
   if (prevStateJson && currentStateJson !== prevStateJson) {
-    saveToHistory(currentState);
-    // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
-    isUpdatingUndoRedo = true;
-    const info = getHistoryInfo();
-    usePlannerStore.setState({
-      canUndo: historyIndex > 0,
-      canRedo: false,
-      actionLog: info.actionLog,
-      historyIndex: info.currentIndex,
-    });
-    isUpdatingUndoRedo = false;
+saveToHistory(currentState);
+      // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
+      isUpdatingUndoRedo = true;
+      const info = getHistoryInfo();
+      console.log('[v0] History saved - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'canUndo will be:', historyIndex > 0);
+      usePlannerStore.setState({
+        canUndo: historyIndex > 0,
+        canRedo: false,
+        actionLog: info.actionLog,
+        historyIndex: info.currentIndex,
+      });
+      isUpdatingUndoRedo = false;
   }
 
   prevStateJson = currentStateJson;
