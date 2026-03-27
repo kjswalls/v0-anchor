@@ -1167,24 +1167,31 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Current time indicator - subtle glowing line extending past bucket edges */}
-      {/* Uses white in dark mode, dark gray in light mode for visibility */}
+      {/* Current time indicator - split into line (z-0) and clock icon (z-20) */}
+      {/* The line renders behind task cards, but clock icon shows above nav previews */}
       {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
-        <div
-          className="absolute -left-3 -right-3 z-10 group/indicator"
-          style={{ top: `${timeProgress * 100}%` }}
-        >
-          {/* Invisible hover area covering the entire indicator */}
-          <div className="absolute -left-4 right-1 -top-2 -bottom-2 cursor-default" />
-          {/* Clock icon to the left - only visible on hover of the indicator area */}
-          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={2.5} />
-          {/* Glowing dot */}
-          <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 pointer-events-none" />
-          {/* Dashed line */}
+        <>
+          {/* Clock icon in separate stacking context - z-20 to show above nav previews */}
           <div
-            className="absolute left-2.5 right-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 pointer-events-none"
-          />
-        </div>
+            className="absolute -left-3 -right-3 z-20 group/indicator pointer-events-none"
+            style={{ top: `${timeProgress * 100}%` }}
+          >
+            {/* Invisible hover area */}
+            <div className="absolute -left-4 right-1 -top-2 -bottom-2 cursor-default pointer-events-auto" />
+            {/* Clock icon */}
+            <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={2.5} />
+          </div>
+          {/* Dashed line and dot - z-0 to render behind task/habit cards */}
+          <div
+            className="absolute -left-3 -right-3 z-0 pointer-events-none"
+            style={{ top: `${timeProgress * 100}%` }}
+          >
+            {/* Glowing dot */}
+            <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50" />
+            {/* Dashed line */}
+            <div className="absolute left-2.5 right-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50" />
+          </div>
+        </>
       )}
       
       {/* Header + untimed section wrapped together as the unscheduled drop zone */}

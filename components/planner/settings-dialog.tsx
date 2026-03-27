@@ -32,6 +32,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore, AIProvider } from '@/lib/ai-settings-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -214,6 +215,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     systemPrompt, setSystemPrompt,
   } = useAISettingsStore();
 
+  const {
+    leftSidebarHoverEnabled,
+    rightSidebarHoverEnabled,
+    setLeftSidebarHoverEnabled,
+    setRightSidebarHoverEnabled,
+  } = useSidebarStore();
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[85vh] overflow-hidden flex flex-col">
@@ -351,6 +359,20 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 <Switch 
                   checked={showCurrentTimeIndicator} 
                   onCheckedChange={setShowCurrentTimeIndicator}
+                />
+              </SettingRow>
+
+              <SettingRow label="Show tasks sidebar on hover" description="Reveal the left sidebar when hovering the left edge (when collapsed)">
+                <Switch 
+                  checked={leftSidebarHoverEnabled} 
+                  onCheckedChange={setLeftSidebarHoverEnabled}
+                />
+              </SettingRow>
+
+              <SettingRow label="Show chat sidebar on hover" description="Reveal the right sidebar when hovering the right edge (when collapsed)">
+                <Switch 
+                  checked={rightSidebarHoverEnabled} 
+                  onCheckedChange={setRightSidebarHoverEnabled}
                 />
               </SettingRow>
             </SettingsSection>

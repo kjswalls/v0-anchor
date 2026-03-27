@@ -42,6 +42,18 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: 'Redo the last undone action',
     keys: ['ctrl', 'shift', 'z'],
   },
+  {
+    id: 'toggle_left_sidebar',
+    label: 'Toggle left sidebar',
+    description: 'Show or hide the tasks sidebar',
+    keys: ['meta', '['],
+  },
+  {
+    id: 'toggle_right_sidebar',
+    label: 'Toggle right sidebar',
+    description: 'Show or hide the AI chat sidebar',
+    keys: ['meta', ']'],
+  },
 ];
 
 interface KeyboardShortcutsStore {

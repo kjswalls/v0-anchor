@@ -575,9 +575,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     )}
                     {/* Current time indicator - subtle glowing line */}
                     {/* Uses white in dark mode, dark gray in light mode for visibility */}
+                    {/* z-0 ensures it renders behind task/habit cards */}
                     {showCurrentTimeIndicator && isCurrentCell && minuteProgress > 0 && (
                       <div
-                        className="absolute -left-4 -right-1 z-10 group/indicator"
+                        className="absolute -left-4 -right-1 z-0 group/indicator"
                         style={{ top: `${minuteProgress * 100}%` }}
                       >
                         {/* Invisible hover area covering the entire indicator */}

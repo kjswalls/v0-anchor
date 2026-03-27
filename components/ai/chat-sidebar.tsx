@@ -2,37 +2,51 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { X, Send, Sparkles, MessageSquarePlus, Trash2 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, GripVertical, User } from 'lucide-react'
 import { usePlannerStore } from '@/lib/planner-store'
 import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
 import { isOnboardingComplete } from '@/lib/user-profile'
 import { OnboardingChat } from './onboarding-chat'
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
+import { useSidebarStore } from '@/lib/sidebar-store'
+import { cn } from '@/lib/utils'
+import { format } from 'date-fns'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  timestamp?: number
 }
 
-const STORAGE_KEY = 'anchor-chat-sidebar-open'
 const HISTORY_KEY = 'anchor-chat-history'
-const HISTORY_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const WIDTH_KEY = 'anchor-chat-sidebar-width'
+const HISTORY_TTL_MS = 24 * 60 * 60 * 1000
 const ASSISTANT_NAME = 'Beacon'
 const OPENCLAW_NAME = 'OpenClaw'
+const MIN_WIDTH = 320
+const MAX_WIDTH = 600
+const DEFAULT_WIDTH = 380
 
 export function ChatSidebar() {
-  const [isOpen, setIsOpen] = useState(false)
+  const { rightSidebarOpen: isOpen, rightSidebarHovered, rightSidebarHoverEnabled, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
+  const isVisible = isOpen || (rightSidebarHoverEnabled && rightSidebarHovered)
+  const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null)
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
+  const [isResizing, setIsResizing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
@@ -43,7 +57,6 @@ export function ChatSidebar() {
       const uid = data.user?.id
       if (!uid) return
       setUserId(uid)
-
       const done = await isOnboardingComplete(uid)
       if (!done) setShowOnboarding(true)
     })
@@ -53,7 +66,7 @@ export function ChatSidebar() {
     setShowOnboarding(false)
   }
 
-  // Fetch stored OpenClaw chat URL + Anchor API key when provider is openclaw
+  // Fetch OpenClaw chat URL when provider is openclaw
   useEffect(() => {
     if (aiProvider !== 'openclaw') return
     Promise.all([
@@ -62,13 +75,12 @@ export function ChatSidebar() {
     ])
       .then(([chatData, keyData]) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null)
-        // Store the Anchor API key so we can use it for auth without the user pasting it
         if (keyData.apiKey) useAISettingsStore.getState().setOpenclawApiKey(keyData.apiKey)
       })
       .catch(() => setOpenclawChatUrl(null))
   }, [aiProvider])
 
-  // Load chat history from localStorage on mount (24h TTL)
+  // Load chat history and width from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(HISTORY_KEY)
@@ -80,10 +92,15 @@ export function ChatSidebar() {
           localStorage.removeItem(HISTORY_KEY)
         }
       }
+      const savedWidth = localStorage.getItem(WIDTH_KEY)
+      if (savedWidth) {
+        const w = parseInt(savedWidth, 10)
+        if (w >= MIN_WIDTH && w <= MAX_WIDTH) setSidebarWidth(w)
+      }
     } catch { localStorage.removeItem(HISTORY_KEY) }
   }, [])
 
-  // Save chat history to localStorage whenever messages change
+  // Save chat history
   useEffect(() => {
     if (messages.length === 0) return
     try {
@@ -91,15 +108,23 @@ export function ChatSidebar() {
     } catch { /* ignore */ }
   }, [messages])
 
-  // Restore open state
+  // Save width
   useEffect(() => {
     try {
-      if (localStorage.getItem(STORAGE_KEY) === 'true') setIsOpen(true)
+      localStorage.setItem(WIDTH_KEY, String(sidebarWidth))
     } catch { /* ignore */ }
+  }, [sidebarWidth])
+
+  // Mark as mounted
+  useEffect(() => {
+    setMounted(true)
   }, [])
 
+  // Focus input when sidebar opens
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, String(isOpen)) } catch { /* ignore */ }
+    if (isOpen && textareaRef.current) {
+      setTimeout(() => textareaRef.current?.focus(), 100)
+    }
   }, [isOpen])
 
   // Auto-scroll to bottom
@@ -115,16 +140,50 @@ export function ChatSidebar() {
     ta.style.height = Math.min(ta.scrollHeight, 120) + 'px'
   }, [input])
 
+  // Resize handling
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!sidebarRef.current) return
+      const containerRight = sidebarRef.current.getBoundingClientRect().right
+      const newWidth = containerRight - e.clientX
+      setSidebarWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, newWidth)))
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
+
+  const copyMessage = useCallback((content: string, index: number) => {
+    navigator.clipboard.writeText(content)
+    setCopiedIndex(index)
+    setTimeout(() => setCopiedIndex(null), 2000)
+  }, [])
+
   const sendMessage = useCallback(async () => {
     const text = input.trim()
     if (!text || isLoading) return
 
-    const userMessage: Message = { role: 'user', content: text }
+    const userMessage: Message = { role: 'user', content: text, timestamp: Date.now() }
     const updatedMessages = [...messages, userMessage]
     setMessages(updatedMessages)
     setInput('')
     setIsLoading(true)
-    setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }])
 
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
@@ -136,7 +195,6 @@ export function ChatSidebar() {
       let res: Response
 
       if (provider === 'openclaw') {
-        // Browser-direct: POST straight to the OpenClaw gateway chat endpoint
         if (!openclawChatUrl) {
           setMessages((prev) => {
             const next = [...prev]
@@ -145,6 +203,7 @@ export function ChatSidebar() {
               next[next.length - 1] = {
                 role: 'assistant',
                 content: 'OpenClaw not connected yet — run `openclaw anchor-context setup` to connect.',
+                timestamp: Date.now(),
               }
             }
             return next
@@ -162,7 +221,6 @@ export function ChatSidebar() {
           body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
         })
       } else {
-        // All other providers go through the /api/chat server route
         res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -204,7 +262,7 @@ export function ChatSidebar() {
         const next = [...prev]
         const last = next[next.length - 1]
         if (last?.role === 'assistant' && last.content === '') {
-          next[next.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }
+          next[next.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.', timestamp: Date.now() }
         }
         return next
       })
@@ -217,151 +275,222 @@ export function ChatSidebar() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
+  if (!mounted) return null
+
   return (
-    <>
-      {/* Toggle tab */}
+    <TooltipProvider delayDuration={300}>
+      {/* Toggle tab - always visible, positions at sidebar edge when open */}
       <button
-        onClick={() => setIsOpen((o) => !o)}
-        aria-label="Toggle Beacon AI assistant"
-        className={[
-          'absolute right-0 top-1/2 -translate-y-1/2 z-30',
+        onClick={toggleRightSidebar}
+        aria-label="Toggle AI assistant"
+        title={isOpen ? 'Collapse chat (Cmd+])' : 'Expand chat (Cmd+])'}
+        className={cn(
+          'absolute top-1/2 -translate-y-1/2 z-30',
           'flex items-center gap-1.5 px-1.5 py-3',
           'rounded-l-lg border border-r-0 border-border',
           'bg-card text-foreground shadow-md',
           'hover:bg-accent transition-colors duration-200',
-          isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100',
-        ].join(' ')}
+        )}
+        style={{ right: isVisible ? sidebarWidth : 0 }}
       >
         <Sparkles className="h-3.5 w-3.5 text-primary" />
       </button>
 
-      {/* Sidebar panel — absolute, scoped to parent (main) height */}
-      <div
-        className={[
-          'absolute right-0 top-0 h-full w-[320px] z-20',
-          'flex flex-col',
-          'bg-card border-l border-border shadow-2xl',
-          'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full',
-        ].join(' ')}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
-          <span className="text-xs font-semibold tracking-widest uppercase text-muted-foreground">
-            {displayName}
-          </span>
-          <div className="flex items-center gap-0.5">
-            {messages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                onClick={() => setMessages([])}
-                title="Clear conversation"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+      {/* Sidebar panel */}
+      {isVisible && (
+        <div
+          ref={sidebarRef}
+          className={cn(
+            "absolute right-0 top-0 h-full z-20 flex transition-all duration-200",
+            rightSidebarHovered && !isOpen && "shadow-xl"
+          )}
+          style={{ width: sidebarWidth }}
+          onMouseLeave={() => rightSidebarHovered && setRightSidebarHovered(false)}
+        >
+          {/* Resize handle */}
+          <div
+            className={cn(
+              'w-1 hover:w-1.5 cursor-col-resize flex items-center justify-center group transition-all',
+              'hover:bg-primary/20',
+              isResizing && 'w-1.5 bg-primary/30'
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => setIsOpen(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            onMouseDown={handleMouseDown}
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
           </div>
-        </div>
 
-        {/* Onboarding */}
-        {showOnboarding && userId ? (
-          <div className="flex-1 overflow-y-auto">
-            <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
-          </div>
-        ) : (
-          <>
-            {/* Message list — flex-1 + overflow-y-auto keeps it scrollable within fixed panel */}
-            <div className="flex-1 overflow-y-auto">
-              {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
-                  <div className="relative">
-                    <MessageSquarePlus className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
-                    <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
-                    </p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      {aiProvider === 'openclaw'
-                        ? `Ask anything — ${displayName} knows your tasks, habits, and projects.`
-                        : aiProvider === 'none'
-                        ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
-                        : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
-                      }
-                    </p>
-                  </div>
+          {/* Main panel */}
+          <div className="flex-1 flex flex-col bg-background border-l border-border shadow-2xl overflow-hidden">
+            {/* Onboarding */}
+            {showOnboarding && userId ? (
+              <div className="flex-1 overflow-y-auto">
+                <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
+              </div>
+            ) : (
+              <>
+                {/* Messages with fade at top */}
+                <div className="flex-1 overflow-y-auto relative">
+                  {/* Gradient fade at top */}
+                  <div className="sticky top-0 h-12 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
+
+                  {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3 -mt-12">
+                      <div className="relative">
+                        <MessageSquarePlus className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
+                        <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {aiProvider === 'openclaw'
+                            ? `Ask anything — ${displayName} knows your tasks, habits, and projects.`
+                            : aiProvider === 'none'
+                            ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
+                            : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3 px-4 pb-4 -mt-8">
+                      {messages.map((msg, i) => (
+                        <div key={i} className="group">
+                          {msg.role === 'user' ? (
+                            // User message - right aligned with avatar
+                            <div className="flex items-start gap-3 justify-end">
+                              <div className="flex flex-col items-end gap-1 max-w-[85%]">
+                                <div className="bg-zinc-200 dark:bg-zinc-800 text-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+                                  {msg.content}
+                                </div>
+                                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {msg.timestamp && (
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {format(msg.timestamp, 'h:mm a')}
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => copyMessage(msg.content, i)}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    {copiedIndex === i ? (
+                                      <Check className="h-3 w-3 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                                <User className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            </div>
+                          ) : (
+// Assistant message - left aligned, no bubble, with markdown
+                          <div className="flex flex-col gap-1">
+                            <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
+                              {msg.content ? (
+                                <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+                              ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                            </div>
+                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {msg.timestamp && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {format(msg.timestamp, 'h:mm a')}
+                                  </span>
+                                )}
+                                {msg.content && (
+                                  <button
+                                    onClick={() => copyMessage(msg.content, i)}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    {copiedIndex === i ? (
+                                      <Check className="h-3 w-3 text-green-500" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
+                        <div className="text-sm text-foreground">
+                          <LoadingDots />
+                        </div>
+                      )}
+                      <div ref={bottomRef} />
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="flex flex-col gap-2 px-4 py-4">
-                  {messages.map((msg, i) => (
-                    <div key={i} className={['flex', msg.role === 'user' ? 'justify-end' : 'justify-start'].join(' ')}>
-                      <div className={[
-                        'max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap',
-                        msg.role === 'user'
-                          ? 'bg-primary text-primary-foreground rounded-br-sm'
-                          : 'bg-muted text-foreground rounded-bl-sm',
-                      ].join(' ')}>
-                        {(msg.role === 'assistant'
-                          ? msg.content?.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')
-                          : msg.content
-                        ) || (msg.role === 'assistant' && isLoading && i === messages.length - 1
-                          ? <LoadingDots />
-                          : null
+
+                {/* Input area */}
+                <div className="px-3 pb-3 pt-2 shrink-0">
+                  <div className="rounded-2xl border border-border bg-muted/30 focus-within:border-border focus-within:bg-muted/50 transition-colors">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={`Message ${displayName}...`}
+                      rows={1}
+                      className="resize-none min-h-0 text-sm leading-6 py-3 px-4 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none placeholder:text-muted-foreground/60"
+                      disabled={isLoading}
+                    />
+                    <div className="flex items-center justify-between px-2 pb-2">
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                              disabled
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Attach files (coming soon)</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {input.trim() ? (
+                          <Button
+                            size="icon"
+                            className="h-8 w-8 rounded-full"
+                            onClick={sendMessage}
+                            disabled={isLoading}
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                                disabled
+                              >
+                                <Mic className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Voice input (coming soon)</TooltipContent>
+                          </Tooltip>
                         )}
                       </div>
                     </div>
-                  ))}
-                  {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-                    <div className="flex justify-start">
-                      <div className="bg-muted rounded-2xl rounded-bl-sm px-3 py-2"><LoadingDots /></div>
-                    </div>
-                  )}
-                  <div ref={bottomRef} />
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Input area */}
-            <div className="px-3 pb-3 pt-2 shrink-0">
-              <div className="rounded-xl border border-border bg-background focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-colors">
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={`Ask ${displayName} anything…`}
-                  rows={1}
-                  className="resize-none min-h-0 text-sm leading-6 py-3 px-3 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
-                  disabled={isLoading}
-                />
-                <div className="flex items-center justify-between px-2 pb-2">
-                  <span className="text-[10px] text-muted-foreground/50 pl-1">⏎ send · ⇧⏎ newline</span>
-                  <Button
-                    size="icon"
-                    className="h-7 w-7 rounded-lg"
-                    onClick={sendMessage}
-                    disabled={!input.trim() || isLoading}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </TooltipProvider>
   )
 }
 
@@ -369,7 +498,7 @@ function LoadingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-label="Loading">
       {[0, 1, 2].map((i) => (
-        <span key={i} className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce"
+        <span key={i} className="h-1.5 w-1.5 rounded-full bg-muted-foreground opacity-60 animate-bounce"
           style={{ animationDelay: `${i * 0.15}s` }} />
       ))}
     </span>
