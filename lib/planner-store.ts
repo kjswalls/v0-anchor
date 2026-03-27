@@ -190,7 +190,7 @@ const saveToHistory = (state: HistoryState) => {
   // Add action log entry
   actionLog.push({
     id: crypto.randomUUID(),
-    label: pendingActionLabel || 'Session start',
+    label: pendingActionLabel || 'Unknown action',
     timestamp: Date.now(),
   });
   pendingActionLabel = null;
