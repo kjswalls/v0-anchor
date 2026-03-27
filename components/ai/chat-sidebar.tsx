@@ -214,11 +214,16 @@ export function ChatSidebar() {
   // Don't render until mounted to avoid hydration mismatch
   if (!mounted) return null
 
+  console.log('[v0] ChatSidebar rendering, isOpen:', isOpen, 'mounted:', mounted)
+
   return (
     <>
       {/* Toggle tab */}
       <button
-        onClick={() => setIsOpen((o) => !o)}
+        onClick={() => {
+          console.log('[v0] ChatSidebar toggle clicked, current isOpen:', isOpen)
+          setIsOpen((o) => !o)
+        }}
         aria-label="Toggle Beacon AI assistant"
         className={[
           'absolute right-0 top-1/2 -translate-y-1/2 z-30',
@@ -233,14 +238,16 @@ export function ChatSidebar() {
       </button>
 
       {/* Sidebar panel — absolute, scoped to parent (main) height */}
+      {/* Only render when open or animating to prevent duplicate visual */}
       <div
         className={[
           'absolute right-0 top-0 h-full w-[320px] z-20',
           'flex flex-col',
           'bg-card border-l border-border shadow-2xl',
           'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full',
+          isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none',
         ].join(' ')}
+        style={{ visibility: isOpen ? 'visible' : 'hidden' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
