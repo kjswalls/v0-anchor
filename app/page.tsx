@@ -45,6 +45,7 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
+  MeasuringStrategy,
 } from '@dnd-kit/core';
 import { GripVertical, Circle } from 'lucide-react';
 import { format } from 'date-fns';
@@ -326,6 +327,11 @@ export default function PlannerPage() {
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      measuring={{
+        droppable: {
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
     >
       {/* Desktop Layout */}
       <div className="hidden md:flex h-screen flex-col bg-background">
