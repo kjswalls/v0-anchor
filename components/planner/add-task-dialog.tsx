@@ -432,7 +432,9 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(REPEAT_FREQUENCY_LABELS).map(([value, label]) => (
+                    {Object.entries(REPEAT_FREQUENCY_LABELS)
+                      .filter(([value]) => value !== 'weekly')
+                      .map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
                       </SelectItem>
@@ -631,7 +633,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(REPEAT_FREQUENCY_LABELS)
-                      .filter(([value]) => value !== 'none')
+                      .filter(([value]) => value !== 'none' && value !== 'weekly')
                       .map(([value, label]) => (
                         <SelectItem key={value} value={value}>
                           {label}

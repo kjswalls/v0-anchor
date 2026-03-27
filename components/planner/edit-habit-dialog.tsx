@@ -322,7 +322,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(REPEAT_FREQUENCY_LABELS)
-                    .filter(([value]) => value !== 'none')
+                    .filter(([value]) => value !== 'none' && value !== 'weekly')
                     .map(([value, label]) => (
                       <SelectItem key={value} value={value}>
                         {label}
@@ -378,17 +378,17 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
             </div>
           </div>
           
-          <DialogFooter className="flex justify-between items-center gap-3">
+          <DialogFooter className="flex flex-row justify-between items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={handleDelete}
             >
               <Trash2 className="h-4 w-4" />
               <span className="sr-only">Delete habit</span>
             </Button>
-            <Button onClick={handleSave} className="flex-1">
+            <Button onClick={handleSave} className="flex-1 min-w-0">
               Save Changes
             </Button>
           </DialogFooter>
