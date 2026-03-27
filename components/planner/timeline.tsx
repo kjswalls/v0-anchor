@@ -1156,7 +1156,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     <div
       ref={setNodeRef}
       className={cn(
-        'relative rounded-xl border-2 border-dashed transition-all',
+        'relative rounded-xl border-2 border-dashed transition-all overflow-visible',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
         isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background'
