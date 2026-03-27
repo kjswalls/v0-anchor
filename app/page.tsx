@@ -86,6 +86,7 @@ export default function PlannerPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addDialogTab, setAddDialogTab] = useState<'task' | 'habit'>('task');
   const [addDialogBucket, setAddDialogBucket] = useState<TimeBucket | undefined>();
+  const [addDialogDate, setAddDialogDate] = useState<Date | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Keyboard shortcut delete confirmation
@@ -231,9 +232,17 @@ export default function PlannerPage() {
     setEditingHabit(habit);
   };
 
-  const handleAddFromTopNav = () => {
+const handleAddFromTopNav = () => {
     setAddDialogTab('task');
     setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
+    setAddDialogOpen(true);
+  };
+  
+  const handleAddFromSidebar = () => {
+    setAddDialogTab('task');
+    setAddDialogBucket(undefined);
+    setAddDialogDate(undefined);
     setAddDialogOpen(true);
   };
 
@@ -252,6 +261,7 @@ export default function PlannerPage() {
   const handleAddFromTimeline = (bucket: TimeBucket, type: 'task' | 'habit') => {
     setAddDialogTab(type);
     setAddDialogBucket(bucket);
+    setAddDialogDate(selectedDate);
     setAddDialogOpen(true);
   };
 
@@ -463,6 +473,7 @@ export default function PlannerPage() {
         onOpenChange={setAddDialogOpen}
         defaultTab={addDialogTab}
         defaultBucket={addDialogBucket}
+        defaultDate={addDialogDate}
       />
       
       <EditTaskDialog

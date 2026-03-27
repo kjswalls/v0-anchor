@@ -47,9 +47,10 @@ interface AddTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   defaultTab?: 'task' | 'habit';
   defaultBucket?: TimeBucket;
+  defaultDate?: Date;
 }
 
-export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket }: AddTaskDialogProps) {
+export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket, defaultDate }: AddTaskDialogProps) {
   const { 
     addTask, addHabit, projects, habitGroups, scheduleTask, 
     addProject, removeProject, addHabitGroup, removeHabitGroup,
@@ -96,9 +97,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       setActiveTab(defaultTab);
       setTaskTimeBucket(defaultBucket);
       setHabitTimeBucket(defaultBucket || 'anytime');
-      setTaskStartDate(undefined);
+      // Set date if defaultDate is provided (e.g., when adding from a bucket)
+      setTaskStartDate(defaultDate);
     }
-  }, [open, defaultTab, defaultBucket]);
+  }, [open, defaultTab, defaultBucket, defaultDate]);
 
   const resetForm = () => {
     setTaskTitle('');
