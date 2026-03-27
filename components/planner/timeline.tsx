@@ -1183,17 +1183,18 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           </div>
           {/* Dashed line and dot - z-10 to render in front of task/habit cards with gradient opacity */}
           <div
-            className="absolute -left-3 -right-3 z-10 pointer-events-none"
+            className="absolute -left-3 -right-3 z-10 pointer-events-none h-2 flex items-center"
             style={{ 
               top: `${timeProgress * 100}%`,
+              transform: 'translateY(-50%)',
               maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 85%, rgba(0,0,0,1) 92%, rgba(0,0,0,1) 100%)',
               WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 85%, rgba(0,0,0,1) 92%, rgba(0,0,0,1) 100%)',
             }}
           >
             {/* Glowing dot */}
-            <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50" />
+            <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
             {/* Dashed line */}
-            <div className="absolute left-2.5 right-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50" />
+            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 mr-1" />
           </div>
         </>
       )}
