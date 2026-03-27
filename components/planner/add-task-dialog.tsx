@@ -61,7 +61,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [taskTitle, setTaskTitle] = useState('');
   const [taskPriority, setTaskPriority] = useState<Priority | undefined>();
   const [taskProject, setTaskProject] = useState<string>('');
-  const [taskStartDate, setTaskStartDate] = useState<Date | undefined>(selectedDate);
+  const [taskStartDate, setTaskStartDate] = useState<Date | undefined>(undefined);
   const [taskDuration, setTaskDuration] = useState<string>('30');
   const [taskTimeBucket, setTaskTimeBucket] = useState<TimeBucket | undefined>(defaultBucket);
   const [taskStartTime, setTaskStartTime] = useState<string>('');
@@ -96,15 +96,15 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       setActiveTab(defaultTab);
       setTaskTimeBucket(defaultBucket);
       setHabitTimeBucket(defaultBucket || 'anytime');
-      setTaskStartDate(selectedDate);
+      setTaskStartDate(undefined);
     }
-  }, [open, defaultTab, defaultBucket, selectedDate]);
+  }, [open, defaultTab, defaultBucket]);
 
   const resetForm = () => {
     setTaskTitle('');
     setTaskPriority(undefined);
     setTaskProject('');
-    setTaskStartDate(selectedDate);
+    setTaskStartDate(undefined);
     setTaskDuration('30');
     setTaskTimeBucket(defaultBucket);
     setTaskStartTime('');
