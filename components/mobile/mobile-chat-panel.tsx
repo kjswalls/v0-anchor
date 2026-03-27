@@ -3,17 +3,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Sparkles, MessageSquarePlus, Trash2 } from 'lucide-react';
+import { ArrowUp, Sparkles, MessageSquarePlus, Trash2, Copy, Check, Plus, Mic, User } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { buildAnchorContext } from '@/lib/ai-context';
 import { createClient } from '@/lib/supabase';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  timestamp?: number;
 }
 
 const HISTORY_KEY = 'anchor-chat-history';
@@ -28,9 +32,11 @@ export function MobileChatPanel() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const aiProvider = useAISettingsStore((s) => s.provider);
+  const activeTab = useMobileNavStore((s) => s.activeTab);
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME;
 
   // Check auth + onboarding status
@@ -40,7 +46,6 @@ export function MobileChatPanel() {
       const uid = data.user?.id;
       if (!uid) return;
       setUserId(uid);
-
       const done = await isOnboardingComplete(uid);
       if (!done) setShowOnboarding(true);
     });
@@ -89,6 +94,13 @@ export function MobileChatPanel() {
     } catch { /* ignore */ }
   }, [messages]);
 
+  // Focus input when tab becomes active
+  useEffect(() => {
+    if (activeTab === 'chat' && textareaRef.current) {
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [activeTab]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,16 +114,22 @@ export function MobileChatPanel() {
     ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
   }, [input]);
 
+  const copyMessage = useCallback((content: string, index: number) => {
+    navigator.clipboard.writeText(content);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  }, []);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
 
-    const userMessage: Message = { role: 'user', content: text };
+    const userMessage: Message = { role: 'user', content: text, timestamp: Date.now() };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput('');
     setIsLoading(true);
-    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState();
@@ -131,6 +149,7 @@ export function MobileChatPanel() {
               next[next.length - 1] = {
                 role: 'assistant',
                 content: 'OpenClaw not connected yet — run `openclaw anchor-context setup` to connect.',
+                timestamp: Date.now(),
               };
             }
             return next;
@@ -189,7 +208,7 @@ export function MobileChatPanel() {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last?.role === 'assistant' && last.content === '') {
-          next[next.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' };
+          next[next.length - 1] = { role: 'assistant', content: 'Sorry, something went wrong. Please try again.', timestamp: Date.now() };
         }
         return next;
       });
@@ -206,25 +225,21 @@ export function MobileChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">{displayName}</span>
-        </div>
-        {messages.length > 0 && (
+    <div className="flex flex-col h-full bg-background relative">
+      {/* Clear button - floating top right */}
+      {messages.length > 0 && (
+        <div className="absolute top-2 right-3 z-10">
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-muted-foreground"
+            className="h-8 px-2 text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-sm"
             onClick={() => setMessages([])}
           >
             <Trash2 className="h-4 w-4 mr-1" />
             Clear
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Onboarding */}
       {showOnboarding && userId ? (
@@ -233,16 +248,19 @@ export function MobileChatPanel() {
         </div>
       ) : (
         <>
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Messages with fade at top */}
+          <div className="flex-1 overflow-y-auto relative">
+            {/* Gradient fade at top */}
+            <div className="sticky top-0 h-16 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
+
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
+              <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 -mt-16">
                 <div className="relative">
-                  <MessageSquarePlus className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.25} />
-                  <Sparkles className="h-5 w-5 text-primary/60 absolute -top-1 -right-1" />
+                  <MessageSquarePlus className="h-14 w-14 text-muted-foreground/40" strokeWidth={1.25} />
+                  <Sparkles className="h-6 w-6 text-primary/60 absolute -top-1 -right-1" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-base font-medium text-foreground">
+                <div className="space-y-2">
+                  <p className="text-lg font-medium text-foreground">
                     Plan with {displayName}
                   </p>
                   <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
@@ -256,30 +274,77 @@ export function MobileChatPanel() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3 px-4 py-4">
+              <div className="flex flex-col gap-6 px-4 pb-4 -mt-12">
                 {messages.map((msg, i) => (
-                  <div key={i} className={['flex', msg.role === 'user' ? 'justify-end' : 'justify-start'].join(' ')}>
-                    <div className={[
-                      'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
-                      msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                        : 'bg-muted text-foreground rounded-bl-sm',
-                    ].join(' ')}>
-                      {(msg.role === 'assistant'
-                        ? msg.content?.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')
-                        : msg.content
-                      ) || (msg.role === 'assistant' && isLoading && i === messages.length - 1
-                        ? <LoadingDots />
-                        : null
-                      )}
-                    </div>
+                  <div key={i} className="group">
+                    {msg.role === 'user' ? (
+                      // User message - right aligned with avatar
+                      <div className="flex items-start gap-3 justify-end">
+                        <div className="flex flex-col items-end gap-1.5 max-w-[85%]">
+                          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                            {msg.content}
+                          </div>
+                          <div className={cn(
+                            'flex items-center gap-2 transition-opacity',
+                            'opacity-60' // Always visible on mobile for touch
+                          )}>
+                            {msg.timestamp && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {format(msg.timestamp, 'h:mm a')}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => copyMessage(msg.content, i)}
+                              className="text-muted-foreground active:text-foreground transition-colors p-1"
+                            >
+                              {copiedIndex === i ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                    ) : (
+                      // Assistant message - left aligned, no bubble
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                          {(msg.content?.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')) || 
+                            (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                        </div>
+                        <div className={cn(
+                          'flex items-center gap-2 transition-opacity',
+                          'opacity-60' // Always visible on mobile
+                        )}>
+                          {msg.timestamp && (
+                            <span className="text-[10px] text-muted-foreground">
+                              {format(msg.timestamp, 'h:mm a')}
+                            </span>
+                          )}
+                          {msg.content && (
+                            <button
+                              onClick={() => copyMessage(msg.content, i)}
+                              className="text-muted-foreground active:text-foreground transition-colors p-1"
+                            >
+                              {copiedIndex === i ? (
+                                <Check className="h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-                  <div className="flex justify-start">
-                    <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2.5">
-                      <LoadingDots />
-                    </div>
+                  <div className="text-sm text-foreground">
+                    <LoadingDots />
                   </div>
                 )}
                 <div ref={bottomRef} />
@@ -288,27 +353,50 @@ export function MobileChatPanel() {
           </div>
 
           {/* Input area */}
-          <div className="px-3 pb-3 pt-2 border-t border-border bg-card">
-            <div className="rounded-xl border border-border bg-background focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-colors">
+          <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border bg-background">
+            <div className="rounded-2xl border border-border bg-muted/30 focus-within:border-border focus-within:bg-muted/50 transition-colors">
               <Textarea
                 ref={textareaRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={`Ask ${displayName} anything…`}
+                placeholder={`Message ${displayName}...`}
                 rows={1}
-                className="resize-none min-h-0 text-sm leading-6 py-3 px-3 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none"
+                className="resize-none min-h-0 text-sm leading-6 py-3 px-4 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none placeholder:text-muted-foreground/60"
                 disabled={isLoading}
               />
-              <div className="flex items-center justify-end px-2 pb-2">
-                <Button
-                  size="icon"
-                  className="h-8 w-8 rounded-lg"
-                  onClick={sendMessage}
-                  disabled={!input.trim() || isLoading}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+              <div className="flex items-center justify-between px-2 pb-2">
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full text-muted-foreground"
+                    disabled
+                  >
+                    <Plus className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-1">
+                  {input.trim() ? (
+                    <Button
+                      size="icon"
+                      className="h-9 w-9 rounded-full"
+                      onClick={sendMessage}
+                      disabled={isLoading}
+                    >
+                      <ArrowUp className="h-5 w-5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 rounded-full text-muted-foreground"
+                      disabled
+                    >
+                      <Mic className="h-5 w-5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -324,7 +412,7 @@ function LoadingDots() {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
-          className="h-1.5 w-1.5 rounded-full bg-current opacity-60 animate-bounce"
+          className="h-1.5 w-1.5 rounded-full bg-muted-foreground opacity-60 animate-bounce"
           style={{ animationDelay: `${i * 0.15}s` }}
         />
       ))}
