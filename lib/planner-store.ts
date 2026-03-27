@@ -979,6 +979,7 @@ export const usePlannerStore = create<PlannerStore>()(
 // Subscribe to changes and save to history
 let prevStateJson: string | null = null;
 let isUpdatingUndoRedo = false;
+let hasInitializedHistory = false;
 
 // Function to update baseline from undo/redo actions
 const updatePrevStateBaseline = (state: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] }) => {
@@ -997,20 +998,36 @@ usePlannerStore.subscribe((state) => {
 
   const currentStateJson = JSON.stringify(currentState);
 
+  // Initialize history with baseline state if not already done
+  // This handles the case when no user is logged in (initializeStore not called)
+  if (!hasInitializedHistory && historyStack.length === 0) {
+    hasInitializedHistory = true;
+    // Save the PREVIOUS state as baseline (if we have one) or current state
+    const baselineState = prevStateJson ? JSON.parse(prevStateJson) : currentState;
+    historyStack.push(JSON.parse(JSON.stringify(baselineState)));
+    actionLog.push({
+      id: crypto.randomUUID(),
+      label: 'Session start',
+      timestamp: Date.now(),
+    });
+    historyIndex = 0;
+    console.log('[v0] History baseline initialized - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length);
+  }
+
   // Only save if data actually changed (not just view state)
   if (prevStateJson && currentStateJson !== prevStateJson) {
-saveToHistory(currentState);
-      // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
-      isUpdatingUndoRedo = true;
-      const info = getHistoryInfo();
-      console.log('[v0] History saved - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'canUndo will be:', historyIndex > 0);
-      usePlannerStore.setState({
-        canUndo: historyIndex > 0,
-        canRedo: false,
-        actionLog: info.actionLog,
-        historyIndex: info.currentIndex,
-      });
-      isUpdatingUndoRedo = false;
+    saveToHistory(currentState);
+    // Update canUndo/canRedo and actionLog after saving (prevent recursive trigger)
+    isUpdatingUndoRedo = true;
+    const info = getHistoryInfo();
+    console.log('[v0] History saved - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'canUndo will be:', historyIndex > 0);
+    usePlannerStore.setState({
+      canUndo: historyIndex > 0,
+      canRedo: false,
+      actionLog: info.actionLog,
+      historyIndex: info.currentIndex,
+    });
+    isUpdatingUndoRedo = false;
   }
 
   prevStateJson = currentStateJson;
