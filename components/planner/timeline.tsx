@@ -1156,10 +1156,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     <div
       ref={setNodeRef}
       className={cn(
-        'relative rounded-xl border-2 border-dashed transition-all',
+        'relative rounded-xl border-2 border-dashed transition-all overflow-visible',
         config.borderClass,
         isOver && 'border-solid border-primary bg-primary/5',
-        isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background'
+        isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background min-h-[120px]'
       )}
       style={isCurrentBucket ? { 
         boxShadow: `0 0 25px -3px ${config.glowColor}`,
@@ -1168,11 +1168,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Current time indicator - split into line (z-0) and clock icon (z-20) */}
-      {/* The line renders behind task cards, but clock icon shows above nav previews */}
+      {/* Current time indicator - renders in front of cards with gradient fade */}
       {showCurrentTimeIndicator && isCurrentBucket && timeProgress !== null && (
         <>
-          {/* Clock icon in separate stacking context - z-20 to show above nav previews */}
+          {/* Clock icon - z-20 to show above everything */}
           <div
             className="absolute -left-3 -right-3 z-20 group/indicator pointer-events-none"
             style={{ top: `${timeProgress * 100}%` }}
@@ -1182,15 +1181,20 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             {/* Clock icon */}
             <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={2.5} />
           </div>
-          {/* Dashed line and dot - z-0 to render behind task/habit cards */}
+          {/* Dashed line and dot - z-10 to render in front of task/habit cards with gradient opacity */}
           <div
-            className="absolute -left-3 -right-3 z-0 pointer-events-none"
-            style={{ top: `${timeProgress * 100}%` }}
+            className="absolute -left-3 -right-3 z-10 pointer-events-none h-2 flex items-center"
+            style={{ 
+              top: `${timeProgress * 100}%`,
+              transform: 'translateY(-50%)',
+              maskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 85%, rgba(0,0,0,1) 92%, rgba(0,0,0,1) 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,0.25) 15%, rgba(0,0,0,0.25) 85%, rgba(0,0,0,1) 92%, rgba(0,0,0,1) 100%)',
+            }}
           >
             {/* Glowing dot */}
-            <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50" />
+            <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
             {/* Dashed line */}
-            <div className="absolute left-2.5 right-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50" />
+            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 mr-1" />
           </div>
         </>
       )}
