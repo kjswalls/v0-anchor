@@ -282,7 +282,7 @@ export function MobileChatPanel() {
                       // User message - right aligned with avatar
                       <div className="flex items-start gap-3 justify-end">
                         <div className="flex flex-col items-end gap-1.5 max-w-[85%]">
-                          <div className="bg-primary text-primary-foreground rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                          <div className="bg-zinc-200 dark:bg-zinc-800 text-foreground rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
                             {msg.content}
                           </div>
                           <div className={cn(
@@ -313,7 +313,7 @@ export function MobileChatPanel() {
                     ) : (
 // Assistant message - left aligned, no bubble, with markdown
                       <div className="flex flex-col gap-1.5">
-                        <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg max-w-none">
+                        <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                           {msg.content ? (
                             <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
                           ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
