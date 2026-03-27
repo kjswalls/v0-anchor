@@ -23,7 +23,7 @@ const SIGNIFICANT_ACTIONS = [
 ];
 
 export function useUndoToast() {
-  const { actionLog, undo, canUndo } = usePlannerStore();
+  const actionLog = usePlannerStore((state) => state.actionLog);
   const lastActionIdRef = useRef<string | null>(null);
   const toastIdRef = useRef<string | number | null>(null);
 
@@ -33,17 +33,8 @@ export function useUndoToast() {
     
     const latestAction = actionLog[0]; // Most recent is first
     
-    console.log('[v0] useUndoToast - actionLog changed:', {
-      length: actionLog.length,
-      latestId: latestAction?.id,
-      lastSeenId: lastActionIdRef.current,
-      label: latestAction?.label,
-      canUndo
-    });
-    
     // Only trigger if this is a new action we haven't seen
     if (latestAction.id === lastActionIdRef.current) {
-      console.log('[v0] useUndoToast - Same action, skipping');
       return;
     }
     
@@ -55,26 +46,26 @@ export function useUndoToast() {
       latestAction.label.startsWith(prefix)
     );
 
-    console.log('[v0] useUndoToast - isSignificant:', isSignificant, 'canUndo:', canUndo);
-
-    if (isSignificant && canUndo) {
+    if (isSignificant) {
       // Dismiss previous toast if exists
       if (toastIdRef.current) {
         toast.dismiss(toastIdRef.current);
       }
 
-      console.log('[v0] useUndoToast - Showing toast for:', latestAction.label);
-
       // Show toast with undo button
+      // Get fresh state at click time to ensure canUndo is accurate
       toastIdRef.current = toast(latestAction.label, {
         duration: 5000,
         action: {
           label: 'Undo',
           onClick: () => {
-            undo();
+            const { undo, canUndo } = usePlannerStore.getState();
+            if (canUndo) {
+              undo();
+            }
           },
         },
       });
     }
-  }, [actionLog, undo, canUndo]);
+  }, [actionLog]);
 }
