@@ -17,7 +17,6 @@ interface Message {
   content: string
 }
 
-const STORAGE_KEY = 'anchor-chat-sidebar-open'
 const HISTORY_KEY = 'anchor-chat-history'
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const ASSISTANT_NAME = 'Beacon'
@@ -25,6 +24,7 @@ const OPENCLAW_NAME = 'OpenClaw'
 
 export function ChatSidebar() {
   const [isOpen, setIsOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -91,16 +91,10 @@ export function ChatSidebar() {
     } catch { /* ignore */ }
   }, [messages])
 
-  // Restore open state
+  // Mark as mounted - sidebar always starts collapsed on page load
   useEffect(() => {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) === 'true') setIsOpen(true)
-    } catch { /* ignore */ }
+    setMounted(true)
   }, [])
-
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, String(isOpen)) } catch { /* ignore */ }
-  }, [isOpen])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -216,6 +210,9 @@ export function ChatSidebar() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
+
+  // Don't render until mounted to avoid hydration mismatch
+  if (!mounted) return null
 
   return (
     <>
