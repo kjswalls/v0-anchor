@@ -312,12 +312,12 @@ export function MobileChatPanel() {
                       </div>
                     ) : (
 // Assistant message - left aligned, no bubble, with markdown
-  <div className="flex flex-col gap-1.5">
-  <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg max-w-none">
-> {msg.content ? (
-    <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
-  ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
-  </div>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg max-w-none">
+                          {msg.content ? (
+                            <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+                          ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                        </div>
                         <div className={cn(
                           'flex items-center gap-2 transition-opacity',
                           'opacity-60' // Always visible on mobile
