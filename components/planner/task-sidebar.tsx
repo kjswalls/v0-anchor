@@ -295,7 +295,8 @@ function FilterButton() {
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const submenuTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  const hasActiveFilters = Object.keys(filters).length > 0;
+  const activeFilterCount = Object.values(filters).filter(v => v !== undefined).length;
+  const hasActiveFilters = activeFilterCount > 0;
 
   const handleSelectProject = (project: string) => {
     setFilters({ ...filters, project });
@@ -352,7 +353,7 @@ function FilterButton() {
           Filter
           {hasActiveFilters && (
             <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
-              {Object.keys(filters).length}
+              {activeFilterCount}
             </span>
           )}
         </Button>
