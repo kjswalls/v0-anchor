@@ -1178,7 +1178,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           {/* Invisible hover area covering the entire indicator */}
           <div className="absolute -left-4 right-1 -top-2 -bottom-2 cursor-default" />
           {/* Clock icon to the left - only visible on hover of the indicator area */}
-          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none" strokeWidth={2.5} />
+          {/* z-20 ensures clock shows above nav previews (z-10) but below task cards */}
+          <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity pointer-events-none z-20" strokeWidth={2.5} />
           {/* Glowing dot */}
           <div className="absolute left-0 w-2 h-2 -mt-[3px] rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 pointer-events-none" />
           {/* Dashed line */}
