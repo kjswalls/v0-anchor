@@ -89,11 +89,14 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
   } : undefined;
 
   const handleScheduleSave = () => {
+    const hasTimeBucket = scheduleTimeBucket !== 'none';
+    const dateStr = scheduleDate ? format(scheduleDate, 'yyyy-MM-dd') : undefined;
+    
     updateTask(task.id, {
-      startDate: scheduleDate ? format(scheduleDate, 'yyyy-MM-dd') : undefined,
-      timeBucket: scheduleTimeBucket === 'none' ? undefined : scheduleTimeBucket,
+      startDate: hasTimeBucket ? dateStr : undefined,
+      timeBucket: hasTimeBucket ? scheduleTimeBucket : undefined,
       duration: parseInt(scheduleDuration, 10),
-      isScheduled: scheduleTimeBucket !== 'none',
+      isScheduled: hasTimeBucket,
     });
     setShowScheduleDrawer(false);
   };
