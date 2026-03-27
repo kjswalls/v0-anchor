@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Trash2, Plus } from 'lucide-react';
+import { CalendarIcon, Trash2, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -286,28 +286,40 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
             <div className="flex gap-2">
               <div className="flex-1 min-w-0 space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <div className="flex gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'flex-1 justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
+                          !startDate && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{startDate ? format(startDate, 'MMM d') : 'None'}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={setStartDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {startDate && (
                     <Button
-                      variant="outline"
-                      className={cn(
-                        'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
-                        !startDate && 'text-muted-foreground'
-                      )}
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => setStartDate(undefined)}
                     >
-                      <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{startDate ? format(startDate, 'MMM d') : 'None'}</span>
+                      <X className="h-3.5 w-3.5" />
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={setStartDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               </div>
               
               <div className="flex-1 min-w-0 space-y-1.5">

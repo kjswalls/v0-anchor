@@ -223,28 +223,40 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
             {/* Date */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
+              <div className="flex gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        'flex-1 justify-start text-left font-normal bg-background border-border h-10',
+                        !scheduleDate && 'text-muted-foreground'
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {scheduleDate ? format(scheduleDate, 'EEEE, MMM d') : 'Select date'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={scheduleDate}
+                      onSelect={setScheduleDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {scheduleDate && (
                   <Button
-                    variant="outline"
-                    className={cn(
-                      'w-full justify-start text-left font-normal bg-background border-border h-10',
-                      !scheduleDate && 'text-muted-foreground'
-                    )}
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setScheduleDate(undefined)}
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {scheduleDate ? format(scheduleDate, 'EEEE, MMM d') : 'Select date'}
+                    <X className="h-4 w-4" />
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={scheduleDate}
-                    onSelect={setScheduleDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+                )}
+              </div>
             </div>
 
             {/* Time Bucket */}

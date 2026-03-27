@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, Plus, Trash2 } from 'lucide-react';
+import { CalendarIcon, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -356,28 +356,40 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                 <div className="flex gap-3">
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
+                    <div className="flex gap-1">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              'flex-1 justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
+                              !taskStartDate && 'text-muted-foreground'
+                            )}
+                          >
+                            <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                            {taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={taskStartDate}
+                            onSelect={setTaskStartDate}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      {taskStartDate && (
                         <Button
-                          variant="outline"
-                          className={cn(
-                            'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
-                            !taskStartDate && 'text-muted-foreground'
-                          )}
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+                          onClick={() => setTaskStartDate(undefined)}
                         >
-                          <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-                          {taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}
+                          <X className="h-3.5 w-3.5" />
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={taskStartDate}
-                          onSelect={setTaskStartDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex-1 min-w-0 space-y-1.5">
