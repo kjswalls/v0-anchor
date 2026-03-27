@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { format, isToday, isSameDay } from 'date-fns';
 import { Check, Clock, Repeat, ChevronDown, ChevronUp, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -357,8 +356,8 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
       </div>
       
       {/* Schedule content */}
-      <ScrollArea className="flex-1">
-        <div className="p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-3 pb-6 space-y-3">
           {(['anytime', 'morning', 'afternoon', 'evening'] as TimeBucket[]).map((bucket) => (
             <TimeBucketSection
               key={bucket}
@@ -372,7 +371,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
