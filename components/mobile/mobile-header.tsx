@@ -119,6 +119,8 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
         </Button>
 
         <UserProfileDropdown onOpenSettings={onOpenSettings} />
+
+        <div className="w-px h-5 bg-border mx-1" />
         
         <Button
           size="sm"
