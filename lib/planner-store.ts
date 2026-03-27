@@ -202,6 +202,7 @@ const saveToHistory = (state: HistoryState) => {
   } else {
     historyIndex++;
   }
+  console.log('[v0] saveToHistory complete - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length, 'label:', actionLog[actionLog.length - 1]?.label);
 };
 
 // Get appropriate bucket for a given time
@@ -279,6 +280,7 @@ export const usePlannerStore = create<PlannerStore>()(
             timestamp: Date.now(),
           });
           historyIndex = 0;
+          console.log('[v0] initializeStore complete - historyIndex:', historyIndex, 'historyStack.length:', historyStack.length);
 
           // Set prevStateJson so the subscriber doesn't double-save
           prevStateJson = JSON.stringify(snapshot);
