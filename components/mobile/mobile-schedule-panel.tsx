@@ -47,82 +47,84 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   return (
-    <div
-      className={cn(
-        'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
-        task.status === 'completed' && 'opacity-60'
-      )}
-      onClick={onClick}
-    >
-      {projectEmoji && (
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.06] select-none pointer-events-none">
-          {projectEmoji}
-        </span>
-      )}
-      
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          toggleTaskStatus(task.id);
-        }}
+    <>
+      <div
         className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mt-0.5',
-          task.status === 'completed'
-            ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 active:border-primary'
+          'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
+          task.status === 'completed' && 'opacity-60'
         )}
+        onClick={onClick}
       >
-        {task.status === 'completed' && (
-          <Check className="h-3 w-3 text-primary-foreground" />
+        {projectEmoji && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.06] select-none pointer-events-none">
+            {projectEmoji}
+          </span>
         )}
-      </button>
-      
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <p className={cn(
-            'text-sm font-medium text-foreground leading-tight',
-            task.status === 'completed' && 'line-through text-muted-foreground'
-          )}>
-            {task.title}
-          </p>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 -mt-0.5 -mr-1" onClick={(e) => e.stopPropagation()}>
-                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); unscheduleTask(task.id); }}>
-                Move to sidebar
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true); }}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
         
-        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-          {task.startTime && <span>{task.startTime}</span>}
-          {task.duration && (
-            <span className="flex items-center gap-0.5">
-              <Clock className="h-3 w-3" />
-              {task.duration}m
-            </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTaskStatus(task.id);
+          }}
+          className={cn(
+            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mt-0.5',
+            task.status === 'completed'
+              ? 'bg-primary border-primary'
+              : 'border-muted-foreground/40 active:border-primary'
           )}
-          {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-            <Repeat className="h-3 w-3" />
+        >
+          {task.status === 'completed' && (
+            <Check className="h-3 w-3 text-primary-foreground" />
           )}
+        </button>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className={cn(
+              'text-sm font-medium text-foreground leading-tight',
+              task.status === 'completed' && 'line-through text-muted-foreground'
+            )}>
+              {task.title}
+            </p>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 -mt-0.5 -mr-1" onClick={(e) => e.stopPropagation()}>
+                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); unscheduleTask(task.id); }}>
+                  Move to sidebar
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(true); }}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+            {task.startTime && <span>{task.startTime}</span>}
+            {task.duration && (
+              <span className="flex items-center gap-0.5">
+                <Clock className="h-3 w-3" />
+                {task.duration}m
+              </span>
+            )}
+            {task.repeatFrequency && task.repeatFrequency !== 'none' && (
+              <Repeat className="h-3 w-3" />
+            )}
+          </div>
         </div>
       </div>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -130,9 +132,12 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTask(task.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteTask(task.id);
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
@@ -140,7 +145,7 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }
 
