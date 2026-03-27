@@ -353,21 +353,22 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
               {/* Scheduling Section */}
               <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
                 <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Date</Label>
-                    <div className="flex gap-1">
+                    <div className="relative">
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             className={cn(
-                              'flex-1 justify-start text-left font-normal bg-background border-border h-9 text-sm px-2.5',
-                              !taskStartDate && 'text-muted-foreground'
+                              'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2',
+                              !taskStartDate && 'text-muted-foreground',
+                              taskStartDate && 'pr-7'
                             )}
                           >
-                            <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-                            {taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}
+                            <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{taskStartDate ? format(taskStartDate, 'MMM d') : 'None'}</span>
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
@@ -380,14 +381,13 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                         </PopoverContent>
                       </Popover>
                       {taskStartDate && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => setTaskStartDate(undefined)}
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                          onClick={(e) => { e.stopPropagation(); setTaskStartDate(undefined); }}
                         >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                          <X className="h-3 w-3" />
+                        </button>
                       )}
                     </div>
                   </div>

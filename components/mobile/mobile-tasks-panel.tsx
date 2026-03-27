@@ -223,18 +223,19 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
             {/* Date */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Date</Label>
-              <div className="flex gap-2">
+              <div className="relative">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        'flex-1 justify-start text-left font-normal bg-background border-border h-10',
-                        !scheduleDate && 'text-muted-foreground'
+                        'w-full justify-start text-left font-normal bg-background border-border h-10',
+                        !scheduleDate && 'text-muted-foreground',
+                        scheduleDate && 'pr-8'
                       )}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {scheduleDate ? format(scheduleDate, 'EEEE, MMM d') : 'Select date'}
+                      <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">{scheduleDate ? format(scheduleDate, 'EEEE, MMM d') : 'Select date'}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -247,14 +248,13 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
                   </PopoverContent>
                 </Popover>
                 {scheduleDate && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
-                    onClick={() => setScheduleDate(undefined)}
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                    onClick={(e) => { e.stopPropagation(); setScheduleDate(undefined); }}
                   >
-                    <X className="h-4 w-4" />
-                  </Button>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 )}
               </div>
             </div>
