@@ -32,8 +32,8 @@ const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 380
 
 export function ChatSidebar() {
-  const { rightSidebarOpen: isOpen, rightSidebarHovered, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
-  const isVisible = isOpen || rightSidebarHovered
+  const { rightSidebarOpen: isOpen, rightSidebarHovered, rightSidebarHoverEnabled, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
+  const isVisible = isOpen || (rightSidebarHoverEnabled && rightSidebarHovered)
   const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')

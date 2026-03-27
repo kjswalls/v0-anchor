@@ -69,6 +69,8 @@ export default function PlannerPage() {
     rightSidebarOpen, 
     leftSidebarHovered, 
     rightSidebarHovered,
+    leftSidebarHoverEnabled,
+    rightSidebarHoverEnabled,
     toggleLeftSidebar, 
     toggleRightSidebar,
     setLeftSidebarHovered,
@@ -337,8 +339,8 @@ export default function PlannerPage() {
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
           <main className="flex-1 flex flex-col overflow-hidden relative">
-            {/* Left hover zone - shows task sidebar when collapsed */}
-            {!leftSidebarOpen && (
+            {/* Left hover zone - shows task sidebar when collapsed (if enabled) */}
+            {!leftSidebarOpen && leftSidebarHoverEnabled && (
               <div
                 className="absolute left-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
                 onMouseEnter={() => setLeftSidebarHovered(true)}
@@ -402,8 +404,8 @@ export default function PlannerPage() {
               )}
             </div>
             
-            {/* Right hover zone - shows chat sidebar when collapsed */}
-            {!rightSidebarOpen && (
+            {/* Right hover zone - shows chat sidebar when collapsed (if enabled) */}
+            {!rightSidebarOpen && rightSidebarHoverEnabled && (
               <div
                 className="absolute right-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
                 onMouseEnter={() => setRightSidebarHovered(true)}

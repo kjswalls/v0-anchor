@@ -459,8 +459,8 @@ interface TaskSidebarProps {
 
 export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitClick, onManageCategories }: TaskSidebarProps) {
   const { tasks, habits, habitGroups, groupBy, setGroupBy, filters, setFilters, clearFilters, chillMode, timelineItemFilter } = usePlannerStore();
-  const { leftSidebarOpen, leftSidebarHovered, toggleLeftSidebar, setLeftSidebarHovered } = useSidebarStore();
-  const isVisible = leftSidebarOpen || leftSidebarHovered;
+  const { leftSidebarOpen, leftSidebarHovered, leftSidebarHoverEnabled, toggleLeftSidebar, setLeftSidebarHovered } = useSidebarStore();
+  const isVisible = leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
   const [activeTab, setActiveTab] = useState<'tasks' | 'habits'>('tasks');
   const [isHovered, setIsHovered] = useState(false);
   const [habitStatusFilter, setHabitStatusFilter] = useState<'all' | 'done' | 'pending' | 'skipped'>('all');
