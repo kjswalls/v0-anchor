@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { format, isToday, isSameDay } from 'date-fns';
-import { Check, Clock, Repeat, ChevronDown, ChevronUp, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Check, Clock, Repeat, ChevronDown, ChevronUp, MoreHorizontal, Trash2, ArrowRight, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { MiniWeekNav } from './mini-week-nav';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket, Project } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable } from '@dnd-kit/core';
 
@@ -211,6 +211,171 @@ function MobileScheduledHabit({ habit, onClick }: { habit: Habit; onClick: () =>
   );
 }
 
+// Mobile Project Block Component
+interface MobileProjectBlockProps {
+  project: Project;
+  tasks: Task[];
+  allTasks: Task[];
+  onTaskClick: (task: Task) => void;
+}
+
+function MobileProjectBlock({ project, tasks, allTasks, onTaskClick }: MobileProjectBlockProps) {
+  const { getProjectColor, moveTaskToProjectBlock, moveTasksToProjectBlock, toggleTaskStatus } = usePlannerStore();
+  const projectColor = getProjectColor(project.name);
+  
+  // Tasks that are inside the project block
+  const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
+  
+  // All incomplete tasks for this project that are NOT in a project block
+  const availableTasks = allTasks.filter(
+    (t) => t.project === project.name && t.status !== 'completed' && !t.inProjectBlock
+  );
+  
+  const handleMoveAll = () => {
+    const taskIds = availableTasks.map((t) => t.id);
+    moveTasksToProjectBlock(taskIds);
+  };
+
+  const handleToggleStatus = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    toggleTaskStatus(taskId);
+  };
+
+  return (
+    <div
+      className="rounded-xl border-2 border-dashed p-3 space-y-2"
+      style={{ borderColor: projectColor }}
+    >
+      {/* Project header */}
+      <div className="flex items-center gap-2">
+        {project.emoji && <span className="text-lg">{project.emoji}</span>}
+        <span className="font-medium text-sm text-foreground">{project.name}</span>
+        {project.startTime && (
+          <span className="text-xs text-muted-foreground">
+            {project.startTime} · {project.duration}m
+          </span>
+        )}
+      </div>
+      
+      {/* Tasks inside the block */}
+      {tasksInBlock.length > 0 && (
+        <div className="space-y-2">
+          {tasksInBlock.map((task) => (
+            <div
+              key={task.id}
+              onClick={() => onTaskClick(task)}
+              className={cn(
+                'flex items-start gap-3 p-2.5 rounded-lg bg-background/80 border border-border/30 transition-colors',
+                task.status === 'completed' && 'opacity-60'
+              )}
+            >
+              <button
+                onClick={(e) => handleToggleStatus(e, task.id)}
+                className={cn(
+                  'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mt-0.5',
+                  task.status === 'completed' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+                )}
+              >
+                {task.status === 'completed' && <Check className="h-3 w-3 text-primary-foreground" />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className={cn(
+                  'text-sm font-medium text-foreground',
+                  task.status === 'completed' && 'line-through text-muted-foreground'
+                )}>
+                  {task.title}
+                </p>
+                {(task.startTime || task.duration) && (
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                    {task.startTime && <span>{task.startTime}</span>}
+                    {task.duration && (
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="h-3 w-3" />
+                        {task.duration}m
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Available tasks preview */}
+      {availableTasks.length > 0 && (
+        <div className="rounded-lg border border-dashed border-border/50 p-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">
+              {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-primary hover:text-primary"
+              onClick={handleMoveAll}
+            >
+              <ChevronsRight className="h-3 w-3 mr-1" />
+              Move all
+            </Button>
+          </div>
+          <div className="space-y-1.5">
+            {availableTasks.slice(0, 4).map((task) => (
+              <div
+                key={task.id}
+                onClick={() => onTaskClick(task)}
+                className="flex items-center gap-2 rounded-lg bg-muted/50 hover:bg-muted px-2.5 py-2 cursor-pointer transition-colors group"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {task.title}
+                  </p>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                    {task.timeBucket && !task.startTime && (
+                      <span className="capitalize">{task.timeBucket}</span>
+                    )}
+                    {task.startTime && <span className="font-medium">{task.startTime}</span>}
+                    {task.duration && (
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="h-3 w-3" />
+                        {task.duration}m
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary flex-shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTaskToProjectBlock(task.id);
+                  }}
+                  title="Move to block"
+                >
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            {availableTasks.length > 4 && (
+              <p className="text-xs text-muted-foreground/70 text-center py-1">
+                +{availableTasks.length - 4} more
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Empty state */}
+      {tasksInBlock.length === 0 && availableTasks.length === 0 && (
+        <div className="text-xs text-muted-foreground text-center py-3">
+          No tasks for this project
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Time Bucket Section
 function TimeBucketSection({ 
   bucket, 
@@ -220,6 +385,8 @@ function TimeBucketSection({
   onHabitClick,
   onAddClick,
   isActive,
+  projectBlocks,
+  allTasks,
 }: { 
   bucket: TimeBucket;
   tasks: Task[];
@@ -228,10 +395,15 @@ function TimeBucketSection({
   onHabitClick: (habit: Habit) => void;
   onAddClick: () => void;
   isActive: boolean;
+  projectBlocks: Project[];
+  allTasks: Task[];
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const config = bucketConfig[bucket];
-  const itemCount = tasks.length + habits.length;
+  
+  // Filter out tasks that are in project blocks (they'll be shown inside the block)
+  const tasksNotInBlocks = tasks.filter(t => !projectBlocks.some(p => p.name === t.project && t.inProjectBlock));
+  const itemCount = tasksNotInBlocks.length + habits.length + projectBlocks.length;
 
   const { setNodeRef, isOver } = useDroppable({
     id: bucket,
@@ -269,11 +441,25 @@ function TimeBucketSection({
       {/* Bucket content */}
       {!isCollapsed && (
         <div className="p-3 space-y-2 bg-background/50">
-          {tasks.map((task) => (
+          {/* Tasks not in project blocks */}
+          {tasksNotInBlocks.map((task) => (
             <MobileScheduledTask key={task.id} task={task} onClick={() => onTaskClick(task)} />
           ))}
+          
+          {/* Habits */}
           {habits.map((habit) => (
             <MobileScheduledHabit key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+          ))}
+          
+          {/* Project blocks */}
+          {projectBlocks.map((project) => (
+            <MobileProjectBlock
+              key={project.id}
+              project={project}
+              tasks={tasks.filter(t => t.project === project.name)}
+              allTasks={allTasks}
+              onTaskClick={onTaskClick}
+            />
           ))}
           
           {itemCount === 0 && (
@@ -291,10 +477,44 @@ function TimeBucketSection({
 }
 
 export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, activeId }: MobileSchedulePanelProps) {
-  const { tasks, habits, selectedDate, timelineItemFilter } = usePlannerStore();
+  const { tasks, habits, projects, selectedDate, timelineItemFilter } = usePlannerStore();
 
   // Get items for selected date
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+
+  // Get recurring projects for the selected date
+  const recurringProjectsForDate = useMemo(() => {
+    const dayOfWeek = selectedDate.getDay(); // 0 = Sunday
+    const dateOfMonth = selectedDate.getDate(); // 1-31
+    return projects.filter((p) => {
+      if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
+      
+      if (p.repeatFrequency === 'daily') return true;
+      if (p.repeatFrequency === 'weekly' && p.repeatDays?.includes(dayOfWeek)) return true;
+      if (p.repeatFrequency === 'monthly' && p.repeatMonthDay === dateOfMonth) return true;
+      if (p.repeatFrequency === 'custom' && p.repeatDays?.includes(dayOfWeek)) return true;
+      
+      return false;
+    });
+  }, [projects, selectedDate]);
+
+  // Get project blocks by bucket
+  const projectBlocksByBucket = useMemo(() => {
+    const buckets: Record<TimeBucket, Project[]> = {
+      anytime: [],
+      morning: [],
+      afternoon: [],
+      evening: [],
+    };
+    
+    recurringProjectsForDate.forEach((project) => {
+      if (project.timeBucket) {
+        buckets[project.timeBucket].push(project);
+      }
+    });
+    
+    return buckets;
+  }, [recurringProjectsForDate]);
 
   const scheduledItems = useMemo(() => {
     const buckets: Record<TimeBucket, { tasks: Task[]; habits: Habit[] }> = {
@@ -373,6 +593,8 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
               onHabitClick={onHabitClick}
               onAddClick={() => onAddClick(bucket, 'task')}
               isActive={!!activeId}
+              projectBlocks={projectBlocksByBucket[bucket]}
+              allTasks={tasks}
             />
           ))}
         </div>
