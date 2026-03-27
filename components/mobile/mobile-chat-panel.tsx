@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Sparkles, MessageSquarePlus, Trash2, Copy, Check, Plus, Mic, User } from 'lucide-react';
+import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { buildAnchorContext } from '@/lib/ai-context';
 import { createClient } from '@/lib/supabase';
@@ -227,21 +227,6 @@ export function MobileChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Clear button - floating top right */}
-      {messages.length > 0 && (
-        <div className="absolute top-2 right-3 z-10">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-muted-foreground hover:text-foreground bg-background/80 backdrop-blur-sm"
-            onClick={() => setMessages([])}
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            Clear
-          </Button>
-        </div>
-      )}
-
       {/* Onboarding */}
       {showOnboarding && userId ? (
         <div className="flex-1 overflow-y-auto">

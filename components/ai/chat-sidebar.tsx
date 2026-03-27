@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { X, ArrowUp, Sparkles, MessageSquarePlus, Trash2, Copy, Check, Plus, Mic, GripVertical, User } from 'lucide-react'
+import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, GripVertical, User } from 'lucide-react'
 import { usePlannerStore } from '@/lib/planner-store'
 import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
@@ -277,18 +277,18 @@ export function ChatSidebar() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      {/* Toggle tab */}
+      {/* Toggle tab - always visible, positions at sidebar edge when open */}
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label="Toggle AI assistant"
         className={cn(
-          'absolute right-0 top-1/2 -translate-y-1/2 z-30',
+          'absolute top-1/2 -translate-y-1/2 z-30',
           'flex items-center gap-1.5 px-1.5 py-3',
           'rounded-l-lg border border-r-0 border-border',
           'bg-card text-foreground shadow-md',
           'hover:bg-accent transition-colors duration-200',
-          isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100',
         )}
+        style={{ right: isOpen ? sidebarWidth : 0 }}
       >
         <Sparkles className="h-3.5 w-3.5 text-primary" />
       </button>
@@ -314,38 +314,6 @@ export function ChatSidebar() {
 
           {/* Main panel */}
           <div className="flex-1 flex flex-col bg-background border-l border-border shadow-2xl overflow-hidden">
-            {/* Close button - floating top right */}
-            <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-              {messages.length > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                      onClick={() => setMessages([])}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Clear chat</TooltipContent>
-                </Tooltip>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Close</TooltipContent>
-              </Tooltip>
-            </div>
-
             {/* Onboarding */}
             {showOnboarding && userId ? (
               <div className="flex-1 overflow-y-auto">
