@@ -379,7 +379,7 @@ export function ChatSidebar() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-6 px-4 pb-4 -mt-8">
+                    <div className="flex flex-col gap-3 px-4 pb-4 -mt-8">
                       {messages.map((msg, i) => (
                         <div key={i} className="group">
                           {msg.role === 'user' ? (

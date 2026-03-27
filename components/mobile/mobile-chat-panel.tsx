@@ -275,7 +275,7 @@ export function MobileChatPanel() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-6 px-4 pb-4 -mt-12">
+              <div className="flex flex-col gap-3 px-4 pb-4 -mt-12">
                 {messages.map((msg, i) => (
                   <div key={i} className="group">
                     {msg.role === 'user' ? (
