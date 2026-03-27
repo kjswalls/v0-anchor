@@ -24,38 +24,57 @@ const SIGNIFICANT_ACTIONS = [
 
 export function useUndoToast() {
   const { actionLog, undo, canUndo } = usePlannerStore();
-  const prevActionCountRef = useRef(actionLog.length);
+  const lastActionIdRef = useRef<string | null>(null);
   const toastIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
-    // Only trigger on new actions (not on initial load or undo/redo)
-    if (actionLog.length > prevActionCountRef.current && actionLog.length > 0) {
-      const latestAction = actionLog[0]; // Most recent is first
-      
-      // Check if this is a significant action that warrants a toast
-      const isSignificant = SIGNIFICANT_ACTIONS.some(prefix => 
-        latestAction.label.startsWith(prefix)
-      );
-
-      if (isSignificant && canUndo) {
-        // Dismiss previous toast if exists
-        if (toastIdRef.current) {
-          toast.dismiss(toastIdRef.current);
-        }
-
-        // Show toast with undo button
-        toastIdRef.current = toast(latestAction.label, {
-          duration: 5000,
-          action: {
-            label: 'Undo',
-            onClick: () => {
-              undo();
-            },
-          },
-        });
-      }
+    // Get the latest action
+    if (actionLog.length === 0) return;
+    
+    const latestAction = actionLog[0]; // Most recent is first
+    
+    console.log('[v0] useUndoToast - actionLog changed:', {
+      length: actionLog.length,
+      latestId: latestAction?.id,
+      lastSeenId: lastActionIdRef.current,
+      label: latestAction?.label,
+      canUndo
+    });
+    
+    // Only trigger if this is a new action we haven't seen
+    if (latestAction.id === lastActionIdRef.current) {
+      console.log('[v0] useUndoToast - Same action, skipping');
+      return;
     }
+    
+    // Update our reference to the latest action
+    lastActionIdRef.current = latestAction.id;
+    
+    // Check if this is a significant action that warrants a toast
+    const isSignificant = SIGNIFICANT_ACTIONS.some(prefix => 
+      latestAction.label.startsWith(prefix)
+    );
 
-    prevActionCountRef.current = actionLog.length;
+    console.log('[v0] useUndoToast - isSignificant:', isSignificant, 'canUndo:', canUndo);
+
+    if (isSignificant && canUndo) {
+      // Dismiss previous toast if exists
+      if (toastIdRef.current) {
+        toast.dismiss(toastIdRef.current);
+      }
+
+      console.log('[v0] useUndoToast - Showing toast for:', latestAction.label);
+
+      // Show toast with undo button
+      toastIdRef.current = toast(latestAction.label, {
+        duration: 5000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            undo();
+          },
+        },
+      });
+    }
   }, [actionLog, undo, canUndo]);
 }
