@@ -401,10 +401,10 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                       disabled={!taskStartDate}
                     >
                       <SelectTrigger className={cn(
-                        "w-full bg-background border-border h-9 text-sm",
+                        "w-full bg-background border-border h-9 text-sm truncate",
                         !taskStartDate && "opacity-50"
                       )}>
-                        <SelectValue placeholder={taskStartDate ? "Anytime" : "Select date first"} />
+                        <SelectValue placeholder="--" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="anytime">Anytime</SelectItem>

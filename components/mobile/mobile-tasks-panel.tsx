@@ -270,7 +270,7 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
                   "w-full bg-background border-border h-10",
                   !scheduleDate && "opacity-50"
                 )}>
-                  <SelectValue placeholder={scheduleDate ? "Anytime" : "Select date first"} />
+                  <SelectValue placeholder="--" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anytime">Anytime</SelectItem>

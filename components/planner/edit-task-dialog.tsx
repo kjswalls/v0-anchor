@@ -332,7 +332,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                     "w-full bg-background border-border h-9 text-sm truncate",
                     !startDate && "opacity-50"
                   )}>
-                    <SelectValue placeholder={startDate ? "Anytime" : "Select date first"} />
+                    <SelectValue placeholder="--" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="anytime">Anytime</SelectItem>
