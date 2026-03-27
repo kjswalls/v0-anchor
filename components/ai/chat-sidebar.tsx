@@ -13,6 +13,7 @@ import { OnboardingChat } from './onboarding-chat'
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -411,12 +412,13 @@ export function ChatSidebar() {
                               </div>
                             </div>
                           ) : (
-                            // Assistant message - left aligned, no bubble
-                            <div className="flex flex-col gap-1">
-                              <div className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                                {(msg.content?.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')) || 
-                                  (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
-                              </div>
+// Assistant message - left aligned, no bubble, with markdown
+  <div className="flex flex-col gap-1">
+  <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg max-w-none">
+> {msg.content ? (
+    <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+  ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+  </div>
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {msg.timestamp && (
                                   <span className="text-[10px] text-muted-foreground">
