@@ -316,7 +316,7 @@ const handleAddFromTopNav = () => {
     return (
       <>
         {/* Desktop skeleton */}
-        <div className="hidden md:flex h-screen flex-col bg-background">
+        <div className="hidden md:flex h-[100dvh] flex-col bg-background">
           <div className="h-14 border-b border-border bg-card" />
           <div className="flex-1 flex overflow-hidden">
             <div className="w-80 border-r border-border bg-sidebar" />
@@ -324,7 +324,7 @@ const handleAddFromTopNav = () => {
           </div>
         </div>
         {/* Mobile skeleton */}
-        <div className="flex md:hidden h-screen flex-col bg-background">
+        <div className="flex md:hidden h-[100dvh] flex-col bg-background">
           <div className="h-14 border-b border-border bg-card" />
           <div className="flex-1 bg-background" />
           <div className="h-14 border-t border-border bg-card" />
@@ -347,7 +347,7 @@ const handleAddFromTopNav = () => {
       }}
     >
       {/* Desktop Layout */}
-      <div className="hidden md:flex h-screen flex-col bg-background">
+      <div className="hidden md:flex h-[100dvh] flex-col bg-background">
         <TopNav 
           onAddClick={handleAddFromTopNav} 
           onManageCategories={handleManageCategories}
@@ -437,7 +437,7 @@ const handleAddFromTopNav = () => {
       </div>
 
       {/* Mobile Layout */}
-      <div className="flex md:hidden h-screen flex-col bg-background">
+      <div className="flex md:hidden h-[100dvh] flex-col bg-background">
         <MobileHeader 
           onAddClick={handleAddFromTopNav}
           onOpenSettings={handleOpenSettings}
