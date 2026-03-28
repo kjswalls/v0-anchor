@@ -15,22 +15,36 @@ export const metadata: Metadata = {
   title: 'Anchor — ADHD-Friendly Daily Planning',
   description: 'A calm, minimal daily planner designed for neurodivergent minds. Plan your day with gentle structure.',
   generator: 'v0.app',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Anchor',
+  },
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
+        url: '/icons/icon-32.png',
+        sizes: '32x32',
+        type: 'image/png',
       },
       {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
+        url: '/icons/icon-16.png',
+        sizes: '16x16',
+        type: 'image/png',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/icons/icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+      },
+      {
+        url: '/icons/icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/icons/icon-180.png',
   },
 }
 

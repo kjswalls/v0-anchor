@@ -1,0 +1,24 @@
+{
+  "name": "Anchor — ADHD-Friendly Daily Planning",
+  "short_name": "Anchor",
+  "description": "A calm, minimal daily planner designed for neurodivergent minds.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f0e8",
+  "theme_color": "#1a2f4e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
