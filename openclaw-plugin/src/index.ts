@@ -110,21 +110,31 @@ export default definePluginEntry({
       },
     })
 
-    // ── Inject context into every prompt turn ─────────────────────────────────
-    // registerMemoryPromptSection: sync builder, returns string[], params have availableTools
-    api.registerMemoryPromptSection((_params) => {
-      // Kick off async refresh if stale (fire-and-forget — builder must be sync)
+    // ── Inject context into every prompt turn via before_prompt_build hook ───
+    // Uses api.on() instead of registerMemoryPromptSection so we don't need
+    // the exclusive memory slot (which would displace memory-core).
+    api.on('before_prompt_build', async (event) => {
+      // Refresh cache if stale
       if (!isCacheFresh(ttlMs)) {
-        fetchContext(cfg).catch((err: Error) => {
-          api.logger.warn(`anchor-context: background refresh failed — ${err.message}`)
-        })
+        try { await fetchContext(cfg) } catch (err) {
+          api.logger.warn(`anchor-context: cache refresh failed — ${(err as Error).message}`)
+        }
       }
 
-      // Note: lastUserMessage isn't available in this builder signature.
-      // We default to full context here; a future OpenClaw version may expose
-      // the current message for relevance gating.
-      const content = buildFullContext() || buildHeader()
-      return content ? [content] : []
+      const lastUserMessage = typeof event.prompt === 'string' ? event.prompt : ''
+      const isPlanning = (msg: string) => [
+        'task', 'tasks', 'todo', 'habit', 'habits', 'project', 'schedule',
+        'today', 'tomorrow', 'plan', 'reminder', 'overdue', 'priority',
+        'what should i', 'what do i', "what's on", 'on my list',
+        'working on', 'finish', 'complete', 'done', 'streak',
+      ].some(kw => msg.toLowerCase().includes(kw))
+
+      const content = isPlanning(lastUserMessage)
+        ? buildFullContext() || buildHeader()
+        : buildHeader()
+
+      if (!content) return
+      return { prependContext: content }
     })
   },
 })
