@@ -250,11 +250,9 @@ export function MobileChatPanel() {
                     Plan with {displayName}
                   </p>
                   <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
-                    {aiProvider === 'openclaw'
-                      ? `Ask anything — ${displayName} knows your tasks and habits.`
-                      : aiProvider === 'none'
+                    {aiProvider === 'none'
                       ? 'Connect an AI provider in Settings to start chatting.'
-                      : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
+                      : 'Ask me anything about your day'
                     }
                   </p>
                 </div>

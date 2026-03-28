@@ -10,6 +10,7 @@ import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
+import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { EODReview } from '@/components/ai/eod-review';
@@ -19,13 +20,19 @@ import { MobileTabBar } from '@/components/mobile/mobile-tab-bar';
 import { MobileTasksPanel } from '@/components/mobile/mobile-tasks-panel';
 import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
+import { isOnboardingComplete } from '@/lib/user-profile';
+import { createClient } from '@/lib/supabase';
+import { toast } from 'sonner';
+import { useSwipeable } from 'react-swipeable';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { MobileTab } from '@/lib/mobile-nav-store';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,8 +56,16 @@ import {
   DragOverlay,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { GripVertical, Circle } from 'lucide-react';
+import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { format } from 'date-fns';
+
+function KbdHint() {
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
+  }, []);
+  return <span>{isMac ? '⌘ /' : 'Ctrl /'}</span>;
+}
 
 function DraggableTaskOverlay({ title }: { title: string }) {
   return (
@@ -95,6 +110,9 @@ export default function PlannerPage() {
   const [addDialogDate, setAddDialogDate] = useState<Date | undefined>();
   const [manageCategoriesOpen, setManageCategoriesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [tourUserId, setTourUserId] = useState<string | null>(null);
   // Keyboard shortcut delete confirmation
   const [shortcutDeleteTarget, setShortcutDeleteTarget] = useState<{ id: string; type: 'task' | 'habit'; title: string } | null>(null);
   
@@ -102,21 +120,52 @@ export default function PlannerPage() {
     setMounted(true);
   }, []);
 
+  // Check onboarding status on mount
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      const done = await isOnboardingComplete(uid);
+      if (!done) {
+        setTourUserId(uid);
+        setShowTour(true);
+      }
+    });
+  }, []);
+
   // EOD auto-trigger intentionally removed for web — needs push notifications (PWA/mobile).
   // The EOD review can still be triggered manually via the toolbar button.
   
-  // Keyboard shortcuts for sidebars
+  // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Cmd/Ctrl + [ for left sidebar
-      if ((e.metaKey || e.ctrlKey) && e.key === '[') {
+      const mod = e.metaKey || e.ctrlKey;
+
+      // Cmd/Ctrl + [ — toggle left sidebar
+      if (mod && e.key === '[') {
         e.preventDefault();
         toggleLeftSidebar();
       }
-      // Check for Cmd/Ctrl + ] for right sidebar
-      if ((e.metaKey || e.ctrlKey) && e.key === ']') {
+      // Cmd/Ctrl + ] — toggle right sidebar
+      if (mod && e.key === ']') {
         e.preventDefault();
         toggleRightSidebar();
+      }
+      // Cmd/Ctrl + / — keyboard shortcuts modal
+      if (mod && e.key === '/') {
+        e.preventDefault();
+        setKeyboardShortcutsOpen(true);
+      }
+      // Cmd/Ctrl + , — settings
+      if (mod && e.key === ',') {
+        e.preventDefault();
+        setSettingsOpen(true);
+      }
+      // Cmd/Ctrl + K — search (stub)
+      if (mod && e.key === 'k') {
+        e.preventDefault();
+        toast.info('Search coming soon');
       }
     };
 
@@ -273,6 +322,26 @@ const handleAddFromTopNav = () => {
   const handleOpenSettings = () => {
     setSettingsOpen(true);
   };
+
+  // Mobile swipe to switch tabs
+  const MOBILE_TABS: MobileTab[] = ['tasks', 'schedule', 'chat'];
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      const idx = MOBILE_TABS.indexOf(activeTab);
+      if (idx < MOBILE_TABS.length - 1) {
+        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx + 1]);
+      }
+    },
+    onSwipedRight: () => {
+      const idx = MOBILE_TABS.indexOf(activeTab);
+      if (idx > 0) {
+        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx - 1]);
+      }
+    },
+    trackMouse: false,
+    delta: 50,
+    preventScrollOnSwipe: false,
+  });
 
   // Keyboard shortcut handlers
   const handleShortcutNewTask = useCallback(() => {
@@ -442,7 +511,7 @@ const handleAddFromTopNav = () => {
           onAddClick={handleAddFromTopNav}
           onOpenSettings={handleOpenSettings}
         />
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden" {...swipeHandlers}>
           {activeTab === 'tasks' && (
             <MobileTasksPanel
               onTaskClick={handleTaskClick}
@@ -499,9 +568,39 @@ const handleAddFromTopNav = () => {
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
+        onOpenKeyboardShortcuts={() => setKeyboardShortcutsOpen(true)}
+        onReplayTour={() => {
+          if (tourUserId) {
+            setShowTour(true);
+          }
+        }}
       />
 
+      <KeyboardShortcutsModal
+        open={keyboardShortcutsOpen}
+        onOpenChange={setKeyboardShortcutsOpen}
+      />
+
+      {showTour && tourUserId && (
+        <OnboardingTour
+          userId={tourUserId}
+          onComplete={() => setShowTour(false)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+      )}
+
       <EODReview />
+
+      {/* Persistent keyboard shortcuts hint — desktop only */}
+      <div className="hidden md:flex fixed bottom-4 right-4 z-30">
+        <button
+          onClick={() => setKeyboardShortcutsOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/50 transition-colors shadow-sm"
+        >
+          <KeyboardIcon className="h-3.5 w-3.5" />
+          <KbdHint />
+        </button>
+      </div>
 
       {/* Keyboard shortcut delete confirmation */}
       <AlertDialog

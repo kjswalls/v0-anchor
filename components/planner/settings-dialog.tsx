@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Clock, Calendar, Bell, Palette, Sun, Keyboard, RotateCcw, Sparkles } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { useKeyboardShortcutsStore, ShortcutBinding, DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
@@ -37,6 +36,8 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenKeyboardShortcuts?: () => void;
+  onReplayTour?: () => void;
 }
 
 interface SettingsSectionProps {
@@ -93,107 +94,8 @@ function SettingRow({ label, description, children, disabled }: { label: string;
   );
 }
 
-// OS-aware modifier labels
-function getModifierLabels(isMac: boolean): Record<string, string> {
-  return {
-    'ctrl': isMac ? '⌃' : 'Ctrl',
-    'meta': isMac ? '⌘' : 'Ctrl',
-    'shift': isMac ? '⇧' : 'Shift',
-    'alt': isMac ? '⌥' : 'Alt',
-  };
-}
 
-function ShortcutRow({ binding, isMac }: { binding: ShortcutBinding; isMac: boolean }) {
-  const MODIFIER_LABELS = getModifierLabels(isMac);
-  const { updateShortcut } = useKeyboardShortcutsStore();
-  const [recording, setRecording] = useState(false);
-  const [recordedKeys, setRecordedKeys] = useState<string[]>([]);
-
-  const handleStartRecording = () => {
-    setRecording(true);
-    setRecordedKeys([]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!recording) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Ignore bare modifier presses
-    if (['Control', 'Meta', 'Shift', 'Alt'].includes(e.key)) return;
-
-    // Build the set of keys currently pressed
-    const keys: string[] = [];
-    if (e.ctrlKey) keys.push('ctrl');
-    if (e.metaKey) keys.push('meta');
-    if (e.shiftKey) keys.push('shift');
-    if (e.altKey) keys.push('alt');
-    
-    const normalizedKey = e.key === ' ' ? 'space' : e.key.toLowerCase();
-    if (!['ctrl', 'meta', 'shift', 'alt'].includes(normalizedKey)) {
-      keys.push(normalizedKey);
-    }
-
-    // Limit to 3 keys max
-    if (keys.length <= 3) {
-      setRecordedKeys(keys.sort());
-    }
-  };
-
-  const handleKeyUp = () => {
-    if (!recording || recordedKeys.length === 0) return;
-    // Save and stop recording when user releases keys
-    updateShortcut(binding.id, recordedKeys);
-    setRecording(false);
-    setRecordedKeys([]);
-  };
-
-  const displayKeys = binding.keys.map((key) => {
-    if (key === 'space') return 'Space';
-    return MODIFIER_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
-  });
-
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="space-y-0.5 flex-1">
-        <p className="text-sm text-foreground">{binding.label}</p>
-        <p className="text-xs text-muted-foreground">{binding.description}</p>
-      </div>
-      <button
-        onKeyDown={handleKeyDown}
-        onKeyUp={handleKeyUp}
-        onBlur={() => {
-          if (recording) {
-            setRecording(false);
-            setRecordedKeys([]);
-          }
-        }}
-        onClick={handleStartRecording}
-        className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono transition-colors outline-none min-w-[100px] justify-center flex-wrap',
-          recording
-            ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
-            : 'border-border bg-muted text-foreground hover:border-primary/50'
-        )}
-      >
-        {recording ? (
-          <span className="animate-pulse text-primary">Recording...</span>
-        ) : displayKeys.length === 0 ? (
-          <span className="text-muted-foreground">No shortcut</span>
-        ) : (
-          displayKeys.map((key, i) => (
-            <span key={i}>
-              {i > 0 && <span className="mx-1">+</span>}
-              {key}
-            </span>
-          ))
-        )}
-      </button>
-    </div>
-  );
-}
-
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, onReplayTour }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
   const [language, setLanguage] = useState('en');
   const [timeFormat, setTimeFormat] = useState('12h');
@@ -206,17 +108,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [weekStartDay, setWeekStartDay] = useState('sunday');
   const [theme, setTheme] = useState('system');
-  const { shortcuts, resetShortcuts } = useKeyboardShortcutsStore();
-  const [isMac, setIsMac] = useState(false);
-  
-  // Detect OS on mount
-  useEffect(() => {
-    setIsMac(typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
-  }, []);
-  
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
-  const { eodReviewEnabled, eodReviewTime, setEodReviewEnabled, setEodReviewTime } = useEODStore();
+  useEODStore();
 
   const {
     provider, setProvider,
@@ -389,27 +283,37 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
-            <SettingsSection
-              title="Keyboard Shortcuts"
-              icon={<Keyboard className="h-4 w-4" />}
-            >
-              <div className="space-y-4">
-{shortcuts.map((binding) => (
-                    <ShortcutRow key={binding.id} binding={binding} isMac={isMac} />
-                  ))}
-              </div>
-              <div className="pt-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1.5"
-                  onClick={resetShortcuts}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Reset to defaults
-                </Button>
-              </div>
-            </SettingsSection>
+            <div className="px-4 py-3">
+              <button
+                className="flex items-center justify-between w-full hover:bg-accent/50 rounded-lg transition-colors -mx-4 px-4 py-1"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenKeyboardShortcuts?.();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-muted-foreground"><Keyboard className="h-4 w-4" /></div>
+                  <span className="text-sm font-medium text-foreground">Keyboard Shortcuts</span>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Onboarding */}
+            <div className="px-4 py-1">
+              <button
+                className="flex items-center justify-between w-full hover:bg-accent/50 rounded-lg transition-colors -mx-4 px-4 py-2"
+                onClick={() => {
+                  onOpenChange(false);
+                  onReplayTour?.();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-muted-foreground"><RotateCw className="h-4 w-4" /></div>
+                  <span className="text-sm font-medium text-foreground">Replay tour</span>
+                </div>
+              </button>
+            </div>
 
             {/* Daily Reviews */}
             <SettingsSection

@@ -698,9 +698,14 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
               ))}
               
               {unscheduledTasks.length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">No tasks yet</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">Add a task using the + button above</p>
+                <div className="text-center py-10 flex flex-col items-center gap-3">
+                  <p className="text-sm text-muted-foreground font-medium">What do you want to do today?</p>
+                  <button
+                    onClick={onAddClick}
+                    className="text-xs text-primary hover:underline underline-offset-2"
+                  >
+                    + Add Task
+                  </button>
                 </div>
               )}
             </div>
@@ -803,9 +808,20 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
               ))}
 
               {Object.values(groupedHabits).flat().length === 0 && (
-                <div className="text-center py-8">
-                  <p className="text-sm text-muted-foreground">{habits.length === 0 ? 'No habits yet' : 'No habits match the filter'}</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">{habits.length === 0 ? 'Add a habit using the + button above' : 'Try changing or clearing the filter'}</p>
+                <div className="text-center py-10 flex flex-col items-center gap-3">
+                  <p className="text-sm text-muted-foreground font-medium">
+                    {habits.length === 0 ? 'Build a streak — add your first habit' : 'No habits match the filter'}
+                  </p>
+                  {habits.length === 0 ? (
+                    <button
+                      onClick={onAddHabitClick}
+                      className="text-xs text-primary hover:underline underline-offset-2"
+                    >
+                      + Add Habit
+                    </button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/70">Try changing or clearing the filter</p>
+                  )}
                 </div>
               )}
             </div>
