@@ -22,50 +22,68 @@ function useSpotlightRect(selector: string | null) {
     const measure = () => {
       const el = document.querySelector(selector);
       if (el) setRect(el.getBoundingClientRect());
+      else setRect(null);
     };
 
-    measure();
-    // Re-measure on resize
+    measure(); // immediate pass
+    // Re-measure after CSS animations settle (sidebar open, tab switch, etc.)
+    const t1 = setTimeout(measure, 100);
+    const t2 = setTimeout(measure, 300);
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', measure);
+    };
   }, [selector]);
 
   return rect;
 }
 
+const FEATHER = 32; // gradient fade width in px
+const DARK = 'rgba(0,0,0,0.55)';
+const CLEAR = 'rgba(0,0,0,0)';
+
 /**
- * Spotlight overlay using four dark rects surrounding a cutout.
- * Works reliably without clip-path/box-shadow quirks.
+ * Spotlight overlay: four solid dark panels + four gradient feather strips
+ * along the inner edges of the cutout, creating a soft vignette effect.
  */
 function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
   if (!rect) {
     return (
       <div
-        className="absolute inset-0 bg-black/55 pointer-events-auto"
+        className="absolute inset-0 pointer-events-auto"
+        style={{ background: DARK }}
         onClick={onClick}
       />
     );
   }
 
-  const top = Math.max(0, rect.top - SPOTLIGHT_PADDING);
-  const left = Math.max(0, rect.left - SPOTLIGHT_PADDING);
-  const right = Math.max(0, window.innerWidth - rect.right - SPOTLIGHT_PADDING);
-  const bottom = Math.max(0, window.innerHeight - rect.bottom - SPOTLIGHT_PADDING);
-  const holeHeight = rect.height + SPOTLIGHT_PADDING * 2;
-
-  const bg = 'rgba(0,0,0,0.55)';
-  const transition = 'all 0.3s ease';
+  const t = Math.max(0, rect.top - SPOTLIGHT_PADDING);
+  const l = Math.max(0, rect.left - SPOTLIGHT_PADDING);
+  const r = Math.max(0, window.innerWidth - rect.right - SPOTLIGHT_PADDING);
+  const b = Math.max(0, window.innerHeight - rect.bottom - SPOTLIGHT_PADDING);
+  const holeW = Math.max(0, window.innerWidth - l - r);
+  const holeH = Math.max(0, window.innerHeight - t - b);
+  const tr = 'all 0.3s ease';
 
   return (
     <>
-      {/* Top */}
-      <div className="absolute pointer-events-auto" style={{ top: 0, left: 0, right: 0, height: top, background: bg, transition }} onClick={onClick} />
-      {/* Bottom */}
-      <div className="absolute pointer-events-auto" style={{ bottom: 0, left: 0, right: 0, height: bottom, background: bg, transition }} onClick={onClick} />
-      {/* Left (between top and bottom) */}
-      <div className="absolute pointer-events-auto" style={{ top, left: 0, width: left, height: holeHeight, background: bg, transition }} onClick={onClick} />
-      {/* Right */}
-      <div className="absolute pointer-events-auto" style={{ top, right: 0, width: right, height: holeHeight, background: bg, transition }} onClick={onClick} />
+      {/* ── Solid panels ── */}
+      <div className="absolute pointer-events-auto" style={{ top: 0, left: 0, right: 0, height: t, background: DARK, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto" style={{ bottom: 0, left: 0, right: 0, height: b, background: DARK, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto" style={{ top: t, left: 0, width: l, height: holeH, background: DARK, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto" style={{ top: t, right: 0, width: r, height: holeH, background: DARK, transition: tr }} onClick={onClick} />
+
+      {/* ── Feather strips (pointer-events-none so they don't block the app) ── */}
+      {/* Top edge of hole */}
+      <div className="absolute pointer-events-none" style={{ top: t, left: l, width: holeW, height: FEATHER, background: `linear-gradient(to bottom, ${DARK}, ${CLEAR})`, transition: tr }} />
+      {/* Bottom edge of hole */}
+      <div className="absolute pointer-events-none" style={{ bottom: b, left: l, width: holeW, height: FEATHER, background: `linear-gradient(to top, ${DARK}, ${CLEAR})`, transition: tr }} />
+      {/* Left edge of hole */}
+      <div className="absolute pointer-events-none" style={{ top: t, left: l, width: FEATHER, height: holeH, background: `linear-gradient(to right, ${DARK}, ${CLEAR})`, transition: tr }} />
+      {/* Right edge of hole */}
+      <div className="absolute pointer-events-none" style={{ top: t, right: r, width: FEATHER, height: holeH, background: `linear-gradient(to left, ${DARK}, ${CLEAR})`, transition: tr }} />
     </>
   );
 }
@@ -144,7 +162,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         if (mobileSubStep === 'B') return '[data-tour="tab-schedule"]';
       }
     }
-    if (step === 4 && isMobile) return '[data-tour="tab-chat"]';
+    if (step === 4) {
+      if (isMobile) return '[data-tour="tab-chat"]';
+      return '[data-tour="right-sidebar"]';
+    }
     return null;
   })();
   const spotlightRect = useSpotlightRect(spotlightSelector);
@@ -559,6 +580,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     // Desktop: non-fullscreen coach mark card to the left of chat sidebar
     return (
       <div className="fixed inset-0 z-[100] pointer-events-none">
+        <SpotlightOverlay rect={spotlightRect} />
         <div
           className="absolute right-[340px] top-1/2 -translate-y-1/2 pointer-events-auto animate-in fade-in zoom-in-95 duration-300"
         >
