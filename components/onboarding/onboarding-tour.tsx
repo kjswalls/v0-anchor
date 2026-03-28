@@ -40,7 +40,7 @@ function useSpotlightRect(selector: string | null) {
   return rect;
 }
 
-const FEATHER = 48; // vignette blur spread in px
+const FEATHER = 12; // vignette blur spread in px - keep small to only soften edges
 
 // Hook to detect dark mode
 function useIsDarkMode() {
@@ -93,13 +93,13 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
 
       {/* ── Vignette overlay: inset box-shadow creates smooth fade from edges ── */}
       <div 
-        className="absolute pointer-events-none rounded-lg"
+        className="absolute pointer-events-none"
         style={{ 
           top: t, 
           left: l, 
           width: holeW, 
           height: holeH, 
-          boxShadow: `inset 0 0 ${FEATHER}px ${FEATHER / 2}px ${vignetteColor}`,
+          boxShadow: `inset 0 0 ${FEATHER}px ${FEATHER * 0.4}px ${vignetteColor}`,
           transition: tr 
         }} 
       />
