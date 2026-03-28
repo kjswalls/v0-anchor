@@ -40,7 +40,7 @@ function useSpotlightRect(selector: string | null) {
   return rect;
 }
 
-const FEATHER = 12; // vignette blur spread in px - keep small to only soften edges
+const EDGE_BLUR = 24; // blur radius for soft edge fade
 
 // Hook to detect dark mode
 function useIsDarkMode() {
@@ -58,13 +58,12 @@ function useIsDarkMode() {
 }
 
 /**
- * Spotlight overlay: four solid dark panels + an inset box-shadow vignette
- * over the cutout area, creating a smooth fade from overlay into the content.
+ * Spotlight overlay: single element with a massive box-shadow that covers
+ * the entire screen except the cutout, with soft blurred edges.
  */
 function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
   const isDark = useIsDarkMode();
-  const overlayOpacity = isDark ? 0.7 : 0.55;
-  const vignetteColor = `rgba(0,0,0,${overlayOpacity})`;
+  const overlayColor = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)';
   
   if (!rect) {
     return (
@@ -77,31 +76,38 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
 
   const t = Math.max(0, rect.top - SPOTLIGHT_PADDING);
   const l = Math.max(0, rect.left - SPOTLIGHT_PADDING);
-  const r = Math.max(0, window.innerWidth - rect.right - SPOTLIGHT_PADDING);
-  const b = Math.max(0, window.innerHeight - rect.bottom - SPOTLIGHT_PADDING);
-  const holeW = Math.max(0, window.innerWidth - l - r);
-  const holeH = Math.max(0, window.innerHeight - t - b);
+  const w = rect.width + SPOTLIGHT_PADDING * 2;
+  const h = rect.height + SPOTLIGHT_PADDING * 2;
   const tr = 'all 0.3s ease';
 
   return (
     <>
-      {/* ── Solid panels ── */}
-      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: 0, left: 0, right: 0, height: t, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ bottom: 0, left: 0, right: 0, height: b, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: t, left: 0, width: l, height: holeH, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: t, right: 0, width: r, height: holeH, transition: tr }} onClick={onClick} />
-
-      {/* ── Vignette overlay: inset box-shadow creates smooth fade from edges ── */}
+      {/* Single spotlight element with massive blurred box-shadow */}
       <div 
-        className="absolute pointer-events-none"
+        className="absolute rounded-lg pointer-events-none"
         style={{ 
           top: t, 
           left: l, 
-          width: holeW, 
-          height: holeH, 
-          boxShadow: `inset 0 0 ${FEATHER}px ${FEATHER * 0.4}px ${vignetteColor}`,
+          width: w, 
+          height: h, 
+          boxShadow: `0 0 ${EDGE_BLUR}px 9999px ${overlayColor}`,
           transition: tr 
         }} 
+      />
+      {/* Invisible click catcher for the overlay area */}
+      <div 
+        className="absolute inset-0 pointer-events-auto"
+        onClick={onClick}
+        style={{
+          clipPath: `polygon(
+            0% 0%, 0% 100%, 
+            ${l}px 100%, ${l}px ${t}px, 
+            ${l + w}px ${t}px, ${l + w}px ${t + h}px, 
+            ${l}px ${t + h}px, ${l}px 100%, 
+            100% 100%, 100% 0%
+          )`,
+          transition: tr
+        }}
       />
     </>
   );
