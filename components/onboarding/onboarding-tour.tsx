@@ -40,20 +40,36 @@ function useSpotlightRect(selector: string | null) {
   return rect;
 }
 
-const FEATHER = 32; // gradient fade width in px
-const DARK = 'rgba(0,0,0,0.55)';
-const CLEAR = 'rgba(0,0,0,0)';
+const FEATHER = 48; // vignette blur spread in px
+
+// Hook to detect dark mode
+function useIsDarkMode() {
+  const [isDark, setIsDark] = useState(false);
+  
+  useEffect(() => {
+    const check = () => setIsDark(document.documentElement.classList.contains('dark'));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  
+  return isDark;
+}
 
 /**
- * Spotlight overlay: four solid dark panels + four gradient feather strips
- * along the inner edges of the cutout, creating a soft vignette effect.
+ * Spotlight overlay: four solid dark panels + an inset box-shadow vignette
+ * over the cutout area, creating a smooth fade from overlay into the content.
  */
 function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
+  const isDark = useIsDarkMode();
+  const overlayOpacity = isDark ? 0.7 : 0.55;
+  const vignetteColor = `rgba(0,0,0,${overlayOpacity})`;
+  
   if (!rect) {
     return (
       <div
-        className="absolute inset-0 pointer-events-auto"
-        style={{ background: DARK }}
+        className="absolute inset-0 pointer-events-auto bg-black/55 dark:bg-black/70"
         onClick={onClick}
       />
     );
@@ -70,20 +86,23 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
   return (
     <>
       {/* ── Solid panels ── */}
-      <div className="absolute pointer-events-auto" style={{ top: 0, left: 0, right: 0, height: t, background: DARK, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto" style={{ bottom: 0, left: 0, right: 0, height: b, background: DARK, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto" style={{ top: t, left: 0, width: l, height: holeH, background: DARK, transition: tr }} onClick={onClick} />
-      <div className="absolute pointer-events-auto" style={{ top: t, right: 0, width: r, height: holeH, background: DARK, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: 0, left: 0, right: 0, height: t, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ bottom: 0, left: 0, right: 0, height: b, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: t, left: 0, width: l, height: holeH, transition: tr }} onClick={onClick} />
+      <div className="absolute pointer-events-auto bg-black/55 dark:bg-black/70" style={{ top: t, right: 0, width: r, height: holeH, transition: tr }} onClick={onClick} />
 
-      {/* ── Feather strips (pointer-events-none so they don't block the app) ── */}
-      {/* Top edge of hole */}
-      <div className="absolute pointer-events-none" style={{ top: t, left: l, width: holeW, height: FEATHER, background: `linear-gradient(to bottom, ${DARK}, ${CLEAR})`, transition: tr }} />
-      {/* Bottom edge of hole */}
-      <div className="absolute pointer-events-none" style={{ bottom: b, left: l, width: holeW, height: FEATHER, background: `linear-gradient(to top, ${DARK}, ${CLEAR})`, transition: tr }} />
-      {/* Left edge of hole */}
-      <div className="absolute pointer-events-none" style={{ top: t, left: l, width: FEATHER, height: holeH, background: `linear-gradient(to right, ${DARK}, ${CLEAR})`, transition: tr }} />
-      {/* Right edge of hole */}
-      <div className="absolute pointer-events-none" style={{ top: t, right: r, width: FEATHER, height: holeH, background: `linear-gradient(to left, ${DARK}, ${CLEAR})`, transition: tr }} />
+      {/* ── Vignette overlay: inset box-shadow creates smooth fade from edges ── */}
+      <div 
+        className="absolute pointer-events-none rounded-lg"
+        style={{ 
+          top: t, 
+          left: l, 
+          width: holeW, 
+          height: holeH, 
+          boxShadow: `inset 0 0 ${FEATHER}px ${FEATHER / 2}px ${vignetteColor}`,
+          transition: tr 
+        }} 
+      />
     </>
   );
 }
@@ -431,7 +450,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     );
   }
 
-  // ─── Step 3: Tour Layout ────────────────────────────────────────────────────
+  // ─── Step 3: Tour Layout ──────────────────────────────��─────────────────────
   if (step === 3) {
     // Mobile: two sub-steps (tasks tab, then schedule tab)
     if (isMobile) {
