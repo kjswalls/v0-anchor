@@ -90,7 +90,6 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
   const l = Math.max(0, rect.left - SPOTLIGHT_PADDING);
   const w = rect.width + SPOTLIGHT_PADDING * 2;
   const h = rect.height + SPOTLIGHT_PADDING * 2;
-  const tr = 'all 0.3s ease';
 
   return (
     <>
@@ -102,8 +101,7 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
           left: l, 
           width: w, 
           height: h, 
-          boxShadow: `0 0 ${EDGE_BLUR}px 9999px ${overlayColor}`,
-          transition: tr 
+          boxShadow: `0 0 ${EDGE_BLUR}px 9999px ${overlayColor}`
         }} 
       />
       {/* Invisible click catcher for the overlay area */}
@@ -117,8 +115,7 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
             ${l + w}px ${t}px, ${l + w}px ${t + h}px, 
             ${l}px ${t + h}px, ${l}px 100%, 
             100% 100%, 100% 0%
-          )`,
-          transition: tr
+          )`
         }}
       />
     </>
