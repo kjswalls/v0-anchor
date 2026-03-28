@@ -94,6 +94,7 @@ export default function PlannerPage() {
     rightSidebarHoverEnabled,
     toggleLeftSidebar, 
     toggleRightSidebar,
+    setRightSidebarOpen,
     setLeftSidebarHovered,
     setRightSidebarHovered 
   } = useSidebarStore();
@@ -592,7 +593,8 @@ const handleAddFromTopNav = () => {
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onExpandChat={() => toggleRightSidebar()}
+          onExpandChat={() => setRightSidebarOpen(true)}
+          onCollapseChat={() => setRightSidebarOpen(false)}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}

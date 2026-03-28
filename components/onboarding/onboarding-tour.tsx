@@ -16,6 +16,7 @@ interface OnboardingTourProps {
   onComplete: () => void;
   onOpenSettings: () => void;
   onExpandChat?: () => void;
+  onCollapseChat?: () => void;
   onSetActiveTab?: (tab: string) => void;
 }
 
@@ -63,7 +64,7 @@ function BackButton({ onBack }: { onBack: () => void }) {
   );
 }
 
-export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandChat, onSetActiveTab }: OnboardingTourProps) {
+export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandChat, onCollapseChat, onSetActiveTab }: OnboardingTourProps) {
   const [step, setStep] = useState<Step>(1);
   const [taskInput, setTaskInput] = useState('');
   const [isVisible, setIsVisible] = useState(true);
@@ -74,8 +75,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const onExpandChatRef = useRef(onExpandChat);
+  const onCollapseChatRef = useRef(onCollapseChat);
   const onSetActiveTabRef = useRef(onSetActiveTab);
   useEffect(() => { onExpandChatRef.current = onExpandChat; }, [onExpandChat]);
+  useEffect(() => { onCollapseChatRef.current = onCollapseChat; }, [onCollapseChat]);
   useEffect(() => { onSetActiveTabRef.current = onSetActiveTab; }, [onSetActiveTab]);
   const { addTask } = usePlannerStore();
 
@@ -93,10 +96,14 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step]);
 
-  // Auto-expand chat sidebar when reaching desktop sub-step C
+  // Auto-expand/collapse chat sidebar based on desktop sub-step C
   useEffect(() => {
-    if (step === 3 && !isMobile && desktopSubStep === 'C') {
-      onExpandChatRef.current?.();
+    if (step === 3 && !isMobile) {
+      if (desktopSubStep === 'C') {
+        onExpandChatRef.current?.();
+      } else {
+        onCollapseChatRef.current?.();
+      }
     }
   }, [step, isMobile, desktopSubStep]);
 
@@ -180,6 +187,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   }, [step, handleNext]);
 
   const handleSkip = async () => {
+    onCollapseChatRef.current?.();
+    onSetActiveTabRef.current?.('tasks');
     setIsVisible(false);
     await setOnboardingComplete(userId);
     onComplete();
@@ -208,6 +217,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   };
 
   const handleComplete = async () => {
+    onCollapseChatRef.current?.();
+    onSetActiveTabRef.current?.('tasks');
     setIsVisible(false);
     toast.success("You're all set ✨ One thing at a time — you've got this.", {
       description: 'Tip: replay this tour anytime from Settings.',
@@ -446,24 +457,24 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
               </p>
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
-                <div className="flex items-center gap-2">
-                  <ProgressDots current={4} total={4} />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      handleComplete();
-                      setTimeout(() => onOpenSettings(), 300);
-                    }}
-                    className="gap-1.5"
-                  >
-                    <Settings className="h-3.5 w-3.5" />
-                    Settings
-                  </Button>
-                  <Button size="sm" onClick={handleComplete}>
-                    Got it →
-                  </Button>
-                </div>
+                <ProgressDots current={4} total={4} />
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    handleComplete();
+                    setTimeout(() => onOpenSettings(), 300);
+                  }}
+                  className="gap-1.5"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Settings
+                </Button>
+                <Button size="sm" onClick={handleComplete}>
+                  Got it →
+                </Button>
               </div>
             </div>
           </div>
@@ -484,24 +495,24 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             </p>
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
-              <div className="flex items-center gap-2">
-                <ProgressDots current={4} total={4} />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    handleComplete();
-                    setTimeout(() => onOpenSettings(), 300);
-                  }}
-                  className="gap-1.5"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  Settings
-                </Button>
-                <Button size="sm" onClick={handleComplete}>
-                  Got it →
-                </Button>
-              </div>
+              <ProgressDots current={4} total={4} />
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  handleComplete();
+                  setTimeout(() => onOpenSettings(), 300);
+                }}
+                className="gap-1.5"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Settings
+              </Button>
+              <Button size="sm" onClick={handleComplete}>
+                Got it →
+              </Button>
             </div>
           </div>
         </div>
