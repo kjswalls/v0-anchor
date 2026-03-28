@@ -11,6 +11,66 @@ import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import Image from 'next/image';
 
+const SPOTLIGHT_PADDING = 8;
+
+function useSpotlightRect(selector: string | null) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (!selector) { setRect(null); return; }
+
+    const measure = () => {
+      const el = document.querySelector(selector);
+      if (el) setRect(el.getBoundingClientRect());
+    };
+
+    measure();
+    // Re-measure on resize
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [selector]);
+
+  return rect;
+}
+
+/** Renders a box-shadow spotlight cutout around the given rect. */
+function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
+  if (!rect) {
+    return (
+      <div
+        className="absolute inset-0 bg-black/50 pointer-events-auto"
+        onClick={onClick}
+      />
+    );
+  }
+
+  const top = rect.top - SPOTLIGHT_PADDING;
+  const left = rect.left - SPOTLIGHT_PADDING;
+  const width = rect.width + SPOTLIGHT_PADDING * 2;
+  const height = rect.height + SPOTLIGHT_PADDING * 2;
+
+  return (
+    <div
+      className="absolute inset-0 pointer-events-auto"
+      style={{
+        background: 'transparent',
+        boxShadow: `0 0 0 9999px rgba(0,0,0,0.55)`,
+        clipPath: `polygon(
+          0% 0%, 100% 0%, 100% 100%, 0% 100%,
+          0% ${top}px,
+          ${left}px ${top}px,
+          ${left}px ${top + height}px,
+          ${left + width}px ${top + height}px,
+          ${left + width}px ${top}px,
+          0% ${top}px
+        )`,
+        transition: 'clip-path 0.3s ease',
+      }}
+      onClick={onClick}
+    />
+  );
+}
+
 interface OnboardingTourProps {
   userId: string;
   onComplete: () => void;
@@ -73,6 +133,22 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   const [desktopSubStep, setDesktopSubStep] = useState<'A' | 'B' | 'C'>('A');
   const [mobileSubStep, setMobileSubStep] = useState<'A' | 'B'>('A');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  // Spotlight selector based on current step/sub-step
+  const spotlightSelector = (() => {
+    if (step === 3) {
+      if (!isMobile) {
+        if (desktopSubStep === 'A') return '[data-tour="left-sidebar"]';
+        if (desktopSubStep === 'B') return '[data-tour="timeline"]';
+        if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
+      } else {
+        return null; // mobile full overlay is fine for step 3
+      }
+    }
+    if (step === 4) return null; // coach mark, no spotlight needed
+    return null;
+  })();
+  const spotlightRect = useSpotlightRect(spotlightSelector);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const onExpandChatRef = useRef(onExpandChat);
   const onCollapseChatRef = useRef(onCollapseChat);
@@ -408,7 +484,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
     return (
       <div className="fixed inset-0 z-[100] pointer-events-none">
-        <div className="absolute inset-0 bg-black/40 pointer-events-auto" onClick={handleNext} />
+        <SpotlightOverlay rect={spotlightRect} onClick={handleNext} />
         <div
           className={cn(
             'absolute pointer-events-auto animate-in fade-in zoom-in-95 duration-200',

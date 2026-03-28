@@ -478,7 +478,7 @@ const handleAddFromTopNav = () => {
 
             <MorningCheck />
 
-            <div className="flex-1 flex flex-col bg-background overflow-hidden">
+            <div data-tour="timeline" className="flex-1 flex flex-col bg-background overflow-hidden">
               {viewMode === 'day' ? (
                 <Timeline
                   onTaskClick={handleTaskClick}

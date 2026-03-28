@@ -562,6 +562,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
 
   return (
     <div 
+      data-tour="left-sidebar"
       className="relative flex h-full"
       onMouseLeave={() => leftSidebarHovered && setLeftSidebarHovered(false)}
     >

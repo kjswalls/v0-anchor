@@ -300,6 +300,7 @@ export function ChatSidebar() {
       {isVisible && (
         <div
           ref={sidebarRef}
+          data-tour="right-sidebar"
           className={cn(
             "absolute right-0 top-0 h-full z-20 flex transition-all duration-200",
             rightSidebarHovered && !isOpen && "shadow-xl"
