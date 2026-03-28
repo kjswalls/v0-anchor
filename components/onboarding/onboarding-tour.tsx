@@ -73,6 +73,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   const [mobileSubStep, setMobileSubStep] = useState<'A' | 'B'>('A');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const onExpandChatRef = useRef(onExpandChat);
+  const onSetActiveTabRef = useRef(onSetActiveTab);
+  useEffect(() => { onExpandChatRef.current = onExpandChat; }, [onExpandChat]);
+  useEffect(() => { onSetActiveTabRef.current = onSetActiveTab; }, [onSetActiveTab]);
   const { addTask } = usePlannerStore();
 
   useEffect(() => {
@@ -92,27 +96,27 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   // Auto-expand chat sidebar when reaching desktop sub-step C
   useEffect(() => {
     if (step === 3 && !isMobile && desktopSubStep === 'C') {
-      onExpandChat?.();
+      onExpandChatRef.current?.();
     }
-  }, [step, isMobile, desktopSubStep, onExpandChat]);
+  }, [step, isMobile, desktopSubStep]);
 
   // Switch to tasks tab when reaching mobile sub-step A (step 3)
   useEffect(() => {
     if (step === 3 && isMobile) {
       if (mobileSubStep === 'A') {
-        onSetActiveTab?.('tasks');
+        onSetActiveTabRef.current?.('tasks');
       } else if (mobileSubStep === 'B') {
-        onSetActiveTab?.('schedule');
+        onSetActiveTabRef.current?.('schedule');
       }
     }
-  }, [step, isMobile, mobileSubStep, onSetActiveTab]);
+  }, [step, isMobile, mobileSubStep]);
 
   // Switch to chat tab when reaching step 4 on mobile
   useEffect(() => {
     if (step === 4 && isMobile) {
-      onSetActiveTab?.('chat');
+      onSetActiveTabRef.current?.('chat');
     }
-  }, [step, isMobile, onSetActiveTab]);
+  }, [step, isMobile]);
 
   const advanceWithExit = useCallback((fn: () => void) => {
     setIsExiting(true);
