@@ -188,7 +188,11 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     if (taskInput.trim()) {
       // Add as unscheduled task (no timeBucket, no startDate) → appears in sidebar
       addTask({ title: taskInput.trim() });
-      confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#a855f7', '#6366f1', '#ec4899'] });
+      try {
+        confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#a855f7', '#6366f1', '#ec4899'] });
+      } catch (_) {
+        // confetti may fail on some mobile browsers — non-fatal
+      }
       advanceWithExit(() => {
         setIsCreatingTask(false);
         setStep(3);
