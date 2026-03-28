@@ -21,13 +21,20 @@ interface TopNavProps {
   onOpenSettings: () => void;
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
+  searchOpen?: boolean;
+  onSearchOpenChange?: (open: boolean) => void;
 }
 
-export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick }: TopNavProps) {
+export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick, searchOpen, onSearchOpenChange }: TopNavProps) {
   const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection } = usePlannerStore();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  const [internalShowSearch, setInternalShowSearch] = useState(false);
+  const showSearch = searchOpen !== undefined ? searchOpen : internalShowSearch;
+  const setShowSearch = (v: boolean) => {
+    setInternalShowSearch(v);
+    onSearchOpenChange?.(v);
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [sunsetTime, setSunsetTime] = useState<string | null>(null);

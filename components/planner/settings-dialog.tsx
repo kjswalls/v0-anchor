@@ -283,37 +283,19 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
-            <div className="px-4 py-3">
-              <button
-                className="flex items-center justify-between w-full hover:bg-accent/50 rounded-lg transition-colors -mx-4 px-4 py-1"
-                onClick={() => {
-                  onOpenChange(false);
-                  onOpenKeyboardShortcuts?.();
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-muted-foreground"><Keyboard className="h-4 w-4" /></div>
-                  <span className="text-sm font-medium text-foreground">Keyboard Shortcuts</span>
-                </div>
-                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-              </button>
-            </div>
-
-            {/* Onboarding */}
-            <div className="px-4 py-1">
-              <button
-                className="flex items-center justify-between w-full hover:bg-accent/50 rounded-lg transition-colors -mx-4 px-4 py-2"
-                onClick={() => {
-                  onOpenChange(false);
-                  onReplayTour?.();
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="text-muted-foreground"><RotateCw className="h-4 w-4" /></div>
-                  <span className="text-sm font-medium text-foreground">Replay tour</span>
-                </div>
-              </button>
-            </div>
+            <button
+              className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent/50 rounded-lg transition-colors"
+              onClick={() => {
+                onOpenChange(false);
+                onOpenKeyboardShortcuts?.();
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="text-muted-foreground"><Keyboard className="h-4 w-4" /></div>
+                <span className="text-sm font-medium text-foreground">Keyboard Shortcuts</span>
+              </div>
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
 
             {/* Daily Reviews */}
             <SettingsSection
@@ -445,7 +427,17 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
           </div>
         </div>
 
-        <div className="flex justify-end pt-4 border-t border-border">
+        <div className="flex items-center justify-between pt-4 border-t border-border">
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+            onClick={() => {
+              onOpenChange(false);
+              onReplayTour?.();
+            }}
+          >
+            <RotateCw className="h-3 w-3" />
+            Replay onboarding tour
+          </button>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Done
           </Button>

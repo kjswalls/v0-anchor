@@ -9,6 +9,8 @@ export interface ShortcutBinding {
   description: string;
   /** Array of keys/modifiers pressed concurrently (up to 3). e.g., ['ctrl', 'shift', 'k'] or ['n'] */
   keys: string[];
+  /** System shortcuts are non-editable and shown in a separate read-only section */
+  system?: boolean;
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
@@ -53,6 +55,30 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     label: 'Toggle right sidebar',
     description: 'Show or hide the AI chat sidebar',
     keys: ['meta', ']'],
+  },
+];
+
+export const SYSTEM_SHORTCUTS: ShortcutBinding[] = [
+  {
+    id: 'system_settings',
+    label: 'Open Settings',
+    description: 'Open the settings dialog',
+    keys: ['meta', ','],
+    system: true,
+  },
+  {
+    id: 'system_shortcuts',
+    label: 'Open Keyboard Shortcuts',
+    description: 'Open this shortcuts modal',
+    keys: ['meta', '/'],
+    system: true,
+  },
+  {
+    id: 'system_search',
+    label: 'Search',
+    description: 'Focus the search bar',
+    keys: ['meta', 'k'],
+    system: true,
   },
 ];
 

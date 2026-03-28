@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useKeyboardShortcutsStore, ShortcutBinding } from '@/lib/keyboard-shortcuts-store';
+import { useKeyboardShortcutsStore, ShortcutBinding, SYSTEM_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 
 function getModifierLabels(isMac: boolean): Record<string, string> {
   return {
@@ -139,6 +139,33 @@ export function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardShortcuts
             {shortcuts.map((binding) => (
               <ShortcutRow key={binding.id} binding={binding} isMac={isMac} />
             ))}
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-border space-y-3 py-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">System Shortcuts</p>
+            {SYSTEM_SHORTCUTS.map((binding) => {
+              const MODIFIER_LABELS = getModifierLabels(isMac);
+              const displayKeys = binding.keys.map((key) => {
+                if (key === 'space') return 'Space';
+                return MODIFIER_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1);
+              });
+              return (
+                <div key={binding.id} className="flex items-center justify-between gap-4 opacity-60">
+                  <div className="space-y-0.5 flex-1">
+                    <p className="text-sm text-foreground">{binding.label}</p>
+                    <p className="text-xs text-muted-foreground">{binding.description}</p>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-muted text-xs font-mono text-foreground min-w-[100px] justify-center flex-wrap pointer-events-none select-none">
+                    {displayKeys.map((key, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="mx-1">+</span>}
+                        {key}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 

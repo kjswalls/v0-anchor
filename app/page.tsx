@@ -27,9 +27,8 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
-import { isOnboardingComplete } from '@/lib/user-profile';
+import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
-import { toast } from 'sonner';
 import { useSwipeable } from 'react-swipeable';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import type { MobileTab } from '@/lib/mobile-nav-store';
@@ -64,7 +63,7 @@ function KbdHint() {
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
   }, []);
-  return <span>{isMac ? '⌘ /' : 'Ctrl /'}</span>;
+  return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
 }
 
 function DraggableTaskOverlay({ title }: { title: string }) {
@@ -113,6 +112,7 @@ export default function PlannerPage() {
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   // Keyboard shortcut delete confirmation
   const [shortcutDeleteTarget, setShortcutDeleteTarget] = useState<{ id: string; type: 'task' | 'habit'; title: string } | null>(null);
   
@@ -162,10 +162,10 @@ export default function PlannerPage() {
         e.preventDefault();
         setSettingsOpen(true);
       }
-      // Cmd/Ctrl + K — search (stub)
+      // Cmd/Ctrl + K — focus search
       if (mod && e.key === 'k') {
         e.preventDefault();
-        toast.info('Search coming soon');
+        setSearchOpen(true);
       }
     };
 
@@ -417,12 +417,14 @@ const handleAddFromTopNav = () => {
     >
       {/* Desktop Layout */}
       <div className="hidden md:flex h-[100dvh] flex-col bg-background">
-        <TopNav 
-          onAddClick={handleAddFromTopNav} 
+        <TopNav
+          onAddClick={handleAddFromTopNav}
           onManageCategories={handleManageCategories}
           onOpenSettings={handleOpenSettings}
           onTaskClick={handleTaskClick}
           onHabitClick={handleHabitClick}
+          searchOpen={searchOpen}
+          onSearchOpenChange={setSearchOpen}
         />
         <div className="flex-1 flex overflow-hidden">
           <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
@@ -569,10 +571,14 @@ const handleAddFromTopNav = () => {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onOpenKeyboardShortcuts={() => setKeyboardShortcutsOpen(true)}
-        onReplayTour={() => {
-          if (tourUserId) {
-            setShowTour(true);
-          }
+        onReplayTour={async () => {
+          const supabase = createClient();
+          const { data } = await supabase.auth.getUser();
+          const uid = data.user?.id;
+          if (!uid) return;
+          await resetOnboardingComplete(uid);
+          setTourUserId(uid);
+          setShowTour(true);
         }}
       />
 
@@ -586,6 +592,8 @@ const handleAddFromTopNav = () => {
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onExpandChat={() => toggleRightSidebar()}
+          onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}
 

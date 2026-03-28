@@ -24,3 +24,10 @@ export async function setOnboardingComplete(userId: string): Promise<void> {
     .from('user_settings')
     .upsert({ user_id: userId, onboarding_completed: true }, { onConflict: 'user_id' })
 }
+
+export async function resetOnboardingComplete(userId: string): Promise<void> {
+  const supabase = createClient()
+  await supabase
+    .from('user_settings')
+    .upsert({ user_id: userId, onboarding_completed: false }, { onConflict: 'user_id' })
+}

@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, ArrowRight, Settings } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { setOnboardingComplete } from '@/lib/user-profile';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
 import confetti from 'canvas-confetti';
 import Image from 'next/image';
 
@@ -16,9 +15,11 @@ interface OnboardingTourProps {
   userId: string;
   onComplete: () => void;
   onOpenSettings: () => void;
+  onExpandChat?: () => void;
+  onSetActiveTab?: (tab: string) => void;
 }
 
-type Step = 1 | 2 | 3 | 4 | 5;
+type Step = 1 | 2 | 3 | 4;
 
 function ProgressDots({ current, total }: { current: number; total: number }) {
   return (
@@ -50,16 +51,29 @@ function SkipButton({ onSkip }: { onSkip: () => void }) {
   );
 }
 
-export function OnboardingTour({ userId, onComplete, onOpenSettings }: OnboardingTourProps) {
+function BackButton({ onBack }: { onBack: () => void }) {
+  return (
+    <button
+      onClick={onBack}
+      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <ArrowLeft className="h-3.5 w-3.5" />
+      Back
+    </button>
+  );
+}
+
+export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandChat, onSetActiveTab }: OnboardingTourProps) {
   const [step, setStep] = useState<Step>(1);
   const [taskInput, setTaskInput] = useState('');
   const [isVisible, setIsVisible] = useState(true);
+  const [isExiting, setIsExiting] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [desktopSubStep, setDesktopSubStep] = useState<'A' | 'B' | 'C'>('A');
+  const [mobileSubStep, setMobileSubStep] = useState<'A' | 'B'>('A');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
-  const [addTaskPulse, setAddTaskPulse] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addTask, selectedDate } = usePlannerStore();
+  const { addTask } = usePlannerStore();
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -75,22 +89,83 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
     }
   }, [step]);
 
-  // Tab advances steps (except in step 2 where Tab is used in the input)
+  // Auto-expand chat sidebar when reaching desktop sub-step C
+  useEffect(() => {
+    if (step === 3 && !isMobile && desktopSubStep === 'C') {
+      onExpandChat?.();
+    }
+  }, [step, isMobile, desktopSubStep, onExpandChat]);
+
+  // Switch to tasks tab when reaching mobile sub-step A (step 3)
+  useEffect(() => {
+    if (step === 3 && isMobile) {
+      if (mobileSubStep === 'A') {
+        onSetActiveTab?.('tasks');
+      } else if (mobileSubStep === 'B') {
+        onSetActiveTab?.('schedule');
+      }
+    }
+  }, [step, isMobile, mobileSubStep, onSetActiveTab]);
+
+  // Switch to chat tab when reaching step 4 on mobile
+  useEffect(() => {
+    if (step === 4 && isMobile) {
+      onSetActiveTab?.('chat');
+    }
+  }, [step, isMobile, onSetActiveTab]);
+
+  const advanceWithExit = useCallback((fn: () => void) => {
+    setIsExiting(true);
+    setTimeout(() => {
+      setIsExiting(false);
+      fn();
+    }, 280);
+  }, []);
+
   const handleNext = useCallback(() => {
     if (step === 3 && !isMobile) {
       if (desktopSubStep === 'A') { setDesktopSubStep('B'); return; }
       if (desktopSubStep === 'B') { setDesktopSubStep('C'); return; }
+    }
+    if (step === 3 && isMobile) {
+      if (mobileSubStep === 'A') { setMobileSubStep('B'); return; }
     }
     if (step < 4) {
       setStep((s) => (s + 1) as Step);
     } else if (step === 4) {
       handleComplete();
     }
-  }, [step, isMobile, desktopSubStep]);
+  }, [step, isMobile, desktopSubStep, mobileSubStep]);
+
+  const handleBack = useCallback(() => {
+    if (step === 2) {
+      setStep(1);
+    } else if (step === 3) {
+      if (!isMobile) {
+        if (desktopSubStep === 'A') {
+          setStep(2);
+        } else if (desktopSubStep === 'B') {
+          setDesktopSubStep('A');
+        } else if (desktopSubStep === 'C') {
+          setDesktopSubStep('B');
+        }
+      } else {
+        if (mobileSubStep === 'A') {
+          setStep(2);
+        } else {
+          setMobileSubStep('A');
+        }
+      }
+    } else if (step === 4) {
+      setDesktopSubStep('C');
+      setMobileSubStep('B');
+      setStep(3);
+    }
+  }, [step, isMobile, desktopSubStep, mobileSubStep]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (step === 2) return; // Let input handle its own keys
+      if (step === 2) return;
       if (e.key === 'Tab') {
         e.preventDefault();
         handleNext();
@@ -111,22 +186,15 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
     setIsCreatingTask(true);
 
     if (taskInput.trim()) {
-      const today = format(selectedDate || new Date(), 'yyyy-MM-dd');
-      addTask({
-        title: taskInput.trim(),
-        timeBucket: 'anytime',
-        startDate: today,
-      });
+      // Add as unscheduled task (no timeBucket, no startDate) → appears in sidebar
+      addTask({ title: taskInput.trim() });
       confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#a855f7', '#6366f1', '#ec4899'] });
-      setTimeout(() => {
+      advanceWithExit(() => {
         setIsCreatingTask(false);
         setStep(3);
-      }, 700);
+      });
     } else {
-      // Skipped: pulse the add task button
       setIsCreatingTask(false);
-      setAddTaskPulse(true);
-      setTimeout(() => setAddTaskPulse(false), 3000);
       setStep(3);
     }
   };
@@ -134,7 +202,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
   const handleComplete = async () => {
     setIsVisible(false);
     toast.success("You're all set ✨ One thing at a time — you've got this.", {
-      duration: 4000,
+      description: 'Tip: replay this tour anytime from Settings.',
+      duration: 5000,
     });
     await setOnboardingComplete(userId);
     onComplete();
@@ -142,16 +211,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
 
   if (!isVisible) return null;
 
+  const exitClass = isExiting ? 'animate-out fade-out zoom-out-95 duration-300' : '';
+
   // ─── Step 1: Welcome ────────────────────────────────────────────────────────
   if (step === 1) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center">
-        {/* Blurred backdrop */}
         <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
 
-        <div className="relative z-10 w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-300">
+        <div className={cn('relative z-10 w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-300', exitClass)}>
           <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col items-center text-center gap-6">
-            {/* App icon */}
             <div className="relative">
               <Image
                 src="/icons/icon-192.png"
@@ -171,15 +240,15 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 w-full">
+            <div className="w-full flex items-center justify-between">
+              <SkipButton onSkip={handleSkip} />
               <Button
-                className="w-full gap-2"
+                className="gap-2"
                 onClick={() => setStep(2)}
               >
                 Let&apos;s go
                 <ArrowRight className="h-4 w-4" />
               </Button>
-              <SkipButton onSkip={handleSkip} />
             </div>
 
             <ProgressDots current={1} total={4} />
@@ -195,7 +264,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
       <div className="fixed inset-0 z-[100] flex items-center justify-center">
         <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
 
-        <div className="relative z-10 w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-300">
+        <div className={cn('relative z-10 w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-300', exitClass)}>
           <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col gap-6">
             <div className="space-y-1.5">
               <h2 className="text-lg font-semibold text-foreground">
@@ -217,16 +286,12 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
             />
 
             <div className="flex items-center justify-between">
-              <SkipButton onSkip={handleSkip} />
+              <BackButton onBack={handleBack} />
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setAddTaskPulse(true);
-                    setTimeout(() => setAddTaskPulse(false), 3000);
-                    setStep(3);
-                  }}
+                  onClick={() => setStep(3)}
                   disabled={isCreatingTask}
                 >
                   Skip
@@ -252,27 +317,45 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
 
   // ─── Step 3: Tour Layout ────────────────────────────────────────────────────
   if (step === 3) {
-    // Mobile: single step spotlighting bottom tab bar
+    // Mobile: two sub-steps (tasks tab, then schedule tab)
     if (isMobile) {
+      const mobileContent = {
+        A: {
+          title: 'Your tasks live here',
+          description: "Head to Schedule to plan when you'll do them.",
+        },
+        B: {
+          title: 'Plan your day',
+          description: 'Drag tasks here to block time, or tap a time slot to add one.',
+        },
+      };
+      const mc = mobileContent[mobileSubStep];
+      const mobileSubIndex = mobileSubStep === 'A' ? 0 : 1;
+
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
-          {/* Dim everything except tab bar */}
-          <div className="absolute inset-0 bg-black/60 pointer-events-auto" onClick={() => handleNext()} />
-          {/* Spotlight cutout at bottom */}
+          <div className="absolute inset-0 bg-black/60 pointer-events-auto" onClick={handleNext} />
           <div className="absolute bottom-0 left-0 right-0 h-16 bg-transparent" />
-          {/* Tooltip card above tab bar */}
           <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
-              <p className="text-sm text-foreground font-medium">Navigate your day</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Three views — your tasks, your schedule, and your AI chat. Tap or swipe to switch.
-              </p>
+              <p className="text-sm text-foreground font-medium">{mc.title}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{mc.description}</p>
               <div className="flex items-center justify-between">
-                <SkipButton onSkip={handleSkip} />
+                <BackButton onBack={handleBack} />
                 <div className="flex items-center gap-2">
-                  <ProgressDots current={3} total={4} />
+                  <div className="flex gap-1">
+                    {[0, 1].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          'rounded-full transition-all',
+                          i === mobileSubIndex ? 'w-3 h-1.5 bg-primary' : 'w-1.5 h-1.5 bg-muted-foreground/30'
+                        )}
+                      />
+                    ))}
+                  </div>
                   <Button size="sm" onClick={handleNext}>
-                    Next →
+                    {mobileSubStep === 'B' ? 'Next →' : 'Next'}
                   </Button>
                 </div>
               </div>
@@ -288,19 +371,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
         title: 'Your tasks & habits',
         description: 'Your tasks and habits live here. Drag them to the timeline to plan your day.',
         position: 'left-[320px] top-1/2 -translate-y-1/2',
-        arrow: 'left',
       },
       B: {
         title: 'Plan your day',
-        description: 'Drag tasks here to plan your day. Press ⌘ / to see keyboard shortcuts.',
+        description: 'Drag tasks here to plan your day.',
         position: 'left-1/2 -translate-x-1/2 top-24',
-        arrow: 'top',
       },
       C: {
         title: 'Your AI chat',
         description: 'Your AI chat lives here — more on that next.',
         position: 'right-[340px] top-1/2 -translate-y-1/2',
-        arrow: 'right',
       },
     };
 
@@ -320,7 +400,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
             <p className="text-sm font-medium text-foreground">{current.title}</p>
             <p className="text-xs text-muted-foreground leading-relaxed">{current.description}</p>
             <div className="flex items-center justify-between">
-              <SkipButton onSkip={handleSkip} />
+              <BackButton onBack={handleBack} />
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
                   {[0, 1, 2].map((i) => (
@@ -344,24 +424,60 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
     );
   }
 
-  // ─── Step 4: AI Chat ────────────────────────────────────────────────────────
+  // ─── Step 4: AI Chat (coach mark) ───────────────────────────────────────────
   if (step === 4) {
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center">
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
-
-        <div className="relative z-10 w-full max-w-sm mx-4 animate-in fade-in zoom-in-95 duration-300">
-          <div className="bg-card border border-border rounded-2xl shadow-2xl p-8 flex flex-col gap-6">
-            <div className="space-y-2">
-              <p className="text-lg font-semibold text-foreground">Your planning buddy ✨</p>
-              <p className="text-sm text-muted-foreground leading-relaxed">
+    // Mobile: tooltip card above the tab bar (chat tab already active via effect)
+    if (isMobile) {
+      return (
+        <div className="fixed inset-0 z-[100] pointer-events-none">
+          <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
+              <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
                 Connect OpenClaw or bring your own API key to use Beacon. Configure anytime in Settings.
               </p>
+              <div className="flex items-center justify-between">
+                <BackButton onBack={handleBack} />
+                <div className="flex items-center gap-2">
+                  <ProgressDots current={4} total={4} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      handleComplete();
+                      setTimeout(() => onOpenSettings(), 300);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Settings
+                  </Button>
+                  <Button size="sm" onClick={handleComplete}>
+                    Got it →
+                  </Button>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      );
+    }
 
+    // Desktop: non-fullscreen coach mark card to the left of chat sidebar
+    return (
+      <div className="fixed inset-0 z-[100] pointer-events-none">
+        <div
+          className="absolute right-[340px] top-1/2 -translate-y-1/2 pointer-events-auto animate-in fade-in zoom-in-95 duration-300"
+        >
+          <div className="bg-card border border-border rounded-xl shadow-2xl p-4 w-72 flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Connect OpenClaw or bring your own API key to use Beacon. Configure anytime in Settings.
+            </p>
             <div className="flex items-center justify-between">
-              <SkipButton onSkip={handleSkip} />
+              <BackButton onBack={handleBack} />
               <div className="flex items-center gap-2">
+                <ProgressDots current={4} total={4} />
                 <Button
                   variant="outline"
                   size="sm"
@@ -372,16 +488,12 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
                   className="gap-1.5"
                 >
                   <Settings className="h-3.5 w-3.5" />
-                  Open Settings
+                  Settings
                 </Button>
                 <Button size="sm" onClick={handleComplete}>
                   Got it →
                 </Button>
               </div>
-            </div>
-
-            <div className="flex justify-center">
-              <ProgressDots current={4} total={4} />
             </div>
           </div>
         </div>
@@ -392,5 +504,4 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings }: Onboardin
   return null;
 }
 
-// Export the add-task pulse state so page.tsx can pass it to the add button
 export type { OnboardingTourProps };
