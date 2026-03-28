@@ -13,7 +13,7 @@ import Image from 'next/image';
 
 const SPOTLIGHT_PADDING = 8;
 
-function useSpotlightRect(selector: string | null) {
+function useSpotlightRect(selector: string | null, delay: number = 0) {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
@@ -25,17 +25,29 @@ function useSpotlightRect(selector: string | null) {
       else setRect(null);
     };
 
-    measure(); // immediate pass
-    // Re-measure after CSS animations settle (sidebar open, tab switch, etc.)
-    const t1 = setTimeout(measure, 100);
-    const t2 = setTimeout(measure, 300);
+    // If delay is set, wait before measuring (useful for elements that animate in)
+    const timers: NodeJS.Timeout[] = [];
+    if (delay > 0) {
+      setRect(null); // clear rect while waiting
+      timers.push(setTimeout(() => {
+        measure();
+        // Re-measure after animations settle
+        timers.push(setTimeout(measure, 100));
+        timers.push(setTimeout(measure, 200));
+      }, delay));
+    } else {
+      measure(); // immediate pass
+      // Re-measure after CSS animations settle (sidebar open, tab switch, etc.)
+      timers.push(setTimeout(measure, 100));
+      timers.push(setTimeout(measure, 300));
+    }
+    
     window.addEventListener('resize', measure);
     return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
+      timers.forEach(clearTimeout);
       window.removeEventListener('resize', measure);
     };
-  }, [selector]);
+  }, [selector, delay]);
 
   return rect;
 }
@@ -193,7 +205,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
     return null;
   })();
-  const spotlightRect = useSpotlightRect(spotlightSelector);
+  
+  // Delay spotlight for chat sidebar steps to allow sidebar animation to complete
+  const spotlightDelay = (() => {
+    // Desktop: delay when transitioning TO the chat sidebar (step 3C or step 4)
+    if (!isMobile && step === 3 && desktopSubStep === 'C') return 350;
+    // No delay needed for other steps
+    return 0;
+  })();
+  
+  const spotlightRect = useSpotlightRect(spotlightSelector, spotlightDelay);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const onExpandChatRef = useRef(onExpandChat);
