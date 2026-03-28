@@ -73,6 +73,12 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: 'Focus the search bar',
     keys: ['meta', 'k'],
   },
+  {
+    id: 'report_bug',
+    label: 'Report a bug',
+    description: 'Open the bug / feature report dialog',
+    keys: ['?'],
+  },
 ];
 
 // Keep for backward compatibility — no longer used for rendering
