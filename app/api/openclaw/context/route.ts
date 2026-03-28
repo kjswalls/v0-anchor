@@ -24,16 +24,31 @@ export async function GET(req: NextRequest) {
   // Session cookie (in-browser) → RLS handles it naturally, no service client needed
   const dbClient = isBearer ? createServiceClient() : undefined
 
-  const [tasks, habits, projects, habitGroups] = await Promise.all([
+  const serviceClient = createServiceClient()
+  const [tasks, habits, projects, habitGroups, settingsResult] = await Promise.all([
     fetchTasks(userId, dbClient),
     fetchHabits(userId, dbClient),
     fetchProjects(userId, dbClient),
     fetchHabitGroups(userId, dbClient),
+    serviceClient
+      .from('user_settings')
+      .select('timezone')
+      .eq('user_id', userId)
+      .single(),
   ])
+
+  // Timezone priority: stored user setting → X-Timezone header fallback → UTC
+  // The client syncs the browser timezone to user_settings on every app load,
+  // so the stored value stays current even when users travel.
+  const userTimezone =
+    settingsResult.data?.timezone ??
+    req.headers.get('x-timezone') ??
+    'UTC'
 
   return NextResponse.json({
     userId,
     fetchedAt: new Date().toISOString(),
+    userTimezone,
     tasks,
     habits,
     projects,

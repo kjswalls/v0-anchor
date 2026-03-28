@@ -23,7 +23,9 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+<<<<<<< HEAD
 import { useUndoToast } from '@/hooks/use-undo-toast';
+import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import {
   AlertDialog,
@@ -301,6 +303,8 @@ const handleAddFromTopNav = () => {
       if (habit) setShortcutDeleteTarget({ id: habit.id, type: 'habit', title: habit.title });
     }
   }, [hoveredItemId, hoveredItemType, tasks, habits]);
+
+  useTimezoneSync();
 
   useKeyboardShortcuts({
     new_task: handleShortcutNewTask,
