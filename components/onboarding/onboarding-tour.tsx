@@ -33,41 +33,40 @@ function useSpotlightRect(selector: string | null) {
   return rect;
 }
 
-/** Renders a box-shadow spotlight cutout around the given rect. */
+/**
+ * Spotlight overlay using four dark rects surrounding a cutout.
+ * Works reliably without clip-path/box-shadow quirks.
+ */
 function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
   if (!rect) {
     return (
       <div
-        className="absolute inset-0 bg-black/50 pointer-events-auto"
+        className="absolute inset-0 bg-black/55 pointer-events-auto"
         onClick={onClick}
       />
     );
   }
 
-  const top = rect.top - SPOTLIGHT_PADDING;
-  const left = rect.left - SPOTLIGHT_PADDING;
-  const width = rect.width + SPOTLIGHT_PADDING * 2;
-  const height = rect.height + SPOTLIGHT_PADDING * 2;
+  const top = Math.max(0, rect.top - SPOTLIGHT_PADDING);
+  const left = Math.max(0, rect.left - SPOTLIGHT_PADDING);
+  const right = Math.max(0, window.innerWidth - rect.right - SPOTLIGHT_PADDING);
+  const bottom = Math.max(0, window.innerHeight - rect.bottom - SPOTLIGHT_PADDING);
+  const holeHeight = rect.height + SPOTLIGHT_PADDING * 2;
+
+  const bg = 'rgba(0,0,0,0.55)';
+  const transition = 'all 0.3s ease';
 
   return (
-    <div
-      className="absolute inset-0 pointer-events-auto"
-      style={{
-        background: 'transparent',
-        boxShadow: `0 0 0 9999px rgba(0,0,0,0.55)`,
-        clipPath: `polygon(
-          0% 0%, 100% 0%, 100% 100%, 0% 100%,
-          0% ${top}px,
-          ${left}px ${top}px,
-          ${left}px ${top + height}px,
-          ${left + width}px ${top + height}px,
-          ${left + width}px ${top}px,
-          0% ${top}px
-        )`,
-        transition: 'clip-path 0.3s ease',
-      }}
-      onClick={onClick}
-    />
+    <>
+      {/* Top */}
+      <div className="absolute pointer-events-auto" style={{ top: 0, left: 0, right: 0, height: top, background: bg, transition }} onClick={onClick} />
+      {/* Bottom */}
+      <div className="absolute pointer-events-auto" style={{ bottom: 0, left: 0, right: 0, height: bottom, background: bg, transition }} onClick={onClick} />
+      {/* Left (between top and bottom) */}
+      <div className="absolute pointer-events-auto" style={{ top, left: 0, width: left, height: holeHeight, background: bg, transition }} onClick={onClick} />
+      {/* Right */}
+      <div className="absolute pointer-events-auto" style={{ top, right: 0, width: right, height: holeHeight, background: bg, transition }} onClick={onClick} />
+    </>
   );
 }
 
@@ -141,10 +140,11 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         if (desktopSubStep === 'B') return '[data-tour="timeline"]';
         if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
       } else {
-        return null; // mobile full overlay is fine for step 3
+        if (mobileSubStep === 'A') return '[data-tour="tab-tasks"]';
+        if (mobileSubStep === 'B') return '[data-tour="tab-schedule"]';
       }
     }
-    if (step === 4) return null; // coach mark, no spotlight needed
+    if (step === 4 && isMobile) return '[data-tour="tab-chat"]';
     return null;
   })();
   const spotlightRect = useSpotlightRect(spotlightSelector);
@@ -429,30 +429,27 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
-          <div className="absolute inset-0 bg-black/60 pointer-events-auto" onClick={handleNext} />
-          <div className="absolute bottom-0 left-0 right-0 h-16 bg-transparent" />
+          <SpotlightOverlay rect={spotlightRect} onClick={handleNext} />
           <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
               <p className="text-sm text-foreground font-medium">{mc.title}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">{mc.description}</p>
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    {[0, 1].map((i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          'rounded-full transition-all',
-                          i === mobileSubIndex ? 'w-3 h-1.5 bg-primary' : 'w-1.5 h-1.5 bg-muted-foreground/30'
-                        )}
-                      />
-                    ))}
-                  </div>
-                  <Button size="sm" onClick={handleNext}>
-                    {mobileSubStep === 'B' ? 'Next →' : 'Next'}
-                  </Button>
-                </div>
+                <Button size="sm" onClick={handleNext}>
+                  {mobileSubStep === 'B' ? 'Next →' : 'Next'}
+                </Button>
+              </div>
+              <div className="flex justify-center gap-1">
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      'rounded-full transition-all',
+                      i === mobileSubIndex ? 'w-3 h-1.5 bg-primary' : 'w-1.5 h-1.5 bg-muted-foreground/30'
+                    )}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -496,22 +493,20 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             <p className="text-xs text-muted-foreground leading-relaxed">{current.description}</p>
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'rounded-full transition-all',
-                        i === subStepIndex ? 'w-3 h-1.5 bg-primary' : 'w-1.5 h-1.5 bg-muted-foreground/30'
-                      )}
-                    />
-                  ))}
-                </div>
-                <Button size="sm" onClick={handleNext}>
-                  {desktopSubStep === 'C' ? 'Next →' : 'Next'}
-                </Button>
-              </div>
+              <Button size="sm" onClick={handleNext}>
+                {desktopSubStep === 'C' ? 'Next →' : 'Next'}
+              </Button>
+            </div>
+            <div className="flex justify-center gap-1">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'rounded-full transition-all',
+                    i === subStepIndex ? 'w-3 h-1.5 bg-primary' : 'w-1.5 h-1.5 bg-muted-foreground/30'
+                  )}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -525,6 +520,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     if (isMobile) {
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
+          <SpotlightOverlay rect={spotlightRect} />
           <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
               <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
@@ -533,24 +529,26 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
               </p>
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
-                <ProgressDots current={4} total={4} />
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      handleComplete();
+                      setTimeout(() => onOpenSettings(), 300);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Settings
+                  </Button>
+                  <Button size="sm" onClick={handleComplete}>
+                    Got it →
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    handleComplete();
-                    setTimeout(() => onOpenSettings(), 300);
-                  }}
-                  className="gap-1.5"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  Settings
-                </Button>
-                <Button size="sm" onClick={handleComplete}>
-                  Got it →
-                </Button>
+              <div className="flex justify-center">
+                <ProgressDots current={4} total={4} />
               </div>
             </div>
           </div>
@@ -571,24 +569,26 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             </p>
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
-              <ProgressDots current={4} total={4} />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    handleComplete();
+                    setTimeout(() => onOpenSettings(), 300);
+                  }}
+                  className="gap-1.5"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Settings
+                </Button>
+                <Button size="sm" onClick={handleComplete}>
+                  Got it →
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  handleComplete();
-                  setTimeout(() => onOpenSettings(), 300);
-                }}
-                className="gap-1.5"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                Settings
-              </Button>
-              <Button size="sm" onClick={handleComplete}>
-                Got it →
-              </Button>
+            <div className="flex justify-center">
+              <ProgressDots current={4} total={4} />
             </div>
           </div>
         </div>
