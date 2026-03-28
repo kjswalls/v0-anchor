@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,7 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void;
   onOpenKeyboardShortcuts?: () => void;
   onReplayTour?: () => void;
+  onReportBug?: () => void;
 }
 
 interface SettingsSectionProps {
@@ -95,7 +96,7 @@ function SettingRow({ label, description, children, disabled }: { label: string;
 }
 
 
-export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, onReplayTour }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, onReplayTour, onReportBug }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
   const [language, setLanguage] = useState('en');
   const [timeFormat, setTimeFormat] = useState('12h');
@@ -428,16 +429,27 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
         </div>
 
         <div className="flex items-center justify-between pt-4 border-t border-border">
-          <button
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
-            onClick={() => {
-              onOpenChange(false);
-              onReplayTour?.();
-            }}
-          >
-            <RotateCw className="h-3 w-3" />
-            Replay onboarding tour
-          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground"
+              onClick={onReportBug}
+            >
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              Share feedback
+            </Button>
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+              onClick={() => {
+                onOpenChange(false);
+                onReplayTour?.();
+              }}
+            >
+              <RotateCw className="h-3 w-3" />
+              Replay onboarding tour
+            </button>
+          </div>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Done
           </Button>

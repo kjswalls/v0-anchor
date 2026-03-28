@@ -21,6 +21,7 @@ import { MobileTasksPanel } from '@/components/mobile/mobile-tasks-panel';
 import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
+import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -114,6 +115,7 @@ export default function PlannerPage() {
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
   // Keyboard shortcut delete confirmation
   const [shortcutDeleteTarget, setShortcutDeleteTarget] = useState<{ id: string; type: 'task' | 'habit'; title: string } | null>(null);
   
@@ -379,6 +381,7 @@ const handleAddFromTopNav = () => {
     new_task: handleShortcutNewTask,
     edit_hovered: handleShortcutEdit,
     delete_hovered: handleShortcutDelete,
+    report_bug: useCallback(() => setBugReportOpen(true), []),
   });
 
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
@@ -572,6 +575,7 @@ const handleAddFromTopNav = () => {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onOpenKeyboardShortcuts={() => setKeyboardShortcutsOpen(true)}
+        onReportBug={() => setBugReportOpen(true)}
         onReplayTour={async () => {
           const supabase = createClient();
           const { data } = await supabase.auth.getUser();
@@ -600,6 +604,8 @@ const handleAddFromTopNav = () => {
       )}
 
       <EODReview />
+
+      <BugReportDialog open={bugReportOpen} onOpenChange={setBugReportOpen} />
 
       {/* Persistent keyboard shortcuts hint — desktop only */}
       <div className="hidden md:flex fixed bottom-4 right-4 z-30">
