@@ -1,16 +1,10 @@
 import { getCache } from './cache.js'
 
-const PLANNING_KEYWORDS = [
-  'task', 'tasks', 'todo', 'to-do', 'habit', 'habits', 'project', 'projects',
-  'today', 'tomorrow', 'schedule', 'plan', 'planning', 'reminder', 'remind',
-  'what should i', 'what do i', "what's on", 'on my list', 'overdue',
-  'morning', 'afternoon', 'evening', 'priority', 'high priority', 'urgent',
-  'working on', 'work on', 'finish', 'complete', 'done', 'streak',
-]
+const PLANNING_PHRASES = ['show my tasks']
 
 export function isPlanning(message: string): boolean {
   const lower = message.toLowerCase()
-  return PLANNING_KEYWORDS.some((kw) => lower.includes(kw))
+  return PLANNING_PHRASES.some((kw) => lower.includes(kw))
 }
 
 /** ~20 tokens — always injected */

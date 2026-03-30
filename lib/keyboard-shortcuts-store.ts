@@ -106,6 +106,18 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
     }),
     {
       name: 'anchor-keyboard-shortcuts',
+      version: 2,
+      migrate: (persistedState: unknown, _version: number) => {
+        // Merge any new shortcuts from DEFAULT_SHORTCUTS that aren't in the
+        // persisted state (handles shortcuts added after the user's first save).
+        const state = persistedState as KeyboardShortcutsStore;
+        const existingIds = new Set((state.shortcuts ?? []).map((s) => s.id));
+        const merged = [
+          ...(state.shortcuts ?? []),
+          ...DEFAULT_SHORTCUTS.filter((s) => !existingIds.has(s.id)),
+        ];
+        return { ...state, shortcuts: merged };
+      },
     }
   )
 );
