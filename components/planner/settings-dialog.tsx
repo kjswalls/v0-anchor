@@ -428,10 +428,11 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-border">
-          <div className="flex items-center gap-2">
+        <div className="border-t border-border pt-4 space-y-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">Help & Feedback</p>
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               className="gap-1.5 text-muted-foreground"
               onClick={onReportBug}
@@ -439,8 +440,10 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               <MessageSquarePlus className="h-3.5 w-3.5" />
               Share feedback
             </Button>
-            <button
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-muted-foreground"
               onClick={() => {
                 onOpenChange(false);
                 onReplayTour?.();
@@ -448,11 +451,13 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             >
               <RotateCw className="h-3 w-3" />
               Replay onboarding tour
-            </button>
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Done
-          </Button>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

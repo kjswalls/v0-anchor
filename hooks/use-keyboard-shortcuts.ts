@@ -22,12 +22,22 @@ function getPressedKeys(e: KeyboardEvent): string[] {
   
   if (e.ctrlKey) keys.push('ctrl');
   if (e.metaKey) keys.push('meta');
-  if (e.shiftKey) keys.push('shift');
   if (e.altKey) keys.push('alt');
-  
+
   const normalized = normalizeKey(e.key);
   if (!['ctrl', 'meta', 'shift', 'alt'].includes(normalized)) {
     keys.push(normalized);
+  }
+
+  // Only include 'shift' as an explicit modifier when it's paired with another
+  // non-shift key that doesn't already encode the shift (e.g. '?' is Shift+/
+  // but the key itself is '?', so adding 'shift' would break the match).
+  // We include shift only when the resulting key is a plain letter/number/symbol
+  // that doesn't embed the shift state — i.e. when the key is a modifier name itself.
+  // Simplest correct rule: include shift only if paired with a non-printable key.
+  const isPrintable = normalized.length === 1;
+  if (e.shiftKey && !isPrintable) {
+    keys.push('shift');
   }
   
   return keys.sort();
