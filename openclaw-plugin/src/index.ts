@@ -122,12 +122,8 @@ export default definePluginEntry({
       }
 
       const lastUserMessage = typeof event.prompt === 'string' ? event.prompt : ''
-      const isPlanning = (msg: string) => [
-        'task', 'tasks', 'todo', 'habit', 'habits', 'project', 'schedule',
-        'today', 'tomorrow', 'plan', 'reminder', 'overdue', 'priority',
-        'what should i', 'what do i', "what's on", 'on my list',
-        'working on', 'finish', 'complete', 'done', 'streak',
-      ].some(kw => msg.toLowerCase().includes(kw))
+      const isPlanning = (msg: string) =>
+        msg.toLowerCase().includes('show my tasks')
 
       const content = isPlanning(lastUserMessage)
         ? buildFullContext() || buildHeader()
