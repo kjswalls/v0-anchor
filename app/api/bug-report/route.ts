@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
   const issueData = await githubRes.json() as { number: number; html_url: string };
 
   // Insert into bug_reports using service role client
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY;
   if (!serviceRoleKey) {
-    console.warn('SUPABASE_SERVICE_ROLE_KEY not set — skipping bug_reports insert');
+    console.warn('SUPABASE_SECRET_KEY not set — skipping bug_reports insert');
   } else {
     const serviceClient = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
