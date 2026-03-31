@@ -8,11 +8,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
 
 export function MiniWeekNav() {
-  const { selectedDate, setSelectedDate, setNavDirection } = usePlannerStore();
+  const { selectedDate, setSelectedDate, setNavDirection, weekStartDay } = usePlannerStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Get days for 3 weeks: previous, current, next
-  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
+  const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
+  const weekStart = startOfWeek(selectedDate, { weekStartsOn: weekStartsOn as 0 | 1 | 6 });
   const days = Array.from({ length: 21 }, (_, i) => addDays(subDays(weekStart, 7), i));
 
   const goPrevious = () => {

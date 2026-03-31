@@ -32,6 +32,9 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore, AIProvider } from '@/lib/ai-settings-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { saveSettings } from '@/lib/settings-service';
+import { useTheme } from 'next-themes';
+import { useIsMobile } from '@/components/ui/use-mobile';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -74,7 +77,7 @@ function SettingsSection({ title, icon, children, defaultOpen = false }: Setting
   );
 }
 
-function SettingRow({ label, description, children, disabled }: { label: string; description?: string; children: React.ReactNode; disabled?: boolean }) {
+function SettingRow({ label, description, children, disabled, badge }: { label: string; description?: string; children: React.ReactNode; disabled?: boolean; badge?: string }) {
   return (
     <div className={cn("flex items-center justify-between gap-4", disabled && "opacity-50 pointer-events-none")}>
       <div className="space-y-0.5">
@@ -82,7 +85,7 @@ function SettingRow({ label, description, children, disabled }: { label: string;
           <Label className="text-sm text-foreground">{label}</Label>
           {disabled && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-normal text-muted-foreground border-muted-foreground/30">
-              Coming soon
+              {badge ?? 'Coming soon'}
             </Badge>
           )}
         </div>
@@ -99,17 +102,13 @@ function SettingRow({ label, description, children, disabled }: { label: string;
 export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, onReplayTour, onReportBug }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
   const [language, setLanguage] = useState('en');
-  const [timeFormat, setTimeFormat] = useState('12h');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [habitReminders, setHabitReminders] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [compactMode, setCompactModeLocal] = useState(false);
-  const [showCompleted, setShowCompleted] = useState(true);
-  const [animationsEnabled, setAnimationsEnabled] = useState(true);
-  const [weekStartDay, setWeekStartDay] = useState('sunday');
-  const [theme, setTheme] = useState('system');
-  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator } = usePlannerStore();
+  const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
+  const { theme, setTheme } = useTheme();
+  const isMobile = useIsMobile();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
   useEODStore();
 
@@ -149,7 +148,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               icon={<Globe className="h-4 w-4" />}
               defaultOpen={true}
             >
-              <SettingRow label="Language" description="Choose your preferred language" disabled>
+              <SettingRow label="Language" description="Choose your preferred language" disabled badge="Phase 2">
                 <Select value={language} onValueChange={setLanguage}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
@@ -165,8 +164,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Time format" description="How times are displayed" disabled>
-                <Select value={timeFormat} onValueChange={setTimeFormat}>
+              <SettingRow label="Time format" description="How times are displayed">
+                <Select value={timeFormat} onValueChange={(v) => setTimeFormat(v as '12h' | '24h')}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -183,32 +182,32 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               title="Notifications" 
               icon={<Bell className="h-4 w-4" />}
             >
-              <SettingRow label="Enable notifications" description="Receive reminders and alerts" disabled>
-                <Switch 
-                  checked={notificationsEnabled} 
+              <SettingRow label="Enable notifications" description="Receive reminders and alerts" disabled badge="Requires push notifications">
+                <Switch
+                  checked={notificationsEnabled}
                   onCheckedChange={setNotificationsEnabled}
                 />
               </SettingRow>
 
-              <SettingRow label="Habit reminders" description="Get reminded about daily habits" disabled>
-                <Switch 
-                  checked={habitReminders} 
+              <SettingRow label="Habit reminders" description="Get reminded about daily habits" disabled badge="Requires push notifications">
+                <Switch
+                  checked={habitReminders}
                   onCheckedChange={setHabitReminders}
                   disabled={!notificationsEnabled}
                 />
               </SettingRow>
 
-              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks" disabled>
-                <Switch 
-                  checked={taskReminders} 
+              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks" disabled badge="Requires push notifications">
+                <Switch
+                  checked={taskReminders}
                   onCheckedChange={setTaskReminders}
                   disabled={!notificationsEnabled}
                 />
               </SettingRow>
 
-              <SettingRow label="Sound effects" description="Play sounds for notifications" disabled>
-                <Switch 
-                  checked={soundEnabled} 
+              <SettingRow label="Sound effects" description="Play sounds for notifications" disabled badge="Requires push notifications">
+                <Switch
+                  checked={soundEnabled}
                   onCheckedChange={setSoundEnabled}
                   disabled={!notificationsEnabled}
                 />
@@ -220,8 +219,11 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               title="Appearance" 
               icon={<Palette className="h-4 w-4" />}
             >
-              <SettingRow label="Theme" description="Choose your preferred theme" disabled>
-                <Select value={theme} onValueChange={setTheme}>
+              <SettingRow label="Theme" description="Choose your preferred theme">
+                <Select value={theme ?? 'system'} onValueChange={(v) => {
+                  setTheme(v);
+                  if (userId) saveSettings(userId, { theme: v });
+                }}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -247,16 +249,16 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 />
               </SettingRow>
 
-              <SettingRow label="Show completed tasks" description="Display completed tasks in timeline" disabled>
-                <Switch 
-                  checked={showCompleted} 
-                  onCheckedChange={setShowCompleted}
+              <SettingRow label="Show completed tasks" description="Display completed tasks in timeline">
+                <Switch
+                  checked={showCompletedTasks}
+                  onCheckedChange={setShowCompletedTasks}
                 />
               </SettingRow>
 
-              <SettingRow label="Animations" description="Enable smooth transitions" disabled>
-                <Switch 
-                  checked={animationsEnabled} 
+              <SettingRow label="Animations" description="Enable smooth transitions">
+                <Switch
+                  checked={animationsEnabled}
                   onCheckedChange={setAnimationsEnabled}
                 />
               </SettingRow>
@@ -284,19 +286,21 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
-            <button
-              className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent/50 rounded-lg transition-colors"
-              onClick={() => {
-                onOpenChange(false);
-                onOpenKeyboardShortcuts?.();
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <div className="text-muted-foreground"><Keyboard className="h-4 w-4" /></div>
-                <span className="text-sm font-medium text-foreground">Keyboard Shortcuts</span>
-              </div>
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-            </button>
+            {!isMobile && (
+              <button
+                className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent/50 rounded-lg transition-colors"
+                onClick={() => {
+                  onOpenChange(false);
+                  onOpenKeyboardShortcuts?.();
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-muted-foreground"><Keyboard className="h-4 w-4" /></div>
+                  <span className="text-sm font-medium text-foreground">Keyboard Shortcuts</span>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            )}
 
             {/* Daily Reviews */}
             <SettingsSection
@@ -386,8 +390,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               title="Calendar"
               icon={<Calendar className="h-4 w-4" />}
             >
-              <SettingRow label="Week starts on" description="First day of the week" disabled>
-                <Select value={weekStartDay} onValueChange={setWeekStartDay}>
+              <SettingRow label="Week starts on" description="First day of the week">
+                <Select value={weekStartDay} onValueChange={(v) => setWeekStartDay(v as 'sunday' | 'monday' | 'saturday')}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -399,8 +403,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Default view" description="View shown when app opens" disabled>
-                <Select defaultValue="day">
+              <SettingRow label="Default view" description="View shown when app opens">
+                <Select value={defaultView} onValueChange={(v) => setDefaultView(v as 'day' | 'week')}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -411,8 +415,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Default time bucket" description="Where new tasks are placed" disabled>
-                <Select defaultValue="anytime">
+              <SettingRow label="Default time bucket" description="Where new tasks are placed">
+                <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as any)}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>

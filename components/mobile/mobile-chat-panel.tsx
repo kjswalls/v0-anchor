@@ -14,6 +14,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
+import { useTimeFormat } from '@/lib/use-time-format';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -39,6 +40,7 @@ export function MobileChatPanel() {
   const aiProvider = useAISettingsStore((s) => s.provider);
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME;
+  const timeFormatStr = useTimeFormat();
 
   // Check auth + onboarding status
   useEffect(() => {
@@ -274,7 +276,7 @@ export function MobileChatPanel() {
                           )}>
                             {msg.timestamp && (
                               <span className="text-[10px] text-muted-foreground">
-                                {format(msg.timestamp, 'h:mm a')}
+                                {format(msg.timestamp, timeFormatStr)}
                               </span>
                             )}
                             <button
@@ -307,7 +309,7 @@ export function MobileChatPanel() {
                         )}>
                           {msg.timestamp && (
                             <span className="text-[10px] text-muted-foreground">
-                              {format(msg.timestamp, 'h:mm a')}
+                              {format(msg.timestamp, timeFormatStr)}
                             </span>
                           )}
                           {msg.content && (

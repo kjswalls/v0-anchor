@@ -51,10 +51,10 @@ interface AddTaskDialogProps {
 }
 
 export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket, defaultDate }: AddTaskDialogProps) {
-  const { 
-    addTask, addHabit, projects, habitGroups, scheduleTask, 
+  const {
+    addTask, addHabit, projects, habitGroups, scheduleTask,
     addProject, removeProject, addHabitGroup, removeHabitGroup,
-    selectedDate
+    selectedDate, defaultTimeBucket
   } = usePlannerStore();
   const [activeTab, setActiveTab] = useState<'task' | 'habit'>(defaultTab);
   
@@ -64,7 +64,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [taskProject, setTaskProject] = useState<string>('');
   const [taskStartDate, setTaskStartDate] = useState<Date | undefined>(undefined);
   const [taskDuration, setTaskDuration] = useState<string>('30');
-  const [taskTimeBucket, setTaskTimeBucket] = useState<TimeBucket | undefined>(defaultBucket);
+  const [taskTimeBucket, setTaskTimeBucket] = useState<TimeBucket | undefined>(defaultBucket ?? defaultTimeBucket);
   const [taskStartTime, setTaskStartTime] = useState<string>('');
   const [taskRepeatFrequency, setTaskRepeatFrequency] = useState<RepeatFrequency>('none');
   const [taskRepeatDays, setTaskRepeatDays] = useState<number[]>([]);
@@ -73,7 +73,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   // Habit state
   const [habitTitle, setHabitTitle] = useState('');
   const [habitGroup, setHabitGroup] = useState<string>(habitGroups[0]?.name || 'personal');
-  const [habitTimeBucket, setHabitTimeBucket] = useState<TimeBucket>(defaultBucket || 'anytime');
+  const [habitTimeBucket, setHabitTimeBucket] = useState<TimeBucket>(defaultBucket ?? defaultTimeBucket ?? 'anytime');
   const [habitStartTime, setHabitStartTime] = useState<string>('');
   const [habitRepeatFrequency, setHabitRepeatFrequency] = useState<RepeatFrequency>('daily');
   const [habitRepeatDays, setHabitRepeatDays] = useState<number[]>([]);
@@ -95,12 +95,12 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   useEffect(() => {
     if (open) {
       setActiveTab(defaultTab);
-      setTaskTimeBucket(defaultBucket);
-      setHabitTimeBucket(defaultBucket || 'anytime');
+      setTaskTimeBucket(defaultBucket ?? defaultTimeBucket);
+      setHabitTimeBucket(defaultBucket ?? defaultTimeBucket ?? 'anytime');
       // Set date if defaultDate is provided (e.g., when adding from a bucket)
       setTaskStartDate(defaultDate);
     }
-  }, [open, defaultTab, defaultBucket, defaultDate]);
+  }, [open, defaultTab, defaultBucket, defaultDate, defaultTimeBucket]);
 
   const resetForm = () => {
     setTaskTitle('');
@@ -108,14 +108,14 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
     setTaskProject('');
     setTaskStartDate(undefined);
     setTaskDuration('30');
-    setTaskTimeBucket(defaultBucket);
+    setTaskTimeBucket(defaultBucket ?? defaultTimeBucket);
     setTaskStartTime('');
     setTaskRepeatFrequency('none');
     setTaskRepeatDays([]);
     setTaskRepeatMonthDay(1);
     setHabitTitle('');
     setHabitGroup(habitGroups[0]?.name || 'personal');
-    setHabitTimeBucket(defaultBucket || 'anytime');
+    setHabitTimeBucket(defaultBucket ?? defaultTimeBucket ?? 'anytime');
     setHabitStartTime('');
     setHabitRepeatFrequency('daily');
     setHabitRepeatDays([]);

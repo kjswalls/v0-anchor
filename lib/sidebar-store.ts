@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { saveSettings } from './settings-service';
+import { usePlannerStore } from './planner-store';
 
 interface SidebarState {
   // Open/closed state
@@ -37,8 +39,16 @@ export const useSidebarStore = create<SidebarState>()(
       toggleRightSidebar: () => set((state) => ({ rightSidebarOpen: !state.rightSidebarOpen })),
       setLeftSidebarHovered: (hovered) => set({ leftSidebarHovered: hovered }),
       setRightSidebarHovered: (hovered) => set({ rightSidebarHovered: hovered }),
-      setLeftSidebarHoverEnabled: (enabled) => set({ leftSidebarHoverEnabled: enabled }),
-      setRightSidebarHoverEnabled: (enabled) => set({ rightSidebarHoverEnabled: enabled }),
+      setLeftSidebarHoverEnabled: (enabled) => {
+        set({ leftSidebarHoverEnabled: enabled });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { left_sidebar_hover: enabled });
+      },
+      setRightSidebarHoverEnabled: (enabled) => {
+        set({ rightSidebarHoverEnabled: enabled });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { right_sidebar_hover: enabled });
+      },
     }),
     {
       name: 'anchor-sidebar-settings',

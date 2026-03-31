@@ -35,6 +35,7 @@ import {
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
 } from './db';
+import { saveSettings } from './settings-service';
 
 interface PlannerStore {
   tasks: Task[];
@@ -54,6 +55,18 @@ interface PlannerStore {
   setChillMode: (chill: boolean) => void;
   showCurrentTimeIndicator: boolean;
   setShowCurrentTimeIndicator: (show: boolean) => void;
+  showCompletedTasks: boolean;
+  setShowCompletedTasks: (show: boolean) => void;
+  defaultView: 'day' | 'week';
+  setDefaultView: (view: 'day' | 'week') => void;
+  defaultTimeBucket: TimeBucket;
+  setDefaultTimeBucket: (bucket: TimeBucket) => void;
+  animationsEnabled: boolean;
+  setAnimationsEnabled: (enabled: boolean) => void;
+  weekStartDay: 'sunday' | 'monday' | 'saturday';
+  setWeekStartDay: (day: 'sunday' | 'monday' | 'saturday') => void;
+  timeFormat: '12h' | '24h';
+  setTimeFormat: (format: '12h' | '24h') => void;
   /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
@@ -236,13 +249,61 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ actionLog: info.actionLog, historyIndex: info.currentIndex });
       },
       compactMode: false,
-      setCompactMode: (compact) => set({ compactMode: compact }),
+      setCompactMode: (compact) => {
+        set({ compactMode: compact });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { compact_mode: compact });
+      },
       navDirection: null,
       setNavDirection: (direction) => set({ navDirection: direction }),
       chillMode: false,
-      setChillMode: (chill) => set({ chillMode: chill }),
+      setChillMode: (chill) => {
+        set({ chillMode: chill });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { chill_mode: chill });
+      },
       showCurrentTimeIndicator: true,
-      setShowCurrentTimeIndicator: (show) => set({ showCurrentTimeIndicator: show }),
+      setShowCurrentTimeIndicator: (show) => {
+        set({ showCurrentTimeIndicator: show });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { show_time_indicator: show });
+      },
+      showCompletedTasks: true,
+      setShowCompletedTasks: (show) => {
+        set({ showCompletedTasks: show });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { show_completed_tasks: show });
+      },
+      defaultView: 'day',
+      setDefaultView: (view) => {
+        set({ defaultView: view, viewMode: view });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { default_view: view });
+      },
+      defaultTimeBucket: 'anytime',
+      setDefaultTimeBucket: (bucket) => {
+        set({ defaultTimeBucket: bucket });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { default_time_bucket: bucket });
+      },
+      animationsEnabled: true,
+      setAnimationsEnabled: (enabled) => {
+        set({ animationsEnabled: enabled });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { animations_enabled: enabled });
+      },
+      weekStartDay: 'sunday',
+      setWeekStartDay: (day) => {
+        set({ weekStartDay: day });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { week_start_day: day });
+      },
+      timeFormat: '12h',
+      setTimeFormat: (format) => {
+        set({ timeFormat: format });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { time_format: format });
+      },
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
@@ -665,7 +726,11 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       setSelectedDate: (date) => set({ selectedDate: date }),
-      setViewMode: (viewMode) => set({ viewMode }),
+      setViewMode: (viewMode) => {
+        set({ viewMode, defaultView: viewMode });
+        const userId = get().userId;
+        if (userId) saveSettings(userId, { default_view: viewMode });
+      },
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilters: (filters) => set({ filters }),
       clearFilters: () => set({ filters: {} }),
@@ -967,6 +1032,12 @@ export const usePlannerStore = create<PlannerStore>()(
         groupBy: state.groupBy,
         showCurrentTimeIndicator: state.showCurrentTimeIndicator,
         timelineItemFilter: state.timelineItemFilter,
+        showCompletedTasks: state.showCompletedTasks,
+        defaultView: state.defaultView,
+        defaultTimeBucket: state.defaultTimeBucket,
+        animationsEnabled: state.animationsEnabled,
+        weekStartDay: state.weekStartDay,
+        timeFormat: state.timeFormat,
       }),
     }
   )
