@@ -218,19 +218,23 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </Select>
               </SettingRow>
 
-              <SettingRow label="Compact mode" description="Fit more into the timeline with reduced spacing">
-                <Switch 
-                  checked={storeCompactMode} 
-                  onCheckedChange={setCompactMode}
-                />
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Compact mode" description="Fit more into the timeline with reduced spacing">
+                  <Switch 
+                    checked={storeCompactMode} 
+                    onCheckedChange={setCompactMode}
+                  />
+                </SettingRow>
+              )}
 
-              <SettingRow label="Chill mode" description="Hide extra UI elements until hovered for a calmer look">
-                <Switch 
-                  checked={chillMode} 
-                  onCheckedChange={setChillMode}
-                />
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Chill mode" description="Hide extra UI elements until hovered for a calmer look">
+                  <Switch 
+                    checked={chillMode} 
+                    onCheckedChange={setChillMode}
+                  />
+                </SettingRow>
+              )}
 
               <SettingRow label="Show completed tasks" description="Display completed tasks in timeline">
                 <Switch

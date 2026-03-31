@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -12,6 +12,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const initializeStore = usePlannerStore((s) => s.initializeStore);
   const clearStore = usePlannerStore((s) => s.clearStore);
   const { setTheme } = useTheme();
+  const hydratedUserId = useRef<string | null>(null);
 
   // Apply animations setting to <html> element
   const animationsEnabled = usePlannerStore((s) => s.animationsEnabled);
@@ -28,6 +29,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
 
     const hydrateSettings = async (userId: string) => {
+      // Skip if we've already hydrated for this user — prevents Supabase auth events
+      // (TOKEN_REFRESHED, duplicate SIGNED_IN) from overwriting user's in-session theme changes
+      if (hydratedUserId.current === userId) return;
+      hydratedUserId.current = userId;
+
       const settings = await loadSettings(userId);
 
       usePlannerStore.setState({
@@ -70,6 +76,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         initializeStore(session.user.id);
         hydrateSettings(session.user.id);
       } else if (event === 'SIGNED_OUT') {
+        hydratedUserId.current = null;
         clearStore();
       }
     });
