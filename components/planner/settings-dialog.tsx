@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus } from 'lucide-react';
+import { usePushSubscription } from '@/hooks/use-push-subscription';
 import {
   Dialog,
   DialogContent,
@@ -105,11 +106,19 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const [habitReminders, setHabitReminders] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const { isSupported: pushSupported, isSubscribed: pushSubscribed, permissionState, subscribe: subscribePush, unsubscribe: unsubscribePush } = usePushSubscription();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const isMobile = useIsMobile();
   const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
   useEODStore();
+
+  // Auto-subscribe to push when morning check is enabled
+  useEffect(() => {
+    if (morningCheckEnabled && pushSupported && !pushSubscribed && permissionState === 'granted') {
+      subscribePush();
+    }
+  }, [morningCheckEnabled, pushSupported, pushSubscribed, permissionState, subscribePush]);
 
   const {
     provider, setProvider,
@@ -161,39 +170,47 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             </SettingsSection>
 
             {/* Notifications */}
-            <SettingsSection 
-              title="Notifications" 
+            <SettingsSection
+              title="Notifications"
               icon={<Bell className="h-4 w-4" />}
             >
-              <SettingRow label="Enable notifications" description="Receive reminders and alerts" disabled badge="Requires push notifications">
-                <Switch
-                  checked={notificationsEnabled}
-                  onCheckedChange={setNotificationsEnabled}
-                />
+              {!pushSupported ? (
+                <p className="text-xs text-muted-foreground">
+                  Push notifications are not supported in this browser.
+                </p>
+              ) : permissionState === 'denied' ? (
+                <p className="text-xs text-muted-foreground">
+                  Push notifications are blocked. Enable them in your browser settings, then reload.
+                </p>
+              ) : (
+                <SettingRow
+                  label="Push notifications"
+                  description={
+                    pushSubscribed
+                      ? 'You will receive push notifications from Anchor'
+                      : 'Enable to receive reminders and alerts'
+                  }
+                >
+                  <Switch
+                    checked={pushSubscribed}
+                    onCheckedChange={(checked) => {
+                      if (checked) subscribePush();
+                      else unsubscribePush();
+                    }}
+                  />
+                </SettingRow>
+              )}
+
+              <SettingRow label="Habit reminders" description="Get reminded about daily habits" disabled badge="Coming soon">
+                <Switch checked={habitReminders} onCheckedChange={setHabitReminders} />
               </SettingRow>
 
-              <SettingRow label="Habit reminders" description="Get reminded about daily habits" disabled badge="Requires push notifications">
-                <Switch
-                  checked={habitReminders}
-                  onCheckedChange={setHabitReminders}
-                  disabled={!notificationsEnabled}
-                />
+              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks" disabled badge="Coming soon">
+                <Switch checked={taskReminders} onCheckedChange={setTaskReminders} />
               </SettingRow>
 
-              <SettingRow label="Task reminders" description="Get reminded about upcoming tasks" disabled badge="Requires push notifications">
-                <Switch
-                  checked={taskReminders}
-                  onCheckedChange={setTaskReminders}
-                  disabled={!notificationsEnabled}
-                />
-              </SettingRow>
-
-              <SettingRow label="Sound effects" description="Play sounds for notifications" disabled badge="Requires push notifications">
-                <Switch
-                  checked={soundEnabled}
-                  onCheckedChange={setSoundEnabled}
-                  disabled={!notificationsEnabled}
-                />
+              <SettingRow label="Sound effects" description="Play sounds for notifications" disabled badge="Coming soon">
+                <Switch checked={soundEnabled} onCheckedChange={setSoundEnabled} />
               </SettingRow>
             </SettingsSection>
 
