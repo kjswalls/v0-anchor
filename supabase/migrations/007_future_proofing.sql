@@ -18,7 +18,7 @@ alter table tasks add column if not exists external_id         text;
 alter table tasks add column if not exists calendar_source     text;
 alter table tasks add column if not exists completed_at        timestamptz;
 alter table tasks add column if not exists duration_minutes    integer;
-alter table tasks add column if not exists recurrence_rule     text;
+
 
 -- ─── HABITS ───────────────────────────────────────────────────────────────────
 
