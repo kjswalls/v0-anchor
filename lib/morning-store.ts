@@ -3,6 +3,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
+import { saveSettings } from './settings-service';
+import { usePlannerStore } from './planner-store';
 
 interface MorningStore {
   dismissedDate: string | null; // yyyy-MM-dd
@@ -25,7 +27,11 @@ export const useMorningStore = create<MorningStore>()(
         return get().dismissedDate === today;
       },
 
-      setMorningCheckEnabled: (enabled) => set({ morningCheckEnabled: enabled }),
+      setMorningCheckEnabled: (enabled) => {
+        set({ morningCheckEnabled: enabled });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { morning_check_enabled: enabled });
+      },
     }),
     {
       name: 'anchor-morning-store',

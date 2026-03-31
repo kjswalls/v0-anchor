@@ -250,7 +250,7 @@ function DroppableCell({ dropId, children, className, disabled, glowColor }: Dro
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, weekStartDay } = usePlannerStore();
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -268,8 +268,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
     return () => clearInterval(id);
   }, []);
 
-  // Get the start of the week (Sunday)
-  const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: 0 }), [selectedDate]);
+  // Get the start of the week based on user preference
+  const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
+  const weekStart = useMemo(() => startOfWeek(selectedDate, { weekStartsOn: weekStartsOn as 0 | 1 | 6 }), [selectedDate, weekStartsOn]);
   
   // Generate all 7 days of the week
   const weekDays = useMemo(() => {

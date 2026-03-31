@@ -14,6 +14,7 @@ import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
+import { useTimeFormat } from '@/lib/use-time-format'
 import ReactMarkdown from 'react-markdown'
 
 interface Message {
@@ -34,6 +35,7 @@ const DEFAULT_WIDTH = 380
 export function ChatSidebar() {
   const { rightSidebarOpen: isOpen, rightSidebarHovered, rightSidebarHoverEnabled, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
   const isVisible = isOpen || (rightSidebarHoverEnabled && rightSidebarHovered)
+  const timeFormatStr = useTimeFormat()
   const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -368,7 +370,7 @@ export function ChatSidebar() {
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {msg.timestamp && (
                                     <span className="text-[10px] text-muted-foreground">
-                                      {format(msg.timestamp, 'h:mm a')}
+                                      {format(msg.timestamp, timeFormatStr)}
                                     </span>
                                   )}
                                   <button
@@ -398,7 +400,7 @@ export function ChatSidebar() {
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {msg.timestamp && (
                                   <span className="text-[10px] text-muted-foreground">
-                                    {format(msg.timestamp, 'h:mm a')}
+                                    {format(msg.timestamp, timeFormatStr)}
                                   </span>
                                 )}
                                 {msg.content && (

@@ -21,6 +21,7 @@ import { TIME_BUCKET_RANGES, formatBucketRange } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay, format } from 'date-fns';
+import { useTimeFormat } from '@/lib/use-time-format';
 
 const bucketConfig: Record<TimeBucket, {
   icon: typeof Clock;
@@ -994,7 +995,11 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     return null;
   }
 
+  const timeFormatStr = useTimeFormat();
   const formatHour = (hour: number) => {
+    if (timeFormatStr === 'HH:mm') {
+      return `${String(hour).padStart(2, '0')}:00`;
+    }
     if (hour === 0) return '12am';
     if (hour < 12) return `${hour}am`;
     if (hour === 12) return '12pm';
@@ -1357,12 +1362,18 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection, showCompletedTasks } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
-  
+
   // Filter tasks and habits based on timeline filter
-  const filteredTasks = timelineItemFilter === 'habits' ? [] : tasks;
+  const filteredTasks = useMemo(() => {
+    let result = timelineItemFilter === 'habits' ? [] : tasks;
+    if (!showCompletedTasks) {
+      result = result.filter((t) => t.status !== 'completed');
+    }
+    return result;
+  }, [tasks, timelineItemFilter, showCompletedTasks]);
   const filteredHabits = timelineItemFilter === 'tasks' ? [] : habits;
 
   // Determine current time bucket and update every minute
