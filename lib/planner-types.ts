@@ -58,15 +58,16 @@ export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number
   evening:   { start: 17, end: 24, label: 'Evening'   },
 };
 
-export function formatBucketHour(hour: number): string {
+export function formatBucketHour(hour: number, use24h = false): string {
   const h = hour % 24;
+  if (use24h) return `${String(h).padStart(2, '0')}:00`;
   if (h === 0) return '12am';
   if (h === 12) return '12pm';
   return h < 12 ? `${h}am` : `${h - 12}pm`;
 }
 
-export function formatBucketRange(range: { start: number; end: number }): string {
-  return `${formatBucketHour(range.start)} - ${formatBucketHour(range.end)}`;
+export function formatBucketRange(range: { start: number; end: number }, use24h = false): string {
+  return `${formatBucketHour(range.start, use24h)} - ${formatBucketHour(range.end, use24h)}`;
 }
 
 export const PRIORITY_LABELS: Record<Priority, string> = {

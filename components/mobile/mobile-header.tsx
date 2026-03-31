@@ -9,6 +9,7 @@ import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useTheme } from 'next-themes';
+import { saveSettings } from '@/lib/settings-service';
 import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
@@ -17,7 +18,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
-  const { selectedDate, setSelectedDate, undo, redo, canUndo, canRedo } = usePlannerStore();
+  const { selectedDate, setSelectedDate, undo, redo, canUndo, canRedo, userId } = usePlannerStore();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -107,7 +108,9 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
           size="icon"
           onClick={() => {
             if (!mounted) return;
-            setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+            const newTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+            if (userId) saveSettings(userId, { theme: newTheme });
           }}
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
         >

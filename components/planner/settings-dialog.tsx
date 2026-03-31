@@ -101,7 +101,6 @@ function SettingRow({ label, description, children, disabled, badge }: { label: 
 
 export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, onReplayTour, onReportBug }: SettingsDialogProps) {
   // These would be connected to a settings store in a full implementation
-  const [language, setLanguage] = useState('en');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [habitReminders, setHabitReminders] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
@@ -142,28 +141,12 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           <div className="space-y-1 py-2">
-            {/* Language & Region */}
-            <SettingsSection 
-              title="Language & Region" 
+            {/* Time Format */}
+            <SettingsSection
+              title="Time Format"
               icon={<Globe className="h-4 w-4" />}
               defaultOpen={true}
             >
-              <SettingRow label="Language" description="Choose your preferred language" disabled badge="Phase 2">
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="es">Spanish</SelectItem>
-                    <SelectItem value="fr">French</SelectItem>
-                    <SelectItem value="de">German</SelectItem>
-                    <SelectItem value="ja">Japanese</SelectItem>
-                    <SelectItem value="zh">Chinese</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
-
               <SettingRow label="Time format" description="How times are displayed">
                 <Select value={timeFormat} onValueChange={(v) => setTimeFormat(v as '12h' | '24h')}>
                   <SelectTrigger className="w-32 h-8 text-xs">
@@ -256,13 +239,6 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 />
               </SettingRow>
 
-              <SettingRow label="Animations" description="Enable smooth transitions">
-                <Switch
-                  checked={animationsEnabled}
-                  onCheckedChange={setAnimationsEnabled}
-                />
-              </SettingRow>
-
               <SettingRow label="Current time indicator" description="Show a glowing line at the current time in Day and Week views">
                 <Switch 
                   checked={showCurrentTimeIndicator} 
@@ -270,19 +246,23 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 />
               </SettingRow>
 
-              <SettingRow label="Show tasks sidebar on hover" description="Reveal the left sidebar when hovering the left edge (when collapsed)">
-                <Switch 
-                  checked={leftSidebarHoverEnabled} 
-                  onCheckedChange={setLeftSidebarHoverEnabled}
-                />
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Show tasks sidebar on hover" description="Reveal the left sidebar when hovering the left edge (when collapsed)">
+                  <Switch
+                    checked={leftSidebarHoverEnabled}
+                    onCheckedChange={setLeftSidebarHoverEnabled}
+                  />
+                </SettingRow>
+              )}
 
-              <SettingRow label="Show chat sidebar on hover" description="Reveal the right sidebar when hovering the right edge (when collapsed)">
-                <Switch 
-                  checked={rightSidebarHoverEnabled} 
-                  onCheckedChange={setRightSidebarHoverEnabled}
-                />
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Show chat sidebar on hover" description="Reveal the right sidebar when hovering the right edge (when collapsed)">
+                  <Switch
+                    checked={rightSidebarHoverEnabled}
+                    onCheckedChange={setRightSidebarHoverEnabled}
+                  />
+                </SettingRow>
+              )}
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
@@ -390,30 +370,34 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               title="Calendar"
               icon={<Calendar className="h-4 w-4" />}
             >
-              <SettingRow label="Week starts on" description="First day of the week">
-                <Select value={weekStartDay} onValueChange={(v) => setWeekStartDay(v as 'sunday' | 'monday' | 'saturday')}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="sunday">Sunday</SelectItem>
-                    <SelectItem value="monday">Monday</SelectItem>
-                    <SelectItem value="saturday">Saturday</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Week starts on" description="First day of the week">
+                  <Select value={weekStartDay} onValueChange={(v) => setWeekStartDay(v as 'sunday' | 'monday' | 'saturday')}>
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sunday">Sunday</SelectItem>
+                      <SelectItem value="monday">Monday</SelectItem>
+                      <SelectItem value="saturday">Saturday</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              )}
 
-              <SettingRow label="Default view" description="View shown when app opens">
-                <Select value={defaultView} onValueChange={(v) => setDefaultView(v as 'day' | 'week')}>
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Day view</SelectItem>
-                    <SelectItem value="week">Week view</SelectItem>
-                  </SelectContent>
-                </Select>
-              </SettingRow>
+              {!isMobile && (
+                <SettingRow label="Default view" description="View shown when app opens">
+                  <Select value={defaultView} onValueChange={(v) => setDefaultView(v as 'day' | 'week')}>
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day view</SelectItem>
+                      <SelectItem value="week">Week view</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              )}
 
               <SettingRow label="Default time bucket" description="Where new tasks are placed">
                 <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as any)}>

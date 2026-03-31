@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { ViewMode, Task, Habit } from '@/lib/planner-types';
 import { useTheme } from 'next-themes';
+import { saveSettings } from '@/lib/settings-service';
 import { cn } from '@/lib/utils';
 
 interface TopNavProps {
@@ -26,7 +27,7 @@ interface TopNavProps {
 }
 
 export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskClick, onHabitClick, searchOpen, onSearchOpenChange }: TopNavProps) {
-  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection } = usePlannerStore();
+  const { selectedDate, setSelectedDate, viewMode, setViewMode, tasks, habits, getProjectEmoji, getHabitGroupEmoji, canUndo, canRedo, undo, redo, setNavDirection, userId } = usePlannerStore();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [internalShowSearch, setInternalShowSearch] = useState(false);
@@ -456,7 +457,9 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           size="icon"
           onClick={() => {
             if (!mounted) return;
-            setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+            const newTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+            if (userId) saveSettings(userId, { theme: newTheme });
           }}
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
         >

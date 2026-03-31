@@ -23,47 +23,49 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay, format } from 'date-fns';
 import { useTimeFormat } from '@/lib/use-time-format';
 
-const bucketConfig: Record<TimeBucket, {
+function getBucketConfig(use24h: boolean): Record<TimeBucket, {
   icon: typeof Clock;
   label: string;
   timeRange: string;
   bgClass: string;
   borderClass: string;
   glowColor: string;
-}> = {
-  anytime: {
-    icon: Sparkles,
-    label: 'Anytime',
-    timeRange: 'Flexible',
-    bgClass: 'bg-anytime/30',
-    borderClass: 'border-anytime/50',
-    glowColor: 'oklch(0.92 0.02 240 / 0.5)',
-  },
-  morning: {
-    icon: Sunrise,
-    label: 'Morning',
-    timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning),
-    bgClass: 'bg-morning/20',
-    borderClass: 'border-morning/40',
-    glowColor: 'oklch(0.88 0.12 85 / 0.6)',
-  },
-  afternoon: {
-    icon: Sun,
-    label: 'Afternoon',
-    timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon),
-    bgClass: 'bg-afternoon/20',
-    borderClass: 'border-afternoon/40',
-    glowColor: 'oklch(0.85 0.12 45 / 0.6)',
-  },
-  evening: {
-    icon: Moon,
-    label: 'Evening',
-    timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening),
-    bgClass: 'bg-evening/20',
-    borderClass: 'border-evening/40',
-    glowColor: 'oklch(0.75 0.12 280 / 0.6)',
-  },
-};
+}> {
+  return {
+    anytime: {
+      icon: Sparkles,
+      label: 'Anytime',
+      timeRange: 'Flexible',
+      bgClass: 'bg-anytime/30',
+      borderClass: 'border-anytime/50',
+      glowColor: 'oklch(0.92 0.02 240 / 0.5)',
+    },
+    morning: {
+      icon: Sunrise,
+      label: 'Morning',
+      timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning, use24h),
+      bgClass: 'bg-morning/20',
+      borderClass: 'border-morning/40',
+      glowColor: 'oklch(0.88 0.12 85 / 0.6)',
+    },
+    afternoon: {
+      icon: Sun,
+      label: 'Afternoon',
+      timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon, use24h),
+      bgClass: 'bg-afternoon/20',
+      borderClass: 'border-afternoon/40',
+      glowColor: 'oklch(0.85 0.12 45 / 0.6)',
+    },
+    evening: {
+      icon: Moon,
+      label: 'Evening',
+      timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening, use24h),
+      bgClass: 'bg-evening/20',
+      borderClass: 'border-evening/40',
+      glowColor: 'oklch(0.75 0.12 280 / 0.6)',
+    },
+  };
+}
 
 const priorityDots: Record<Priority, string> = {
   high: 'bg-priority-high',
@@ -1102,9 +1104,9 @@ interface TimelineBucketProps {
 }
 
 function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAddClick, isCurrentBucket, recurringProjects = [], activeId }: TimelineBucketProps) {
-  const config = bucketConfig[bucket];
+  const { compactMode, chillMode, showCurrentTimeIndicator, timeFormat } = usePlannerStore();
+  const config = getBucketConfig(timeFormat === '24h')[bucket];
   const Icon = config.icon;
-  const { compactMode, chillMode, showCurrentTimeIndicator } = usePlannerStore();
   
   // Calculate time progress within bucket for the indicator
   const [timeProgress, setTimeProgress] = useState<number | null>(null);
@@ -1362,7 +1364,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection, showCompletedTasks } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection, showCompletedTasks, timeFormat } = usePlannerStore();
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -1607,7 +1609,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
             )}
           >
             {bucketOrder.map((b) => {
-              const cfg = bucketConfig[b];
+              const cfg = getBucketConfig(timeFormat === '24h')[b];
               const count = Math.min(Math.max(prevBucketCounts[b], 2), 4);
               return (
                 <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
@@ -1728,7 +1730,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
             )}
           >
             {bucketOrder.map((b) => {
-              const cfg = bucketConfig[b];
+              const cfg = getBucketConfig(timeFormat === '24h')[b];
               const count = Math.min(Math.max(nextBucketCounts[b], 2), 4);
               return (
                 <div key={b} className={cn('rounded-lg border-2 border-dashed overflow-hidden opacity-70', cfg.borderClass)}>
