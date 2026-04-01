@@ -48,8 +48,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   DndContext,
-  pointerWithin,
-  rectIntersection,
+  closestCenter,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -61,15 +60,6 @@ import {
 } from '@dnd-kit/core';
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { format } from 'date-fns';
-
-// Custom collision detection: prefer pointerWithin (exact pointer position inside droppable)
-// then fall back to closestCenter. This fixes time bucket drops being missed when the
-// dragged item's center is closer to a different droppable than the bucket under the pointer.
-function customCollisionDetection(args: Parameters<typeof pointerWithin>[0]) {
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) return pointerCollisions;
-  return rectIntersection(args);
-}
 
 function KbdHint() {
   const [isMac, setIsMac] = useState(false);
@@ -445,7 +435,7 @@ const handleAddFromTopNav = () => {
     <DndContext
       id="planner-dnd"
       sensors={sensors}
-      collisionDetection={customCollisionDetection}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       measuring={{
