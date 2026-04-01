@@ -179,9 +179,12 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   Push notifications are not supported in this browser.
                 </p>
               ) : permissionState === 'denied' ? (
-                <p className="text-xs text-muted-foreground">
-                  Push notifications are blocked. Enable them in your browser settings, then reload.
-                </p>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Push notifications are blocked. Enable them in your browser settings, then reload.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug iOS State</Button>
+                </div>
               ) : (
                 <SettingRow
                   label="Push notifications"
@@ -191,13 +194,20 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       : 'Enable to receive reminders and alerts'
                   }
                 >
-                  <Switch
-                    checked={pushSubscribed}
-                    onCheckedChange={(checked) => {
-                      if (checked) subscribePush();
-                      else unsubscribePush();
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug</Button>
+                    <Switch
+                      checked={pushSubscribed}
+                      onCheckedChange={async (checked) => {
+                        try {
+                          if (checked) await subscribePush();
+                          else await unsubscribePush();
+                        } catch (err: any) {
+                          alert(`Push Error: ${err.message || err}`);
+                        }
+                      }}
+                    />
+                  </div>
                 </SettingRow>
               )}
 
