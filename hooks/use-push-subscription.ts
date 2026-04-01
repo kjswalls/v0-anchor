@@ -60,10 +60,16 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
     const reg = await navigator.serviceWorker.ready;
     alert('SW ready!');
-    const subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
+    let subscription: PushSubscription;
+    try {
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    } catch (subErr: any) {
+      alert('pushManager.subscribe() FAILED: ' + (subErr?.message ?? String(subErr)));
+      throw subErr;
+    }
     alert('Push subscribed!');
 
     const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
