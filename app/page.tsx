@@ -269,13 +269,22 @@ export default function PlannerPage() {
           scheduleHabit(itemId, bucket, dropTime);
         }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket without specific time - assign to bucket but keep unscheduled
-        // Pass the selected date for day view scheduling
+        // Dropping on outer bucket droppable (legacy/fallback) - assign unscheduled
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         if (itemType === 'task') {
           scheduleTask(itemId, target as TimeBucket, undefined, selectedDateStr);
         } else if (itemType === 'habit') {
           assignHabitToBucket(itemId, target as TimeBucket);
+        }
+      } else if (target.startsWith('unscheduled:')) {
+        // Dropping on dedicated unscheduled section of a bucket
+        // Format: unscheduled:{bucket}
+        const bucket = target.replace('unscheduled:', '') as TimeBucket;
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        if (itemType === 'task') {
+          scheduleTask(itemId, bucket, undefined, selectedDateStr);
+        } else if (itemType === 'habit') {
+          assignHabitToBucket(itemId, bucket);
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule

@@ -1143,8 +1143,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     return () => clearInterval(id);
   }, [isCurrentBucket, bucket]);
   
-  // The outer droppable covers the entire bucket for unscheduled assignment
-  const { isOver, setNodeRef } = useDroppable({ id: bucket });
+  // Outer droppable — used only for visual highlight (isOver) on the whole bucket
+  const { isOver } = useDroppable({ id: bucket });
+  // Dedicated unscheduled droppable — covers just the unscheduled section so
+  // closestCenter reliably picks it over scheduled:* slots
+  const { isOver: isOverUnscheduled, setNodeRef: setUnscheduledRef } = useDroppable({ id: `unscheduled:${bucket}` });
   const [isHovered, setIsHovered] = useState(false);
   const showExtras = !chillMode || isHovered;
 
@@ -1161,11 +1164,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
   return (
     <div
-      ref={setNodeRef}
       className={cn(
         'relative rounded-xl border-2 border-dashed transition-all overflow-visible min-h-[80px]',
         config.borderClass,
-        isOver && 'border-solid border-primary bg-primary/5',
+        (isOver || isOverUnscheduled) && 'border-solid border-primary bg-primary/5',
         isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background min-h-[120px]'
       )}
       style={isCurrentBucket ? { 
@@ -1248,11 +1250,13 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           </div>
         </div>
 
-        {/* Untimed section — part of the unscheduled drop zone.
-            Always render during drag (activeId set) so the bucket stays a valid drop target
-            even when it only has scheduled items (no untimed items yet). */}
+        {/* Untimed / unscheduled section — dedicated drop target.
+            Always rendered during drag so the droppable rect is measurable by dnd-kit. */}
         {(hasUntimed || activeId) && (
-          <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}>
+          <div
+            ref={setUnscheduledRef}
+            className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}
+          >
             {/* Untimed Habits */}
             {untimedHabits.length > 0 && (
               <div className="flex gap-2">
