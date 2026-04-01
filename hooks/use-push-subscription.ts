@@ -78,7 +78,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
 
     const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
 
-    await fetch('/api/push/subscribe', {
+    const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -87,9 +87,13 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
         auth: keys.auth,
       }),
     });
+    const resText = await res.text();
+    alert(`API response: ${res.status} ${resText}`);
 
     setIsSubscribed(true);
-    setPermissionState(Notification.permission);
+    const finalPermission = Notification.permission;
+    alert(`Final Notification.permission: ${finalPermission}`);
+    setPermissionState(finalPermission);
   }, [isSupported]);
 
   const unsubscribe = useCallback(async () => {
