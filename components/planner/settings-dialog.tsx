@@ -179,9 +179,12 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   Push notifications are not supported in this browser.
                 </p>
               ) : permissionState === 'denied' ? (
-                <p className="text-xs text-muted-foreground">
-                  Push notifications are blocked. Enable them in your browser settings, then reload.
-                </p>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Push notifications are blocked. Enable them in your browser settings, then reload.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug iOS State</Button>
+                </div>
               ) : (
                 <SettingRow
                   label="Push notifications"
