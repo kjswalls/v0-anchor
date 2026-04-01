@@ -13,6 +13,7 @@ import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
+import { useMorningStore } from '@/lib/morning-store';
 import { EODReview } from '@/components/ai/eod-review';
 import { ChatSidebar } from '@/components/ai/chat-sidebar';
 import { MobileHeader } from '@/components/mobile/mobile-header';
@@ -143,23 +144,23 @@ export default function PlannerPage() {
   useEffect(() => {
     if (!eodStore.eodReviewEnabled) return;
 
-    const [hours, minutes] = eodStore.eodReviewTime.split(':').map(Number);
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const userTz = usePlannerStore.getState().userTimezone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const todayStr = formatter.format(now);
+
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: userTz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now);
 
     if (eodStore.lastEodReviewDate === todayStr) return;
 
-    const triggerTime = new Date(now);
-    triggerTime.setHours(hours, minutes, 0, 0);
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: userTz,
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now);
 
-    if (now >= triggerTime) {
+    if (currentTime >= eodStore.eodReviewTime) {
       eodStore.open();
     }
   }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
@@ -499,6 +500,25 @@ const handleAddFromTopNav = () => {
               
               {/* Action feed on the right */}
               <div className="ml-auto z-10 flex items-center gap-2">
+                {/* DEV: manual trigger buttons for testing — remove before launch */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground"
+                  onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
+                  title="[DEV] Reset morning check (clears dismissed state)"
+                >
+                  ☀️
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground"
+                  onClick={() => eodStore.open()}
+                  title="[DEV] Trigger EOD review"
+                >
+                  🌙
+                </Button>
                 <ActionFeed />
               </div>
             </div>
