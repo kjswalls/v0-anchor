@@ -184,6 +184,15 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     Push notifications are blocked. Enable them in your browser settings, then reload.
                   </p>
                   <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug iOS State</Button>
+                  <Button variant="default" size="sm" onClick={async () => {
+                    try {
+                      const p = await Notification.requestPermission();
+                      alert('Requested native permission: ' + p);
+                      if (p === 'granted') await subscribePush();
+                    } catch(err: any) {
+                      alert('Native click error: ' + err.message);
+                    }
+                  }}>Force Request (Fix iOS Bug)</Button>
                 </div>
               ) : (
                 <SettingRow
@@ -194,13 +203,20 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       : 'Enable to receive reminders and alerts'
                   }
                 >
-                  <Switch
-                    checked={pushSubscribed}
-                    onCheckedChange={(checked) => {
-                      if (checked) subscribePush();
-                      else unsubscribePush();
+                  <Button 
+                    variant={pushSubscribed ? "outline" : "default"} 
+                    size="sm" 
+                    onClick={async () => {
+                      try {
+                        if (pushSubscribed) await unsubscribePush();
+                        else await subscribePush();
+                      } catch (err: any) {
+                        alert(`Push Error: ${err.message || err}`);
+                      }
                     }}
-                  />
+                  >
+                    {pushSubscribed ? 'Disable' : 'Enable'}
+                  </Button>
                 </SettingRow>
               )}
 
