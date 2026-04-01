@@ -1,5 +1,5 @@
-import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 import withSerwistInit from '@serwist/next';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants.js';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -11,18 +11,10 @@ const nextConfig = {
   },
 };
 
-export default async function config(phase) {
-  // Only enable serwist in production / non-test builds to avoid SW interference in dev
-  if (phase === PHASE_DEVELOPMENT_SERVER) {
-    return nextConfig;
-  }
+const withSerwist = withSerwistInit({
+  swSrc: 'app/sw.ts',
+  swDest: 'public/sw.js',
+  disable: process.env.NODE_ENV === 'development',
+});
 
-  const withSerwist = withSerwistInit({
-    swSrc: 'app/sw.ts',
-    swDest: 'public/sw.js',
-    // Push-only — no precaching / offline caching in this PR
-    disable: false,
-  });
-
-  return withSerwist(nextConfig);
-}
+export default withSerwist(nextConfig);
