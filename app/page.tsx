@@ -13,6 +13,7 @@ import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { ActionFeed } from '@/components/planner/action-feed';
 import { MorningCheck } from '@/components/ai/morning-check';
+import { useMorningStore } from '@/lib/morning-store';
 import { EODReview } from '@/components/ai/eod-review';
 import { ChatSidebar } from '@/components/ai/chat-sidebar';
 import { MobileHeader } from '@/components/mobile/mobile-header';
@@ -25,6 +26,7 @@ import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
@@ -137,8 +139,31 @@ export default function PlannerPage() {
     });
   }, []);
 
-  // EOD auto-trigger intentionally removed for web — needs push notifications (PWA/mobile).
-  // The EOD review can still be triggered manually via the toolbar button.
+  // EOD auto-trigger: open the EOD review modal when the review time has passed today
+  const eodStore = useEODStore();
+  useEffect(() => {
+    if (!eodStore.eodReviewEnabled) return;
+
+    const userTz = usePlannerStore.getState().userTimezone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const now = new Date();
+
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: userTz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(now);
+
+    if (eodStore.lastEodReviewDate === todayStr) return;
+
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: userTz,
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now);
+
+    if (currentTime >= eodStore.eodReviewTime) {
+      eodStore.open();
+    }
+  }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
   
   // Global keyboard shortcuts
   useEffect(() => {
@@ -475,6 +500,25 @@ const handleAddFromTopNav = () => {
               
               {/* Action feed on the right */}
               <div className="ml-auto z-10 flex items-center gap-2">
+                {/* DEV: manual trigger buttons for testing — remove before launch */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground"
+                  onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
+                  title="[DEV] Reset morning check (clears dismissed state)"
+                >
+                  ☀️
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-muted-foreground"
+                  onClick={() => eodStore.open()}
+                  title="[DEV] Trigger EOD review"
+                >
+                  🌙
+                </Button>
                 <ActionFeed />
               </div>
             </div>

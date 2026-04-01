@@ -14,6 +14,10 @@ export interface UserSettingsRow {
   morning_check_enabled?: boolean;
   left_sidebar_hover?: boolean;
   right_sidebar_hover?: boolean;
+  morning_check_time?: string;
+  morning_check_dismissed_date?: string;
+  eod_review_time?: string;
+  eod_review_enabled?: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettingsRow = {
@@ -30,10 +34,14 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   morning_check_enabled: true,
   left_sidebar_hover: false,
   right_sidebar_hover: false,
+  morning_check_time: '08:00',
+  morning_check_dismissed_date: undefined,
+  eod_review_time: '21:00',
+  eod_review_enabled: false,
 };
 
 const SETTINGS_SELECT =
-  'theme,time_format,week_start_day,default_view,default_time_bucket,show_completed_tasks,animations_enabled,compact_mode,chill_mode,show_time_indicator,morning_check_enabled,left_sidebar_hover,right_sidebar_hover';
+  'theme,time_format,week_start_day,default_view,default_time_bucket,show_completed_tasks,animations_enabled,compact_mode,chill_mode,show_time_indicator,morning_check_enabled,left_sidebar_hover,right_sidebar_hover,morning_check_time,morning_check_dismissed_date,eod_review_time,eod_review_enabled';
 
 export async function loadSettings(userId: string): Promise<UserSettingsRow> {
   const supabase = createClient();

@@ -63,22 +63,14 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     if (permission !== 'granted') return;
 
     const reg = await navigator.serviceWorker.ready;
-    alert('SW ready!');
-    let subscription: PushSubscription;
-    try {
-      subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-    } catch (subErr: any) {
-      alert('pushManager.subscribe() FAILED: ' + (subErr?.message ?? String(subErr)));
-      throw subErr;
-    }
-    alert('Push subscribed!');
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
 
     const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
 
-    const res = await fetch('/api/push/subscribe', {
+    await fetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -87,13 +79,9 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
         auth: keys.auth,
       }),
     });
-    const resText = await res.text();
-    alert(`API response: ${res.status} ${resText}`);
 
     setIsSubscribed(true);
-    const finalPermission = Notification.permission;
-    alert(`Final Notification.permission: ${finalPermission}`);
-    setPermissionState(finalPermission);
+    setPermissionState(Notification.permission);
   }, [isSupported]);
 
   const unsubscribe = useCallback(async () => {
