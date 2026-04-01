@@ -1248,8 +1248,10 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           </div>
         </div>
 
-        {/* Untimed section — part of the unscheduled drop zone */}
-        {(hasUntimed || (activeId && !hasScheduled)) && (
+        {/* Untimed section — part of the unscheduled drop zone.
+            Always render during drag (activeId set) so the bucket stays a valid drop target
+            even when it only has scheduled items (no untimed items yet). */}
+        {(hasUntimed || activeId) && (
           <div className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}>
             {/* Untimed Habits */}
             {untimedHabits.length > 0 && (
@@ -1279,8 +1281,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
               </div>
             )}
 
-            {/* Placeholder when dragging and no untimed items but also no scheduled items */}
-            {!hasUntimed && activeId && !hasScheduled && (
+            {/* Placeholder when dragging and no untimed items — show regardless of scheduled items */}
+            {!hasUntimed && activeId && (
               <div className="py-4 text-center text-xs text-muted-foreground/50">
                 Drop here to add unscheduled
               </div>
