@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check } from 'lucide-react';
 import {
@@ -47,14 +47,26 @@ export function EODReview() {
 
   const today = todayStr();
 
-  // Partition today's tasks
-  const { completedTasks, pendingTasks } = useMemo(() => {
+  // Partition today's tasks — live view for completed section
+  const { completedTasks, pendingTasks: livePendingTasks } = useMemo(() => {
     const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
     return {
       completedTasks: todayTasks.filter((t) => t.status === 'completed'),
       pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
     };
   }, [tasks, today]);
+
+  // Snapshot pendingTasks when the dialog opens so tasks marked done during
+  // the session don't disappear from the list (we need the circle to stay
+  // visible so the user can undo).
+  const snapshotRef = useRef<typeof livePendingTasks>([]);
+  useEffect(() => {
+    if (isOpen) {
+      snapshotRef.current = livePendingTasks;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+  const pendingTasks = isOpen ? snapshotRef.current : livePendingTasks;
 
   // Partition today's habits
   const { doneHabits, skippedHabits } = useMemo(() => {
@@ -70,7 +82,7 @@ export function EODReview() {
 
   // Which pending tasks the user has checked to carry forward
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(pendingTasks.map((t) => t.id))
+    () => new Set(livePendingTasks.map((t) => t.id))
   );
 
   // Tasks marked complete during this EOD session
