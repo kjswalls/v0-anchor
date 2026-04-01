@@ -186,9 +186,14 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug iOS State</Button>
                   <Button variant="default" size="sm" onClick={async () => {
                     try {
+                      alert('1. Requesting...');
                       const p = await Notification.requestPermission();
-                      alert('Requested native permission: ' + p);
-                      if (p === 'granted') await subscribePush();
+                      alert('2. Permission: ' + p);
+                      if (p === 'granted') {
+                        alert('3. Subscribing push...');
+                        await subscribePush();
+                        alert('4. Done subscribing!');
+                      }
                     } catch(err: any) {
                       alert('Native click error: ' + err.message);
                     }

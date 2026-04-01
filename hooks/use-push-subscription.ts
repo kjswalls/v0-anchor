@@ -54,10 +54,12 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     if (permission !== 'granted') return;
 
     const reg = await navigator.serviceWorker.ready;
+    alert('SW ready!');
     const subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
+    alert('Push subscribed!');
 
     const keys = subscription.toJSON().keys as { p256dh: string; auth: string };
 
