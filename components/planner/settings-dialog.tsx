@@ -110,8 +110,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
   const { theme, setTheme } = useTheme();
   const isMobile = useIsMobile();
-  const { morningCheckEnabled, setMorningCheckEnabled } = useMorningStore();
-  useEODStore();
+  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime } = useMorningStore();
+  const { eodReviewEnabled, setEodReviewEnabled, eodReviewTime, setEodReviewTime } = useEODStore();
 
   // Auto-subscribe to push when morning check is enabled
   useEffect(() => {
@@ -179,49 +179,25 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   Push notifications are not supported in this browser.
                 </p>
               ) : permissionState === 'denied' ? (
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    Push notifications are blocked. Enable them in your browser settings, then reload.
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => alert(`State: ${permissionState}\nSupported: ${pushSupported}\nVAPID: ${process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ? 'Yes' : 'No'}`)}>Debug iOS State</Button>
-                  <Button variant="default" size="sm" onClick={async () => {
-                    try {
-                      alert('1. Requesting...');
-                      const p = await Notification.requestPermission();
-                      alert('2. Permission: ' + p);
-                      if (p === 'granted') {
-                        alert('3. Subscribing push...');
-                        await subscribePush();
-                        alert('4. Done subscribing!');
-                      }
-                    } catch(err: any) {
-                      alert('Native click error: ' + err.message);
-                    }
-                  }}>Force Request (Fix iOS Bug)</Button>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  Push notifications are blocked. Enable them in your browser settings, then reload.
+                </p>
               ) : (
                 <SettingRow
                   label="Push notifications"
-                  description={
-                    pushSubscribed
-                      ? 'You will receive push notifications from Anchor'
-                      : 'Enable to receive reminders and alerts'
-                  }
+                  description={pushSubscribed ? "You will receive push notifications from Anchor" : "Enable to receive reminders and alerts"}
                 >
-                  <Button 
-                    variant={pushSubscribed ? "outline" : "default"} 
-                    size="sm" 
-                    onClick={async () => {
+                  <Switch
+                    checked={pushSubscribed}
+                    onCheckedChange={async (checked) => {
                       try {
-                        if (pushSubscribed) await unsubscribePush();
-                        else await subscribePush();
+                        if (checked) await subscribePush();
+                        else await unsubscribePush();
                       } catch (err: any) {
-                        alert(`Push Error: ${err.message || err}`);
+                        console.error("Push toggle error:", err);
                       }
                     }}
-                  >
-                    {pushSubscribed ? 'Disable' : 'Enable'}
-                  </Button>
+                  />
                 </SettingRow>
               )}
 
@@ -338,7 +314,29 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               <SettingRow label="Morning task check" description="Remind me about unfinished tasks from yesterday">
                 <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
               </SettingRow>
-              {/* EOD review hidden until mobile/PWA push notifications are supported */}
+              {morningCheckEnabled && (
+                <SettingRow label="Check time" description="When to send your morning reminder">
+                  <input
+                    type="time"
+                    value={morningCheckTime}
+                    onChange={(e) => setMorningCheckTime(e.target.value)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  />
+                </SettingRow>
+              )}
+              <SettingRow label="End of day review" description="Review what you accomplished at the end of the day">
+                <Switch checked={eodReviewEnabled} onCheckedChange={setEodReviewEnabled} />
+              </SettingRow>
+              {eodReviewEnabled && (
+                <SettingRow label="Review time" description="When to trigger your end of day review">
+                  <input
+                    type="time"
+                    value={eodReviewTime}
+                    onChange={(e) => setEodReviewTime(e.target.value)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  />
+                </SettingRow>
+              )}
             </SettingsSection>
 
             {/* AI Assistant */}

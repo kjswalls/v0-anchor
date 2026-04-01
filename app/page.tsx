@@ -25,6 +25,7 @@ import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
@@ -137,8 +138,31 @@ export default function PlannerPage() {
     });
   }, []);
 
-  // EOD auto-trigger intentionally removed for web — needs push notifications (PWA/mobile).
-  // The EOD review can still be triggered manually via the toolbar button.
+  // EOD auto-trigger: open the EOD review modal when the review time has passed today
+  const eodStore = useEODStore();
+  useEffect(() => {
+    if (!eodStore.eodReviewEnabled) return;
+
+    const [hours, minutes] = eodStore.eodReviewTime.split(':').map(Number);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const todayStr = formatter.format(now);
+
+    if (eodStore.lastEodReviewDate === todayStr) return;
+
+    const triggerTime = new Date(now);
+    triggerTime.setHours(hours, minutes, 0, 0);
+
+    if (now >= triggerTime) {
+      eodStore.open();
+    }
+  }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
   
   // Global keyboard shortcuts
   useEffect(() => {

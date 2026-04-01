@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createClient } from '@/lib/supabase';
+import { saveSettings } from '@/lib/settings-service';
+import { usePlannerStore } from '@/lib/planner-store';
 
 interface EODStore {
   _hasHydrated: boolean;
@@ -30,8 +32,17 @@ export const useEODStore = create<EODStore>()(
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),
 
-      setEodReviewEnabled: (enabled) => set({ eodReviewEnabled: enabled }),
-      setEodReviewTime: (time) => set({ eodReviewTime: time }),
+      setEodReviewEnabled: (enabled) => {
+        set({ eodReviewEnabled: enabled });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { eod_review_enabled: enabled });
+      },
+
+      setEodReviewTime: (time) => {
+        set({ eodReviewTime: time });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { eod_review_time: time });
+      },
 
       saveLastReviewDate: async (userId, date) => {
         set({ lastEodReviewDate: date, isOpen: false });

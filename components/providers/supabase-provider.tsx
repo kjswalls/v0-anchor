@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { useEODStore } from '@/lib/eod-store';
 import { loadSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
 
@@ -56,6 +57,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       useMorningStore.setState({
         morningCheckEnabled: settings.morning_check_enabled ?? true,
+        morningCheckTime: settings.morning_check_time ?? '08:00',
+        morningCheckDismissedDate: settings.morning_check_dismissed_date ?? null,
+      });
+
+      useEODStore.setState({
+        eodReviewEnabled: settings.eod_review_enabled ?? false,
+        eodReviewTime: settings.eod_review_time ?? '21:00',
       });
 
       if (settings.theme) {

@@ -7,24 +7,32 @@ import { saveSettings } from './settings-service';
 import { usePlannerStore } from './planner-store';
 
 interface MorningStore {
-  dismissedDate: string | null; // yyyy-MM-dd
+  morningCheckDismissedDate: string | null; // yyyy-MM-dd
   morningCheckEnabled: boolean;
+  morningCheckTime: string; // HH:mm
   dismiss: () => void;
   isDismissedToday: () => boolean;
   setMorningCheckEnabled: (enabled: boolean) => void;
+  setMorningCheckTime: (time: string) => void;
 }
 
 export const useMorningStore = create<MorningStore>()(
   persist(
     (set, get) => ({
-      dismissedDate: null,
+      morningCheckDismissedDate: null,
       morningCheckEnabled: true,
+      morningCheckTime: '08:00',
 
-      dismiss: () => set({ dismissedDate: format(new Date(), 'yyyy-MM-dd') }),
+      dismiss: () => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        set({ morningCheckDismissedDate: today });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { morning_check_dismissed_date: today });
+      },
 
       isDismissedToday: () => {
         const today = format(new Date(), 'yyyy-MM-dd');
-        return get().dismissedDate === today;
+        return get().morningCheckDismissedDate === today;
       },
 
       setMorningCheckEnabled: (enabled) => {
@@ -32,12 +40,19 @@ export const useMorningStore = create<MorningStore>()(
         const userId = usePlannerStore.getState().userId;
         if (userId) saveSettings(userId, { morning_check_enabled: enabled });
       },
+
+      setMorningCheckTime: (time) => {
+        set({ morningCheckTime: time });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { morning_check_time: time });
+      },
     }),
     {
       name: 'anchor-morning-store',
       partialize: (state) => ({
-        dismissedDate: state.dismissedDate,
+        morningCheckDismissedDate: state.morningCheckDismissedDate,
         morningCheckEnabled: state.morningCheckEnabled,
+        morningCheckTime: state.morningCheckTime,
       }),
     }
   )
