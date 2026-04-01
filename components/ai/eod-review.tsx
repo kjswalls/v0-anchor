@@ -56,10 +56,10 @@ export function EODReview() {
     };
   }, [tasks, today]);
 
-  // Snapshot pendingTasks when the dialog opens so tasks marked done during
-  // the session don't disappear from the list (we need the circle to stay
-  // visible so the user can undo).
-  const snapshotRef = useRef<typeof livePendingTasks>([]);
+  // Snapshot pendingTasks at dialog open time so tasks marked done during
+  // the session don't disappear from the list (circle stays visible for undo).
+  // Initialize with livePendingTasks directly so the first render already has data.
+  const snapshotRef = useRef<typeof livePendingTasks>(livePendingTasks);
   useEffect(() => {
     if (isOpen) {
       snapshotRef.current = livePendingTasks;
@@ -119,7 +119,8 @@ export function EODReview() {
     await saveLastReviewDate(userId, today);
   };
 
-  const totalToday = completedTasks.length + pendingTasks.length;
+  // Use livePendingTasks for counts so encouragement copy reflects actual state
+  const totalToday = completedTasks.length + livePendingTasks.length;
   const message = encouragingMessage(completedTasks.length, totalToday);
 
   return (
