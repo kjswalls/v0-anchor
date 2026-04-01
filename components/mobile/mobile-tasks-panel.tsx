@@ -89,8 +89,10 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
     setNodeRef,
     transform,
     isDragging,
-  } = useDraggable({ id: task.id });
+  } = useDraggable({ id: task.id, disabled: true });
 
+  // DnD is disabled in the mobile To Do tab — there's nowhere to drag to across tabs.
+  // Re-enable (set disabled: false) in Phase 2 when within-list reorder is added (issue #89).
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
   } : undefined;
