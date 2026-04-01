@@ -123,7 +123,7 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
         {...attributes}
         {...listeners}
         className={cn(
-          'group relative flex items-start gap-3 p-4 rounded-xl bg-card border border-border/50 active:border-border transition-all touch-none',
+          'group relative flex items-start gap-3 p-4 rounded-xl bg-card border border-border/50 active:border-border transition-all',
           isDragging && 'opacity-50 shadow-lg z-50',
           task.status === 'completed' && 'opacity-60'
         )}

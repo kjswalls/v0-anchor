@@ -48,8 +48,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   DndContext,
-  pointerWithin,
-  rectIntersection,
+  closestCenter,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -61,15 +60,6 @@ import {
 } from '@dnd-kit/core';
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { format } from 'date-fns';
-
-// Custom collision detection: prefer pointerWithin (exact pointer position inside droppable)
-// then fall back to closestCenter. This fixes time bucket drops being missed when the
-// dragged item's center is closer to a different droppable than the bucket under the pointer.
-function customCollisionDetection(args: Parameters<typeof pointerWithin>[0]) {
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) return pointerCollisions;
-  return rectIntersection(args);
-}
 
 function KbdHint() {
   const [isMac, setIsMac] = useState(false);
@@ -279,13 +269,22 @@ export default function PlannerPage() {
           scheduleHabit(itemId, bucket, dropTime);
         }
       } else if (['anytime', 'morning', 'afternoon', 'evening'].includes(target)) {
-        // Dropping on bucket without specific time - assign to bucket but keep unscheduled
-        // Pass the selected date for day view scheduling
+        // Dropping on outer bucket droppable (legacy/fallback) - assign unscheduled
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         if (itemType === 'task') {
           scheduleTask(itemId, target as TimeBucket, undefined, selectedDateStr);
         } else if (itemType === 'habit') {
           assignHabitToBucket(itemId, target as TimeBucket);
+        }
+      } else if (target.startsWith('unscheduled:')) {
+        // Dropping on dedicated unscheduled section of a bucket
+        // Format: unscheduled:{bucket}
+        const bucket = target.replace('unscheduled:', '') as TimeBucket;
+        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        if (itemType === 'task') {
+          scheduleTask(itemId, bucket, undefined, selectedDateStr);
+        } else if (itemType === 'habit') {
+          assignHabitToBucket(itemId, bucket);
         }
       } else if (target === 'sidebar') {
         // Dropped back on sidebar - unschedule
@@ -445,7 +444,7 @@ const handleAddFromTopNav = () => {
     <DndContext
       id="planner-dnd"
       sensors={sensors}
-      collisionDetection={customCollisionDetection}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       measuring={{
