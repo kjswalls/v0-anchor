@@ -33,6 +33,11 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
   // Sync current subscription state on mount
   useEffect(() => {
     if (!isSupported) return;
+    
+    // Explicitly register SW to prevent hanging on iOS Safari
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.error('[push] SW registration failed:', err);
+    });
 
     setPermissionState(Notification.permission);
 
