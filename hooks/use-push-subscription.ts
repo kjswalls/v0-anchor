@@ -54,8 +54,12 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
       return;
     }
 
-    const permission = await Notification.requestPermission();
-    setPermissionState(permission);
+    // Only request permission if not already granted
+    let permission = Notification.permission;
+    if (permission !== 'granted') {
+      permission = await Notification.requestPermission();
+      setPermissionState(permission);
+    }
     if (permission !== 'granted') return;
 
     const reg = await navigator.serviceWorker.ready;
@@ -85,6 +89,7 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     });
 
     setIsSubscribed(true);
+    setPermissionState(Notification.permission);
   }, [isSupported]);
 
   const unsubscribe = useCallback(async () => {
