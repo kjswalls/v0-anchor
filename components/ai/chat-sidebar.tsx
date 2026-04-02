@@ -68,17 +68,12 @@ export function ChatSidebar() {
     setShowOnboarding(false)
   }
 
-  // Fetch OpenClaw chat URL when provider is openclaw
+  // Fetch registered Gateway chat URL when provider is OpenClaw (completions endpoint)
   useEffect(() => {
     if (aiProvider !== 'openclaw') return
-    Promise.all([
-      fetch('/api/openclaw/chat-url').then((r) => r.json()),
-      fetch('/api/openclaw/apikey').then((r) => r.json()),
-    ])
-      .then(([chatData, keyData]) => {
-        setOpenclawChatUrl(chatData.chatUrl ?? null)
-        if (keyData.apiKey) useAISettingsStore.getState().setOpenclawApiKey(keyData.apiKey)
-      })
+    fetch('/api/openclaw/chat-url')
+      .then((r) => r.json())
+      .then((chatData) => setOpenclawChatUrl(chatData.chatUrl ?? null))
       .catch(() => setOpenclawChatUrl(null))
   }, [aiProvider])
 
@@ -190,7 +185,7 @@ export function ChatSidebar() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
-      const { provider, apiKey, model, personality, systemPrompt, openclawApiKey } =
+      const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey } =
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
 
@@ -204,7 +199,24 @@ export function ChatSidebar() {
             if (last?.role === 'assistant') {
               next[next.length - 1] = {
                 role: 'assistant',
-                content: 'OpenClaw not connected yet — run `openclaw anchor-context setup` to connect.',
+                content:
+                  'OpenClaw not connected yet — run `openclaw anchor-context setup` and set publicUrl in openclaw.json.',
+                timestamp: Date.now(),
+              }
+            }
+            return next
+          })
+          setIsLoading(false)
+          return
+        }
+        if (!openclawGatewayApiKey?.trim()) {
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') {
+              next[next.length - 1] = {
+                role: 'assistant',
+                content: 'Add your OpenClaw Gateway API key in Settings → AI Assistant.',
                 timestamp: Date.now(),
               }
             }
@@ -214,13 +226,17 @@ export function ChatSidebar() {
           return
         }
 
-        const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-        if (openclawApiKey) fetchHeaders['Authorization'] = `Bearer ${openclawApiKey}`
-
-        res = await fetch(openclawChatUrl, {
+        const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }))
+        res = await fetch('/api/openclaw/openclaw-chat', {
           method: 'POST',
-          headers: fetchHeaders,
-          body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: chatMessages,
+            context,
+            model,
+            systemPrompt: effectiveSystemPrompt,
+            openclawGatewayApiKey,
+          }),
         })
       } else {
         res = await fetch('/api/chat', {
