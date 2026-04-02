@@ -127,6 +127,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
     openclawGatewayApiKey, setOpenclawGatewayApiKey,
+    openclawAgentId, setOpenclawAgentId,
   } = useAISettingsStore();
 
   const {
@@ -373,15 +374,14 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                           className="w-44 h-8 text-xs"
                         />
                       </SettingRow>
-                      <SettingRow label="Model" description="Gateway model id">
-                        <Select value={model} onValueChange={setModel}>
-                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                            <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                            <SelectItem value="gpt-4-turbo">gpt-4-turbo</SelectItem>
-                          </SelectContent>
-                        </Select>
+                      <SettingRow label="Agent ID" description="OpenClaw agent to route chat through (default: main)">
+                        <Input
+                          type="text"
+                          value={openclawAgentId}
+                          onChange={(e) => setOpenclawAgentId(e.target.value)}
+                          placeholder="main"
+                          className="w-44 h-8 text-xs"
+                        />
                       </SettingRow>
                       <SettingRow label="Personality" description="Beacon tone for sidebar chat">
                         <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>

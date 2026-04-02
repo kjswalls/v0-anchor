@@ -132,7 +132,7 @@ export function MobileChatPanel() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState();
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups });
-      const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey } =
+      const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey, openclawAgentId } =
         useAISettingsStore.getState();
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality];
 
@@ -180,7 +180,7 @@ export function MobileChatPanel() {
           body: JSON.stringify({
             messages: chatMessages,
             context,
-            model,
+            agentId: openclawAgentId || 'main',
             systemPrompt: effectiveSystemPrompt,
             openclawGatewayApiKey,
           }),

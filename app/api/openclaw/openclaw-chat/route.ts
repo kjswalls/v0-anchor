@@ -30,7 +30,7 @@ function extractDeltaContent(payload: string): string | null {
 /**
  * POST /api/openclaw/openclaw-chat
  * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL (openclaw_chat_url).
- * Body: { messages, model?, systemPrompt?, context?, openclawGatewayApiKey }
+ * Body: { messages, agentId?, systemPrompt?, context?, openclawGatewayApiKey }
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
 
   let body: {
     messages?: Array<{ role: string; content: string }>
-    model?: string
+    agentId?: string
     systemPrompt?: string
     context?: string
     openclawGatewayApiKey?: string
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { messages, model, systemPrompt, context, openclawGatewayApiKey } = body
+  const { messages, agentId, systemPrompt, context, openclawGatewayApiKey } = body
 
   if (!openclawGatewayApiKey?.trim()) {
     return new Response(
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${openclawGatewayApiKey.trim()}`,
       },
       body: JSON.stringify({
-        model: model?.trim() || 'gpt-4o-mini',
+        model: `openclaw:${(agentId?.trim() || 'main')}`,
         messages: openaiMessages,
         stream: true,
       }),
