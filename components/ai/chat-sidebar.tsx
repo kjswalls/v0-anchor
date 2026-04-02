@@ -185,6 +185,9 @@ export function ChatSidebar() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
+      // Intentionally reading fresh values via getState() to avoid stale closures —
+      // provider, apiKey, model, systemPrompt, openclawGatewayApiKey, openclawAgentId
+      // are therefore omitted from the useCallback dependency array.
       const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey, openclawAgentId } =
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
