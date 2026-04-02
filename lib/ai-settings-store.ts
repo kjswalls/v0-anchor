@@ -24,7 +24,10 @@ interface AISettings {
   assistantName: string;
   systemPrompt: string;
   personality: AIPersonality;
-  openclawApiKey: string;
+  /** Bearer token for Gateway POST /v1/chat/completions (not the Anchor `anchor_…` plugin key). */
+  openclawGatewayApiKey: string;
+  /** OpenClaw agent ID to route sidebar chat through (sent as model: "openclaw:<agentId>"). Default: "main". */
+  openclawAgentId: string;
 }
 
 export interface AISettingsStore extends AISettings {
@@ -34,7 +37,8 @@ export interface AISettingsStore extends AISettings {
   setAssistantName: (name: string) => void;
   setSystemPrompt: (prompt: string) => void;
   setPersonality: (personality: AIPersonality) => void;
-  setOpenclawApiKey: (key: string) => void;
+  setOpenclawGatewayApiKey: (key: string) => void;
+  setOpenclawAgentId: (id: string) => void;
 }
 
 export const useAISettingsStore = create<AISettingsStore>()(
@@ -46,17 +50,29 @@ export const useAISettingsStore = create<AISettingsStore>()(
       assistantName: 'Beacon',
       systemPrompt: '',
       personality: 'default',
-      openclawApiKey: '',
+      openclawGatewayApiKey: '',
+      openclawAgentId: 'main',
       setProvider: (provider) => set({ provider }),
       setApiKey: (apiKey) => set({ apiKey }),
       setModel: (model) => set({ model }),
       setAssistantName: (assistantName) => set({ assistantName }),
       setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
       setPersonality: (personality) => set({ personality }),
-      setOpenclawApiKey: (openclawApiKey) => set({ openclawApiKey }),
+      setOpenclawGatewayApiKey: (openclawGatewayApiKey) => set({ openclawGatewayApiKey }),
+      setOpenclawAgentId: (openclawAgentId) => set({ openclawAgentId }),
     }),
     {
       name: 'anchor-ai-settings',
+      partialize: (state) => ({
+        provider: state.provider,
+        apiKey: state.apiKey,
+        model: state.model,
+        assistantName: state.assistantName,
+        systemPrompt: state.systemPrompt,
+        personality: state.personality,
+        openclawGatewayApiKey: state.openclawGatewayApiKey,
+        openclawAgentId: state.openclawAgentId,
+      }),
     }
   )
 );

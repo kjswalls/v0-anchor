@@ -126,6 +126,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     model, setModel,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
+    openclawGatewayApiKey, setOpenclawGatewayApiKey,
+    openclawAgentId, setOpenclawAgentId,
   } = useAISettingsStore();
 
   const {
@@ -358,6 +360,42 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     />
                   </div>
 
+                  {provider === 'openclaw' && (
+                    <div className="space-y-2 pt-1 border-t border-border">
+                      <SettingRow
+                        label="OpenClaw Gateway API key"
+                        description="From your OpenClaw Gateway — not the Anchor plugin key (anchor_…). Stored locally only."
+                      >
+                        <Input
+                          type="password"
+                          value={openclawGatewayApiKey}
+                          onChange={(e) => setOpenclawGatewayApiKey(e.target.value)}
+                          placeholder="Gateway API key"
+                          className="w-44 h-8 text-xs"
+                        />
+                      </SettingRow>
+                      <SettingRow label="Agent ID" description="OpenClaw agent to route chat through (default: main)">
+                        <Input
+                          type="text"
+                          value={openclawAgentId}
+                          onChange={(e) => setOpenclawAgentId(e.target.value)}
+                          placeholder="main"
+                          className="w-44 h-8 text-xs"
+                        />
+                      </SettingRow>
+                      <SettingRow label="Personality" description="Beacon tone for sidebar chat">
+                        <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
+                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Default</SelectItem>
+                            <SelectItem value="professional">Professional</SelectItem>
+                            <SelectItem value="motivational">Motivational</SelectItem>
+                            <SelectItem value="minimal">Minimal</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </SettingRow>
+                    </div>
+                  )}
                 </div>
 
                 {/* Beacon fallback — secondary */}

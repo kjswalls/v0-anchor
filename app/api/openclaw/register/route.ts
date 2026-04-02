@@ -7,7 +7,7 @@ import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
  * Anchor pushes change events when data mutates. Also accepts optional chatUrl
- * to store the gateway chat endpoint for browser-direct OpenClaw chat.
+ * (Gateway OpenAI-compatible URL, e.g. …/v1/chat/completions) for sidebar chat via /api/openclaw/openclaw-chat.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *
@@ -17,7 +17,7 @@ import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
  *     webhookUrl?: string     // where Anchor should POST change events (optional if chatUrl only)
  *     secret?:     string     // HMAC secret for payload verification (optional)
  *     events?:     string[]   // e.g. ["tasks.updated", "habits.updated"]
- *     chatUrl?:    string     // gateway chat URL for browser-direct OpenClaw chat
+ *     chatUrl?:    string     // e.g. https://<gateway>/v1/chat/completions
  *   }
  */
 export async function POST(req: NextRequest) {

@@ -1,11 +1,6 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
-
-const BEACON_SYSTEM_PROMPT =
-  'You are Beacon, a warm and encouraging AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
-  "You have full visibility into the user's current tasks, habits, and projects. " +
-  'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
-  'Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they\'re working on.'
+import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 
 const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
@@ -54,10 +49,10 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder()
 
-  // ── OpenClaw provider — handled client-side (browser-direct to gateway) ────
+  // ── OpenClaw provider — use POST /api/openclaw/openclaw-chat ───────────────
   if (provider === 'openclaw') {
     return new Response(
-      streamChars('OpenClaw chat is handled directly from the browser. This server route should not be called for the openclaw provider.'),
+      streamChars('OpenClaw chat uses /api/openclaw/openclaw-chat.'),
       { status: 400, headers: SSE_HEADERS }
     )
   }
