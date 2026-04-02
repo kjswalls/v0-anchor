@@ -1,10 +1,16 @@
 import type { Page } from '@playwright/test';
 
 /**
- * Log in the test user by calling Supabase's REST API directly.
+ * Log in the test user by calling Supabase's REST API directly, then
+ * injecting the session via the Supabase JS client inside the browser context.
  *
  * This bypasses the login UI entirely — all E2E specs that aren't specifically
  * testing the authentication flow (magic link, OAuth, etc.) should use this.
+ *
+ * Why not localStorage? The app uses @supabase/ssr's createBrowserClient, which
+ * stores sessions in cookies (not localStorage). We get tokens from the REST API
+ * and then call supabase.auth.setSession() inside the page so the SDK writes the
+ * cookies itself — no manual cookie construction needed.
  *
  * For real auth flow tests, see: https://github.com/kjswalls/v0-anchor/issues/117
  *
@@ -26,7 +32,7 @@ export async function loginTestUser(page: Page): Promise<void> {
     );
   }
 
-  // Call Supabase token endpoint directly — no browser UI needed
+  // 1. Get tokens from Supabase REST API (no UI, no magic link)
   const response = await page.request.post(
     `${supabaseUrl}/auth/v1/token?grant_type=password`,
     {
@@ -43,33 +49,25 @@ export async function loginTestUser(page: Page): Promise<void> {
     throw new Error(`Supabase signInWithPassword failed (${response.status()}): ${body}`);
   }
 
-  const { access_token, refresh_token } = await response.json();
+  const session = await response.json();
+  const { access_token, refresh_token } = session;
 
-  // Inject the session into the browser's localStorage so the app picks it up
+  // 2. Navigate to the app so window/document are available
   await page.goto('/');
+
+  // 3. Call supabase.auth.setSession() inside the browser — the SDK writes
+  //    the session to cookies itself, which is what @supabase/ssr reads.
   await page.evaluate(
-    ({ url, key, access, refresh }) => {
-      const storageKey = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          access_token: access,
-          refresh_token: refresh,
-          token_type: 'bearer',
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-        })
-      );
+    async ({ url, key, accessToken, refreshToken }) => {
+      const { createBrowserClient } = await import('@supabase/ssr');
+      const supabase = createBrowserClient(url, key);
+      const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      if (error) throw new Error(`setSession failed: ${error.message}`);
     },
-    {
-      url: supabaseUrl,
-      key: anonKey,
-      access: access_token,
-      refresh: refresh_token,
-    }
+    { url: supabaseUrl, key: anonKey, accessToken: access_token, refreshToken: refresh_token }
   );
 
-  // Reload so the app hydrates with the injected session
+  // 4. Reload so the app's SupabaseProvider hydrates with the session from cookies
   await page.reload();
   await page.waitForURL('/');
 }
