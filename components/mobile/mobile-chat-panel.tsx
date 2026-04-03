@@ -164,7 +164,7 @@ export function MobileChatPanel() {
         useAISettingsStore.getState();
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality];
 
-      let res: Response;
+
 
       if (provider === 'openclaw') {
         if (!openclawChatUrl) {
