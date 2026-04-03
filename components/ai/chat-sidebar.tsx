@@ -273,7 +273,7 @@ export function ChatSidebar() {
               setMessages((prev) => {
                 const next = [...prev]
                 const last = next[next.length - 1]
-                if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: stripReasoningTags(last.content + content) }
+                if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: last.content + content }
                 return next
               })
             }
