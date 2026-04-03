@@ -24,6 +24,15 @@ interface Message {
   timestamp?: number
 }
 
+/** Strip internal model reasoning tags like <think>...</think> and <final>...</final> wrappers */
+function stripReasoningTags(text: string): string {
+  // Remove <think>...</think> blocks (including multiline)
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  // Unwrap <final>...</final> — keep the content, drop the tags
+  out = out.replace(/<final>([\s\S]*?)<\/final>/gi, '$1')
+  return out.trim()
+}
+
 const HISTORY_KEY = 'anchor-chat-history'
 const WIDTH_KEY = 'anchor-chat-sidebar-width'
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000
@@ -52,7 +61,6 @@ export function ChatSidebar() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
   const prevAiProviderRef = useRef(aiProvider)
@@ -157,9 +165,13 @@ export function ChatSidebar() {
     }
   }, [isOpen])
 
-  // Auto-scroll to bottom
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom — scroll within container, not the whole page
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = messagesContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
   }, [messages, isLoading])
 
   // Auto-grow textarea
@@ -281,7 +293,7 @@ export function ChatSidebar() {
           setMessages((prev) => {
             const next = [...prev]
             const last = next[next.length - 1]
-            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: accumulated || 'No response received.', timestamp: Date.now() }
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: stripReasoningTags(accumulated) || 'No response received.', timestamp: Date.now() }
             return next
           })
         } catch (err) {
@@ -416,7 +428,7 @@ export function ChatSidebar() {
                   </p>
                 </div>
                 {/* Messages with fade at top */}
-                <div className="flex-1 min-h-0 overflow-y-auto relative">
+                <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto relative">
                   {/* Gradient fade at top */}
                   <div className="sticky top-0 h-12 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
 
@@ -509,7 +521,6 @@ export function ChatSidebar() {
                           <LoadingDots />
                         </div>
                       )}
-                      <div ref={bottomRef} />
                     </div>
                   )}
                 </div>
