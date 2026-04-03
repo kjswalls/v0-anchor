@@ -37,6 +37,7 @@ export function MobileChatPanel() {
   const [userId, setUserId] = useState<string | null>(null);
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null);
   const [openclawAgentIdDisplay, setOpenclawAgentIdDisplay] = useState<string | null>(null);
+  const [openclawAnchorApiKey, setOpenclawAnchorApiKey] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -63,11 +64,12 @@ export function MobileChatPanel() {
     setShowOnboarding(false);
   };
 
-  // Gateway URL + agent id (display only) for OpenClaw
+  // Fetch plugin chat URL, agent id, and Anchor API key when OpenClaw is selected
   useEffect(() => {
     if (aiProvider !== 'openclaw') {
       setOpenclawChatUrl(null);
       setOpenclawAgentIdDisplay(null);
+      setOpenclawAnchorApiKey(null);
       return;
     }
     fetch('/api/openclaw/chat-url')
@@ -78,10 +80,12 @@ export function MobileChatPanel() {
       .then((chatData) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null);
         setOpenclawAgentIdDisplay(chatData.agentId ?? null);
+        setOpenclawAnchorApiKey(chatData.anchorApiKey ?? null);
       })
       .catch(() => {
         setOpenclawChatUrl(null);
         setOpenclawAgentIdDisplay(null);
+        setOpenclawAnchorApiKey(null);
       });
   }, [aiProvider]);
 
@@ -184,22 +188,45 @@ export function MobileChatPanel() {
           setIsLoading(false);
           return;
         }
-        const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }));
         setIsTyping(true);
         try {
-          const res = await fetch('/api/openclaw/openclaw-chat', {
+          const res = await fetch(openclawChatUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: chatMessages, context, systemPrompt: effectiveSystemPrompt }),
+            headers: {
+              'Content-Type': 'application/json',
+              ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
+            },
+            body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
           });
-          const json = await res.json();
-          const replyContent = res.ok
-            ? (json.content ?? 'No response received.')
-            : (json.error ?? 'Gateway error.');
+          if (!res.body) throw new Error('No response body');
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let accumulated = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') break;
+              try {
+                const parsed = JSON.parse(payload);
+                if (parsed.error) {
+                  accumulated = `Error: ${parsed.error}`;
+                } else if (parsed.content) {
+                  accumulated += parsed.content;
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: replyContent, timestamp: Date.now() };
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: accumulated || 'No response received.', timestamp: Date.now() };
             return next;
           });
         } catch (err) {
@@ -207,7 +234,7 @@ export function MobileChatPanel() {
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach Gateway: ${msg}`, timestamp: Date.now() };
+            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach plugin: ${msg}`, timestamp: Date.now() };
             return next;
           });
         } finally {
@@ -264,7 +291,7 @@ export function MobileChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, openclawChatUrl]);
+  }, [input, isLoading, messages, openclawChatUrl, openclawAnchorApiKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

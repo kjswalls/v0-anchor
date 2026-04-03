@@ -7,7 +7,7 @@ import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
  * Anchor pushes change events when data mutates. Also accepts optional chatUrl
- * (Gateway OpenAI-compatible URL, e.g. …/v1/chat/completions) for sidebar chat via /api/openclaw/openclaw-chat.
+ * (plugin endpoint URL, e.g. …/plugins/anchor/chat) for sidebar chat.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *
@@ -17,9 +17,8 @@ import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
  *     webhookUrl?: string     // where Anchor should POST change events (optional if chatUrl only)
  *     secret?:     string     // HMAC secret for payload verification (optional)
  *     events?:     string[]   // e.g. ["tasks.updated", "habits.updated"]
- *     chatUrl?:       string     // e.g. https://<gateway>/v1/chat/completions
- *     agentId?:       string     // OpenClaw agent (default main)
- *     gatewayToken?:  string     // Gateway bearer — stored server-side only
+ *     chatUrl?:    string     // e.g. https://<gateway>/plugins/anchor/chat
+ *     agentId?:    string     // OpenClaw agent (default main)
  *   }
  */
 export async function POST(req: NextRequest) {
@@ -27,14 +26,13 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { pluginId, webhookUrl, secret, events, chatUrl, agentId, gatewayToken } = body as {
+  const { pluginId, webhookUrl, secret, events, chatUrl, agentId } = body as {
     pluginId?: string
     webhookUrl?: string
     secret?: string
     events?: string[]
     chatUrl?: string
     agentId?: string
-    gatewayToken?: string
   }
 
   // chatUrl-only registration is allowed (no webhookUrl/events required)
@@ -48,7 +46,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provide webhookUrl+events or chatUrl' }, { status: 400 })
   }
 
-  // Persist chat URL + agent on user_settings; gateway token on user_secrets (RLS: no client SELECT).
+  // Persist chat URL + agent on user_settings.
   if (hasChatUrl) {
     const service = createServiceClient()
     const { error: upsertError } = await service.from('user_settings').upsert(
@@ -62,19 +60,6 @@ export async function POST(req: NextRequest) {
     if (upsertError) {
       console.error(`[openclaw/register] Failed to store chatUrl for user ${userId}:`, upsertError.message)
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
-    }
-
-    if (gatewayToken !== undefined) {
-      const tokenVal =
-        typeof gatewayToken === 'string' && gatewayToken.trim() ? gatewayToken.trim() : null
-      const { error: secretErr } = await service.from('user_secrets').upsert(
-        { user_id: userId, openclaw_gateway_token: tokenVal },
-        { onConflict: 'user_id' }
-      )
-      if (secretErr) {
-        console.error(`[openclaw/register] Failed to store gateway token for user ${userId}:`, secretErr.message)
-        return NextResponse.json({ error: secretErr.message }, { status: 500 })
-      }
     }
 
     console.log(`[openclaw/register] chatUrl stored for user ${userId} → ${chatUrl}`)
