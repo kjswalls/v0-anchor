@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 import { useTimeFormat } from '@/lib/use-time-format'
 import ReactMarkdown from 'react-markdown'
+import { stripReasoningTags } from '@/lib/chat-utils'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -271,7 +272,7 @@ export function ChatSidebar() {
               setMessages((prev) => {
                 const next = [...prev]
                 const last = next[next.length - 1]
-                if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: last.content + content }
+                if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: stripReasoningTags(last.content + content) }
                 return next
               })
             }
@@ -413,7 +414,7 @@ export function ChatSidebar() {
                           <div className="flex flex-col gap-1">
                             <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                               {msg.content ? (
-                                <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+                                <ReactMarkdown>{stripReasoningTags(msg.content)}</ReactMarkdown>
                               ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
                             </div>
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
