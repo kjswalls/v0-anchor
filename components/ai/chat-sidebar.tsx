@@ -16,11 +16,21 @@ import { cn } from '@/lib/utils'
 import { useTimeFormat } from '@/lib/use-time-format'
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp'
 import ReactMarkdown from 'react-markdown'
+import { TypingIndicator } from '@/components/ui/typing-indicator'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp?: number
+}
+
+/** Strip internal model reasoning tags like <think>...</think> and <final>...</final> wrappers */
+function stripReasoningTags(text: string): string {
+  // Remove <think>...</think> blocks (including multiline)
+  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  // Unwrap <final>...</final> — keep the content, drop the tags
+  out = out.replace(/<final>([\s\S]*?)<\/final>/gi, '$1')
+  return out.trim()
 }
 
 const HISTORY_KEY = 'anchor-chat-history'
@@ -41,16 +51,18 @@ export function ChatSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isTyping, setIsTyping] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null)
   const [openclawAgentIdDisplay, setOpenclawAgentIdDisplay] = useState<string | null>(null)
+  const [openclawAnchorApiKey, setOpenclawAnchorApiKey] = useState<string | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
   const prevAiProviderRef = useRef(aiProvider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
@@ -71,11 +83,12 @@ export function ChatSidebar() {
     setShowOnboarding(false)
   }
 
-  // Fetch Gateway URL + agent id (display only) when OpenClaw is selected
+  // Fetch plugin chat URL, agent id, and Anchor API key when OpenClaw is selected
   useEffect(() => {
     if (aiProvider !== 'openclaw') {
       setOpenclawChatUrl(null)
       setOpenclawAgentIdDisplay(null)
+      setOpenclawAnchorApiKey(null)
       return
     }
     fetch('/api/openclaw/chat-url')
@@ -86,10 +99,12 @@ export function ChatSidebar() {
       .then((chatData) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null)
         setOpenclawAgentIdDisplay(chatData.agentId ?? null)
+        setOpenclawAnchorApiKey(chatData.anchorApiKey ?? null)
       })
       .catch(() => {
         setOpenclawChatUrl(null)
         setOpenclawAgentIdDisplay(null)
+        setOpenclawAnchorApiKey(null)
       })
   }, [aiProvider])
 
@@ -144,6 +159,9 @@ export function ChatSidebar() {
     setMounted(true)
   }, [])
 
+  // Abort any in-flight OpenClaw request on unmount
+  useEffect(() => () => { abortRef.current?.abort() }, [])
+
   // Focus input when sidebar opens
   useEffect(() => {
     if (isOpen && textareaRef.current) {
@@ -151,10 +169,14 @@ export function ChatSidebar() {
     }
   }, [isOpen])
 
-  // Auto-scroll to bottom
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom — scroll within container, not the whole page
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+    const container = messagesContainerRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [messages, isLoading, isTyping])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -217,7 +239,7 @@ export function ChatSidebar() {
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
 
-      let res: Response
+
 
       if (provider === 'openclaw') {
         if (!openclawChatUrl) {
@@ -237,23 +259,75 @@ export function ChatSidebar() {
           setIsLoading(false)
           return
         }
-        const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }))
-        res = await fetch('/api/openclaw/openclaw-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: chatMessages,
-            context,
-            systemPrompt: effectiveSystemPrompt,
-          }),
-        })
-      } else {
-        res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
-        })
+        setIsTyping(true)
+        abortRef.current?.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
+        try {
+          const res = await fetch(openclawChatUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
+            },
+            signal: controller.signal,
+            body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
+          })
+          if (!res.body) throw new Error('No response body')
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          let accumulated = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() ?? ''
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue
+              const payload = line.slice(6).trim()
+              if (payload === '[DONE]') break
+              try {
+                const parsed = JSON.parse(payload)
+                if (parsed.error) {
+                  // Don't clobber existing content; only set error if nothing received yet
+                  if (!accumulated) accumulated = `Error: ${parsed.error}`
+                  break
+                } else if (parsed.content) {
+                  accumulated += parsed.content
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: stripReasoningTags(accumulated) || 'No response received.', timestamp: Date.now() }
+            return next
+          })
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+          const msg = err instanceof Error ? err.message : 'Unknown error'
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach plugin: ${msg}`, timestamp: Date.now() }
+            return next
+          })
+        } finally {
+          if (abortRef.current === controller) abortRef.current = null
+          setIsTyping(false)
+          setIsLoading(false)
+        }
+        return
       }
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
+      })
 
       if (!res.body) throw new Error('No response body')
 
@@ -296,7 +370,7 @@ export function ChatSidebar() {
     } finally {
       setIsLoading(false)
     }
-  }, [input, isLoading, messages, openclawChatUrl])
+  }, [input, isLoading, messages, openclawChatUrl, openclawAnchorApiKey])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
@@ -366,7 +440,7 @@ export function ChatSidebar() {
                   </p>
                 </div>
                 {/* Messages with fade at top */}
-                <div className="flex-1 min-h-0 overflow-y-auto relative">
+                <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto relative">
                   {/* Gradient fade at top */}
                   <div className="sticky top-0 h-12 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
 
@@ -429,7 +503,7 @@ export function ChatSidebar() {
                             <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                               {msg.content ? (
                                 <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
-                              ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                              ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
                             </div>
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {msg.timestamp && (
@@ -459,7 +533,6 @@ export function ChatSidebar() {
                           <LoadingDots />
                         </div>
                       )}
-                      <div ref={bottomRef} />
                     </div>
                   )}
                 </div>

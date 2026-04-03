@@ -41,7 +41,6 @@ export async function registerChatUrl(
   cfg: PluginConfig,
   chatUrl: string,
   agentId: string,
-  gatewayToken: string | undefined,
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
   try {
@@ -52,7 +51,6 @@ export async function registerChatUrl(
         pluginId: 'anchor-context',
         chatUrl,
         agentId,
-        gatewayToken,
       }),
     })
     if (res.ok) {

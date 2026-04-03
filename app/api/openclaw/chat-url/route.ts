@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
+import { createServiceClient } from '@/lib/supabase-service'
 
 /**
  * GET /api/openclaw/chat-url
- * Returns the stored openclaw_chat_url for the current authenticated user.
- * Returns { chatUrl, agentId } — never returns gateway token.
+ * Returns the stored openclaw_chat_url, agentId, and anchorApiKey for the current authenticated user.
+ * The anchorApiKey is fetched server-side so it is never hardcoded in the client.
  */
 export async function GET() {
   try {
@@ -14,7 +15,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('user_settings')
-      .select('openclaw_chat_url, openclaw_agent_id')
+      .select('openclaw_chat_url, openclaw_agent_id, openclaw_api_key')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -23,6 +24,7 @@ export async function GET() {
     return NextResponse.json({
       chatUrl: data?.openclaw_chat_url ?? null,
       agentId: data?.openclaw_agent_id ?? null,
+      anchorApiKey: data?.openclaw_api_key ?? null,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'

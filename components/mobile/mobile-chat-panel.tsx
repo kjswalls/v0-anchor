@@ -13,6 +13,7 @@ import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 
@@ -31,10 +32,12 @@ export function MobileChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null);
   const [openclawAgentIdDisplay, setOpenclawAgentIdDisplay] = useState<string | null>(null);
+  const [openclawAnchorApiKey, setOpenclawAnchorApiKey] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -61,11 +64,12 @@ export function MobileChatPanel() {
     setShowOnboarding(false);
   };
 
-  // Gateway URL + agent id (display only) for OpenClaw
+  // Fetch plugin chat URL, agent id, and Anchor API key when OpenClaw is selected
   useEffect(() => {
     if (aiProvider !== 'openclaw') {
       setOpenclawChatUrl(null);
       setOpenclawAgentIdDisplay(null);
+      setOpenclawAnchorApiKey(null);
       return;
     }
     fetch('/api/openclaw/chat-url')
@@ -76,10 +80,12 @@ export function MobileChatPanel() {
       .then((chatData) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null);
         setOpenclawAgentIdDisplay(chatData.agentId ?? null);
+        setOpenclawAnchorApiKey(chatData.anchorApiKey ?? null);
       })
       .catch(() => {
         setOpenclawChatUrl(null);
         setOpenclawAgentIdDisplay(null);
+        setOpenclawAnchorApiKey(null);
       });
   }, [aiProvider]);
 
@@ -162,7 +168,7 @@ export function MobileChatPanel() {
         useAISettingsStore.getState();
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality];
 
-      let res: Response;
+
 
       if (provider === 'openclaw') {
         if (!openclawChatUrl) {
@@ -182,23 +188,67 @@ export function MobileChatPanel() {
           setIsLoading(false);
           return;
         }
-        const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }));
-        res = await fetch('/api/openclaw/openclaw-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: chatMessages,
-            context,
-            systemPrompt: effectiveSystemPrompt,
-          }),
-        });
-      } else {
-        res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
-        });
+        setIsTyping(true);
+        try {
+          const res = await fetch(openclawChatUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
+            },
+            body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
+          });
+          if (!res.body) throw new Error('No response body');
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let accumulated = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') break;
+              try {
+                const parsed = JSON.parse(payload);
+                if (parsed.error) {
+                  accumulated = `Error: ${parsed.error}`;
+                } else if (parsed.content) {
+                  accumulated += parsed.content;
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: accumulated || 'No response received.', timestamp: Date.now() };
+            return next;
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach plugin: ${msg}`, timestamp: Date.now() };
+            return next;
+          });
+        } finally {
+          setIsTyping(false);
+          setIsLoading(false);
+        }
+        return;
       }
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
+      });
 
       if (!res.body) throw new Error('No response body');
 
@@ -241,7 +291,7 @@ export function MobileChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, openclawChatUrl]);
+  }, [input, isLoading, messages, openclawChatUrl, openclawAnchorApiKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -333,7 +383,7 @@ export function MobileChatPanel() {
                         <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                           {msg.content ? (
                             <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
-                          ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                          ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
                         </div>
                         <div className={cn(
                           'flex items-center gap-2 transition-opacity',
