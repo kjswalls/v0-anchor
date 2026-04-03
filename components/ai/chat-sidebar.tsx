@@ -62,6 +62,7 @@ export function ChatSidebar() {
   const [isResizing, setIsResizing] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
   const prevAiProviderRef = useRef(aiProvider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
@@ -158,6 +159,9 @@ export function ChatSidebar() {
     setMounted(true)
   }, [])
 
+  // Abort any in-flight OpenClaw request on unmount
+  useEffect(() => () => { abortRef.current?.abort() }, [])
+
   // Focus input when sidebar opens
   useEffect(() => {
     if (isOpen && textareaRef.current) {
@@ -172,7 +176,7 @@ export function ChatSidebar() {
     const container = messagesContainerRef.current
     if (!container) return
     container.scrollTop = container.scrollHeight
-  }, [messages, isLoading])
+  }, [messages, isLoading, isTyping])
 
   // Auto-grow textarea
   useEffect(() => {
@@ -256,6 +260,9 @@ export function ChatSidebar() {
           return
         }
         setIsTyping(true)
+        abortRef.current?.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
         try {
           const res = await fetch(openclawChatUrl, {
             method: 'POST',
@@ -263,6 +270,7 @@ export function ChatSidebar() {
               'Content-Type': 'application/json',
               ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
             },
+            signal: controller.signal,
             body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
           })
           if (!res.body) throw new Error('No response body')
@@ -283,7 +291,9 @@ export function ChatSidebar() {
               try {
                 const parsed = JSON.parse(payload)
                 if (parsed.error) {
-                  accumulated = `Error: ${parsed.error}`
+                  // Don't clobber existing content; only set error if nothing received yet
+                  if (!accumulated) accumulated = `Error: ${parsed.error}`
+                  break
                 } else if (parsed.content) {
                   accumulated += parsed.content
                 }
@@ -297,6 +307,7 @@ export function ChatSidebar() {
             return next
           })
         } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
           const msg = err instanceof Error ? err.message : 'Unknown error'
           setMessages((prev) => {
             const next = [...prev]
@@ -305,6 +316,7 @@ export function ChatSidebar() {
             return next
           })
         } finally {
+          if (abortRef.current === controller) abortRef.current = null
           setIsTyping(false)
           setIsLoading(false)
         }
