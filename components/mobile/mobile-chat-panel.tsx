@@ -14,6 +14,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { stripReasoningTags } from '@/lib/chat-utils';
 
@@ -317,7 +318,7 @@ export function MobileChatPanel() {
                       <div className="flex flex-col gap-1.5">
                         <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                           {msg.content ? (
-                            <ReactMarkdown>{stripReasoningTags(msg.content)}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripReasoningTags(msg.content)}</ReactMarkdown>
                           ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
                         </div>
                         <div className={cn(
