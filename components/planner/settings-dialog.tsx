@@ -126,9 +126,46 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     model, setModel,
     personality, setPersonality,
     systemPrompt, setSystemPrompt,
-    openclawGatewayApiKey, setOpenclawGatewayApiKey,
-    openclawAgentId, setOpenclawAgentId,
   } = useAISettingsStore();
+
+  type OpenclawConnState =
+    | { kind: 'inactive' }
+    | { kind: 'loading' }
+    | { kind: 'resolved'; chatUrl: string | null; agentId: string | null };
+
+  const [openclawConn, setOpenclawConn] = useState<OpenclawConnState>({ kind: 'inactive' });
+
+  useEffect(() => {
+    if (!open) {
+      setOpenclawConn({ kind: 'inactive' });
+      return;
+    }
+    if (provider !== 'openclaw') return;
+
+    setOpenclawConn({ kind: 'loading' });
+    let cancelled = false;
+    fetch('/api/openclaw/chat-url')
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setOpenclawConn({
+          kind: 'resolved',
+          chatUrl: data.chatUrl ?? null,
+          agentId: data.agentId ?? null,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn('[settings] openclaw chat-url fetch failed:', err);
+        setOpenclawConn({ kind: 'resolved', chatUrl: null, agentId: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, provider]);
 
   const {
     leftSidebarHoverEnabled,
@@ -361,39 +398,26 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   </div>
 
                   {provider === 'openclaw' && (
-                    <div className="space-y-2 pt-1 border-t border-border">
-                      <SettingRow
-                        label="OpenClaw Gateway API key"
-                        description="From your OpenClaw Gateway — not the Anchor plugin key (anchor_…). Stored locally only."
-                      >
-                        <Input
-                          type="password"
-                          value={openclawGatewayApiKey}
-                          onChange={(e) => setOpenclawGatewayApiKey(e.target.value)}
-                          placeholder="Gateway API key"
-                          className="w-44 h-8 text-xs"
-                        />
-                      </SettingRow>
-                      <SettingRow label="Agent ID" description="OpenClaw agent to route chat through (default: main)">
-                        <Input
-                          type="text"
-                          value={openclawAgentId}
-                          onChange={(e) => setOpenclawAgentId(e.target.value)}
-                          placeholder="main"
-                          className="w-44 h-8 text-xs"
-                        />
-                      </SettingRow>
-                      <SettingRow label="Personality" description="Beacon tone for sidebar chat">
-                        <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
-                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">Default</SelectItem>
-                            <SelectItem value="professional">Professional</SelectItem>
-                            <SelectItem value="motivational">Motivational</SelectItem>
-                            <SelectItem value="minimal">Minimal</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </SettingRow>
+                    <div className="pt-2 border-t border-border space-y-2">
+                      {openclawConn.kind !== 'resolved' ? (
+                        <p className="text-xs text-muted-foreground">Checking connection…</p>
+                      ) : openclawConn.chatUrl ? (
+                        <div className="space-y-1">
+                          <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
+                            Connected
+                          </Badge>
+                          <p className="text-[11px] text-muted-foreground">
+                            Agent: {openclawConn.agentId?.trim() || 'main'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Not connected</p>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Run <code className="text-foreground/90">openclaw anchor-context setup</code> to connect.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
