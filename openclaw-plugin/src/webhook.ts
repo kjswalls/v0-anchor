@@ -40,13 +40,18 @@ export async function registerWithAnchor(
 export async function registerChatUrl(
   cfg: PluginConfig,
   chatUrl: string,
+  agentId: string,
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
   try {
     const res = await fetch(`${cfg.anchorUrl}/api/openclaw/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({ pluginId: 'anchor-context', chatUrl }),
+      body: JSON.stringify({
+        pluginId: 'anchor-context',
+        chatUrl,
+        agentId,
+      }),
     })
     if (res.ok) {
       logger.info(`anchor-context: chat URL registered → ${chatUrl}`)

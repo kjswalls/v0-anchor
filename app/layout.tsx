@@ -77,7 +77,7 @@ export default function RootLayout({
           <SupabaseProvider>
             {children}
           </SupabaseProvider>
-          <Toaster position="bottom-center" />
+          <Toaster position="bottom-center" closeButton />
         </ThemeProvider>
         <Analytics />
       </body>

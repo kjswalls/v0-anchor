@@ -12,10 +12,11 @@ import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useTimeFormat } from '@/lib/use-time-format';
+import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 import { stripReasoningTags } from '@/lib/chat-utils';
 
 interface Message {
@@ -33,13 +34,18 @@ export function MobileChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null);
+  const [openclawAgentIdDisplay, setOpenclawAgentIdDisplay] = useState<string | null>(null);
+  const [openclawAnchorApiKey, setOpenclawAnchorApiKey] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const aiProvider = useAISettingsStore((s) => s.provider);
+  const prevAiProviderRef = useRef(aiProvider);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME;
   const timeFormatStr = useTimeFormat();
@@ -60,13 +66,39 @@ export function MobileChatPanel() {
     setShowOnboarding(false);
   };
 
-  // Fetch registered Gateway chat URL when provider is OpenClaw
+  // Fetch plugin chat URL, agent id, and Anchor API key when OpenClaw is selected
   useEffect(() => {
-    if (aiProvider !== 'openclaw') return;
+    if (aiProvider !== 'openclaw') {
+      setOpenclawChatUrl(null);
+      setOpenclawAgentIdDisplay(null);
+      setOpenclawAnchorApiKey(null);
+      return;
+    }
     fetch('/api/openclaw/chat-url')
-      .then((r) => r.json())
-      .then((chatData) => setOpenclawChatUrl(chatData.chatUrl ?? null))
-      .catch(() => setOpenclawChatUrl(null));
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((chatData) => {
+        setOpenclawChatUrl(chatData.chatUrl ?? null);
+        setOpenclawAgentIdDisplay(chatData.agentId ?? null);
+        setOpenclawAnchorApiKey(chatData.anchorApiKey ?? null);
+      })
+      .catch(() => {
+        setOpenclawChatUrl(null);
+        setOpenclawAgentIdDisplay(null);
+        setOpenclawAnchorApiKey(null);
+      });
+  }, [aiProvider]);
+
+  useEffect(() => {
+    if (prevAiProviderRef.current !== aiProvider) {
+      setMessages([]);
+      try {
+        localStorage.removeItem(HISTORY_KEY);
+      } catch { /* ignore */ }
+    }
+    prevAiProviderRef.current = aiProvider;
   }, [aiProvider]);
 
   // Load chat history
@@ -134,11 +166,11 @@ export function MobileChatPanel() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState();
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups });
-      const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey, openclawAgentId } =
+      const { provider, apiKey, model, personality, systemPrompt } =
         useAISettingsStore.getState();
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality];
 
-      let res: Response;
+
 
       if (provider === 'openclaw') {
         if (!openclawChatUrl) {
@@ -158,42 +190,67 @@ export function MobileChatPanel() {
           setIsLoading(false);
           return;
         }
-        if (!openclawGatewayApiKey?.trim()) {
+        setIsTyping(true);
+        try {
+          const res = await fetch(openclawChatUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
+            },
+            body: JSON.stringify({ message: text, sessionKey: 'anchor-chat', context }),
+          });
+          if (!res.body) throw new Error('No response body');
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let accumulated = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const payload = line.slice(6).trim();
+              if (payload === '[DONE]') break;
+              try {
+                const parsed = JSON.parse(payload);
+                if (parsed.error) {
+                  accumulated = `Error: ${parsed.error}`;
+                } else if (parsed.content) {
+                  accumulated += parsed.content;
+                }
+              } catch { /* skip malformed */ }
+            }
+          }
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            if (last?.role === 'assistant') {
-              next[next.length - 1] = {
-                role: 'assistant',
-                content: 'Add your OpenClaw Gateway API key in Settings → AI Assistant.',
-                timestamp: Date.now(),
-              };
-            }
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: accumulated || 'No response received.', timestamp: Date.now() };
             return next;
           });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach plugin: ${msg}`, timestamp: Date.now() };
+            return next;
+          });
+        } finally {
+          setIsTyping(false);
           setIsLoading(false);
-          return;
         }
-
-        const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }));
-        res = await fetch('/api/openclaw/openclaw-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: chatMessages,
-            context,
-            agentId: openclawAgentId || 'main',
-            systemPrompt: effectiveSystemPrompt,
-            openclawGatewayApiKey,
-          }),
-        });
-      } else {
-        res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
-        });
+        return;
       }
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
+      });
 
       if (!res.body) throw new Error('No response body');
 
@@ -236,7 +293,7 @@ export function MobileChatPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, openclawChatUrl]);
+  }, [input, isLoading, messages, openclawChatUrl, openclawAnchorApiKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -246,21 +303,30 @@ export function MobileChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background relative">
+    <div className="flex flex-col h-full min-h-0 bg-background relative">
       {/* Onboarding */}
       {showOnboarding && userId ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
         </div>
       ) : (
         <>
+          <div className="shrink-0 px-3 py-2 border-b border-border bg-background">
+            <p className="text-[11px] font-medium text-muted-foreground">
+              {aiProvider === 'openclaw'
+                ? openclawAgentIdDisplay
+                  ? `OpenClaw · ${openclawAgentIdDisplay}`
+                  : 'OpenClaw'
+                : 'Beacon'}
+            </p>
+          </div>
           {/* Messages with fade at top */}
-          <div className="flex-1 overflow-y-auto relative">
+          <div className="flex-1 min-h-0 overflow-y-auto relative">
             {/* Gradient fade at top */}
             <div className="sticky top-0 h-16 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
 
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 -mt-16">
+              <div className="flex flex-col items-center justify-center min-h-0 flex-1 py-8 px-6 text-center gap-4">
                 <div className="relative">
                   <MessageSquarePlus className="h-14 w-14 text-muted-foreground/40" strokeWidth={1.25} />
                   <Sparkles className="h-6 w-6 text-primary/60 absolute -top-1 -right-1" />
@@ -294,7 +360,7 @@ export function MobileChatPanel() {
                           )}>
                             {msg.timestamp && (
                               <span className="text-[10px] text-muted-foreground">
-                                {format(msg.timestamp, timeFormatStr)}
+                                {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                               </span>
                             )}
                             <button
@@ -316,10 +382,10 @@ export function MobileChatPanel() {
                     ) : (
 // Assistant message - left aligned, no bubble, with markdown
                       <div className="flex flex-col gap-1.5">
-                        <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
+                        <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                           {msg.content ? (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripReasoningTags(msg.content)}</ReactMarkdown>
-                          ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripReasoningTags(msg.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+                          ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
                         </div>
                         <div className={cn(
                           'flex items-center gap-2 transition-opacity',
@@ -327,7 +393,7 @@ export function MobileChatPanel() {
                         )}>
                           {msg.timestamp && (
                             <span className="text-[10px] text-muted-foreground">
-                              {format(msg.timestamp, timeFormatStr)}
+                              {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                             </span>
                           )}
                           {msg.content && (

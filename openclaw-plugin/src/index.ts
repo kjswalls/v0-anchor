@@ -4,6 +4,7 @@ import type { PluginConfig } from './plugin-types.js'
 import { fetchContext, isCacheFresh } from './cache.js'
 import { buildHeader, buildFullContext } from './context.js'
 import { registerWithAnchor, registerChatUrl, deregisterFromAnchor, parseWebhookBody, verifyHmac } from './webhook.js'
+import { handleChatRequest } from './chat.js'
 import { runSetup } from './setup.js'
 
 export default definePluginEntry({
@@ -47,7 +48,13 @@ export default definePluginEntry({
 
       if (gatewayPublicUrl) {
         await registerWithAnchor(cfg, `${gatewayPublicUrl}/plugins/anchor/webhook`, api.logger)
-        await registerChatUrl(cfg, `${gatewayPublicUrl}/v1/chat/completions`, api.logger)
+        const agentId = cfg.agentId?.trim() || cfg.id?.trim() || 'main'
+        await registerChatUrl(
+          cfg,
+          `${gatewayPublicUrl}/plugins/anchor/chat`,
+          agentId,
+          api.logger
+        )
       } else {
         api.logger.warn(
           'anchor-context: publicUrl not set in plugin config — webhook push and chat URL registration disabled. ' +
@@ -92,6 +99,15 @@ export default definePluginEntry({
 
         res.writeHead(200)
         res.end('ok')
+      },
+    })
+
+    // ── Chat endpoint: browser → plugin (SSE) ────────────────────────────────
+    api.registerHttpRoute({
+      path: '/plugins/anchor/chat',
+      auth: 'plugin',
+      async handler(req: IncomingMessage, res: ServerResponse) {
+        await handleChatRequest(req, res, cfg, api.runtime, api.logger)
       },
     })
 

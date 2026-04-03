@@ -17,4 +17,8 @@ export interface PluginConfig {
   publicUrl?: string   // Gateway's public URL (e.g. https://midgar-1b4eaa3.turkey-rockhopper.ts.net)
   webhookSecret?: string
   cacheTtlMs?: number
+  /** OpenClaw agent for Anchor sidebar chat (default: main). */
+  agentId?: string
+  /** Fallback agent id if agentId unset (legacy / alternate key in openclaw.json). */
+  id?: string
 }
