@@ -98,6 +98,7 @@ export async function fetchTasks(userId: string, client?: DbClient): Promise<Tas
     .from('tasks')
     .select('*')
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .order('order', { ascending: true });
   if (error) throw error;
   return (data as TaskRow[]).map(taskFromRow);
@@ -121,9 +122,15 @@ export async function updateTask(id: string, updates: Partial<Task>, userId?: st
 
 export async function deleteTask(id: string, userId?: string): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase.from('tasks').delete().eq('id', id);
+  const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'delete', id });
+}
+
+export async function restoreTask(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('tasks').update({ deleted_at: null }).eq('id', id);
+  if (error) throw error;
 }
 
 // ---- Habit row type ----
@@ -211,7 +218,8 @@ export async function fetchHabits(userId: string, client?: DbClient): Promise<Ha
   const { data, error } = await supabase
     .from('habits')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .is('deleted_at', null);
   if (error) throw error;
   return (data as HabitRow[]).map(habitFromRow);
 }
@@ -234,9 +242,15 @@ export async function updateHabit(id: string, updates: Partial<Habit>, userId?: 
 
 export async function deleteHabit(id: string, userId?: string): Promise<void> {
   const supabase = createClient();
-  const { error } = await supabase.from('habits').delete().eq('id', id);
+  const { error } = await supabase.from('habits').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'habits.updated', { action: 'delete', id });
+}
+
+export async function restoreHabit(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from('habits').update({ deleted_at: null }).eq('id', id);
+  if (error) throw error;
 }
 
 // ---- Project row type ----
@@ -299,7 +313,8 @@ export async function fetchProjects(userId: string, client?: DbClient): Promise<
   const { data, error } = await supabase
     .from('projects')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .is('deleted_at', null);
   if (error) throw error;
   return (data as ProjectRow[]).map(projectFromRow);
 }
@@ -328,11 +343,21 @@ export async function deleteProject(userId: string, name: string): Promise<void>
   const supabase = createClient();
   const { error } = await supabase
     .from('projects')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
   notifyPlugins(userId, 'projects.updated', { action: 'delete', name });
+}
+
+export async function restoreProject(userId: string, name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('projects')
+    .update({ deleted_at: null })
+    .eq('user_id', userId)
+    .eq('name', name);
+  if (error) throw error;
 }
 
 // ---- HabitGroup row type ----
@@ -375,7 +400,8 @@ export async function fetchHabitGroups(userId: string, client?: DbClient): Promi
   const { data, error } = await supabase
     .from('habit_groups')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .is('deleted_at', null);
   if (error) throw error;
   return (data as HabitGroupRow[]).map(habitGroupFromRow);
 }
@@ -404,9 +430,19 @@ export async function deleteHabitGroup(userId: string, name: string): Promise<vo
   const supabase = createClient();
   const { error } = await supabase
     .from('habit_groups')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('user_id', userId)
     .eq('name', name);
   if (error) throw error;
   notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', name });
+}
+
+export async function restoreHabitGroup(userId: string, name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('habit_groups')
+    .update({ deleted_at: null })
+    .eq('user_id', userId)
+    .eq('name', name);
+  if (error) throw error;
 }
