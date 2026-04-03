@@ -25,15 +25,19 @@ import {
   createTask as dbCreateTask,
   updateTask as dbUpdateTask,
   deleteTask as dbDeleteTask,
+  restoreTask as dbRestoreTask,
   createHabit as dbCreateHabit,
   updateHabit as dbUpdateHabit,
   deleteHabit as dbDeleteHabit,
+  restoreHabit as dbRestoreHabit,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
+  restoreProject as dbRestoreProject,
   createHabitGroup as dbCreateHabitGroup,
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
+  restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
 import { saveSettings } from './settings-service';
 
@@ -972,6 +976,9 @@ export const usePlannerStore = create<PlannerStore>()(
       undo: () => {
         if (historyIndex <= 0) return;
 
+        const currentState = get();
+        const userId = currentState.userId;
+
         isUndoRedoAction = true;
         historyIndex--;
         const prevState = historyStack[historyIndex];
@@ -996,10 +1003,35 @@ export const usePlannerStore = create<PlannerStore>()(
         updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
 
         isUndoRedoAction = false;
+
+        if (userId) {
+          const currentTaskIds = new Set(currentState.tasks.map((t) => t.id));
+          const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
+          restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
+          currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
+
+          const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
+          const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
+          restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
+          currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
+
+          const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
+          const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
+          restoredProjects.forEach((p: Project) => { if (!currentProjectNames.has(p.name)) dbRestoreProject(userId, p.name).catch(console.error); });
+          currentState.projects.forEach((p) => { if (!restoredProjectNames.has(p.name)) dbDeleteProject(userId, p.name).catch(console.error); });
+
+          const currentGroupNames = new Set(currentState.habitGroups.map((g) => g.name));
+          const restoredGroupNames = new Set((restoredGroups as HabitGroupType[]).map((g) => g.name));
+          restoredGroups.forEach((g: HabitGroupType) => { if (!currentGroupNames.has(g.name)) dbRestoreHabitGroup(userId, g.name).catch(console.error); });
+          currentState.habitGroups.forEach((g) => { if (!restoredGroupNames.has(g.name)) dbDeleteHabitGroup(userId, g.name).catch(console.error); });
+        }
       },
 
       redo: () => {
         if (historyIndex >= historyStack.length - 1) return;
+
+        const currentState = get();
+        const userId = currentState.userId;
 
         isUndoRedoAction = true;
         historyIndex++;
@@ -1025,6 +1057,28 @@ export const usePlannerStore = create<PlannerStore>()(
         updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
 
         isUndoRedoAction = false;
+
+        if (userId) {
+          const currentTaskIds = new Set(currentState.tasks.map((t) => t.id));
+          const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
+          restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
+          currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
+
+          const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
+          const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
+          restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
+          currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
+
+          const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
+          const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
+          restoredProjects.forEach((p: Project) => { if (!currentProjectNames.has(p.name)) dbRestoreProject(userId, p.name).catch(console.error); });
+          currentState.projects.forEach((p) => { if (!restoredProjectNames.has(p.name)) dbDeleteProject(userId, p.name).catch(console.error); });
+
+          const currentGroupNames = new Set(currentState.habitGroups.map((g) => g.name));
+          const restoredGroupNames = new Set((restoredGroups as HabitGroupType[]).map((g) => g.name));
+          restoredGroups.forEach((g: HabitGroupType) => { if (!currentGroupNames.has(g.name)) dbRestoreHabitGroup(userId, g.name).catch(console.error); });
+          currentState.habitGroups.forEach((g) => { if (!restoredGroupNames.has(g.name)) dbDeleteHabitGroup(userId, g.name).catch(console.error); });
+        }
       },
     }),
     {
