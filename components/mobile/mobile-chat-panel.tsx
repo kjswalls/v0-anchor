@@ -13,6 +13,7 @@ import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 
@@ -31,6 +32,7 @@ export function MobileChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null);
@@ -183,22 +185,43 @@ export function MobileChatPanel() {
           return;
         }
         const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }));
-        res = await fetch('/api/openclaw/openclaw-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: chatMessages,
-            context,
-            systemPrompt: effectiveSystemPrompt,
-          }),
-        });
-      } else {
-        res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
-        });
+        setIsTyping(true);
+        try {
+          const res = await fetch('/api/openclaw/openclaw-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: chatMessages, context, systemPrompt: effectiveSystemPrompt }),
+          });
+          const json = await res.json();
+          const replyContent = res.ok
+            ? (json.content ?? 'No response received.')
+            : (json.error ?? 'Gateway error.');
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') next[next.length - 1] = { ...last, content: replyContent, timestamp: Date.now() };
+            return next;
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === 'assistant') next[next.length - 1] = { role: 'assistant', content: `Could not reach Gateway: ${msg}`, timestamp: Date.now() };
+            return next;
+          });
+        } finally {
+          setIsTyping(false);
+          setIsLoading(false);
+        }
+        return;
       }
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: updatedMessages, context, provider, apiKey, model, systemPrompt: effectiveSystemPrompt }),
+      });
 
       if (!res.body) throw new Error('No response body');
 
@@ -333,7 +356,7 @@ export function MobileChatPanel() {
                         <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                           {msg.content ? (
                             <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
-                          ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}
+                          ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
                         </div>
                         <div className={cn(
                           'flex items-center gap-2 transition-opacity',

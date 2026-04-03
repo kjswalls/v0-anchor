@@ -1,36 +1,13 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase-service'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 
-const SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }
-
-function sseErrorStream(message: string): ReadableStream {
-  const encoder = new TextEncoder()
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: message })}\n\n`))
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    },
-  })
-}
-
-function extractDeltaContent(payload: string): string | null {
-  try {
-    const json = JSON.parse(payload) as Record<string, unknown>
-    if (typeof json.content === 'string' && json.content) return json.content
-    const choices = json.choices as Array<{ delta?: { content?: string } }> | undefined
-    const delta = choices?.[0]?.delta?.content
-    return typeof delta === 'string' && delta ? delta : null
-  } catch {
-    return null
-  }
-}
+export const maxDuration = 60
 
 /**
  * POST /api/openclaw/openclaw-chat
- * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL.
+ * Proxies non-streaming chat to the user's registered Gateway URL.
  * Chat URL + agent id from user_settings (session); gateway token from user_secrets (service role only).
  * Body: { messages, systemPrompt?, context? }
  */
@@ -41,10 +18,7 @@ export async function POST(req: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser()
   if (authError || !user) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   let body: {
@@ -55,16 +29,13 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json()
   } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
   const { messages, systemPrompt, context } = body
 
   if (!Array.isArray(messages) || messages.length === 0) {
-    return new Response(sseErrorStream('No messages to send.'), { headers: SSE_HEADERS })
+    return NextResponse.json({ error: 'No messages to send.' }, { status: 400 })
   }
 
   const { data: settings, error: settingsError } = await supabase
@@ -74,10 +45,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (settingsError) {
-    return new Response(
-      sseErrorStream(`Settings error: ${settingsError.message}`),
-      { headers: SSE_HEADERS }
-    )
+    return NextResponse.json({ error: `Settings error: ${settingsError.message}` }, { status: 500 })
   }
 
   const service = createServiceClient()
@@ -88,29 +56,28 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   if (secretError) {
-    return new Response(
-      sseErrorStream(`Secrets error: ${secretError.message}`),
-      { headers: SSE_HEADERS }
-    )
+    return NextResponse.json({ error: `Secrets error: ${secretError.message}` }, { status: 500 })
   }
 
   const gatewayUrl = settings?.openclaw_chat_url?.trim()
   if (!gatewayUrl) {
-    return new Response(
-      sseErrorStream(
-        'OpenClaw Gateway URL not registered yet — run `openclaw anchor-context setup` and set publicUrl in openclaw.json so Anchor can reach your Gateway.'
-      ),
-      { headers: SSE_HEADERS }
+    return NextResponse.json(
+      {
+        error:
+          'OpenClaw Gateway URL not registered yet — run `openclaw anchor-context setup` and set publicUrl in openclaw.json so Anchor can reach your Gateway.',
+      },
+      { status: 500 }
     )
   }
 
   const gatewayToken = secretRow?.openclaw_gateway_token?.trim()
   if (!gatewayToken) {
-    return new Response(
-      sseErrorStream(
-        'OpenClaw Gateway token not synced yet. Add gatewayToken to your anchor-context plugin config and restart the Gateway so it can register with Anchor.'
-      ),
-      { headers: SSE_HEADERS }
+    return NextResponse.json(
+      {
+        error:
+          'OpenClaw Gateway token not synced yet. Add gatewayToken to your anchor-context plugin config and restart the Gateway so it can register with Anchor.',
+      },
+      { status: 500 }
     )
   }
 
@@ -138,77 +105,33 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model,
         messages: openaiMessages,
-        stream: true,
+        stream: false,
       }),
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Fetch failed'
-    return new Response(sseErrorStream(`Could not reach Gateway: ${msg}`), { headers: SSE_HEADERS })
+    return NextResponse.json({ error: `Could not reach Gateway: ${msg}` }, { status: 500 })
   }
 
-  if (!upstream.ok || !upstream.body) {
+  if (!upstream.ok) {
     const text = await upstream.text().catch(() => upstream.statusText)
     const snippet = text.slice(0, 800)
-    return new Response(
-      sseErrorStream(`Gateway error (${upstream.status}): ${snippet || upstream.statusText}`),
-      { headers: SSE_HEADERS }
+    return NextResponse.json(
+      { error: `Gateway error (${upstream.status}): ${snippet || upstream.statusText}` },
+      { status: 500 }
     )
   }
 
-  const encoder = new TextEncoder()
-  const reader = upstream.body.getReader()
-  const decoder = new TextDecoder()
+  let json: unknown
+  try {
+    json = await upstream.json()
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse Gateway response' }, { status: 500 })
+  }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let buffer = ''
-      const finish = () => {
-        try {
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        } catch {
-          /* stream closed */
-        }
-        try {
-          controller.close()
-        } catch {
-          /* already closed */
-        }
-      }
+  const content =
+    (json as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message
+      ?.content ?? ''
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            const payload = line.slice(6).trim()
-            if (payload === '[DONE]') {
-              finish()
-              return
-            }
-            const chunk = extractDeltaContent(payload)
-            if (chunk) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
-            }
-          }
-        }
-        finish()
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Unknown error'
-        try {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ content: `\n\n[Error: ${msg}]` })}\n\n`)
-          )
-        } catch {
-          /* */
-        }
-        finish()
-      }
-    },
-  })
-
-  return new Response(stream, { headers: SSE_HEADERS })
+  return NextResponse.json({ content })
 }
