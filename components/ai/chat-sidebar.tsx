@@ -13,8 +13,8 @@ import { OnboardingChat } from './onboarding-chat'
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
 import { useTimeFormat } from '@/lib/use-time-format'
+import { formatChatTimestamp } from '@/lib/format-chat-timestamp'
 import ReactMarkdown from 'react-markdown'
 
 interface Message {
@@ -36,6 +36,7 @@ export function ChatSidebar() {
   const { rightSidebarOpen: isOpen, rightSidebarHovered, rightSidebarHoverEnabled, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
   const isVisible = isOpen || (rightSidebarHoverEnabled && rightSidebarHovered)
   const timeFormatStr = useTimeFormat()
+  const userTimezone = usePlannerStore((s) => s.userTimezone)
   const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -78,7 +79,10 @@ export function ChatSidebar() {
       return
     }
     fetch('/api/openclaw/chat-url')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then((chatData) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null)
         setOpenclawAgentIdDisplay(chatData.agentId ?? null)
@@ -400,7 +404,7 @@ export function ChatSidebar() {
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {msg.timestamp && (
                                     <span className="text-[10px] text-muted-foreground">
-                                      {format(msg.timestamp, timeFormatStr)}
+                                      {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                                     </span>
                                   )}
                                   <button
@@ -430,7 +434,7 @@ export function ChatSidebar() {
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {msg.timestamp && (
                                   <span className="text-[10px] text-muted-foreground">
-                                    {format(msg.timestamp, timeFormatStr)}
+                                    {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                                   </span>
                                 )}
                                 {msg.content && (

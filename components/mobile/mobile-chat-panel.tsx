@@ -69,7 +69,10 @@ export function MobileChatPanel() {
       return;
     }
     fetch('/api/openclaw/chat-url')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then((chatData) => {
         setOpenclawChatUrl(chatData.chatUrl ?? null);
         setOpenclawAgentIdDisplay(chatData.agentId ?? null);
