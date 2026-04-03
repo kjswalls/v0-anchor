@@ -1,7 +1,7 @@
-ALTER TABLE tasks ADD COLUMN deleted_at timestamptz DEFAULT NULL;
-ALTER TABLE habits ADD COLUMN deleted_at timestamptz DEFAULT NULL;
-ALTER TABLE habit_groups ADD COLUMN deleted_at timestamptz DEFAULT NULL;
-ALTER TABLE projects ADD COLUMN deleted_at timestamptz DEFAULT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deleted_at timestamptz DEFAULT NULL;
+ALTER TABLE habits ADD COLUMN IF NOT EXISTS deleted_at timestamptz DEFAULT NULL;
+ALTER TABLE habit_groups ADD COLUMN IF NOT EXISTS deleted_at timestamptz DEFAULT NULL;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS deleted_at timestamptz DEFAULT NULL;
 
 -- Enable pg_cron (requires superuser; usually pre-enabled on Supabase)
 CREATE EXTENSION IF NOT EXISTS pg_cron;
