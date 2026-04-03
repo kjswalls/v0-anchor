@@ -21,6 +21,6 @@ export interface PluginConfig {
   agentId?: string
   /** Fallback agent id if agentId unset (legacy / alternate key in openclaw.json). */
   id?: string
-  /** Gateway bearer token — written to Anchor user_settings on startup; never sent to the browser. */
+  /** Gateway bearer token — written to Anchor `user_secrets` (service role) on startup; never exposed to the browser. */
   gatewayToken?: string
 }

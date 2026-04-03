@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
+import { createServiceClient } from '@/lib/supabase-service'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 
 const SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }
@@ -30,7 +31,7 @@ function extractDeltaContent(payload: string): string | null {
 /**
  * POST /api/openclaw/openclaw-chat
  * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL.
- * Auth + agent id + gateway token are read from user_settings only (never from the browser).
+ * Chat URL + agent id from user_settings (session); gateway token from user_secrets (service role only).
  * Body: { messages, systemPrompt?, context? }
  */
 export async function POST(req: NextRequest) {
@@ -68,13 +69,27 @@ export async function POST(req: NextRequest) {
 
   const { data: settings, error: settingsError } = await supabase
     .from('user_settings')
-    .select('openclaw_chat_url, openclaw_gateway_token, openclaw_agent_id')
+    .select('openclaw_chat_url, openclaw_agent_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (settingsError) {
     return new Response(
       sseErrorStream(`Settings error: ${settingsError.message}`),
+      { headers: SSE_HEADERS }
+    )
+  }
+
+  const service = createServiceClient()
+  const { data: secretRow, error: secretError } = await service
+    .from('user_secrets')
+    .select('openclaw_gateway_token')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (secretError) {
+    return new Response(
+      sseErrorStream(`Secrets error: ${secretError.message}`),
       { headers: SSE_HEADERS }
     )
   }
@@ -89,7 +104,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const gatewayToken = settings?.openclaw_gateway_token?.trim()
+  const gatewayToken = secretRow?.openclaw_gateway_token?.trim()
   if (!gatewayToken) {
     return new Response(
       sseErrorStream(

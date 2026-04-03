@@ -12,9 +12,9 @@ import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { useTimeFormat } from '@/lib/use-time-format';
+import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -40,6 +40,7 @@ export function MobileChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const aiProvider = useAISettingsStore((s) => s.provider);
   const prevAiProviderRef = useRef(aiProvider);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME;
   const timeFormatStr = useTimeFormat();
@@ -304,7 +305,7 @@ export function MobileChatPanel() {
                           )}>
                             {msg.timestamp && (
                               <span className="text-[10px] text-muted-foreground">
-                                {format(msg.timestamp, timeFormatStr)}
+                                {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                               </span>
                             )}
                             <button
@@ -337,7 +338,7 @@ export function MobileChatPanel() {
                         )}>
                           {msg.timestamp && (
                             <span className="text-[10px] text-muted-foreground">
-                              {format(msg.timestamp, timeFormatStr)}
+                              {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
                             </span>
                           )}
                           {msg.content && (

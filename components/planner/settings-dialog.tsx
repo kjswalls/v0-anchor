@@ -128,33 +128,39 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     systemPrompt, setSystemPrompt,
   } = useAISettingsStore();
 
-  const [openclawConnLoading, setOpenclawConnLoading] = useState(false);
-  const [openclawConn, setOpenclawConn] = useState<{
-    chatUrl: string | null;
-    agentId: string | null;
-  } | null>(null);
+  type OpenclawConnState =
+    | { kind: 'inactive' }
+    | { kind: 'loading' }
+    | { kind: 'resolved'; chatUrl: string | null; agentId: string | null };
+
+  const [openclawConn, setOpenclawConn] = useState<OpenclawConnState>({ kind: 'inactive' });
 
   useEffect(() => {
     if (!open) {
-      setOpenclawConn(null);
-      setOpenclawConnLoading(false);
+      setOpenclawConn({ kind: 'inactive' });
       return;
     }
     if (provider !== 'openclaw') return;
 
-    setOpenclawConnLoading(true);
+    setOpenclawConn({ kind: 'loading' });
     let cancelled = false;
     fetch('/api/openclaw/chat-url')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         if (cancelled) return;
-        setOpenclawConn({ chatUrl: data.chatUrl ?? null, agentId: data.agentId ?? null });
-        setOpenclawConnLoading(false);
+        setOpenclawConn({
+          kind: 'resolved',
+          chatUrl: data.chatUrl ?? null,
+          agentId: data.agentId ?? null,
+        });
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        setOpenclawConn({ chatUrl: null, agentId: null });
-        setOpenclawConnLoading(false);
+        console.warn('[settings] openclaw chat-url fetch failed:', err);
+        setOpenclawConn({ kind: 'resolved', chatUrl: null, agentId: null });
       });
     return () => {
       cancelled = true;
@@ -393,9 +399,9 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
                   {provider === 'openclaw' && (
                     <div className="pt-2 border-t border-border space-y-2">
-                      {openclawConnLoading ? (
+                      {openclawConn.kind !== 'resolved' ? (
                         <p className="text-xs text-muted-foreground">Checking connection…</p>
-                      ) : openclawConn?.chatUrl ? (
+                      ) : openclawConn.chatUrl ? (
                         <div className="space-y-1">
                           <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
                             Connected

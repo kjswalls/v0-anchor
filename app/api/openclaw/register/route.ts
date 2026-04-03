@@ -48,31 +48,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Provide webhookUrl+events or chatUrl' }, { status: 400 })
   }
 
-  // Persist chat URL + OpenClaw metadata to user_settings if provided
+  // Persist chat URL + agent on user_settings; gateway token on user_secrets (RLS: no client SELECT).
   if (hasChatUrl) {
     const service = createServiceClient()
-    const row: {
-      user_id: string
-      openclaw_chat_url: string
-      openclaw_agent_id: string
-      openclaw_gateway_token?: string | null
-    } = {
-      user_id: userId,
-      openclaw_chat_url: chatUrl,
-      openclaw_agent_id: typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main',
-    }
-    if (gatewayToken !== undefined) {
-      row.openclaw_gateway_token =
-        typeof gatewayToken === 'string' && gatewayToken.trim() ? gatewayToken.trim() : null
-    }
-
-    const { error: upsertError } = await service
-      .from('user_settings')
-      .upsert(row, { onConflict: 'user_id' })
+    const { error: upsertError } = await service.from('user_settings').upsert(
+      {
+        user_id: userId,
+        openclaw_chat_url: chatUrl,
+        openclaw_agent_id: typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main',
+      },
+      { onConflict: 'user_id' }
+    )
     if (upsertError) {
       console.error(`[openclaw/register] Failed to store chatUrl for user ${userId}:`, upsertError.message)
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
+
+    if (gatewayToken !== undefined) {
+      const tokenVal =
+        typeof gatewayToken === 'string' && gatewayToken.trim() ? gatewayToken.trim() : null
+      const { error: secretErr } = await service.from('user_secrets').upsert(
+        { user_id: userId, openclaw_gateway_token: tokenVal },
+        { onConflict: 'user_id' }
+      )
+      if (secretErr) {
+        console.error(`[openclaw/register] Failed to store gateway token for user ${userId}:`, secretErr.message)
+        return NextResponse.json({ error: secretErr.message }, { status: 500 })
+      }
+    }
+
     console.log(`[openclaw/register] chatUrl stored for user ${userId} → ${chatUrl}`)
   }
 

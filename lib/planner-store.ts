@@ -67,6 +67,8 @@ interface PlannerStore {
   setWeekStartDay: (day: 'sunday' | 'monday' | 'saturday') => void;
   timeFormat: '12h' | '24h';
   setTimeFormat: (format: '12h' | '24h') => void;
+  /** IANA zone from user_settings (hydrated on login); use with chat timestamps, EOD, etc. */
+  userTimezone: string | null;
   /** ID of the task/habit card currently under the mouse cursor — used by keyboard shortcuts */
   hoveredItemId: string | null;
   hoveredItemType: 'task' | 'habit' | null;
@@ -304,6 +306,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) saveSettings(userId, { time_format: format });
       },
+      userTimezone: null,
       hoveredItemId: null,
       hoveredItemType: null,
       setHoveredItem: (id, type) => set({ hoveredItemId: id, hoveredItemType: type }),
@@ -385,6 +388,7 @@ export const usePlannerStore = create<PlannerStore>()(
           canRedo: false,
           actionLog: [],
           historyIndex: -1,
+          userTimezone: null,
         });
         isUpdatingUndoRedo = false;
       },
