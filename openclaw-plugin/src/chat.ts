@@ -9,6 +9,9 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  // Required for Chrome's Private Network Access policy when a public origin
+  // (Vercel) fetches directly to a private/Tailscale host.
+  "Access-Control-Allow-Private-Network": "true",
 };
 
 export async function handleChatRequest(
