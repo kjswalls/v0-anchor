@@ -43,6 +43,7 @@ export function ChatSidebar() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [openclawChatUrl, setOpenclawChatUrl] = useState<string | null>(null)
+  const [openclawAgentIdDisplay, setOpenclawAgentIdDisplay] = useState<string | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
@@ -50,6 +51,7 @@ export function ChatSidebar() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
+  const prevAiProviderRef = useRef(aiProvider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
   // Check auth + onboarding status
@@ -68,13 +70,34 @@ export function ChatSidebar() {
     setShowOnboarding(false)
   }
 
-  // Fetch registered Gateway chat URL when provider is OpenClaw (completions endpoint)
+  // Fetch Gateway URL + agent id (display only) when OpenClaw is selected
   useEffect(() => {
-    if (aiProvider !== 'openclaw') return
+    if (aiProvider !== 'openclaw') {
+      setOpenclawChatUrl(null)
+      setOpenclawAgentIdDisplay(null)
+      return
+    }
     fetch('/api/openclaw/chat-url')
       .then((r) => r.json())
-      .then((chatData) => setOpenclawChatUrl(chatData.chatUrl ?? null))
-      .catch(() => setOpenclawChatUrl(null))
+      .then((chatData) => {
+        setOpenclawChatUrl(chatData.chatUrl ?? null)
+        setOpenclawAgentIdDisplay(chatData.agentId ?? null)
+      })
+      .catch(() => {
+        setOpenclawChatUrl(null)
+        setOpenclawAgentIdDisplay(null)
+      })
+  }, [aiProvider])
+
+  // New provider → fresh transcript (avoid mixing Beacon / OpenClaw threads)
+  useEffect(() => {
+    if (prevAiProviderRef.current !== aiProvider) {
+      setMessages([])
+      try {
+        localStorage.removeItem(HISTORY_KEY)
+      } catch { /* ignore */ }
+    }
+    prevAiProviderRef.current = aiProvider
   }, [aiProvider])
 
   // Load chat history and width from localStorage
@@ -185,10 +208,8 @@ export function ChatSidebar() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
-      // Intentionally reading fresh values via getState() to avoid stale closures —
-      // provider, apiKey, model, systemPrompt, openclawGatewayApiKey, openclawAgentId
-      // are therefore omitted from the useCallback dependency array.
-      const { provider, apiKey, model, personality, systemPrompt, openclawGatewayApiKey, openclawAgentId } =
+      // Intentionally reading fresh values via getState() to avoid stale closures.
+      const { provider, apiKey, model, personality, systemPrompt } =
         useAISettingsStore.getState()
       const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
 
@@ -212,23 +233,6 @@ export function ChatSidebar() {
           setIsLoading(false)
           return
         }
-        if (!openclawGatewayApiKey?.trim()) {
-          setMessages((prev) => {
-            const next = [...prev]
-            const last = next[next.length - 1]
-            if (last?.role === 'assistant') {
-              next[next.length - 1] = {
-                role: 'assistant',
-                content: 'Add your OpenClaw Gateway API key in Settings → AI Assistant.',
-                timestamp: Date.now(),
-              }
-            }
-            return next
-          })
-          setIsLoading(false)
-          return
-        }
-
         const chatMessages = updatedMessages.map(({ role, content }) => ({ role, content }))
         res = await fetch('/api/openclaw/openclaw-chat', {
           method: 'POST',
@@ -236,9 +240,7 @@ export function ChatSidebar() {
           body: JSON.stringify({
             messages: chatMessages,
             context,
-            agentId: openclawAgentId || 'main',
             systemPrompt: effectiveSystemPrompt,
-            openclawGatewayApiKey,
           }),
         })
       } else {
@@ -323,8 +325,8 @@ export function ChatSidebar() {
           ref={sidebarRef}
           data-tour="right-sidebar"
           className={cn(
-            "absolute right-0 top-0 h-full z-20 flex transition-all duration-200",
-            rightSidebarHovered && !isOpen && "shadow-xl"
+            'absolute right-0 top-0 h-full max-h-full min-h-0 z-20 flex transition-all duration-200',
+            rightSidebarHovered && !isOpen && 'shadow-xl'
           )}
           style={{ width: sidebarWidth }}
           onMouseLeave={() => rightSidebarHovered && setRightSidebarHovered(false)}
@@ -342,21 +344,30 @@ export function ChatSidebar() {
           </div>
 
           {/* Main panel */}
-          <div className="flex-1 flex flex-col bg-background border-l border-border shadow-2xl overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0 max-h-full bg-background border-l border-border shadow-2xl overflow-hidden">
             {/* Onboarding */}
             {showOnboarding && userId ? (
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 <OnboardingChat userId={userId} onComplete={handleOnboardingComplete} />
               </div>
             ) : (
               <>
+                <div className="shrink-0 px-3 py-2 border-b border-border bg-background">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {aiProvider === 'openclaw'
+                      ? openclawAgentIdDisplay
+                        ? `OpenClaw · ${openclawAgentIdDisplay}`
+                        : 'OpenClaw'
+                      : 'Beacon'}
+                  </p>
+                </div>
                 {/* Messages with fade at top */}
-                <div className="flex-1 overflow-y-auto relative">
+                <div className="flex-1 min-h-0 overflow-y-auto relative">
                   {/* Gradient fade at top */}
                   <div className="sticky top-0 h-12 bg-gradient-to-b from-background to-transparent pointer-events-none z-10" />
 
                   {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3 -mt-12">
+                    <div className="flex flex-col items-center justify-center min-h-0 flex-1 py-8 px-6 text-center gap-3">
                       <div className="relative">
                         <MessageSquarePlus className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
                         <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
@@ -411,7 +422,7 @@ export function ChatSidebar() {
                           ) : (
 // Assistant message - left aligned, no bubble, with markdown
                           <div className="flex flex-col gap-1">
-                            <div className="text-sm leading-relaxed text-foreground prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
+                            <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                               {msg.content ? (
                                 <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
                               ) : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null)}

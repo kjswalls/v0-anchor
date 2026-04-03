@@ -29,8 +29,9 @@ function extractDeltaContent(payload: string): string | null {
 
 /**
  * POST /api/openclaw/openclaw-chat
- * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL (openclaw_chat_url).
- * Body: { messages, agentId?, systemPrompt?, context?, openclawGatewayApiKey }
+ * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL.
+ * Auth + agent id + gateway token are read from user_settings only (never from the browser).
+ * Body: { messages, systemPrompt?, context? }
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -47,10 +48,8 @@ export async function POST(req: NextRequest) {
 
   let body: {
     messages?: Array<{ role: string; content: string }>
-    agentId?: string
     systemPrompt?: string
     context?: string
-    openclawGatewayApiKey?: string
   }
   try {
     body = await req.json()
@@ -61,14 +60,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { messages, agentId, systemPrompt, context, openclawGatewayApiKey } = body
-
-  if (!openclawGatewayApiKey?.trim()) {
-    return new Response(
-      sseErrorStream('Add your OpenClaw Gateway API key in Settings → AI Assistant.'),
-      { headers: SSE_HEADERS }
-    )
-  }
+  const { messages, systemPrompt, context } = body
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response(sseErrorStream('No messages to send.'), { headers: SSE_HEADERS })
@@ -76,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   const { data: settings, error: settingsError } = await supabase
     .from('user_settings')
-    .select('openclaw_chat_url')
+    .select('openclaw_chat_url, openclaw_gateway_token, openclaw_agent_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
@@ -97,6 +89,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const gatewayToken = settings?.openclaw_gateway_token?.trim()
+  if (!gatewayToken) {
+    return new Response(
+      sseErrorStream(
+        'OpenClaw Gateway token not synced yet. Add gatewayToken to your anchor-context plugin config and restart the Gateway so it can register with Anchor.'
+      ),
+      { headers: SSE_HEADERS }
+    )
+  }
+
+  const agentId = settings?.openclaw_agent_id?.trim() || 'main'
+  const model = `openclaw:${agentId}`
+
   const resolvedSystem = (systemPrompt?.trim() || BEACON_SYSTEM_PROMPT).trim()
   const systemMessage = context?.trim() ? `${resolvedSystem}\n\n${context.trim()}` : resolvedSystem
 
@@ -113,10 +118,10 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${openclawGatewayApiKey.trim()}`,
+        Authorization: `Bearer ${gatewayToken}`,
       },
       body: JSON.stringify({
-        model: `openclaw:${(agentId?.trim() || 'main')}`,
+        model,
         messages: openaiMessages,
         stream: true,
       }),

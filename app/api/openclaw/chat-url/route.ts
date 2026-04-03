@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 /**
  * GET /api/openclaw/chat-url
  * Returns the stored openclaw_chat_url for the current authenticated user.
- * Returns { chatUrl: string | null }
+ * Returns { chatUrl, agentId } — never returns gateway token.
  */
 export async function GET() {
   try {
@@ -14,13 +14,16 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('user_settings')
-      .select('openclaw_chat_url')
+      .select('openclaw_chat_url, openclaw_agent_id')
       .eq('user_id', user.id)
       .maybeSingle()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    return NextResponse.json({ chatUrl: data?.openclaw_chat_url ?? null })
+    return NextResponse.json({
+      chatUrl: data?.openclaw_chat_url ?? null,
+      agentId: data?.openclaw_agent_id ?? null,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'
     return NextResponse.json({ error: msg }, { status: 500 })
