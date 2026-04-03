@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase';
 
 export interface UserSettingsRow {
   theme?: string;
+  /** IANA timezone string from DB (synced from client on load) */
+  timezone?: string | null;
   time_format?: string;
   week_start_day?: string;
   default_view?: string;
@@ -41,7 +43,7 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
 };
 
 const SETTINGS_SELECT =
-  'theme,time_format,week_start_day,default_view,default_time_bucket,show_completed_tasks,animations_enabled,compact_mode,chill_mode,show_time_indicator,morning_check_enabled,left_sidebar_hover,right_sidebar_hover,morning_check_time,morning_check_dismissed_date,eod_review_time,eod_review_enabled';
+  'theme,timezone,time_format,week_start_day,default_view,default_time_bucket,show_completed_tasks,animations_enabled,compact_mode,chill_mode,show_time_indicator,morning_check_enabled,left_sidebar_hover,right_sidebar_hover,morning_check_time,morning_check_dismissed_date,eod_review_time,eod_review_enabled';
 
 export async function loadSettings(userId: string): Promise<UserSettingsRow> {
   const supabase = createClient();

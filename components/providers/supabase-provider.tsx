@@ -48,6 +48,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         defaultTimeBucket: (settings.default_time_bucket as any) ?? 'anytime',
         timeFormat: (settings.time_format as '12h' | '24h') ?? '12h',
         viewMode: (settings.default_view as 'day' | 'week') ?? 'day',
+        userTimezone: settings.timezone?.trim() || null,
       });
 
       useSidebarStore.setState({

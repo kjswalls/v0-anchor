@@ -14,6 +14,9 @@
           "anchorUrl":      { "type": "string", "description": "Base URL of your Anchor deployment (e.g. https://anchor.yourdomain.com)" },
           "apiKey":         { "type": "string", "description": "Your personal Anchor API key — generate it in Anchor → Settings → AI Assistant → OpenClaw" },
           "publicUrl":      { "type": "string", "description": "Your gateway's public URL (e.g. https://your-machine.ts.net) — registers …/v1/chat/completions with Anchor for sidebar chat" },
+          "agentId":        { "type": "string", "description": "OpenClaw agent id for Anchor sidebar chat (default: main)" },
+          "id":             { "type": "string", "description": "Optional alias for agent id if agentId is not set" },
+          "gatewayToken":   { "type": "string", "description": "Gateway API bearer token — synced to Anchor server-side on startup (never paste in the web app)" },
           "webhookSecret":  { "type": "string", "description": "Optional HMAC secret for verifying change event payloads" },
           "cacheTtlMs":     { "type": "number", "description": "Max cache age before forcing a re-fetch (default: 300000ms = 5 min)" }
         }

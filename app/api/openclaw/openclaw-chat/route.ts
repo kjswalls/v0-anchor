@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
+import { createServiceClient } from '@/lib/supabase-service'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 
 const SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }
@@ -29,8 +30,9 @@ function extractDeltaContent(payload: string): string | null {
 
 /**
  * POST /api/openclaw/openclaw-chat
- * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL (openclaw_chat_url).
- * Body: { messages, agentId?, systemPrompt?, context?, openclawGatewayApiKey }
+ * Proxies OpenAI-compatible streaming chat to the user's registered Gateway URL.
+ * Chat URL + agent id from user_settings (session); gateway token from user_secrets (service role only).
+ * Body: { messages, systemPrompt?, context? }
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
@@ -47,10 +49,8 @@ export async function POST(req: NextRequest) {
 
   let body: {
     messages?: Array<{ role: string; content: string }>
-    agentId?: string
     systemPrompt?: string
     context?: string
-    openclawGatewayApiKey?: string
   }
   try {
     body = await req.json()
@@ -61,14 +61,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const { messages, agentId, systemPrompt, context, openclawGatewayApiKey } = body
-
-  if (!openclawGatewayApiKey?.trim()) {
-    return new Response(
-      sseErrorStream('Add your OpenClaw Gateway API key in Settings → AI Assistant.'),
-      { headers: SSE_HEADERS }
-    )
-  }
+  const { messages, systemPrompt, context } = body
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return new Response(sseErrorStream('No messages to send.'), { headers: SSE_HEADERS })
@@ -76,13 +69,27 @@ export async function POST(req: NextRequest) {
 
   const { data: settings, error: settingsError } = await supabase
     .from('user_settings')
-    .select('openclaw_chat_url')
+    .select('openclaw_chat_url, openclaw_agent_id')
     .eq('user_id', user.id)
     .maybeSingle()
 
   if (settingsError) {
     return new Response(
       sseErrorStream(`Settings error: ${settingsError.message}`),
+      { headers: SSE_HEADERS }
+    )
+  }
+
+  const service = createServiceClient()
+  const { data: secretRow, error: secretError } = await service
+    .from('user_secrets')
+    .select('openclaw_gateway_token')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (secretError) {
+    return new Response(
+      sseErrorStream(`Secrets error: ${secretError.message}`),
       { headers: SSE_HEADERS }
     )
   }
@@ -96,6 +103,19 @@ export async function POST(req: NextRequest) {
       { headers: SSE_HEADERS }
     )
   }
+
+  const gatewayToken = secretRow?.openclaw_gateway_token?.trim()
+  if (!gatewayToken) {
+    return new Response(
+      sseErrorStream(
+        'OpenClaw Gateway token not synced yet. Add gatewayToken to your anchor-context plugin config and restart the Gateway so it can register with Anchor.'
+      ),
+      { headers: SSE_HEADERS }
+    )
+  }
+
+  const agentId = settings?.openclaw_agent_id?.trim() || 'main'
+  const model = `openclaw:${agentId}`
 
   const resolvedSystem = (systemPrompt?.trim() || BEACON_SYSTEM_PROMPT).trim()
   const systemMessage = context?.trim() ? `${resolvedSystem}\n\n${context.trim()}` : resolvedSystem
@@ -113,10 +133,10 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${openclawGatewayApiKey.trim()}`,
+        Authorization: `Bearer ${gatewayToken}`,
       },
       body: JSON.stringify({
-        model: `openclaw:${(agentId?.trim() || 'main')}`,
+        model,
         messages: openaiMessages,
         stream: true,
       }),

@@ -47,7 +47,15 @@ export default definePluginEntry({
 
       if (gatewayPublicUrl) {
         await registerWithAnchor(cfg, `${gatewayPublicUrl}/plugins/anchor/webhook`, api.logger)
-        await registerChatUrl(cfg, `${gatewayPublicUrl}/v1/chat/completions`, api.logger)
+        const agentId = cfg.agentId?.trim() || cfg.id?.trim() || 'main'
+        const gatewayToken = cfg.gatewayToken?.trim() || undefined
+        await registerChatUrl(
+          cfg,
+          `${gatewayPublicUrl}/v1/chat/completions`,
+          agentId,
+          gatewayToken,
+          api.logger
+        )
       } else {
         api.logger.warn(
           'anchor-context: publicUrl not set in plugin config — webhook push and chat URL registration disabled. ' +
