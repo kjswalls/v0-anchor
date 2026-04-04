@@ -53,31 +53,13 @@ describe('date / time-bucket utilities', () => {
   it('isOverdue correctly compares task start_date to current date', () => {
     // Mirrors the logic from components/ai/morning-check.tsx:
     //   isAfter(startOfDay(new Date()), parseISO(task.startDate))
-    const todayStart = startOfDay(new Date());
+    // Use a fixed reference date for determinism — avoids midnight/timezone flakiness.
+    const fixedNow = new Date(2025, 5, 15, 12, 0, 0); // Jun 15, 2025 noon (local)
+    const todayStart = startOfDay(fixedNow);
 
-    const now = new Date();
-
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = [
-      yesterday.getFullYear(),
-      String(yesterday.getMonth() + 1).padStart(2, '0'),
-      String(yesterday.getDate()).padStart(2, '0'),
-    ].join('-');
-
-    const todayStr = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-');
-
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = [
-      tomorrow.getFullYear(),
-      String(tomorrow.getMonth() + 1).padStart(2, '0'),
-      String(tomorrow.getDate()).padStart(2, '0'),
-    ].join('-');
+    const yesterdayStr = '2025-06-14';
+    const todayStr = '2025-06-15';
+    const tomorrowStr = '2025-06-16';
 
     expect(isAfter(todayStart, parseISO(yesterdayStr))).toBe(true);   // yesterday is overdue
     expect(isAfter(todayStart, parseISO(todayStr))).toBe(false);       // today is NOT overdue
