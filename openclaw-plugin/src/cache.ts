@@ -2,8 +2,8 @@ import type { AnchorCache, PluginConfig } from './plugin-types.js'
 import { AnchorContextResponseSchema } from '@anchor-app/types'
 
 let cache: AnchorCache | null = null
-let lastInjectedAt: number | null = null  // when full context was last returned to the model
-let lastModifiedAt: number | null = null  // when cache was last dirtied by a write/webhook
+const lastInjectedAt = new Map<string, number>()  // per-conversation: when full context was last returned to the model
+let lastModifiedAt: number | null = null  // when cache was last dirtied by a write/webhook (cache-wide)
 
 export function getCache(): AnchorCache | null {
   return cache
@@ -17,20 +17,32 @@ export function markCacheDirty(): void {
   lastModifiedAt = Date.now()
 }
 
-export function markContextInjected(): void {
-  lastInjectedAt = Date.now()
+export function markContextInjected(conversationId: string): void {
+  lastInjectedAt.set(conversationId, Date.now())
 }
 
-export function shouldSkipInjection(ttlMs: number): boolean {
+export function shouldSkipInjection(ttlMs: number, conversationId: string): boolean {
+  const injectedAt = lastInjectedAt.get(conversationId) ?? null
   return (
-    lastInjectedAt !== null &&
-    (lastModifiedAt === null || lastModifiedAt <= lastInjectedAt) &&
-    (Date.now() - lastInjectedAt) < ttlMs
+    injectedAt !== null &&
+    (lastModifiedAt === null || lastModifiedAt <= injectedAt) &&
+    (Date.now() - injectedAt) < ttlMs
   )
 }
 
-export function getLastInjectedAt(): number | null {
-  return lastInjectedAt
+export function getLastInjectedAt(conversationId: string): number | null {
+  return lastInjectedAt.get(conversationId) ?? null
+}
+
+export function isCacheDirty(): boolean {
+  return lastModifiedAt !== null && (cache === null || lastModifiedAt > cache.fetchedAt)
+}
+
+export function shouldRefreshCache(ttlMs: number): boolean {
+  if (!cache) return true
+  if (Date.now() - cache.fetchedAt > ttlMs) return true
+  if (lastModifiedAt !== null && lastModifiedAt > cache.fetchedAt) return true
+  return false
 }
 
 export async function fetchContext(cfg: PluginConfig): Promise<void> {

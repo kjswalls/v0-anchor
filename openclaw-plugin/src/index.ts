@@ -93,9 +93,8 @@ export default definePluginEntry({
         }
 
         api.logger.info(`anchor-context: cache invalidated (${eventName})`)
-        fetchContext(cfg).then(() => {
-          markCacheDirty()
-        }).catch((err: Error) => {
+        markCacheDirty()
+        fetchContext(cfg).catch((err: Error) => {
           api.logger.warn(`anchor-context: post-change refresh failed — ${err.message}`)
         })
 
