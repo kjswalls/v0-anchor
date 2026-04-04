@@ -353,6 +353,16 @@ export async function restoreProject(userId: string, name: string): Promise<void
   if (error) throw error;
 }
 
+export async function restoreProject(userId: string, name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('projects')
+    .update({ deleted_at: null })
+    .eq('user_id', userId)
+    .eq('name', name);
+  if (error) throw error;
+}
+
 // ---- HabitGroup row type ----
 interface HabitGroupRow {
   id: string;
@@ -421,6 +431,16 @@ export async function deleteHabitGroup(userId: string, id: string, client?: DbCl
   const { error } = await supabase.from('habit_groups').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
   notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', id });
+}
+
+export async function restoreHabitGroup(userId: string, name: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from('habit_groups')
+    .update({ deleted_at: null })
+    .eq('user_id', userId)
+    .eq('name', name);
+  if (error) throw error;
 }
 
 export async function restoreHabitGroup(userId: string, name: string): Promise<void> {

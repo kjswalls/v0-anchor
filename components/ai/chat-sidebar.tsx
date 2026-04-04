@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils'
 import { useTimeFormat } from '@/lib/use-time-format'
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { stripReasoningTags } from '@/lib/chat-utils'
 import { TypingIndicator } from '@/components/ui/typing-indicator'
 
 interface Message {
@@ -24,14 +26,6 @@ interface Message {
   timestamp?: number
 }
 
-/** Strip internal model reasoning tags like <think>...</think> and <final>...</final> wrappers */
-function stripReasoningTags(text: string): string {
-  // Remove <think>...</think> blocks (including multiline)
-  let out = text.replace(/<think>[\s\S]*?<\/think>/gi, '')
-  // Unwrap <final>...</final> — keep the content, drop the tags
-  out = out.replace(/<final>([\s\S]*?)<\/final>/gi, '$1')
-  return out.trim()
-}
 
 const HISTORY_KEY = 'anchor-chat-history'
 const WIDTH_KEY = 'anchor-chat-sidebar-width'
@@ -502,7 +496,7 @@ export function ChatSidebar() {
                           <div className="flex flex-col gap-1">
                             <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                               {msg.content ? (
-                                <ReactMarkdown>{msg.content.replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripReasoningTags(msg.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
                               ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
                             </div>
                               <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
