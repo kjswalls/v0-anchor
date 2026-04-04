@@ -1,8 +1,7 @@
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
-import { fetchContext, isCacheFresh } from './cache.js'
-import { buildHeader, buildFullContext } from './context.js'
+import { fetchContext, markCacheDirty } from './cache.js'
 import { registerWithAnchor, registerChatUrl, deregisterFromAnchor, parseWebhookBody, verifyHmac } from './webhook.js'
 import { handleChatRequest } from './chat.js'
 import { runSetup } from './setup.js'
@@ -36,8 +35,6 @@ export default definePluginEntry({
     }
 
     registerTools(api, cfg)
-
-    const ttlMs = cfg.cacheTtlMs ?? 5 * 60 * 1000
 
     // ── Seed cache + register webhook on startup ──────────────────────────────
     fetchContext(cfg).then(async () => {
@@ -96,7 +93,9 @@ export default definePluginEntry({
         }
 
         api.logger.info(`anchor-context: cache invalidated (${eventName})`)
-        fetchContext(cfg).catch((err: Error) => {
+        fetchContext(cfg).then(() => {
+          markCacheDirty()
+        }).catch((err: Error) => {
           api.logger.warn(`anchor-context: post-change refresh failed — ${err.message}`)
         })
 
@@ -114,27 +113,5 @@ export default definePluginEntry({
       },
     })
 
-    // ── Inject context into every prompt turn via before_prompt_build hook ───
-    // Uses api.on() instead of registerMemoryPromptSection so we don't need
-    // the exclusive memory slot (which would displace memory-core).
-    api.on('before_prompt_build', async (event) => {
-      // Refresh cache if stale
-      if (!isCacheFresh(ttlMs)) {
-        try { await fetchContext(cfg) } catch (err) {
-          api.logger.warn(`anchor-context: cache refresh failed — ${(err as Error).message}`)
-        }
-      }
-
-      const lastUserMessage = typeof event.prompt === 'string' ? event.prompt : ''
-      const isPlanning = (msg: string) =>
-        msg.toLowerCase().includes('show my tasks')
-
-      const content = isPlanning(lastUserMessage)
-        ? buildFullContext() || buildHeader()
-        : buildHeader()
-
-      if (!content) return
-      return { prependContext: content }
-    })
   },
 })

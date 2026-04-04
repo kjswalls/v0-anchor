@@ -2,6 +2,8 @@ import type { AnchorCache, PluginConfig } from './plugin-types.js'
 import { AnchorContextResponseSchema } from '@anchor-app/types'
 
 let cache: AnchorCache | null = null
+let lastInjectedAt: number | null = null  // when full context was last returned to the model
+let lastModifiedAt: number | null = null  // when cache was last dirtied by a write/webhook
 
 export function getCache(): AnchorCache | null {
   return cache
@@ -9,6 +11,26 @@ export function getCache(): AnchorCache | null {
 
 export function isCacheFresh(ttlMs: number): boolean {
   return !!cache && Date.now() - cache.fetchedAt < ttlMs
+}
+
+export function markCacheDirty(): void {
+  lastModifiedAt = Date.now()
+}
+
+export function markContextInjected(): void {
+  lastInjectedAt = Date.now()
+}
+
+export function shouldSkipInjection(ttlMs: number): boolean {
+  return (
+    lastInjectedAt !== null &&
+    (lastModifiedAt === null || lastModifiedAt <= lastInjectedAt) &&
+    (Date.now() - lastInjectedAt) < ttlMs
+  )
+}
+
+export function getLastInjectedAt(): number | null {
+  return lastInjectedAt
 }
 
 export async function fetchContext(cfg: PluginConfig): Promise<void> {

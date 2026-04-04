@@ -1,12 +1,7 @@
 import { Type } from '@sinclair/typebox'
 import type { PluginConfig } from './plugin-types.js'
-import { fetchContext } from './cache.js'
-
-function invalidateCache(api: any, cfg: PluginConfig): void {
-  fetchContext(cfg).catch((err: Error) =>
-    api.logger?.warn(`anchor-context: post-write cache refresh failed — ${err.message}`)
-  )
-}
+import { fetchContext, isCacheFresh, shouldSkipInjection, markCacheDirty, markContextInjected, getLastInjectedAt } from './cache.js'
+import { buildFullContext } from './context.js'
 
 function errorResult(status: number, text: string) {
   return { content: [{ type: 'text', text: `Error ${status}: ${text}` }] }
@@ -16,15 +11,22 @@ export function registerTools(api: any, cfg: PluginConfig): void {
   // ── anchor_get_context ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_get_context',
-    description: 'Get the current Anchor context: tasks, habits, and projects.',
+    description: 'Retrieve current tasks, habits, and projects from Anchor. Call this before responding to any task or habit management request, when the user asks about their schedule or what they need to do today, or when you need fresh context after making changes. Returns a short acknowledgement if context is already fresh in this session.',
     parameters: Type.Object({}),
     async execute() {
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/context`, {
-        headers: { Authorization: `Bearer ${cfg.apiKey}` },
-      })
-      const text = await res.text()
-      if (!res.ok) return errorResult(res.status, text)
-      return { content: [{ type: 'text', text }] }
+      const ttlMs = cfg.cacheTtlMs ?? 5 * 60 * 1000
+      if (shouldSkipInjection(ttlMs)) {
+        const ago = Math.round((Date.now() - getLastInjectedAt()!) / 1000)
+        return { content: [{ type: 'text', text: `Context unchanged (injected ${ago}s ago) — use what is already in your context window.` }] }
+      }
+      if (!isCacheFresh(ttlMs)) {
+        try { await fetchContext(cfg) } catch (err) {
+          return errorResult(500, (err as Error).message)
+        }
+      }
+      const context = buildFullContext()
+      markContextInjected()
+      return { content: [{ type: 'text', text: context || 'No context available.' }] }
     },
   })
 
@@ -70,7 +72,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Task created: ${text}` }] }
     },
   })
@@ -116,7 +118,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Task updated: ${text}` }] }
     },
   })
@@ -135,7 +137,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Task deleted.` }] }
     },
   })
@@ -168,7 +170,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Habit created: ${text}` }] }
     },
   })
@@ -199,7 +201,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Habit updated: ${text}` }] }
     },
   })
@@ -218,7 +220,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       })
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
-      invalidateCache(api, cfg)
+      markCacheDirty()
       return { content: [{ type: 'text', text: `Habit deleted.` }] }
     },
   })

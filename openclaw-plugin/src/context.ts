@@ -11,20 +11,7 @@ function getLocalDate(timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
 }
 
-/** ~20 tokens — always injected */
-export function buildHeader(): string {
-  const cache = getCache()
-  if (!cache) return ''
-  const timezone = cache.userTimezone ?? "UTC"
-  const today = getLocalDate(timezone)
-  const pending = cache.tasks.filter((t) => t.status === 'pending')
-  const overdue = pending.filter((t) => t.startDate && t.startDate < today)
-  const todayTasks = pending.filter((t) => !t.startDate || t.startDate === today)
-  const pendingHabits = cache.habits.filter((h) => h.status === 'pending')
-  return `[Anchor: ${todayTasks.length} tasks today, ${overdue.length} overdue, ${pendingHabits.length} habits pending | tz: ${timezone} | say "what are my current tasks?" for details]`
-}
-
-/** ~200–400 tokens — injected on planning-related messages */
+/** ~200–400 tokens — returned by anchor_get_context tool */
 export function buildFullContext(): string {
   const cache = getCache()
   if (!cache) return ''
