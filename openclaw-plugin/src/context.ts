@@ -21,7 +21,7 @@ export function buildHeader(): string {
   const overdue = pending.filter((t) => t.startDate && t.startDate < today)
   const todayTasks = pending.filter((t) => !t.startDate || t.startDate === today)
   const pendingHabits = cache.habits.filter((h) => h.status === 'pending')
-  return `[Anchor: ${todayTasks.length} tasks today, ${overdue.length} overdue, ${pendingHabits.length} habits pending — say "what are my current tasks?" for details]`
+  return `[Anchor: ${todayTasks.length} tasks today, ${overdue.length} overdue, ${pendingHabits.length} habits pending | tz: ${timezone} | say "what are my current tasks?" for details]`
 }
 
 /** ~200–400 tokens — injected on planning-related messages */
