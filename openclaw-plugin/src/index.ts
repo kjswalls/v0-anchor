@@ -6,6 +6,7 @@ import { buildHeader, buildFullContext } from './context.js'
 import { registerWithAnchor, registerChatUrl, deregisterFromAnchor, parseWebhookBody, verifyHmac } from './webhook.js'
 import { handleChatRequest } from './chat.js'
 import { runSetup } from './setup.js'
+import { registerTools } from './tools.js'
 
 export default definePluginEntry({
   id: 'anchor-context',
@@ -33,6 +34,8 @@ export default definePluginEntry({
       )
       return
     }
+
+    registerTools(api, cfg)
 
     const ttlMs = cfg.cacheTtlMs ?? 5 * 60 * 1000
 

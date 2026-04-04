@@ -40,7 +40,8 @@
     ]
   },
   "dependencies": {
-    "@anchor-app/types": "workspace:*"
+    "@anchor-app/types": "workspace:*",
+    "@sinclair/typebox": "^0.33.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"
