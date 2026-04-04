@@ -23,11 +23,11 @@ test.describe('Search functionality', () => {
     await loginTestUser(page);
   });
 
-  test('typing in search filters the task list to matching items', async ({ page, request }) => {
+  test('typing in search filters the task list to matching items', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     // Use a unique title so the search will only match this task.
     const uniqueTitle = `SearchTarget_${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: uniqueTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -42,13 +42,13 @@ test.describe('Search functionality', () => {
       await openSearch(page);
       await page.getByPlaceholder('Search tasks & habits...').fill(uniqueTitle);
 
-      // The search results dropdown should show the task.
-      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+      // The search results dropdown should show the task (it lives in the header, not main).
+      await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5_000 });
 
       // Verify the "Tasks" section header appears in results
       await expect(page.getByText(/Tasks \(\d+\)/)).toBeVisible();
     } finally {
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 
@@ -64,10 +64,10 @@ test.describe('Search functionality', () => {
     // Once fixed: type "task:standup" and assert only task items are shown.
   });
 
-  test('clearing search restores full task list', async ({ page, request }) => {
+  test('clearing search restores full task list', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const uniqueTitle = `SearchClear_${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: uniqueTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -82,7 +82,8 @@ test.describe('Search functionality', () => {
       await openSearch(page);
       const input = page.getByPlaceholder('Search tasks & habits...');
       await input.fill(uniqueTitle);
-      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+      // Search results dropdown is in the header, not main.
+      await expect(page.getByText(uniqueTitle).first()).toBeVisible({ timeout: 5_000 });
 
       // Click the X / clear button to close search.
       // The clear button is the X icon button inside the search container.
@@ -95,9 +96,9 @@ test.describe('Search functionality', () => {
       await expect(input).not.toBeVisible();
 
       // The task should still be visible in the timeline (not filtered).
-      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole('main').getByText(uniqueTitle).first()).toBeVisible({ timeout: 5_000 });
     } finally {
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 });

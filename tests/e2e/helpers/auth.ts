@@ -140,6 +140,21 @@ export async function loginTestUser(page: Page): Promise<void> {
   //    very first request — no page.evaluate(), no Node module imports needed.
   await page.context().addCookies(cookies);
 
+  // 5b. Mark onboarding complete for the test user so the onboarding tour
+  //     never blocks UI interactions during E2E tests.
+  const userId = session.user?.id;
+  if (userId) {
+    await page.request.post(`${supabaseUrl}/rest/v1/user_settings`, {
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      data: { user_id: userId, onboarding_completed: true },
+    });
+  }
+
   // 6. Navigate to the app. The cookies are already present, so the server
   //    hydrates the session on this first request — no reload required.
   await page.goto('/');

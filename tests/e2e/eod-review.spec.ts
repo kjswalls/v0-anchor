@@ -26,19 +26,19 @@ test.describe('End of day (EOD) review modal', () => {
     await expect(dialog).toBeVisible();
 
     // The dialog title should contain "End of day"
-    await expect(dialog.getByText('End of day')).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'End of day' })).toBeVisible();
 
     // Close it
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
   });
 
-  test('completing all tasks in EOD shows a congratulations state', async ({ page, request }) => {
+  test('completing all tasks in EOD shows a congratulations state', async ({ page }) => {
     const accessToken = await getAccessToken(page);
 
     // Create exactly one pending task for today.
     const taskTitle = `EOD complete test ${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -48,6 +48,10 @@ test.describe('End of day (EOD) review modal', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
+
+      // Wait for the task to appear in the timeline, ensuring the store has loaded
+      // before opening the EOD modal (the modal snapshots livePendingTasks on open).
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
       const dialog = page.getByRole('dialog', { name: 'End of day' });
@@ -55,26 +59,26 @@ test.describe('End of day (EOD) review modal', () => {
       // The task should be in the "Carrying forward" section as a pending task.
       await expect(dialog.getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
 
-      // Mark it done by clicking the round circle button next to the task title.
-      const taskItem = dialog.getByText(taskTitle).locator('..');
-      const markDoneBtn = taskItem.locator('button').first();
-      await markDoneBtn.click();
+      // Mark it done by clicking the "Mark as done" circle button.
+      // Scope to the specific task's list item to avoid matching other tasks in the dialog.
+      const carrySection = dialog.locator('section').filter({ hasText: 'Carrying forward' });
+      const taskListItem = carrySection.getByRole('listitem').filter({ hasText: taskTitle });
+      await taskListItem.getByTitle('Mark as done').click();
 
-      // After marking done, the encouraging message should update.
-      // The "Carrying forward" section should no longer show the task as pending.
-      await expect(dialog.getByText(taskTitle).locator('..')).toHaveClass(
+      // After marking done, the task title span should have line-through styling.
+      await expect(carrySection.getByText(taskTitle)).toHaveClass(
         /line-through|text-muted-foreground/,
-        { timeout: 3_000 }
+        { timeout: 5_000 }
       );
     } finally {
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 
-  test('rolling over a task from EOD moves it to tomorrow', async ({ page, request }) => {
+  test('rolling over a task from EOD moves it to tomorrow', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const taskTitle = `EOD rollover test ${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -84,6 +88,10 @@ test.describe('End of day (EOD) review modal', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
+
+      // Wait for the task to appear in the timeline, ensuring the store has loaded
+      // before opening the EOD modal (the modal snapshots livePendingTasks on open).
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
       const dialog = page.getByRole('dialog', { name: 'End of day' });
@@ -110,11 +118,11 @@ test.describe('End of day (EOD) review modal', () => {
       }).first();
       await nextDayBtn.click();
 
-      // The task should now appear on tomorrow's view.
-      await expect(page.getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+      // The task should now appear on tomorrow's view (scope to timeline).
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
     } finally {
       // The task's startDate is now TOMORROW — cleanup still works by id.
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 });

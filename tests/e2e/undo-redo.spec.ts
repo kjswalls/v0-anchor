@@ -22,11 +22,11 @@ test.describe('Undo / redo actions', () => {
     await expect(redoBtn).toBeDisabled();
   });
 
-  test('Cmd/Ctrl+Z undoes the last task completion', async ({ page, request }) => {
+  test('Cmd/Ctrl+Z undoes the last task completion', async ({ page }) => {
     // Seed a task via API so it appears in today's timeline.
     const accessToken = await getAccessToken(page);
     const taskTitle = `Undo test ${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -58,14 +58,14 @@ test.describe('Undo / redo actions', () => {
       // The button should revert to non-completed state.
       await expect(completeBtn).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
     } finally {
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 
-  test('Cmd/Ctrl+Shift+Z redoes the undone action', async ({ page, request }) => {
+  test('Cmd/Ctrl+Shift+Z redoes the undone action', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const taskTitle = `Redo test ${Date.now()}`;
-    const taskId = await createTestTask(request, accessToken, {
+    const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
       isScheduled: true,
@@ -92,7 +92,7 @@ test.describe('Undo / redo actions', () => {
       await page.keyboard.press('Control+Shift+Z');
       await expect(completeBtn).toHaveClass(/bg-primary/, { timeout: 5_000 });
     } finally {
-      await cleanupTestData(request, accessToken, [taskId]);
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 });

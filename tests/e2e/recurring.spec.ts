@@ -44,33 +44,36 @@ test.describe('Recurring tasks and habits', () => {
     // assert the habit is visible on each day in the planner.
   });
 
-  test('weekdays habit does not appear on Saturday', async ({ page, request }) => {
+  test('weekdays habit does not appear on Saturday', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const habitTitle = `Weekdays only ${Date.now()}`;
-    const habitId = await createTestHabit(request, accessToken, {
+    const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
       repeatFrequency: 'weekdays',
       timeBucket: 'morning',
     });
 
     try {
+      await page.reload();
+      await page.waitForURL('/');
+
       // Navigate to next Saturday.
       const saturday = nextSaturday(new Date());
       await navigateToDate(page, saturday);
 
-      // The weekdays habit should NOT be visible on Saturday.
+      // The weekdays habit should NOT be visible on Saturday (check the timeline only, not sidebar).
       await page.waitForTimeout(500);
-      await expect(page.getByText(habitTitle)).not.toBeVisible();
+      await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).not.toBeVisible();
     } finally {
-      await cleanupTestData(request, accessToken, [], [habitId]);
+      await cleanupTestData(page, accessToken, [], [habitId]);
     }
   });
 
-  test('custom habit shows only on configured repeat days', async ({ page, request }) => {
+  test('custom habit shows only on configured repeat days', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const habitTitle = `Mon+Wed only ${Date.now()}`;
     // repeatDays=[1,3] → Monday (1) and Wednesday (3)
-    const habitId = await createTestHabit(request, accessToken, {
+    const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
       repeatFrequency: 'custom',
       repeatDays: [1, 3],
@@ -78,25 +81,36 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      // Navigate to next Monday — habit should be visible.
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Navigate to next Monday — habit should be visible in the timeline.
       const monday = nextMonday(new Date());
       await navigateToDate(page, monday);
       await page.waitForTimeout(500);
-      await expect(page.getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
 
-      // Navigate to next Wednesday — habit should also be visible.
+      // Reset to today before navigating to Wednesday so the click count is correct.
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Navigate to next Wednesday — habit should also be visible in the timeline.
       const wednesday = nextWednesday(new Date());
       await navigateToDate(page, wednesday);
       await page.waitForTimeout(500);
-      await expect(page.getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
 
-      // Navigate to the Saturday after next Monday — habit should NOT be visible.
+      // Reset to today before navigating to Saturday so the click count is correct.
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Navigate to the Saturday after next Monday — habit should NOT be visible in the timeline.
       const saturday = nextSaturday(monday);
       await navigateToDate(page, saturday);
       await page.waitForTimeout(500);
-      await expect(page.getByText(habitTitle)).not.toBeVisible();
+      await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).not.toBeVisible();
     } finally {
-      await cleanupTestData(request, accessToken, [], [habitId]);
+      await cleanupTestData(page, accessToken, [], [habitId]);
     }
   });
 });

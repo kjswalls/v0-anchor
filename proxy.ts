@@ -41,8 +41,10 @@ export async function proxy(request: NextRequest) {
     // Refresh session if expired
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Redirect unauthenticated users to /login
-    if (!user && pathname !== '/login' && !pathname.startsWith('/auth')) {
+    // Redirect unauthenticated users to /login.
+    // Skip API routes — they use Bearer auth and return their own 401s.
+    const isApiRoute = pathname.startsWith('/api/');
+    if (!user && pathname !== '/login' && !pathname.startsWith('/auth') && !isApiRoute) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.redirect(url);
