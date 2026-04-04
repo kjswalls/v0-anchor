@@ -20,7 +20,7 @@ export async function registerWithAnchor(
   webhookUrl: string,
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
-  const res = await fetch(`${cfg.anchorUrl}/api/openclaw/register`, {
+  const res = await fetch(`${cfg.anchorUrl}/api/agent/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
@@ -44,7 +44,7 @@ export async function registerChatUrl(
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
   try {
-    const res = await fetch(`${cfg.anchorUrl}/api/openclaw/register`, {
+    const res = await fetch(`${cfg.anchorUrl}/api/agent/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
       body: JSON.stringify({
@@ -68,7 +68,7 @@ export async function deregisterFromAnchor(
   cfg: PluginConfig,
   logger: { warn: (s: string) => void }
 ): Promise<void> {
-  await fetch(`${cfg.anchorUrl}/api/openclaw/register`, {
+  await fetch(`${cfg.anchorUrl}/api/agent/register`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({ pluginId: 'anchor-context' }),

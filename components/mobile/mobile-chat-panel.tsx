@@ -74,7 +74,7 @@ export function MobileChatPanel() {
       setOpenclawAnchorApiKey(null);
       return;
     }
-    fetch('/api/openclaw/chat-url')
+    fetch('/api/agent/chat-url')
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()

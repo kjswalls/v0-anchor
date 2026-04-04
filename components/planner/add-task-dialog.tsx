@@ -89,7 +89,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const [newGroupEmoji, setNewGroupEmoji] = useState('⭐');
   
   // Delete confirmation
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string; id: string } | null>(null);
 
   // Reset form when dialog opens or defaults change
   useEffect(() => {
@@ -166,12 +166,12 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   const handleDeleteConfirm = () => {
     if (deleteConfirm) {
       if (deleteConfirm.type === 'project') {
-        removeProject(deleteConfirm.name);
+        removeProject(deleteConfirm.id);
         if (taskProject === deleteConfirm.name) {
           setTaskProject('');
         }
       } else {
-        removeHabitGroup(deleteConfirm.name);
+        removeHabitGroup(deleteConfirm.id);
         if (habitGroup === deleteConfirm.name) {
           setHabitGroup(habitGroups[0]?.name || 'personal');
         }

@@ -12,7 +12,7 @@ export function isCacheFresh(ttlMs: number): boolean {
 }
 
 export async function fetchContext(cfg: PluginConfig): Promise<void> {
-  const res = await fetch(`${cfg.anchorUrl}/api/openclaw/context`, {
+  const res = await fetch(`${cfg.anchorUrl}/api/agent/context`, {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   })
   if (!res.ok) throw new Error(`Anchor context fetch failed: ${res.status} ${res.statusText}`)

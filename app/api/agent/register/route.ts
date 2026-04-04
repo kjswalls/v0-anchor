@@ -3,7 +3,7 @@ import { resolveUserIdFromApiKey, createServiceClient } from '@/lib/supabase-ser
 import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
 
 /**
- * POST /api/openclaw/register
+ * POST /api/agent/register
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
  * Anchor pushes change events when data mutates. Also accepts optional chatUrl
@@ -58,11 +58,11 @@ export async function POST(req: NextRequest) {
       { onConflict: 'user_id' }
     )
     if (upsertError) {
-      console.error(`[openclaw/register] Failed to store chatUrl for user ${userId}:`, upsertError.message)
+      console.error(`[agent/register] Failed to store chatUrl for user ${userId}:`, upsertError.message)
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
 
-    console.log(`[openclaw/register] chatUrl stored for user ${userId} → ${chatUrl}`)
+    console.log(`[agent/register] chatUrl stored for user ${userId} → ${chatUrl}`)
   }
 
   // Register webhook if provided
@@ -77,14 +77,14 @@ export async function POST(req: NextRequest) {
     }
 
     registeredPlugins.set(`${pluginId}:${userId}`, registration)
-    console.log(`[openclaw/register] "${pluginId}" registered for user ${userId} → ${webhookUrl}`)
+    console.log(`[agent/register] "${pluginId}" registered for user ${userId} → ${webhookUrl}`)
   }
 
   return NextResponse.json({ ok: true, userId, registeredAt: new Date().toISOString() })
 }
 
 /**
- * DELETE /api/openclaw/register
+ * DELETE /api/agent/register
  * Deregisters a plugin (called on OpenClaw plugin shutdown).
  */
 export async function DELETE(req: NextRequest) {

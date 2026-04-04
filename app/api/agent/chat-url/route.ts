@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
-import { createServiceClient } from '@/lib/supabase-service'
 
 /**
- * GET /api/openclaw/chat-url
+ * GET /api/agent/chat-url
  * Returns the stored openclaw_chat_url, agentId, and anchorApiKey for the current authenticated user.
  * The anchorApiKey is fetched server-side so it is never hardcoded in the client.
  */

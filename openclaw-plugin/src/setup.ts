@@ -29,7 +29,7 @@ export async function runSetup(): Promise<void> {
   // Validate key by calling the context endpoint
   console.log('\n🔍  Validating key...')
   try {
-    const res = await fetch(`${anchorUrl}/api/openclaw/context`, {
+    const res = await fetch(`${anchorUrl}/api/agent/context`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     })
     if (!res.ok) {
