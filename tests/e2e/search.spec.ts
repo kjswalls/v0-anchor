@@ -1,15 +1,55 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
+import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import { format } from 'date-fns';
+
+const TODAY = format(new Date(), 'yyyy-MM-dd');
+
+/** Open the search input in the top nav. */
+async function openSearch(page: import('@playwright/test').Page) {
+  // The search icon button (ghost, h-8 w-8) toggles the search input visible.
+  // There is no aria-label — find it by its SVG child (Search icon).
+  // It's the first button that opens the search (before the search input is shown).
+  const searchToggle = page.locator('button').filter({
+    has: page.locator('svg.lucide-search'),
+  }).first();
+  await searchToggle.click();
+  // The input appears with this placeholder
+  await expect(page.getByPlaceholder('Search tasks & habits...')).toBeVisible();
+}
 
 test.describe('Search functionality', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
   });
 
-  test('typing in search filters the task list to matching items', async ({ page }) => {
-    test.skip(true, 'implement once auth helpers are wired up');
-    // Open the search input, type a unique task title, and assert only matching
-    // tasks remain visible in the planner.
+  test('typing in search filters the task list to matching items', async ({ page, request }) => {
+    const accessToken = await getAccessToken(page);
+    // Use a unique title so the search will only match this task.
+    const uniqueTitle = `SearchTarget_${Date.now()}`;
+    const taskId = await createTestTask(request, accessToken, {
+      title: uniqueTitle,
+      startDate: TODAY,
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Open search and type the unique task title.
+      await openSearch(page);
+      await page.getByPlaceholder('Search tasks & habits...').fill(uniqueTitle);
+
+      // The search results dropdown should show the task.
+      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+
+      // Verify the "Tasks" section header appears in results
+      await expect(page.getByText(/Tasks \(\d+\)/)).toBeVisible();
+    } finally {
+      await cleanupTestData(request, accessToken, [taskId]);
+    }
   });
 
   // Known bug: mobile search icon is missing — issue #91
@@ -24,8 +64,40 @@ test.describe('Search functionality', () => {
     // Once fixed: type "task:standup" and assert only task items are shown.
   });
 
-  test('clearing search restores full task list', async ({ page }) => {
-    test.skip(true, 'implement once auth helpers are wired up');
-    // Search for something, then clear the input, assert all items are visible again.
+  test('clearing search restores full task list', async ({ page, request }) => {
+    const accessToken = await getAccessToken(page);
+    const uniqueTitle = `SearchClear_${Date.now()}`;
+    const taskId = await createTestTask(request, accessToken, {
+      title: uniqueTitle,
+      startDate: TODAY,
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Open search and type something that returns results.
+      await openSearch(page);
+      const input = page.getByPlaceholder('Search tasks & habits...');
+      await input.fill(uniqueTitle);
+      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+
+      // Click the X / clear button to close search.
+      // The clear button is the X icon button inside the search container.
+      const clearBtn = page.locator('button').filter({
+        has: page.locator('svg.lucide-x'),
+      }).first();
+      await clearBtn.click();
+
+      // Search input should be gone; the toggle button (search icon) should be back.
+      await expect(input).not.toBeVisible();
+
+      // The task should still be visible in the timeline (not filtered).
+      await expect(page.getByText(uniqueTitle)).toBeVisible({ timeout: 5_000 });
+    } finally {
+      await cleanupTestData(request, accessToken, [taskId]);
+    }
   });
 });
