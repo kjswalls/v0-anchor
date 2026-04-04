@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
-import { format } from 'date-fns';
-
-const TODAY = format(new Date(), 'yyyy-MM-dd');
+import { getTodayStr } from './helpers/dates';
 
 test.describe('Undo / redo actions', () => {
   test.beforeEach(async ({ page }) => {
@@ -24,6 +22,7 @@ test.describe('Undo / redo actions', () => {
 
   test('Cmd/Ctrl+Z undoes the last task completion', async ({ page }) => {
     // Seed a task via API so it appears in today's timeline.
+    const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `Undo test ${Date.now()}`;
     const taskId = await createTestTask(page, accessToken, {
@@ -38,15 +37,15 @@ test.describe('Undo / redo actions', () => {
       await page.reload();
       await page.waitForURL('/');
 
-      // Find the task card by its title text and click the completion button
-      // (the round checkbox button adjacent to the task title).
-      const taskCard = page.getByText(taskTitle).first();
-      await expect(taskCard).toBeVisible({ timeout: 10_000 });
-
-      // The completion toggle is the round button in the same card.
-      // Click it via the parent flex row container.
-      const taskRow = taskCard.locator('..').locator('..');
-      const completeBtn = taskRow.locator('button').first();
+      // Find the completion button via XPath, scoped to the timeline.
+      // Navigate: task-title <p> → ancestor div.group/card → first button child.
+      const timeline = page.locator('[data-tour="timeline"]');
+      await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
+      const completeBtn = timeline
+        .locator('p')
+        .filter({ hasText: taskTitle })
+        .first()
+        .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
       await completeBtn.click();
 
       // Verify the task became completed (button gets bg-primary class).
@@ -63,6 +62,7 @@ test.describe('Undo / redo actions', () => {
   });
 
   test('Cmd/Ctrl+Shift+Z redoes the undone action', async ({ page }) => {
+    const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `Redo test ${Date.now()}`;
     const taskId = await createTestTask(page, accessToken, {
@@ -76,11 +76,13 @@ test.describe('Undo / redo actions', () => {
       await page.reload();
       await page.waitForURL('/');
 
-      const taskCard = page.getByText(taskTitle).first();
-      await expect(taskCard).toBeVisible({ timeout: 10_000 });
-
-      const taskRow = taskCard.locator('..').locator('..');
-      const completeBtn = taskRow.locator('button').first();
+      const timeline = page.locator('[data-tour="timeline"]');
+      await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
+      const completeBtn = timeline
+        .locator('p')
+        .filter({ hasText: taskTitle })
+        .first()
+        .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
 
       // Complete → undo → redo
       await completeBtn.click();

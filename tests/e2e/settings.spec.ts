@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
+import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import { getTodayStr } from './helpers/dates';
 
 /** Open the settings dialog via the user profile dropdown. */
 async function openSettings(page: import('@playwright/test').Page) {
@@ -58,6 +60,22 @@ test.describe('Settings persistence', () => {
   });
 
   test('toggling compact mode affects task card height', async ({ page }) => {
+    // Seed a task so a task card is present in the timeline to measure.
+    const TODAY = getTodayStr();
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Compact mode test ${Date.now()}`;
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      startDate: TODAY,
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+    await page.reload();
+    await page.waitForURL('/');
+    // Wait for the task card to appear before measuring.
+    await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
+
+    try {
     await openSettings(page);
 
     const dialog = page.getByRole('dialog', { name: 'Settings' });
@@ -81,10 +99,11 @@ test.describe('Settings persistence', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
 
-    // Measure a timeline section height in normal mode.
-    const morningSection = page.getByText('Morning').first();
-    await expect(morningSection).toBeVisible();
-    const normalBox = await morningSection.boundingBox();
+    // Measure a task card height in normal mode.
+    // Task cards have class "group/card" (Tailwind named group).
+    const taskCard = page.locator('[class*="group\\/card"]').first();
+    await expect(taskCard).toBeVisible({ timeout: 5_000 });
+    const normalBox = await taskCard.boundingBox();
 
     // Re-open settings, expand Appearance, and enable compact mode.
     await openSettings(page);
@@ -101,11 +120,11 @@ test.describe('Settings persistence', () => {
     await page.keyboard.press('Escape');
     await expect(dialog2).not.toBeVisible();
 
-    // In compact mode the section header should be slightly shorter.
-    const compactBox = await page.getByText('Morning').first().boundingBox();
+    // In compact mode the task card should be shorter (min-h-[52px] vs min-h-[72px]).
+    const compactBox = await page.locator('[class*="group\\/card"]').first().boundingBox();
 
-    // Verify compact mode changed something (height ≤ normal).
-    expect(compactBox!.height).toBeLessThanOrEqual(normalBox!.height + 2);
+    // Verify compact mode reduced task card height.
+    expect(compactBox!.height).toBeLessThan(normalBox!.height);
 
     // Restore: open settings, expand Appearance, turn compact mode off.
     await openSettings(page);
@@ -119,5 +138,8 @@ test.describe('Settings persistence', () => {
       await compactSwitch3.click();
     }
     await page.keyboard.press('Escape');
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
   });
 });

@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
-import { format, addDays } from 'date-fns';
-
-const TODAY = format(new Date(), 'yyyy-MM-dd');
-const TOMORROW = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+import { getTodayStr, getTomorrowStr } from './helpers/dates';
 
 test.describe('Task date assignment and display', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,6 +9,7 @@ test.describe('Task date assignment and display', () => {
   });
 
   test('task with today as start date appears in the current day view', async ({ page }) => {
+    const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `Today task ${Date.now()}`;
     const taskId = await createTestTask(page, accessToken, {
@@ -33,6 +31,7 @@ test.describe('Task date assignment and display', () => {
   });
 
   test('task with a future start date does not appear in today view', async ({ page }) => {
+    const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `Future task ${Date.now()}`;
     const taskId = await createTestTask(page, accessToken, {
@@ -56,6 +55,8 @@ test.describe('Task date assignment and display', () => {
   });
 
   test('changing a task start date via edit dialog moves it to the new date', async ({ page }) => {
+    const TODAY = getTodayStr();
+    const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `Movable task ${Date.now()}`;
     // Create task for today

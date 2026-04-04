@@ -113,7 +113,7 @@ export async function cleanupTestData(
 ): Promise<void> {
   const headers = { Authorization: `Bearer ${accessToken}` };
 
-  await Promise.all([
+  await Promise.allSettled([
     ...taskIds.map(async (id) => {
       const res = await page.request.delete(`${BASE_URL}/api/agent/tasks/${id}`, { headers });
       if (!res.ok() && res.status() !== 404) {

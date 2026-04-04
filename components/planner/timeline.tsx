@@ -1390,6 +1390,16 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         case 'daily':    return true;
         case 'weekdays': return dayOfWeek >= 1 && dayOfWeek <= 5;
         case 'weekends': return dayOfWeek === 0 || dayOfWeek === 6;
+        case 'weekly':
+          // Show on the specific day(s) of the week stored in repeatDays.
+          // Fall back to showing every day if repeatDays is not configured.
+          return h.repeatDays ? h.repeatDays.includes(dayOfWeek) : true;
+        case 'monthly': {
+          // Show on the specific day of the month stored in repeatMonthDay.
+          // Fall back to showing every day if repeatMonthDay is not configured.
+          const dayOfMonth = selectedDate.getDate();
+          return h.repeatMonthDay != null ? dayOfMonth === h.repeatMonthDay : true;
+        }
         case 'custom':   return h.repeatDays?.includes(dayOfWeek) ?? false;
         default:         return true;
       }

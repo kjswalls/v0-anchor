@@ -43,7 +43,7 @@ export async function proxy(request: NextRequest) {
 
     // Redirect unauthenticated users to /login.
     // Skip API routes — they use Bearer auth and return their own 401s.
-    const isApiRoute = pathname.startsWith('/api/');
+    const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
     if (!user && pathname !== '/login' && !pathname.startsWith('/auth') && !isApiRoute) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';

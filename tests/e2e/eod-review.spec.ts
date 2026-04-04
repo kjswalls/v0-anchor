@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
-import { format, addDays } from 'date-fns';
-
-const TODAY = format(new Date(), 'yyyy-MM-dd');
-const TOMORROW = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+import { getTodayStr } from './helpers/dates';
 
 /** Open the EOD review modal via the dev trigger button (moon emoji, title contains "[DEV]"). */
 async function openEODReview(page: import('@playwright/test').Page) {
@@ -34,6 +31,7 @@ test.describe('End of day (EOD) review modal', () => {
   });
 
   test('completing all tasks in EOD shows a congratulations state', async ({ page }) => {
+    const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
 
     // Create exactly one pending task for today.
@@ -70,12 +68,19 @@ test.describe('End of day (EOD) review modal', () => {
         /line-through|text-muted-foreground/,
         { timeout: 5_000 }
       );
+
+      // After marking done, the "Wrapped up today" section should appear and
+      // include our task — confirming the completed-task UI is visible.
+      const wrappedSection = dialog.locator('section').filter({ hasText: 'Wrapped up today' });
+      await expect(wrappedSection).toBeVisible({ timeout: 5_000 });
+      await expect(wrappedSection.getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 
   test('rolling over a task from EOD moves it to tomorrow', async ({ page }) => {
+    const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
     const taskTitle = `EOD rollover test ${Date.now()}`;
     const taskId = await createTestTask(page, accessToken, {
@@ -111,6 +116,9 @@ test.describe('End of day (EOD) review modal', () => {
       // Close the dialog
       await page.keyboard.press('Escape');
       await expect(dialog).not.toBeVisible();
+
+      // Task should no longer appear in today's timeline after rollover.
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).not.toBeVisible();
 
       // Navigate to tomorrow.
       const nextDayBtn = page.locator('button').filter({

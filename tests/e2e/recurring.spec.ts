@@ -3,6 +3,7 @@ import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestHabit, cleanupTestData } from './helpers/api';
 import { format, nextSaturday, nextMonday, nextWednesday } from 'date-fns';
 
+
 /**
  * Navigate the day view to a specific date by clicking next/prev arrows.
  * We pass a target Date and click until the header matches yyyy-MM-dd.
@@ -30,6 +31,11 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
     await btn.click();
     await page.waitForTimeout(150);
   }
+
+  // Assert the date header in the top nav reflects the target date.
+  // The header button shows the date as "EEEE, MMMM d" (e.g. "Saturday, April 5").
+  const expectedLabel = format(targetDate, 'EEEE, MMMM d');
+  await expect(page.locator('header').getByText(expectedLabel)).toBeVisible({ timeout: 3_000 });
 }
 
 test.describe('Recurring tasks and habits', () => {

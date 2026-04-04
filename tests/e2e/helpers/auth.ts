@@ -144,7 +144,7 @@ export async function loginTestUser(page: Page): Promise<void> {
   //     never blocks UI interactions during E2E tests.
   const userId = session.user?.id;
   if (userId) {
-    await page.request.post(`${supabaseUrl}/rest/v1/user_settings`, {
+    const onboardingRes = await page.request.post(`${supabaseUrl}/rest/v1/user_settings`, {
       headers: {
         apikey: anonKey,
         Authorization: `Bearer ${session.access_token}`,
@@ -153,6 +153,12 @@ export async function loginTestUser(page: Page): Promise<void> {
       },
       data: { user_id: userId, onboarding_completed: true },
     });
+    if (!onboardingRes.ok()) {
+      const body = await onboardingRes.text();
+      throw new Error(
+        `Failed to mark onboarding complete (${onboardingRes.status()}): ${body}`
+      );
+    }
   }
 
   // 6. Navigate to the app. The cookies are already present, so the server
