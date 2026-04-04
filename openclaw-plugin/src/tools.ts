@@ -78,11 +78,11 @@ export function registerTools(api: any, cfg: PluginConfig): void {
   // ── anchor_update_task ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_update_task',
-    description: 'Update an existing task in Anchor. To complete a task, set status to "done".',
+    description: 'Update an existing task in Anchor. To complete a task, set status to "completed".',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
       title: Type.Optional(Type.String()),
-      status: Type.Optional(Type.String({ description: 'pending | done' })),
+      status: Type.Optional(Type.String({ description: 'pending | completed | cancelled' })),
       startDate: Type.Optional(Type.String({ description: 'YYYY-MM-DD' })),
       startTime: Type.Optional(Type.String({ description: 'HH:MM' })),
       priority: Type.Optional(Type.String({ description: 'low | medium | high' })),
@@ -180,10 +180,14 @@ export function registerTools(api: any, cfg: PluginConfig): void {
     parameters: Type.Object({
       id: Type.String({ description: 'Habit UUID' }),
       title: Type.Optional(Type.String()),
+      repeatFrequency: Type.Optional(Type.String({ description: "none | daily | weekly | weekdays | weekends | monthly | custom" })),
+      repeatDays: Type.Optional(Type.Array(Type.Number(), { description: "Day indices (0=Sun) for custom/weekly recurrence" })),
     }),
-    async execute(params: { id: string; title?: string }) {
+    async execute(params: { id: string; title?: string; repeatFrequency?: string; repeatDays?: number[] }) {
       const body: Record<string, unknown> = {}
       if (params.title !== undefined) body.title = params.title
+      if (params.repeatFrequency !== undefined) body.repeatFrequency = params.repeatFrequency
+      if (params.repeatDays !== undefined) body.repeatDays = params.repeatDays
 
       const res = await fetch(`${cfg.anchorUrl}/api/agent/habits/${params.id}`, {
         method: 'PATCH',

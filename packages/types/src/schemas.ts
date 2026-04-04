@@ -73,6 +73,7 @@ export const HabitSchema = z.object({
 
 export const AnchorContextResponseSchema = z.object({
   userId: z.string(),
+  userTimezone: z.string().optional(),
   fetchedAt: z.string(),
   tasks: z.array(TaskSchema),
   habits: z.array(HabitSchema),

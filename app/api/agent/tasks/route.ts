@@ -11,7 +11,7 @@ import type { Task } from '@/lib/planner-types'
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
  * Body:
- *   Required: title (string), status ("todo"|"in-progress"|"done"), isScheduled (boolean), order (number)
+ *   Required: title (string), status ("pending"|"completed"|"cancelled"), isScheduled (boolean), order (number)
  *   Optional: id (UUID, generated if not provided), priority, project, startDate, timeBucket,
  *             startTime, duration, repeatFrequency, repeatDays, repeatMonthDay
  *

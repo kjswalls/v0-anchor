@@ -3,6 +3,7 @@ import type { Task, Habit, Project, HabitGroupType } from '@anchor-app/types'
 /** Plugin-internal cache shape */
 export interface AnchorCache {
   userId: string
+  userTimezone: string
   tasks: Task[]
   habits: Habit[]
   projects: Project[]

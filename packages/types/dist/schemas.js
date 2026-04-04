@@ -9,6 +9,7 @@ export const RepeatFrequencySchema = z.enum([
 ]);
 // ── Core entities ──────────────────────────────────────────────────────────────
 export const ProjectSchema = z.object({
+    id: z.string(),
     name: z.string(),
     emoji: z.string(),
     repeatFrequency: RepeatFrequencySchema.optional(),
@@ -19,6 +20,7 @@ export const ProjectSchema = z.object({
     duration: z.number().optional(),
 });
 export const HabitGroupSchema = z.object({
+    id: z.string(),
     name: z.string(),
     emoji: z.string(),
     color: z.string().optional(),
@@ -62,6 +64,7 @@ export const HabitSchema = z.object({
 // ── API response schemas ───────────────────────────────────────────────────────
 export const AnchorContextResponseSchema = z.object({
     userId: z.string(),
+    userTimezone: z.string().optional(),
     fetchedAt: z.string(),
     tasks: z.array(TaskSchema),
     habits: z.array(HabitSchema),

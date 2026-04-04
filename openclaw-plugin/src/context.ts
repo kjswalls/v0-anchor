@@ -7,11 +7,16 @@ export function isPlanning(message: string): boolean {
   return PLANNING_PHRASES.some((kw) => lower.includes(kw))
 }
 
+function getLocalDate(timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
+}
+
 /** ~20 tokens — always injected */
 export function buildHeader(): string {
   const cache = getCache()
   if (!cache) return ''
-  const today = new Date().toISOString().slice(0, 10)
+  const timezone = cache.userTimezone ?? "UTC"
+  const today = getLocalDate(timezone)
   const pending = cache.tasks.filter((t) => t.status === 'pending')
   const overdue = pending.filter((t) => t.startDate && t.startDate < today)
   const todayTasks = pending.filter((t) => !t.startDate || t.startDate === today)
@@ -23,7 +28,8 @@ export function buildHeader(): string {
 export function buildFullContext(): string {
   const cache = getCache()
   if (!cache) return ''
-  const today = new Date().toISOString().slice(0, 10)
+  const timezone = cache.userTimezone ?? "UTC"
+  const today = getLocalDate(timezone)
   const lines: string[] = []
 
   const pending = cache.tasks.filter((t) => t.status === 'pending')
