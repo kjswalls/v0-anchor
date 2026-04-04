@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
 /**
- * GET /api/openclaw/apikey
+ * GET /api/agent/apikey
  * Returns the current user's OpenClaw API key (or null if not yet generated).
  * Uses the session client — RLS ensures users only see their own row.
  */
@@ -28,7 +28,7 @@ export async function GET() {
 }
 
 /**
- * POST /api/openclaw/apikey
+ * POST /api/agent/apikey
  * Generates (or regenerates) the current user's OpenClaw API key.
  * Uses the session client — RLS ensures users only write their own row.
  */

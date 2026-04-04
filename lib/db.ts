@@ -104,24 +104,24 @@ export async function fetchTasks(userId: string, client?: DbClient): Promise<Tas
   return (data as TaskRow[]).map(taskFromRow);
 }
 
-export async function createTask(userId: string, task: Task): Promise<void> {
-  const supabase = createClient();
+export async function createTask(userId: string, task: Task, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('tasks').insert(taskToRow(userId, task));
   if (error) throw error;
   notifyPlugins(userId, 'tasks.updated', { action: 'create', task });
 }
 
-export async function updateTask(id: string, updates: Partial<Task>, userId?: string): Promise<void> {
+export async function updateTask(id: string, updates: Partial<Task>, userId?: string, client?: DbClient): Promise<void> {
   const row = taskUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
-  const supabase = createClient();
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('tasks').update(row).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'update', id, updates });
 }
 
-export async function deleteTask(id: string, userId?: string): Promise<void> {
-  const supabase = createClient();
+export async function deleteTask(id: string, userId?: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'delete', id });
@@ -224,24 +224,24 @@ export async function fetchHabits(userId: string, client?: DbClient): Promise<Ha
   return (data as HabitRow[]).map(habitFromRow);
 }
 
-export async function createHabit(userId: string, habit: Habit): Promise<void> {
-  const supabase = createClient();
+export async function createHabit(userId: string, habit: Habit, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('habits').insert(habitToRow(userId, habit));
   if (error) throw error;
   notifyPlugins(userId, 'habits.updated', { action: 'create', habit });
 }
 
-export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string): Promise<void> {
+export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string, client?: DbClient): Promise<void> {
   const row = habitUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
-  const supabase = createClient();
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('habits').update(row).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'habits.updated', { action: 'update', id, updates });
 }
 
-export async function deleteHabit(id: string, userId?: string): Promise<void> {
-  const supabase = createClient();
+export async function deleteHabit(id: string, userId?: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('habits').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
   if (userId) notifyPlugins(userId, 'habits.updated', { action: 'delete', id });
@@ -269,6 +269,7 @@ interface ProjectRow {
 
 function projectFromRow(row: ProjectRow): Project {
   return {
+    id: row.id,
     name: row.name,
     emoji: row.emoji,
     repeatFrequency: (row.repeat_frequency ?? undefined) as Project['repeatFrequency'],
@@ -282,7 +283,7 @@ function projectFromRow(row: ProjectRow): Project {
 
 function projectToRow(userId: string, project: Project): ProjectRow {
   return {
-    id: crypto.randomUUID(),
+    id: project.id,
     user_id: userId,
     name: project.name,
     emoji: project.emoji,
@@ -319,35 +320,27 @@ export async function fetchProjects(userId: string, client?: DbClient): Promise<
   return (data as ProjectRow[]).map(projectFromRow);
 }
 
-export async function createProject(userId: string, project: Project): Promise<void> {
-  const supabase = createClient();
+export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('projects').insert(projectToRow(userId, project));
   if (error) throw error;
   notifyPlugins(userId, 'projects.updated', { action: 'create', project });
 }
 
-export async function updateProject(userId: string, name: string, updates: Partial<Project>): Promise<void> {
+export async function updateProject(userId: string, id: string, updates: Partial<Project>, client?: DbClient): Promise<void> {
   const row = projectUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('projects')
-    .update(row)
-    .eq('user_id', userId)
-    .eq('name', name);
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('projects').update(row).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'projects.updated', { action: 'update', name, updates });
+  notifyPlugins(userId, 'projects.updated', { action: 'update', id, updates });
 }
 
-export async function deleteProject(userId: string, name: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('projects')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('name', name);
+export async function deleteProject(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'projects.updated', { action: 'delete', name });
+  notifyPlugins(userId, 'projects.updated', { action: 'delete', id });
 }
 
 export async function restoreProject(userId: string, name: string): Promise<void> {
@@ -371,6 +364,7 @@ interface HabitGroupRow {
 
 function habitGroupFromRow(row: HabitGroupRow): HabitGroupType {
   return {
+    id: row.id,
     name: row.name,
     emoji: row.emoji,
     color: row.color ?? undefined,
@@ -379,7 +373,7 @@ function habitGroupFromRow(row: HabitGroupRow): HabitGroupType {
 
 function habitGroupToRow(userId: string, group: HabitGroupType): HabitGroupRow {
   return {
-    id: crypto.randomUUID(),
+    id: group.id,
     user_id: userId,
     name: group.name,
     emoji: group.emoji,
@@ -406,35 +400,27 @@ export async function fetchHabitGroups(userId: string, client?: DbClient): Promi
   return (data as HabitGroupRow[]).map(habitGroupFromRow);
 }
 
-export async function createHabitGroup(userId: string, group: HabitGroupType): Promise<void> {
-  const supabase = createClient();
+export async function createHabitGroup(userId: string, group: HabitGroupType, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase.from('habit_groups').insert(habitGroupToRow(userId, group));
   if (error) throw error;
   notifyPlugins(userId, 'habitGroups.updated', { action: 'create', group });
 }
 
-export async function updateHabitGroup(userId: string, name: string, updates: Partial<HabitGroupType>): Promise<void> {
+export async function updateHabitGroup(userId: string, id: string, updates: Partial<HabitGroupType>, client?: DbClient): Promise<void> {
   const row = habitGroupUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('habit_groups')
-    .update(row)
-    .eq('user_id', userId)
-    .eq('name', name);
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('habit_groups').update(row).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'habitGroups.updated', { action: 'update', name, updates });
+  notifyPlugins(userId, 'habitGroups.updated', { action: 'update', id, updates });
 }
 
-export async function deleteHabitGroup(userId: string, name: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase
-    .from('habit_groups')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('name', name);
+export async function deleteHabitGroup(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('habit_groups').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', name });
+  notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', id });
 }
 
 export async function restoreHabitGroup(userId: string, name: string): Promise<void> {

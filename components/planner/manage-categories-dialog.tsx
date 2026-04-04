@@ -44,7 +44,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
   const [newProjectEmoji, setNewProjectEmoji] = useState('📋');
   const [newGroup, setNewGroup] = useState('');
   const [newGroupEmoji, setNewGroupEmoji] = useState('⭐');
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string; id: string } | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const handleAddProject = () => {
@@ -66,9 +66,9 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
   const handleDeleteConfirm = () => {
     if (deleteConfirm) {
       if (deleteConfirm.type === 'project') {
-        removeProject(deleteConfirm.name);
+        removeProject(deleteConfirm.id);
       } else {
-        removeHabitGroup(deleteConfirm.name);
+        removeHabitGroup(deleteConfirm.id);
       }
       setDeleteConfirm(null);
     }
@@ -166,7 +166,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteConfirm({ type: 'project', name: project.name })}
+                          onClick={() => setDeleteConfirm({ type: 'project', name: project.name, id: project.id })}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -230,7 +230,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirm({ type: 'group', name: group.name })}
+                        onClick={() => setDeleteConfirm({ type: 'group', name: group.name, id: group.id })}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

@@ -116,8 +116,8 @@ interface PlannerStore {
 
   // Project actions
   addProject: (name: string, emoji: string) => void;
-  updateProject: (name: string, updates: Partial<Project>) => void;
-  removeProject: (name: string) => void;
+  updateProject: (id: string, updates: Partial<Project>) => void;
+  removeProject: (id: string) => void;
   getProjectEmoji: (name: string) => string;
   getProjectColor: (name: string) => string;
   getProject: (name: string) => Project | undefined;
@@ -127,8 +127,8 @@ interface PlannerStore {
 
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
-  updateHabitGroup: (name: string, updates: Partial<HabitGroupType>) => void;
-  removeHabitGroup: (name: string) => void;
+  updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
+  removeHabitGroup: (id: string) => void;
   getHabitGroupEmoji: (name: string) => string;
   getHabitGroupColor: (name: string) => string;
 
@@ -749,36 +749,38 @@ export const usePlannerStore = create<PlannerStore>()(
         const alreadyExists = get().projects.some((p) => p.name === name);
         if (alreadyExists) return;
 
-        const project: Project = { name, emoji };
+        const project: Project = { id: crypto.randomUUID(), name, emoji };
         set((state) => ({ projects: [...state.projects, project] }));
 
         const userId = get().userId;
         if (userId) dbCreateProject(userId, project).catch(console.error);
       },
 
-      updateProject: (name, updates) => {
-        setNextActionLabel(`Edit project: ${name}`);
+      updateProject: (id, updates) => {
+        const project = get().projects.find((p) => p.id === id);
+        setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
         set((state) => ({
           projects: state.projects.map((p) =>
-            p.name === name ? { ...p, ...updates } : p
+            p.id === id ? { ...p, ...updates } : p
           ),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateProject(userId, name, updates).catch(console.error);
+        if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
       },
 
-      removeProject: (name) => {
-        setNextActionLabel(`Delete project: ${name}`);
+      removeProject: (id) => {
+        const project = get().projects.find((p) => p.id === id);
+        setNextActionLabel(`Delete project: ${project?.name || 'Unknown'}`);
         set((state) => ({
-          projects: state.projects.filter((p) => p.name !== name),
+          projects: state.projects.filter((p) => p.id !== id),
           tasks: state.tasks.map((t) =>
-            t.project === name ? { ...t, project: undefined } : t
+            t.project === project?.name ? { ...t, project: undefined } : t
           ),
         }));
 
         const userId = get().userId;
-        if (userId) dbDeleteProject(userId, name).catch(console.error);
+        if (userId) dbDeleteProject(userId, id).catch(console.error);
       },
 
       getProjectEmoji: (name) => {
@@ -892,38 +894,37 @@ export const usePlannerStore = create<PlannerStore>()(
         const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
         if (alreadyExists) return;
 
-        const group: HabitGroupType = { name, emoji, color };
+        const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
         set((state) => ({ habitGroups: [...state.habitGroups, group] }));
 
         const userId = get().userId;
         if (userId) dbCreateHabitGroup(userId, group).catch(console.error);
       },
 
-      updateHabitGroup: (name, updates) => {
-        const normalized = name.toLowerCase();
+      updateHabitGroup: (id, updates) => {
         set((state) => ({
           habitGroups: state.habitGroups.map((g) =>
-            g.name.toLowerCase() === normalized ? { ...g, ...updates } : g
+            g.id === id ? { ...g, ...updates } : g
           ),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateHabitGroup(userId, name, updates).catch(console.error);
+        if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
       },
 
-      removeHabitGroup: (name) => {
-        const normalized = name.toLowerCase();
+      removeHabitGroup: (id) => {
+        const group = get().habitGroups.find((g) => g.id === id);
         set((state) => ({
-          habitGroups: state.habitGroups.filter((g) => g.name.toLowerCase() !== normalized),
+          habitGroups: state.habitGroups.filter((g) => g.id !== id),
           habits: state.habits.map((h) =>
-            h.group.toLowerCase() === normalized
-              ? { ...h, group: state.habitGroups.find(g => g.name.toLowerCase() !== normalized)?.name || 'Personal' }
+            h.group === group?.name
+              ? { ...h, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
               : h
           ),
         }));
 
         const userId = get().userId;
-        if (userId) dbDeleteHabitGroup(userId, name).catch(console.error);
+        if (userId) dbDeleteHabitGroup(userId, id).catch(console.error);
       },
 
       getHabitGroupEmoji: (name) => {

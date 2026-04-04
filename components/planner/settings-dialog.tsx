@@ -144,7 +144,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
     setOpenclawConn({ kind: 'loading' });
     let cancelled = false;
-    fetch('/api/openclaw/chat-url')
+    fetch('/api/agent/chat-url')
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();

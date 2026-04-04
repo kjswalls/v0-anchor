@@ -4,7 +4,7 @@ import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-ser
 import { fetchTasks, fetchHabits, fetchProjects, fetchHabitGroups } from '@/lib/db'
 
 /**
- * GET /api/openclaw/context
+ * GET /api/agent/context
  *
  * Returns the authenticated user's current tasks, habits, projects, and habit
  * groups. Used by the OpenClaw Anchor plugin to seed its local context cache.
@@ -53,6 +53,28 @@ export async function GET(req: NextRequest) {
     habits,
     projects,
     habitGroups,
+    capabilities: {
+      tasks: {
+        create: 'POST /api/agent/tasks',
+        update: 'PATCH /api/agent/tasks/:id — to complete a task use { status: "done" }',
+        delete: 'DELETE /api/agent/tasks/:id — soft delete, recoverable from trash',
+      },
+      habits: {
+        create: 'POST /api/agent/habits',
+        update: 'PATCH /api/agent/habits/:id',
+        delete: 'DELETE /api/agent/habits/:id — soft delete',
+      },
+      projects: {
+        create: 'POST /api/agent/projects',
+        update: 'PATCH /api/agent/projects/:id',
+        delete: 'DELETE /api/agent/projects/:id — soft delete',
+      },
+      habitGroups: {
+        create: 'POST /api/agent/habit-groups',
+        update: 'PATCH /api/agent/habit-groups/:id',
+        delete: 'DELETE /api/agent/habit-groups/:id — soft delete',
+      },
+    },
   })
 }
 

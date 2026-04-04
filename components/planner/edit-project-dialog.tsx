@@ -140,7 +140,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
     
     const finalDuration = isCustomDuration ? (parseInt(customDuration) || 60) : duration;
     
-    updateProject(project.name, {
+    updateProject(project.id, {
       emoji,
       timeBucket: hasTimeBlock ? timeBucket : undefined,
       startTime: hasTimeBlock ? startTime : undefined,
