@@ -29,6 +29,7 @@ export async function fetchContext(cfg: PluginConfig): Promise<void> {
   const data = parsed.data
   cache = {
     userId: data.userId,
+    userTimezone: data.userTimezone ?? "UTC",
     tasks: data.tasks,
     habits: data.habits,
     projects: data.projects,

@@ -7,11 +7,16 @@ export function isPlanning(message: string): boolean {
   return PLANNING_PHRASES.some((kw) => lower.includes(kw))
 }
 
+function getLocalDate(timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
+}
+
 /** ~20 tokens — always injected */
 export function buildHeader(): string {
   const cache = getCache()
   if (!cache) return ''
-  const today = new Date().toISOString().slice(0, 10)
+  const timezone = cache.userTimezone ?? "UTC"
+  const today = getLocalDate(timezone)
   const pending = cache.tasks.filter((t) => t.status === 'pending')
   const overdue = pending.filter((t) => t.startDate && t.startDate < today)
   const todayTasks = pending.filter((t) => !t.startDate || t.startDate === today)
@@ -23,7 +28,8 @@ export function buildHeader(): string {
 export function buildFullContext(): string {
   const cache = getCache()
   if (!cache) return ''
-  const today = new Date().toISOString().slice(0, 10)
+  const timezone = cache.userTimezone ?? "UTC"
+  const today = getLocalDate(timezone)
   const lines: string[] = []
 
   const pending = cache.tasks.filter((t) => t.status === 'pending')
@@ -37,16 +43,16 @@ export function buildFullContext(): string {
       const pri = t.priority ? ` [${t.priority}]` : ''
       const proj = t.project ? ` (${t.project})` : ''
       const time = t.startTime ? ` @ ${t.startTime}` : ''
-      lines.push(`- ${t.title}${pri}${proj}${time}`)
+      lines.push(`- ${t.title} [id: ${t.id}]${pri}${proj}${time}`)
     }
   }
   if (overdue.length) {
     lines.push('\n## Overdue Tasks')
-    for (const t of overdue) lines.push(`- ${t.title} [overdue: ${t.startDate}]`)
+    for (const t of overdue) lines.push(`- ${t.title} [id: ${t.id}] [overdue: ${t.startDate}]`)
   }
   if (upcoming.length) {
     lines.push('\n## Upcoming Tasks')
-    for (const t of upcoming.slice(0, 5)) lines.push(`- ${t.title} (${t.startDate})`)
+    for (const t of upcoming.slice(0, 5)) lines.push(`- ${t.title} [id: ${t.id}] (${t.startDate})`)
     if (upcoming.length > 5) lines.push(`  …and ${upcoming.length - 5} more`)
   }
 
@@ -54,8 +60,8 @@ export function buildFullContext(): string {
   const doneHabits = cache.habits.filter((h) => h.status === 'done')
   if (pendingHabits.length || doneHabits.length) {
     lines.push('\n## Habits')
-    for (const h of doneHabits) lines.push(`- ✅ ${h.title} (${h.streak} day streak)`)
-    for (const h of pendingHabits) lines.push(`- ⬜ ${h.title} (${h.streak} day streak)`)
+    for (const h of doneHabits) lines.push(`- ✅ ${h.title} [id: ${h.id}] (${h.streak} day streak)`)
+    for (const h of pendingHabits) lines.push(`- ⬜ ${h.title} [id: ${h.id}] (${h.streak} day streak)`)
   }
 
   if (cache.projects.length) {
