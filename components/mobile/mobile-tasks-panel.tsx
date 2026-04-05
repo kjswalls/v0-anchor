@@ -691,7 +691,7 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
             )}
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-4">
               {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
                 <div key={groupName}>
@@ -779,7 +779,7 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-4">
               {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
                 <div key={groupName}>
