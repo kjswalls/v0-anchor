@@ -569,8 +569,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       <aside 
         ref={setDroppableRef}
         className={cn(
-          'border-r border-border bg-sidebar flex flex-col h-full transition-all duration-300',
-          isVisible ? 'w-80' : 'w-0 border-r-0 overflow-hidden',
+          'border-r border-border bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
+          isVisible ? 'w-80' : 'w-0 border-r-0',
           leftSidebarHovered && !leftSidebarOpen && 'shadow-xl z-20 absolute left-0 top-0 bottom-0',
           isOver && 'bg-primary/5 border-primary'
         )}
