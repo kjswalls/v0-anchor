@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check } from 'lucide-react';
 import {
@@ -58,15 +58,16 @@ export function EODReview() {
 
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
-  // Initialize with livePendingTasks directly so the first render already has data.
-  const snapshotRef = useRef<typeof livePendingTasks>(livePendingTasks);
+  // Using useState instead of useRef so that when the snapshot is captured on
+  // open, the component re-renders with the correct (store-loaded) task list.
+  const [pendingTasksSnapshot, setPendingTasksSnapshot] = useState<typeof livePendingTasks>(livePendingTasks);
   useEffect(() => {
     if (isOpen) {
-      snapshotRef.current = livePendingTasks;
+      setPendingTasksSnapshot(livePendingTasks);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-  const pendingTasks = isOpen ? snapshotRef.current : livePendingTasks;
+  const pendingTasks = isOpen ? pendingTasksSnapshot : livePendingTasks;
 
   // Partition today's habits
   const { doneHabits, skippedHabits } = useMemo(() => {

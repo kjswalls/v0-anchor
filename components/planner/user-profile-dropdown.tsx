@@ -70,6 +70,7 @@ export function UserProfileDropdown({ onOpenSettings }: UserProfileDropdownProps
         <Button
           variant="ghost"
           size="icon"
+          aria-label="User menu"
           className="h-8 w-8 rounded-full p-0 hover:ring-2 hover:ring-primary/20 transition-all"
         >
           <Avatar className="h-8 w-8">

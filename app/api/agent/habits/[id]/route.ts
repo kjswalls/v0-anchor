@@ -40,10 +40,14 @@ export async function PATCH(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const updates: Partial<Habit> = await req.json()
-  await updateHabit(id, updates, userId, serviceClient)
-
-  return NextResponse.json({ success: true })
+  try {
+    const updates: Partial<Habit> = await req.json()
+    await updateHabit(id, updates, userId, serviceClient)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }
 
 /**
@@ -81,7 +85,11 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  await deleteHabit(id, userId, serviceClient)
-
-  return NextResponse.json({ success: true })
+  try {
+    await deleteHabit(id, userId, serviceClient)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 }

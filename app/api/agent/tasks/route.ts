@@ -27,27 +27,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const serviceClient = createServiceClient()
-  const body = await req.json()
+  try {
+    const serviceClient = createServiceClient()
+    const body = await req.json()
 
-  const task: Task = {
-    id: body.id ?? crypto.randomUUID(),
-    title: body.title,
-    status: body.status,
-    isScheduled: body.isScheduled,
-    order: body.order,
-    priority: body.priority,
-    project: body.project,
-    startDate: body.startDate,
-    timeBucket: body.timeBucket,
-    startTime: body.startTime,
-    duration: body.duration,
-    repeatFrequency: body.repeatFrequency,
-    repeatDays: body.repeatDays,
-    repeatMonthDay: body.repeatMonthDay,
+    const task: Task = {
+      id: body.id ?? crypto.randomUUID(),
+      title: body.title,
+      status: body.status,
+      isScheduled: body.isScheduled,
+      order: body.order,
+      priority: body.priority,
+      project: body.project,
+      startDate: body.startDate,
+      timeBucket: body.timeBucket,
+      startTime: body.startTime,
+      duration: body.duration,
+      repeatFrequency: body.repeatFrequency,
+      repeatDays: body.repeatDays,
+      repeatMonthDay: body.repeatMonthDay,
+    }
+
+    await createTask(userId, task, serviceClient)
+
+    return NextResponse.json({ task }, { status: 201 })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  await createTask(userId, task, serviceClient)
-
-  return NextResponse.json({ task }, { status: 201 })
 }
