@@ -42,11 +42,11 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // Locate the task card via CSS — find the card containing the task title,
-      // then grab its first button (the complete/circle button).
-      // Note: XPath cannot match "group/card" class (slash is a path separator).
+      // The complete button is a round button (w-5 h-5 rounded-full border-2) scoped
+      // to the task card. We locate the card by the task title text, then find the
+      // circular complete button within it.
       const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('button').first();
+      const getCompleteBtn = () => taskCard.locator('button[class*="rounded-full"][class*="border-2"]').first();
 
       await getCompleteBtn().click();
 
@@ -81,9 +81,9 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // Locate the task card via CSS (XPath can't match "group/card" — slash is a path separator).
+      // Locate the circular complete button (w-5 h-5 rounded-full border-2) within the task card.
       const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('button').first();
+      const getCompleteBtn = () => taskCard.locator('button[class*="rounded-full"][class*="border-2"]').first();
 
       // Complete → undo → redo
       await getCompleteBtn().click();
