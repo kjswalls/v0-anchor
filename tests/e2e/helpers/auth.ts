@@ -161,6 +161,7 @@ export async function loginTestUser(page: Page): Promise<void> {
     }
   }
 
+
   // 6. Navigate to the app. The cookies are already present, so the server
   //    hydrates the session on this first request — no reload required.
   await page.goto('/');
