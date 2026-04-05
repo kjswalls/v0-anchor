@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestHabit, cleanupTestData } from './helpers/api';
 import { format, nextSaturday, nextMonday, nextWednesday } from 'date-fns';
+import { getTodayInTz } from './helpers/dates';
 
 
 /**
@@ -21,8 +22,8 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
     has: page.locator('svg.lucide-chevron-left'),
   }).first();
 
-  // Determine direction: find current date from the page title / header.
-  const today = new Date();
+  // Determine direction: use timezone-aware today so diff matches the browser's view.
+  const today = getTodayInTz();
   const diff = Math.round((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   const btn = diff >= 0 ? nextBtn : prevBtn;
   const clicks = Math.abs(diff);
@@ -63,8 +64,8 @@ test.describe('Recurring tasks and habits', () => {
       await page.reload();
       await page.waitForURL('/');
 
-      // Navigate to next Saturday.
-      const saturday = nextSaturday(new Date());
+      // Navigate to next Saturday (use timezone-aware today so date-fns picks the right day).
+      const saturday = nextSaturday(getTodayInTz());
       await navigateToDate(page, saturday);
 
       // The weekdays habit should NOT be visible on Saturday (check the timeline only, not sidebar).
@@ -91,7 +92,7 @@ test.describe('Recurring tasks and habits', () => {
       await page.waitForURL('/');
 
       // Navigate to next Monday — habit should be visible in the timeline.
-      const monday = nextMonday(new Date());
+      const monday = nextMonday(getTodayInTz());
       await navigateToDate(page, monday);
       await page.waitForTimeout(500);
       await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
@@ -101,7 +102,7 @@ test.describe('Recurring tasks and habits', () => {
       await page.waitForURL('/');
 
       // Navigate to next Wednesday — habit should also be visible in the timeline.
-      const wednesday = nextWednesday(new Date());
+      const wednesday = nextWednesday(getTodayInTz());
       await navigateToDate(page, wednesday);
       await page.waitForTimeout(500);
       await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });

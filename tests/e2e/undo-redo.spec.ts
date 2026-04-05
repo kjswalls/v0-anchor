@@ -41,21 +41,25 @@ test.describe('Undo / redo actions', () => {
       // Navigate: task-title <p> → ancestor div.group/card → first button child.
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
-      const completeBtn = timeline
-        .locator('p')
-        .filter({ hasText: taskTitle })
-        .first()
-        .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
-      await completeBtn.click();
+
+      // Helper to re-query the button (card may re-render after complete/undo).
+      const getCompleteBtn = () =>
+        timeline
+          .locator('p')
+          .filter({ hasText: taskTitle })
+          .first()
+          .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
+
+      await getCompleteBtn().click();
 
       // Verify the task became completed (button gets bg-primary class).
-      await expect(completeBtn).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
 
       // Undo with Ctrl+Z — the action-feed listens for this keydown.
       await page.keyboard.press('Control+Z');
 
-      // The button should revert to non-completed state.
-      await expect(completeBtn).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
+      // Re-query after undo — the card may have re-mounted.
+      await expect(getCompleteBtn()).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -78,21 +82,24 @@ test.describe('Undo / redo actions', () => {
 
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
-      const completeBtn = timeline
-        .locator('p')
-        .filter({ hasText: taskTitle })
-        .first()
-        .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
+
+      // Helper to re-query the button (card may re-render after complete/undo/redo).
+      const getCompleteBtn = () =>
+        timeline
+          .locator('p')
+          .filter({ hasText: taskTitle })
+          .first()
+          .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
 
       // Complete → undo → redo
-      await completeBtn.click();
-      await expect(completeBtn).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await getCompleteBtn().click();
+      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
 
       await page.keyboard.press('Control+Z');
-      await expect(completeBtn).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expect(getCompleteBtn()).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
 
       await page.keyboard.press('Control+Shift+Z');
-      await expect(completeBtn).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
