@@ -29,28 +29,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const serviceClient = createServiceClient()
-  const body = await req.json()
+  try {
+    const serviceClient = createServiceClient()
+    const body = await req.json()
 
-  const habit: Habit = {
-    id: body.id ?? crypto.randomUUID(),
-    title: body.title,
-    group: body.group,
-    streak: body.streak ?? 0,
-    status: body.status,
-    repeatFrequency: body.repeatFrequency,
-    completedDates: body.completedDates ?? [],
-    skippedDates: body.skippedDates ?? [],
-    dailyCounts: body.dailyCounts ?? {},
-    timeBucket: body.timeBucket,
-    startTime: body.startTime,
-    repeatDays: body.repeatDays,
-    repeatMonthDay: body.repeatMonthDay,
-    timesPerDay: body.timesPerDay,
-    currentDayCount: body.currentDayCount,
+    const habit: Habit = {
+      id: body.id ?? crypto.randomUUID(),
+      title: body.title,
+      group: body.group,
+      streak: body.streak ?? 0,
+      status: body.status,
+      repeatFrequency: body.repeatFrequency,
+      completedDates: body.completedDates ?? [],
+      skippedDates: body.skippedDates ?? [],
+      dailyCounts: body.dailyCounts ?? {},
+      timeBucket: body.timeBucket,
+      startTime: body.startTime,
+      repeatDays: body.repeatDays,
+      repeatMonthDay: body.repeatMonthDay,
+      timesPerDay: body.timesPerDay,
+      currentDayCount: body.currentDayCount,
+    }
+
+    await createHabit(userId, habit, serviceClient)
+
+    return NextResponse.json({ habit }, { status: 201 })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
-
-  await createHabit(userId, habit, serviceClient)
-
-  return NextResponse.json({ habit }, { status: 201 })
 }
