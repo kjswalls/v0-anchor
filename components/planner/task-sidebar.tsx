@@ -569,8 +569,8 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       <aside 
         ref={setDroppableRef}
         className={cn(
-          'border-r border-border bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
-          isVisible ? 'w-80' : 'w-0 border-r-0',
+          'border-r border-border bg-sidebar flex flex-col h-full transition-all duration-300',
+          isVisible ? 'w-80' : 'w-0 border-r-0 overflow-hidden',
           leftSidebarHovered && !leftSidebarOpen && 'shadow-xl z-20 absolute left-0 top-0 bottom-0',
           isOver && 'bg-primary/5 border-primary'
         )}
@@ -680,7 +680,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
             )}
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-4">
               {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
                 <div key={groupName}>
@@ -790,7 +790,7 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
             )}
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-4">
               {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
                 <div key={groupName}>
