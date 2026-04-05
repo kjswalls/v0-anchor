@@ -52,7 +52,7 @@ interface AddTaskDialogProps {
 
 export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', defaultBucket, defaultDate }: AddTaskDialogProps) {
   const {
-    addTask, addHabit, projects, habitGroups, scheduleTask,
+    addTask, addHabit, projects, habitGroups,
     addProject, removeProject, addHabitGroup, removeHabitGroup,
     selectedDate, defaultTimeBucket
   } = usePlannerStore();
@@ -198,13 +198,6 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
     repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
   });
   
-  // If a date was selected, schedule the task
-  if (taskStartDate && effectiveTimeBucket) {
-    const newTaskId = usePlannerStore.getState().tasks[usePlannerStore.getState().tasks.length - 1]?.id;
-    if (newTaskId) {
-      scheduleTask(newTaskId, effectiveTimeBucket, taskStartTime || undefined);
-    }
-  }
     
     resetForm();
     onOpenChange(false);
