@@ -44,8 +44,8 @@ test.describe('Undo / redo actions', () => {
 
       // Locate the task card by data-testid, scoped to the card that contains the
       // task title. Then find the circular complete button within it via data-testid.
-      const taskCard = timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('[data-testid="task-complete-button"]');
+      const getTaskCard = () => timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => getTaskCard().locator('[data-testid="task-complete-button"]');
 
       await getCompleteBtn().click();
 
@@ -82,8 +82,8 @@ test.describe('Undo / redo actions', () => {
 
       // Locate the task card by data-testid, scoped to the card that contains the
       // task title. Then find the circular complete button within it via data-testid.
-      const taskCard = timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('[data-testid="task-complete-button"]');
+      const getTaskCard = () => timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => getTaskCard().locator('[data-testid="task-complete-button"]');
 
       // Complete → undo → redo
       await getCompleteBtn().click();
