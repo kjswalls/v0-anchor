@@ -321,6 +321,10 @@ export const usePlannerStore = create<PlannerStore>()(
       error: null,
 
       initializeStore: async (userId: string) => {
+        // Block subscriber during initialization to prevent poisoned history entries
+        isUpdatingUndoRedo = true;
+        hasInitializedHistory = false;
+
         // Reset history for new session
         historyStack = [];
         historyIndex = -1;
@@ -984,6 +988,12 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex--;
         const prevState = historyStack[historyIndex];
 
+        if (!prevState) {
+          historyIndex++;
+          isUndoRedoAction = false;
+          return;
+        }
+
         const restoredTasks = JSON.parse(JSON.stringify(prevState.tasks));
         const restoredHabits = JSON.parse(JSON.stringify(prevState.habits));
         const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
@@ -1010,11 +1020,34 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
+          // Sync status changes for tasks present in both states
+          restoredTasks.forEach((t: Task) => {
+            if (currentTaskIds.has(t.id)) {
+              const cur = currentState.tasks.find((ct) => ct.id === t.id);
+              if (cur && cur.status !== t.status) dbUpdateTask(t.id, { status: t.status }).catch(console.error);
+            }
+          });
 
           const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
           const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
           restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
           currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
+          // Sync status changes for habits present in both states
+          restoredHabits.forEach((h: Habit) => {
+            if (currentHabitIds.has(h.id)) {
+              const cur = currentState.habits.find((ch) => ch.id === h.id);
+              if (cur && cur.status !== h.status) {
+                dbUpdateHabit(h.id, {
+                  status: h.status,
+                  completedDates: h.completedDates,
+                  skippedDates: h.skippedDates,
+                  dailyCounts: h.dailyCounts,
+                  currentDayCount: h.currentDayCount,
+                  streak: h.streak,
+                }).catch(console.error);
+              }
+            }
+          });
 
           const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
           const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
@@ -1037,6 +1070,12 @@ export const usePlannerStore = create<PlannerStore>()(
         isUndoRedoAction = true;
         historyIndex++;
         const nextState = historyStack[historyIndex];
+
+        if (!nextState) {
+          historyIndex--;
+          isUndoRedoAction = false;
+          return;
+        }
 
         const restoredTasks = JSON.parse(JSON.stringify(nextState.tasks));
         const restoredHabits = JSON.parse(JSON.stringify(nextState.habits));
@@ -1064,11 +1103,34 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
+          // Sync status changes for tasks present in both states
+          restoredTasks.forEach((t: Task) => {
+            if (currentTaskIds.has(t.id)) {
+              const cur = currentState.tasks.find((ct) => ct.id === t.id);
+              if (cur && cur.status !== t.status) dbUpdateTask(t.id, { status: t.status }).catch(console.error);
+            }
+          });
 
           const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
           const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
           restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
           currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
+          // Sync status changes for habits present in both states
+          restoredHabits.forEach((h: Habit) => {
+            if (currentHabitIds.has(h.id)) {
+              const cur = currentState.habits.find((ch) => ch.id === h.id);
+              if (cur && cur.status !== h.status) {
+                dbUpdateHabit(h.id, {
+                  status: h.status,
+                  completedDates: h.completedDates,
+                  skippedDates: h.skippedDates,
+                  dailyCounts: h.dailyCounts,
+                  currentDayCount: h.currentDayCount,
+                  streak: h.streak,
+                }).catch(console.error);
+              }
+            }
+          });
 
           const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
           const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
