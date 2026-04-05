@@ -114,6 +114,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
     <div
       ref={setNodeRef}
       style={style}
+      data-testid="task-card"
       className={cn('group relative flex items-stretch gap-1', isDragging && 'opacity-50 z-50')}
       onMouseEnter={() => { setHoveredItem(task.id, 'task'); setIsHovered(true); }}
       onMouseLeave={() => { setHoveredItem(null, null); setIsHovered(false); }}
@@ -151,6 +152,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
 
         {/* Checkbox */}
         <button
+          data-testid="task-complete-button"
           onClick={(e) => {
             e.stopPropagation();
             toggleTaskStatus(task.id);

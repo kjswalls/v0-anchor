@@ -42,11 +42,10 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // The complete button is a round button (w-5 h-5 rounded-full border-2) scoped
-      // to the task card. We locate the card by the task title text, then find the
-      // circular complete button within it.
-      const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('button[class*="rounded-full"][class*="border-2"]').first();
+      // Locate the task card by data-testid, scoped to the card that contains the
+      // task title. Then find the circular complete button within it via data-testid.
+      const taskCard = timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => taskCard.locator('[data-testid="task-complete-button"]');
 
       await getCompleteBtn().click();
 
@@ -81,9 +80,10 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // Locate the circular complete button (w-5 h-5 rounded-full border-2) within the task card.
-      const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => taskCard.locator('button[class*="rounded-full"][class*="border-2"]').first();
+      // Locate the task card by data-testid, scoped to the card that contains the
+      // task title. Then find the circular complete button within it via data-testid.
+      const taskCard = timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => taskCard.locator('[data-testid="task-complete-button"]');
 
       // Complete → undo → redo
       await getCompleteBtn().click();
