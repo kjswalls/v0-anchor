@@ -16,7 +16,11 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Match the app's timezone so date helpers and the browser agree on "today".
+        timezoneId: 'America/Los_Angeles',
+      },
     },
   ],
 
