@@ -1171,7 +1171,7 @@ let hasInitializedHistory = false;
 // Initialize prevStateJson eagerly with the store's initial state
 // This captures the "before" state so we can properly undo the first action
 const initialStoreState = usePlannerStore.getState();
-let prevStateJson: string = JSON.stringify({
+let prevStateJson: string | null = JSON.stringify({
   tasks: initialStoreState.tasks,
   habits: initialStoreState.habits,
   projects: initialStoreState.projects,
@@ -1200,7 +1200,7 @@ usePlannerStore.subscribe((state) => {
   if (!hasInitializedHistory && historyStack.length === 0) {
     hasInitializedHistory = true;
     // Save the PREVIOUS state as baseline (captured before this change)
-    const baselineState = JSON.parse(prevStateJson);
+    const baselineState = prevStateJson ? JSON.parse(prevStateJson) : currentState;
     historyStack.push(JSON.parse(JSON.stringify(baselineState)));
     actionLog.push({
       id: crypto.randomUUID(),
