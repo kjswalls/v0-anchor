@@ -42,13 +42,11 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // Helper to re-query the button (card may re-render after complete/undo).
-      const getCompleteBtn = () =>
-        timeline
-          .locator('p')
-          .filter({ hasText: taskTitle })
-          .first()
-          .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
+      // Locate the task card via CSS — find the card containing the task title,
+      // then grab its first button (the complete/circle button).
+      // Note: XPath cannot match "group/card" class (slash is a path separator).
+      const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => taskCard.locator('button').first();
 
       await getCompleteBtn().click();
 
@@ -58,7 +56,7 @@ test.describe('Undo / redo actions', () => {
       // Undo with Ctrl+Z — the action-feed listens for this keydown.
       await page.keyboard.press('Control+Z');
 
-      // Re-query after undo — the card may have re-mounted.
+      // After undo the task re-appears as pending — button should lose bg-primary.
       await expect(getCompleteBtn()).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
@@ -83,13 +81,9 @@ test.describe('Undo / redo actions', () => {
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
-      // Helper to re-query the button (card may re-render after complete/undo/redo).
-      const getCompleteBtn = () =>
-        timeline
-          .locator('p')
-          .filter({ hasText: taskTitle })
-          .first()
-          .locator('xpath=ancestor::div[contains(@class,"group/card")][1]/button[1]');
+      // Locate the task card via CSS (XPath can't match "group/card" — slash is a path separator).
+      const taskCard = timeline.locator('[class*="rounded-xl"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => taskCard.locator('button').first();
 
       // Complete → undo → redo
       await getCompleteBtn().click();
