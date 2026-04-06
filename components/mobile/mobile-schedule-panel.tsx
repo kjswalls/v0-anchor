@@ -43,16 +43,24 @@ interface MobileSchedulePanelProps {
 
 // Mobile Scheduled Task Item
 function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => void }) {
-  const { toggleTaskStatus, deleteTask, unscheduleTask, getProjectEmoji } = usePlannerStore();
+  const { toggleTaskStatus, deleteTask, unscheduleTask, getProjectEmoji, selectedDate, userTimezone } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // For recurring tasks, derive completion from completedDates for the viewed date
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);
+  const taskIsRecurring = isRecurring(task);
+  const isTaskDone = taskIsRecurring
+    ? isCompletedOnDate(task, selectedDateStr)
+    : task.status === 'completed';
 
   return (
     <>
       <div
         className={cn(
           'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
-          task.status === 'completed' && 'opacity-60'
+          isTaskDone && 'opacity-60'
         )}
         onClick={onClick}
       >
@@ -69,12 +77,12 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
           }}
           className={cn(
             'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mt-0.5',
-            task.status === 'completed'
+            isTaskDone
               ? 'bg-primary border-primary'
               : 'border-muted-foreground/40 active:border-primary'
           )}
         >
-          {task.status === 'completed' && (
+          {isTaskDone && (
             <Check className="h-3 w-3 text-primary-foreground" />
           )}
         </button>
@@ -83,7 +91,7 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
           <div className="flex items-start justify-between gap-2">
             <p className={cn(
               'text-sm font-medium text-foreground leading-tight',
-              task.status === 'completed' && 'line-through text-muted-foreground'
+              isTaskDone && 'line-through text-muted-foreground'
             )}>
               {task.title}
             </p>
@@ -554,6 +562,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
     if (timelineItemFilter !== 'tasks') {
       habits.forEach((habit) => {
         if (!habit.timeBucket) return;
+        if (!shouldShowOnDate(habit, selectedDateStr, resolvedTimezone)) return;
         buckets[habit.timeBucket].habits.push(habit);
       });
     }
