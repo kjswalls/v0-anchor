@@ -5,6 +5,7 @@ export {
   TaskStatusSchema,
   HabitStatusSchema,
   RepeatFrequencySchema,
+  RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
   TaskSchema,
@@ -21,6 +22,7 @@ import {
   TaskStatusSchema,
   HabitStatusSchema,
   RepeatFrequencySchema,
+  RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
   TaskSchema,
@@ -34,6 +36,7 @@ export type TimeBucket       = z.infer<typeof TimeBucketSchema>
 export type TaskStatus       = z.infer<typeof TaskStatusSchema>
 export type HabitStatus      = z.infer<typeof HabitStatusSchema>
 export type RepeatFrequency  = z.infer<typeof RepeatFrequencySchema>
+export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
 export type Project          = z.infer<typeof ProjectSchema>
 export type HabitGroupType   = z.infer<typeof HabitGroupSchema>
 export type Task             = z.infer<typeof TaskSchema>

@@ -10,6 +10,16 @@ export const RepeatFrequencySchema = z.enum([
   'none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom',
 ])
 
+// ── Shared recurrence fields ───────────────────────────────────────────────────
+
+export const RecurrenceFieldsSchema = z.object({
+  repeatFrequency: RepeatFrequencySchema.optional(),
+  repeatDays: z.array(z.number()).optional(),
+  repeatMonthDay: z.number().optional(),
+  completedDates: z.array(z.string()).optional(),
+})
+export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
+
 // ── Core entities ──────────────────────────────────────────────────────────────
 
 export const ProjectSchema = z.object({
@@ -42,13 +52,11 @@ export const TaskSchema = z.object({
   startTime: z.string().optional(),   // HH:mm
   duration: z.number().optional(),    // minutes
   isScheduled: z.boolean(),
-  repeatFrequency: RepeatFrequencySchema.optional(),
-  repeatDays: z.array(z.number()).optional(),
-  repeatMonthDay: z.number().optional(),
   order: z.number(),
   inProjectBlock: z.boolean().optional(),
   previousStartTime: z.string().optional(),
   previousStartDate: z.string().optional(),
+  ...RecurrenceFieldsSchema.shape,
 }).superRefine((data, ctx) => {
   if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
     ctx.addIssue({

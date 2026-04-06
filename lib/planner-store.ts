@@ -40,6 +40,7 @@ import {
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
 import { saveSettings } from './settings-service';
+import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 
 interface PlannerStore {
   tasks: Task[];
@@ -91,7 +92,7 @@ interface PlannerStore {
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  toggleTaskStatus: (id: string) => void;
+  toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
   scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
@@ -463,19 +464,36 @@ export const usePlannerStore = create<PlannerStore>()(
         dbDeleteTask(id).catch(console.error);
       },
 
-      toggleTaskStatus: (id) => {
+      toggleTaskStatus: (id, status?, date?) => {
         const task = get().tasks.find((t) => t.id === id);
-        const newStatus: TaskStatus = task?.status === 'completed' ? 'pending' : 'completed';
-        setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task?.title || 'Unknown'}`);
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' }
-              : t
-          ),
-        }));
+        if (!task) return;
 
-        dbUpdateTask(id, { status: newStatus }).catch(console.error);
+        if (isRecurring(task)) {
+          // Per-date completion tracking — never change global status
+          const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const dateStr = date ? toDateStr(date, userTimezone) : toDateStr(new Date(), userTimezone);
+          const alreadyDone = isCompletedOnDate(task, dateStr);
+          const newCompletedDates = alreadyDone
+            ? (task.completedDates ?? []).filter(d => d !== dateStr)
+            : [...(task.completedDates ?? []), dateStr];
+
+          setNextActionLabel(`${alreadyDone ? 'Uncomplete' : 'Complete'} task on ${dateStr}: ${task.title}`);
+          const updatedTask = { ...task, completedDates: newCompletedDates };
+          set((state) => ({
+            tasks: state.tasks.map(t => t.id === id ? updatedTask : t),
+          }));
+          dbUpdateTask(id, { completedDates: newCompletedDates }).catch(console.error);
+        } else {
+          // One-off task — existing behavior unchanged
+          const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
+          setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task.title}`);
+          set((state) => ({
+            tasks: state.tasks.map((t) =>
+              t.id === id ? { ...t, status: newStatus } : t
+            ),
+          }));
+          dbUpdateTask(id, { status: newStatus }).catch(console.error);
+        }
       },
 
       scheduleTask: (id, bucket, time, date) => {

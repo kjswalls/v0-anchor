@@ -20,6 +20,7 @@ interface TaskRow {
   repeat_frequency?: string | null;
   repeat_days?: number[] | null;
   repeat_month_day?: number | null;
+  completed_dates: string[] | null;
   order: number;
   in_project_block?: boolean | null;
   previous_start_time?: string | null;
@@ -41,6 +42,7 @@ function taskFromRow(row: TaskRow): Task {
     repeatFrequency: (row.repeat_frequency ?? undefined) as Task['repeatFrequency'],
     repeatDays: row.repeat_days ?? undefined,
     repeatMonthDay: row.repeat_month_day ?? undefined,
+    completedDates: row.completed_dates ?? [],
     order: row.order,
     inProjectBlock: row.in_project_block ?? undefined,
     previousStartTime: row.previous_start_time ?? undefined,
@@ -64,6 +66,7 @@ function taskToRow(userId: string, task: Task): TaskRow {
     repeat_frequency: task.repeatFrequency ?? null,
     repeat_days: task.repeatDays ?? null,
     repeat_month_day: task.repeatMonthDay ?? null,
+    completed_dates: task.completedDates ?? [],
     order: task.order,
     in_project_block: task.inProjectBlock ?? null,
     previous_start_time: task.previousStartTime ?? null,
@@ -85,6 +88,7 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency ?? null;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
+  if ('completedDates' in updates) row.completed_dates = updates.completedDates ?? [];
   if ('order' in updates) row.order = updates.order;
   if ('inProjectBlock' in updates) row.in_project_block = updates.inProjectBlock ?? null;
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;

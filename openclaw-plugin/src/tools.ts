@@ -90,6 +90,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       startTime: Type.Optional(Type.String({ description: 'HH:MM' })),
       priority: Type.Optional(Type.String({ description: 'low | medium | high' })),
       project: Type.Optional(Type.String({ description: 'Project name' })),
+      completedDates: Type.Optional(Type.Array(Type.String(), { description: 'ISO date strings (YYYY-MM-DD) on which this recurring task was completed' })),
     }),
     async execute(params: {
       id: string
@@ -99,6 +100,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       startTime?: string
       priority?: string
       project?: string
+      completedDates?: string[]
     }) {
       const { id, ...fields } = params
       const body: Record<string, unknown> = {}
@@ -108,6 +110,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       if (fields.startTime !== undefined) body.startTime = fields.startTime
       if (fields.priority !== undefined) body.priority = fields.priority
       if (fields.project !== undefined) body.project = fields.project
+      if (fields.completedDates !== undefined) body.completedDates = fields.completedDates
 
       const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks/${id}`, {
         method: 'PATCH',

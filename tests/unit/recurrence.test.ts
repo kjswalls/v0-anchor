@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
+import { shouldShowOnDate, toDateStr, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -65,6 +65,35 @@ describe('habit / task recurrence logic', () => {
     for (const dateStr of dates) {
       expect(shouldShowOnDate(weeklyHabit, dateStr, tz)).toBe(shouldShowOnDate(customHabit, dateStr, tz));
     }
+  });
+
+  it('isCompletedOnDate returns true when dateStr is in completedDates', () => {
+    expect(isCompletedOnDate({ completedDates: ['2025-01-13', '2025-01-15'] }, '2025-01-13')).toBe(true);
+    expect(isCompletedOnDate({ completedDates: ['2025-01-13', '2025-01-15'] }, '2025-01-15')).toBe(true);
+  });
+
+  it('isCompletedOnDate returns false when dateStr is not in completedDates', () => {
+    expect(isCompletedOnDate({ completedDates: ['2025-01-13'] }, '2025-01-14')).toBe(false);
+    expect(isCompletedOnDate({ completedDates: [] }, '2025-01-13')).toBe(false);
+  });
+
+  it('isCompletedOnDate returns false when completedDates is undefined', () => {
+    expect(isCompletedOnDate({}, '2025-01-13')).toBe(false);
+    expect(isCompletedOnDate({ completedDates: undefined }, '2025-01-13')).toBe(false);
+  });
+
+  it('isRecurring returns true for daily/weekdays/weekends/monthly/custom frequencies', () => {
+    expect(isRecurring({ repeatFrequency: 'daily' })).toBe(true);
+    expect(isRecurring({ repeatFrequency: 'weekdays' })).toBe(true);
+    expect(isRecurring({ repeatFrequency: 'weekends' })).toBe(true);
+    expect(isRecurring({ repeatFrequency: 'monthly' })).toBe(true);
+    expect(isRecurring({ repeatFrequency: 'custom' })).toBe(true);
+  });
+
+  it('isRecurring returns false for none or undefined frequency', () => {
+    expect(isRecurring({ repeatFrequency: 'none' })).toBe(false);
+    expect(isRecurring({})).toBe(false);
+    expect(isRecurring({ repeatFrequency: undefined })).toBe(false);
   });
 
   it('monthly habit with repeatMonthDay=15 appears only on the 15th', () => {

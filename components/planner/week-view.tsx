@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { Check, Clock, Flame, Plus, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
+import { shouldShowOnDate, toDateStr, isRecurring, isCompletedOnDate } from '@/lib/recurrence';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
@@ -61,12 +61,19 @@ const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; g
 interface DraggableTaskPillProps {
   task: Task;
   onClick: () => void;
+  date: Date;
+  dateStr: string;
 }
 
-function DraggableTaskPill({ task, onClick }: DraggableTaskPillProps) {
+function DraggableTaskPill({ task, onClick, date, dateStr }: DraggableTaskPillProps) {
   const { getProjectEmoji, toggleTaskStatus } = usePlannerStore();
   const projectEmoji = task.project ? getProjectEmoji(task.project) : null;
-  
+
+  const taskIsRecurring = isRecurring(task);
+  const isTaskDoneOnDate = taskIsRecurring
+    ? isCompletedOnDate(task, dateStr)
+    : task.status === 'completed';
+
   const {
     attributes,
     listeners,
@@ -86,7 +93,7 @@ function DraggableTaskPill({ task, onClick }: DraggableTaskPillProps) {
       className={cn(
         'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
         'bg-card border border-border/50 hover:border-border transition-colors cursor-pointer',
-        task.status === 'completed' && 'opacity-50',
+        isTaskDoneOnDate && 'opacity-50',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
     >
@@ -94,32 +101,32 @@ function DraggableTaskPill({ task, onClick }: DraggableTaskPillProps) {
       <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing flex-shrink-0 touch-none">
         <GripVertical className="w-2 h-2 text-muted-foreground/40" />
       </span>
-      
+
       {/* Checkbox */}
       <button
         onClick={(e) => {
           e.stopPropagation();
-          toggleTaskStatus(task.id);
+          toggleTaskStatus(task.id, undefined, taskIsRecurring ? date : undefined);
         }}
         className={cn(
           'flex-shrink-0 w-2.5 h-2.5 rounded-full border flex items-center justify-center',
-          task.status === 'completed' ? 'bg-primary border-primary' : 'border-muted-foreground/40 hover:border-primary'
+          isTaskDoneOnDate ? 'bg-primary border-primary' : 'border-muted-foreground/40 hover:border-primary'
         )}
       >
-        {task.status === 'completed' && (
+        {isTaskDoneOnDate && (
           <Check className="w-1.5 h-1.5 text-primary-foreground" />
         )}
       </button>
-      
+
       {/* Project emoji */}
       {projectEmoji && (
         <span className="flex-shrink-0 text-[8px]">{projectEmoji}</span>
       )}
-      
+
       {/* Title */}
-      <span 
+      <span
         onClick={onClick}
-        className={cn('truncate flex-1', task.status === 'completed' && 'line-through')}
+        className={cn('truncate flex-1', isTaskDoneOnDate && 'line-through')}
       >
         {task.title}
       </span>
@@ -297,8 +304,13 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
-      const taskDateStr = normalizeDateStr(task.startDate);
-      return taskDateStr === dateStr;
+      const taskStartDateStr = normalizeDateStr(task.startDate);
+      if (isRecurring(task)) {
+        // Recurring tasks: show if shouldShowOnDate AND startDate is on or before the date
+        return shouldShowOnDate(task, dateStr, resolvedTimezone) && taskStartDateStr <= dateStr;
+      }
+      // One-off tasks: exact date match
+      return taskStartDateStr === dateStr;
     });
 
     const dayHabits = habits.filter(h => shouldShowOnDate(h, dateStr, resolvedTimezone));
@@ -607,26 +619,31 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     )}
                     
                     {/* 1. Unscheduled habits first (matching day view order) */}
-                    {unscheduledHabits.map((habit) => (
-                      <button
-                        key={habit.id}
-                        onClick={() => onHabitClick(habit)}
-                        className={cn(
-                          'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
-                          'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
-                          habit.status === 'done' && 'opacity-50'
-                        )}
-                      >
-                        <Flame className="w-2 h-2 text-primary flex-shrink-0" />
-                        <span className="truncate">{habit.title}</span>
-                      </button>
-                    ))}
+                    {unscheduledHabits.map((habit) => {
+                      const habitDoneOnDate = isCompletedOnDate(habit, toDateStr(day, resolvedTimezone));
+                      return (
+                        <button
+                          key={habit.id}
+                          onClick={() => onHabitClick(habit)}
+                          className={cn(
+                            'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
+                            'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
+                            habitDoneOnDate && 'opacity-50'
+                          )}
+                        >
+                          {habitDoneOnDate
+                            ? <Check className="w-2 h-2 text-primary flex-shrink-0" />
+                            : <Flame className="w-2 h-2 text-primary flex-shrink-0" />}
+                          <span className={cn('truncate', habitDoneOnDate && 'line-through')}>{habit.title}</span>
+                        </button>
+                      );
+                    })}
                     
                     {/* 2. Unscheduled tasks not in project blocks */}
                     {tasksNotInBlocks.map((task) => (
-                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} date={day} dateStr={toDateStr(day, resolvedTimezone)} />
                     ))}
-                    
+
                     {/* 3. Project blocks (including recurring) - contains scheduled items */}
                     {allProjectBlocks.map((project) => (
                       <WeekProjectBlock
@@ -637,27 +654,32 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         onTaskClick={onTaskClick}
                       />
                     ))}
-                    
+
                     {/* 4. Scheduled habits */}
-                    {scheduledHabits.map((habit) => (
-                      <button
-                        key={habit.id}
-                        onClick={() => onHabitClick(habit)}
-                        className={cn(
-                          'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
-                          'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
-                          habit.status === 'done' && 'opacity-50'
-                        )}
-                      >
-                        <Clock className="w-2 h-2 text-primary flex-shrink-0" />
-                        <span className="truncate">{habit.title}</span>
-                        {habit.startTime && <span className="text-[8px] text-muted-foreground ml-auto">{habit.startTime}</span>}
-                      </button>
-                    ))}
-                    
+                    {scheduledHabits.map((habit) => {
+                      const habitDoneOnDate = isCompletedOnDate(habit, toDateStr(day, resolvedTimezone));
+                      return (
+                        <button
+                          key={habit.id}
+                          onClick={() => onHabitClick(habit)}
+                          className={cn(
+                            'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
+                            'bg-primary/10 border border-primary/20 hover:border-primary/40 transition-colors',
+                            habitDoneOnDate && 'opacity-50'
+                          )}
+                        >
+                          {habitDoneOnDate
+                            ? <Check className="w-2 h-2 text-primary flex-shrink-0" />
+                            : <Clock className="w-2 h-2 text-primary flex-shrink-0" />}
+                          <span className={cn('truncate', habitDoneOnDate && 'line-through')}>{habit.title}</span>
+                          {habit.startTime && <span className="text-[8px] text-muted-foreground ml-auto">{habit.startTime}</span>}
+                        </button>
+                      );
+                    })}
+
                     {/* 5. Scheduled tasks (with startTime, not in project blocks) */}
                     {scheduledTasks.filter(t => !allProjectBlocks.some(p => p.name === t.project)).map((task) => (
-                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                      <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} date={day} dateStr={toDateStr(day, resolvedTimezone)} />
                     ))}
                   </DroppableCell>
                 );

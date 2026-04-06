@@ -47,3 +47,21 @@ export function shouldShowOnDate(
 export function toDateStr(date: Date, userTimezone: string): string {
   return Intl.DateTimeFormat('en-CA', { timeZone: userTimezone }).format(date);
 }
+
+/**
+ * Returns true if the item was completed on the given date.
+ * dateStr must be a YYYY-MM-DD string resolved to the user's local timezone before calling.
+ */
+export function isCompletedOnDate(
+  item: { completedDates?: string[] },
+  dateStr: string
+): boolean {
+  return item.completedDates?.includes(dateStr) ?? false;
+}
+
+/**
+ * Returns true if the item is a recurring item (has a repeat frequency other than none/undefined).
+ */
+export function isRecurring(item: { repeatFrequency?: string }): boolean {
+  return !!item.repeatFrequency && item.repeatFrequency !== 'none';
+}
