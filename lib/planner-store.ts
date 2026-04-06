@@ -646,7 +646,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const habit = get().habits.find((h) => h.id === id);
         const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
         setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
-        const dateStr = getDateString(date ?? new Date());
+        const dateStr = toDateStr(date ?? get().selectedDate, get().userTimezone);
 
         let updatedHabit: Habit | null = null;
 
@@ -1044,11 +1044,11 @@ export const usePlannerStore = create<PlannerStore>()(
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
-                const patch: Record<string, unknown> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate'];
+                const patch: Partial<Task> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
                 for (const key of taskKeys) {
                   if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
-                    patch[key] = t[key];
+                    (patch as Record<string, unknown>)[key] = t[key];
                   }
                 }
                 if (Object.keys(patch).length > 0) {
@@ -1138,11 +1138,11 @@ export const usePlannerStore = create<PlannerStore>()(
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
-                const patch: Record<string, unknown> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate'];
+                const patch: Partial<Task> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
                 for (const key of taskKeys) {
                   if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
-                    patch[key] = t[key];
+                    (patch as Record<string, unknown>)[key] = t[key];
                   }
                 }
                 if (Object.keys(patch).length > 0) {
