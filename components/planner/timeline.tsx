@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay, format } from 'date-fns';
 import { useTimeFormat } from '@/lib/use-time-format';
+import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
 
 function getBucketConfig(use24h: boolean): Record<TimeBucket, {
   icon: typeof Clock;
@@ -1372,7 +1373,8 @@ interface TimelineProps {
 }
 
 export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: TimelineProps) {
-  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection, showCompletedTasks, timeFormat } = usePlannerStore();
+  const { tasks, habits, selectedDate, setSelectedDate, timelineItemFilter, setTimelineItemFilter, compactMode, chillMode, navDirection, setNavDirection, showCompletedTasks, timeFormat, userTimezone } = usePlannerStore();
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [currentBucket, setCurrentBucket] = useState<TimeBucket | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -1386,27 +1388,9 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
   }, [tasks, timelineItemFilter, showCompletedTasks]);
   const filteredHabits = useMemo(() => {
     if (timelineItemFilter === 'tasks') return [];
-    const dayOfWeek = selectedDate.getDay(); // 0 = Sunday, 1 = Mon … 6 = Sat
-    return habits.filter((h) => {
-      switch (h.repeatFrequency) {
-        case 'daily':    return true;
-        case 'weekdays': return dayOfWeek >= 1 && dayOfWeek <= 5;
-        case 'weekends': return dayOfWeek === 0 || dayOfWeek === 6;
-        case 'weekly':
-          // Show on the specific day(s) of the week stored in repeatDays.
-          // Fall back to showing every day if repeatDays is not configured.
-          return h.repeatDays ? h.repeatDays.includes(dayOfWeek) : true;
-        case 'monthly': {
-          // Show on the specific day of the month stored in repeatMonthDay.
-          // Fall back to showing every day if repeatMonthDay is not configured.
-          const dayOfMonth = selectedDate.getDate();
-          return h.repeatMonthDay != null ? dayOfMonth === h.repeatMonthDay : true;
-        }
-        case 'custom':   return h.repeatDays?.includes(dayOfWeek) ?? false;
-        default:         return true;
-      }
-    });
-  }, [habits, timelineItemFilter, selectedDate]);
+    const dateStr = toDateStr(selectedDate, resolvedTimezone);
+    return habits.filter((h) => shouldShowOnDate(h, dateStr, resolvedTimezone));
+  }, [habits, timelineItemFilter, selectedDate, resolvedTimezone]);
 
   // Determine current time bucket and update every minute
   useEffect(() => {

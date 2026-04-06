@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Check, Clock, Flame, Plus, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
@@ -250,7 +251,8 @@ function DroppableCell({ dropId, children, className, disabled, glowColor }: Dro
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, weekStartDay } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, weekStartDay, userTimezone } = usePlannerStore();
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -299,10 +301,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
       return taskDateStr === dateStr;
     });
 
-    // For habits - show all habits to match the day view behavior
-    // The day view shows all habits regardless of repeat frequency
-    // Individual habit filtering by day is handled elsewhere if needed
-    const dayHabits = habits;
+    const dayHabits = habits.filter(h => shouldShowOnDate(h, dateStr, resolvedTimezone));
 
     return { tasks: dayTasks, habits: dayHabits };
   };

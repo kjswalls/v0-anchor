@@ -457,23 +457,28 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                   </SelectContent>
                 </Select>
 
-                {(taskRepeatFrequency === 'weekly' || taskRepeatFrequency === 'custom') && (
-                  <div className="flex gap-1">
-                    {WEEKDAY_LABELS.map((day, index) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => toggleTaskDay(index)}
-                        className={cn(
-                          'w-8 h-8 rounded-md text-xs font-medium transition-colors',
-                          taskRepeatDays.includes(index)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
-                        )}
-                      >
-                        {day}
-                      </button>
-                    ))}
+                {taskRepeatFrequency === 'custom' && (
+                  <div className="space-y-1">
+                    <div className="flex gap-1">
+                      {WEEKDAY_LABELS.map((day, index) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleTaskDay(index)}
+                          className={cn(
+                            'w-8 h-8 rounded-md text-xs font-medium transition-colors',
+                            taskRepeatDays.includes(index)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          )}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    {taskRepeatDays.length === 0 && (
+                      <p className="text-xs text-destructive">Select at least one day</p>
+                    )}
                   </div>
                 )}
 
@@ -503,9 +508,13 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                 )}
               </div>
               
-<Button onClick={handleAddTask} className="w-full h-10 mt-6">
+<Button
+  onClick={handleAddTask}
+  className="w-full h-10 mt-6"
+  disabled={taskRepeatFrequency === 'custom' && taskRepeatDays.length === 0}
+>
   Add Task
-  </Button>
+</Button>
   </TabsContent>
             
             <TabsContent value="habit" className="mt-4">
@@ -657,23 +666,28 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                   </SelectContent>
                 </Select>
 
-                {(habitRepeatFrequency === 'weekly' || habitRepeatFrequency === 'custom') && (
-                  <div className="flex gap-1">
-                    {WEEKDAY_LABELS.map((day, index) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => toggleHabitDay(index)}
-                        className={cn(
-                          'w-8 h-8 rounded-md text-xs font-medium transition-colors',
-                          habitRepeatDays.includes(index)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
-                        )}
-                      >
-                        {day}
-                      </button>
-                    ))}
+                {habitRepeatFrequency === 'custom' && (
+                  <div className="space-y-1">
+                    <div className="flex gap-1">
+                      {WEEKDAY_LABELS.map((day, index) => (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleHabitDay(index)}
+                          className={cn(
+                            'w-8 h-8 rounded-md text-xs font-medium transition-colors',
+                            habitRepeatDays.includes(index)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          )}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                    {habitRepeatDays.length === 0 && (
+                      <p className="text-xs text-destructive">Select at least one day</p>
+                    )}
                   </div>
                 )}
 
@@ -703,9 +717,13 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                 )}
               </div>
               
-<Button onClick={handleAddHabit} className="w-full h-10 mt-6">
+<Button
+  onClick={handleAddHabit}
+  className="w-full h-10 mt-6"
+  disabled={habitRepeatFrequency === 'custom' && habitRepeatDays.length === 0}
+>
   Add Habit
-  </Button>
+</Button>
   </TabsContent>
           </Tabs>
         </DialogContent>

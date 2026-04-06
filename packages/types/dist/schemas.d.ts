@@ -3,12 +3,12 @@ export declare const PrioritySchema: z.ZodEnum<["low", "medium", "high"]>;
 export declare const TimeBucketSchema: z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>;
 export declare const TaskStatusSchema: z.ZodEnum<["pending", "completed", "cancelled"]>;
 export declare const HabitStatusSchema: z.ZodEnum<["pending", "done", "skipped"]>;
-export declare const RepeatFrequencySchema: z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>;
+export declare const RepeatFrequencySchema: z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>;
 export declare const ProjectSchema: z.ZodObject<{
     id: z.ZodString;
     name: z.ZodString;
     emoji: z.ZodString;
-    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>>;
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
@@ -18,7 +18,7 @@ export declare const ProjectSchema: z.ZodObject<{
     id: string;
     name: string;
     emoji: string;
-    repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -28,7 +28,7 @@ export declare const ProjectSchema: z.ZodObject<{
     id: string;
     name: string;
     emoji: string;
-    repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -51,7 +51,7 @@ export declare const HabitGroupSchema: z.ZodObject<{
     emoji: string;
     color?: string | undefined;
 }>;
-export declare const TaskSchema: z.ZodObject<{
+export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
     priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
@@ -62,7 +62,7 @@ export declare const TaskSchema: z.ZodObject<{
     startTime: z.ZodOptional<z.ZodString>;
     duration: z.ZodOptional<z.ZodNumber>;
     isScheduled: z.ZodBoolean;
-    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>>;
+    repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     order: z.ZodNumber;
@@ -75,7 +75,7 @@ export declare const TaskSchema: z.ZodObject<{
     title: string;
     isScheduled: boolean;
     order: number;
-    repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -93,7 +93,43 @@ export declare const TaskSchema: z.ZodObject<{
     title: string;
     isScheduled: boolean;
     order: number;
-    repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    duration?: number | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    inProjectBlock?: boolean | undefined;
+    previousStartTime?: string | undefined;
+    previousStartDate?: string | undefined;
+}>, {
+    id: string;
+    status: "pending" | "completed" | "cancelled";
+    title: string;
+    isScheduled: boolean;
+    order: number;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    duration?: number | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    inProjectBlock?: boolean | undefined;
+    previousStartTime?: string | undefined;
+    previousStartDate?: string | undefined;
+}, {
+    id: string;
+    status: "pending" | "completed" | "cancelled";
+    title: string;
+    isScheduled: boolean;
+    order: number;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -106,7 +142,7 @@ export declare const TaskSchema: z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
 }>;
-export declare const HabitSchema: z.ZodObject<{
+export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
@@ -117,14 +153,14 @@ export declare const HabitSchema: z.ZodObject<{
     dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
-    repeatFrequency: z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>;
+    repeatFrequency: z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     timesPerDay: z.ZodOptional<z.ZodNumber>;
     currentDayCount: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     id: string;
-    repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
     status: "pending" | "done" | "skipped";
     title: string;
     group: string;
@@ -140,7 +176,39 @@ export declare const HabitSchema: z.ZodObject<{
     currentDayCount?: number | undefined;
 }, {
     id: string;
-    repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+    status: "pending" | "done" | "skipped";
+    title: string;
+    group: string;
+    streak: number;
+    completedDates: string[];
+    skippedDates: string[];
+    dailyCounts: Record<string, number>;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    timesPerDay?: number | undefined;
+    currentDayCount?: number | undefined;
+}>, {
+    id: string;
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+    status: "pending" | "done" | "skipped";
+    title: string;
+    group: string;
+    streak: number;
+    completedDates: string[];
+    skippedDates: string[];
+    dailyCounts: Record<string, number>;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    timesPerDay?: number | undefined;
+    currentDayCount?: number | undefined;
+}, {
+    id: string;
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
     status: "pending" | "done" | "skipped";
     title: string;
     group: string;
@@ -159,7 +227,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     userId: z.ZodString;
     userTimezone: z.ZodOptional<z.ZodString>;
     fetchedAt: z.ZodString;
-    tasks: z.ZodArray<z.ZodObject<{
+    tasks: z.ZodArray<z.ZodEffects<z.ZodObject<{
         id: z.ZodString;
         title: z.ZodString;
         priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
@@ -170,7 +238,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         startTime: z.ZodOptional<z.ZodString>;
         duration: z.ZodOptional<z.ZodNumber>;
         isScheduled: z.ZodBoolean;
-        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>>;
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
         order: z.ZodNumber;
@@ -183,7 +251,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         title: string;
         isScheduled: boolean;
         order: number;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -201,7 +269,43 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         title: string;
         isScheduled: boolean;
         order: number;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        inProjectBlock?: boolean | undefined;
+        previousStartTime?: string | undefined;
+        previousStartDate?: string | undefined;
+    }>, {
+        id: string;
+        status: "pending" | "completed" | "cancelled";
+        title: string;
+        isScheduled: boolean;
+        order: number;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        inProjectBlock?: boolean | undefined;
+        previousStartTime?: string | undefined;
+        previousStartDate?: string | undefined;
+    }, {
+        id: string;
+        status: "pending" | "completed" | "cancelled";
+        title: string;
+        isScheduled: boolean;
+        order: number;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -214,7 +318,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
     }>, "many">;
-    habits: z.ZodArray<z.ZodObject<{
+    habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         id: z.ZodString;
         title: z.ZodString;
         group: z.ZodString;
@@ -225,14 +329,14 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
         startTime: z.ZodOptional<z.ZodString>;
-        repeatFrequency: z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>;
+        repeatFrequency: z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
         timesPerDay: z.ZodOptional<z.ZodNumber>;
         currentDayCount: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         id: string;
-        repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
         status: "pending" | "done" | "skipped";
         title: string;
         group: string;
@@ -248,7 +352,39 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         currentDayCount?: number | undefined;
     }, {
         id: string;
-        repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+        status: "pending" | "done" | "skipped";
+        title: string;
+        group: string;
+        streak: number;
+        completedDates: string[];
+        skippedDates: string[];
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    }>, {
+        id: string;
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+        status: "pending" | "done" | "skipped";
+        title: string;
+        group: string;
+        streak: number;
+        completedDates: string[];
+        skippedDates: string[];
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    }, {
+        id: string;
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
         status: "pending" | "done" | "skipped";
         title: string;
         group: string;
@@ -267,7 +403,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         emoji: z.ZodString;
-        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekly", "weekdays", "weekends", "monthly", "custom"]>>;
+        repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
@@ -277,7 +413,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: string;
         name: string;
         emoji: string;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -287,7 +423,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: string;
         name: string;
         emoji: string;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -319,7 +455,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         title: string;
         isScheduled: boolean;
         order: number;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -334,7 +470,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }[];
     habits: {
         id: string;
-        repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
         status: "pending" | "done" | "skipped";
         title: string;
         group: string;
@@ -353,7 +489,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: string;
         name: string;
         emoji: string;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -376,7 +512,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         title: string;
         isScheduled: boolean;
         order: number;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
@@ -391,7 +527,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }[];
     habits: {
         id: string;
-        repeatFrequency: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
         status: "pending" | "done" | "skipped";
         title: string;
         group: string;
@@ -410,7 +546,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: string;
         name: string;
         emoji: string;
-        repeatFrequency?: "none" | "daily" | "weekly" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+        repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
