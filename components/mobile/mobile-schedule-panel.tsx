@@ -24,6 +24,7 @@ import { MiniWeekNav } from './mini-week-nav';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket, Project } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { shouldShowOnDate, isRecurring, isCompletedOnDate } from '@/lib/recurrence';
 import { useDroppable } from '@dnd-kit/core';
 
 const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string }> = {
@@ -477,7 +478,8 @@ function TimeBucketSection({
 }
 
 export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, activeId }: MobileSchedulePanelProps) {
-  const { tasks, habits, projects, selectedDate, timelineItemFilter } = usePlannerStore();
+  const { tasks, habits, projects, selectedDate, timelineItemFilter, userTimezone, showCompletedTasks } = usePlannerStore();
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Get items for selected date
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -528,9 +530,22 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
     if (timelineItemFilter !== 'habits') {
       tasks.forEach((task) => {
         if (!task.timeBucket) return;
-        // Check if task is scheduled for this date
-        if (task.startDate && task.startDate !== selectedDateStr) return;
-        if (!task.startDate && !isToday(selectedDate)) return;
+        if (!task.startDate) {
+          // Unscheduled tasks: only show today
+          if (!isToday(selectedDate)) return;
+        } else if (isRecurring(task)) {
+          // Recurring tasks: show if recurrence matches AND startDate ≤ selectedDate
+          const taskStartDateStr = task.startDate.includes("T")
+            ? task.startDate.split("T")[0]
+            : task.startDate;
+          if (!shouldShowOnDate(task, selectedDateStr, resolvedTimezone)) return;
+          if (taskStartDateStr > selectedDateStr) return;
+          // Exclude if completed on this date and showCompletedTasks is false
+          if (!showCompletedTasks && isCompletedOnDate(task, selectedDateStr)) return;
+        } else {
+          // One-off tasks: exact date match
+          if (task.startDate !== selectedDateStr) return;
+        }
         buckets[task.timeBucket].tasks.push(task);
       });
     }
@@ -558,7 +573,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
     });
 
     return buckets;
-  }, [tasks, habits, selectedDateStr, selectedDate, timelineItemFilter]);
+  }, [tasks, habits, selectedDateStr, selectedDate, timelineItemFilter, resolvedTimezone, showCompletedTasks]);
 
   const totalItems = Object.values(scheduledItems).reduce(
     (sum, b) => sum + b.tasks.length + b.habits.length, 
