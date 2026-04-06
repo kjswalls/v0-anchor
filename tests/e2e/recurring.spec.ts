@@ -147,7 +147,10 @@ test.describe('Recurring tasks and habits', () => {
       const tomorrow = addDays(getTodayInTz(), 1);
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
-      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+      const tomorrowTaskCard = page.locator('[data-tour="timeline"]').getByText(taskTitle).first();
+      await expect(tomorrowTaskCard).toBeVisible({ timeout: 5_000 });
+      // Confirm not completed: title should not have line-through styling
+      await expect(tomorrowTaskCard).not.toHaveClass(/line-through/);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }

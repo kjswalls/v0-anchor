@@ -323,14 +323,15 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate, userTimezone } = usePlannerStore();
   const [isHovered, setIsHovered] = useState(false);
   const showMeta = !chillMode || isHovered;
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
   // Derive effective status for the viewed date
-  const dateStr = selectedDate.toISOString().split('T')[0];
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dateStr = toDateStr(selectedDate, resolvedTimezone);
   const isCompletedOnDate = habit.completedDates.includes(dateStr);
   const isSkippedOnDate = (habit.skippedDates ?? []).includes(dateStr);
   const countOnDate = (habit.dailyCounts ?? {})[dateStr] ?? 0;

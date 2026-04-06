@@ -140,9 +140,11 @@ interface WeekProjectBlockProps {
   tasks: Task[];
   allTasks: Task[];
   onTaskClick: (task: Task) => void;
+  date: Date;
+  dateStr: string;
 }
 
-function WeekProjectBlock({ project, tasks, allTasks, onTaskClick }: WeekProjectBlockProps) {
+function WeekProjectBlock({ project, tasks, allTasks, onTaskClick, date, dateStr }: WeekProjectBlockProps) {
   const { getProjectColor } = usePlannerStore();
   const projectColor = getProjectColor(project.name);
   
@@ -175,7 +177,7 @@ function WeekProjectBlock({ project, tasks, allTasks, onTaskClick }: WeekProject
       
       {/* Tasks inside the block */}
       {tasksInBlock.map((task) => (
-        <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} />
+        <DraggableTaskPill key={task.id} task={task} onClick={() => onTaskClick(task)} date={date} dateStr={dateStr} />
       ))}
       
       {/* Available tasks preview (compact) */}
@@ -652,6 +654,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                         tasks={bucketTasks}
                         allTasks={tasks}
                         onTaskClick={onTaskClick}
+                        date={day}
+                        dateStr={toDateStr(day, resolvedTimezone)}
                       />
                     ))}
 

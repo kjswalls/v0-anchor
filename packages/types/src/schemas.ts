@@ -13,7 +13,11 @@ export const RepeatFrequencySchema = z.enum([
 // ── Shared recurrence fields ───────────────────────────────────────────────────
 
 export const RecurrenceFieldsSchema = z.object({
-  repeatFrequency: RepeatFrequencySchema.optional(),
+  // Normalize legacy "weekly" (removed in migration 014) to "custom" before enum validation
+  repeatFrequency: z.preprocess(
+    (val) => val === 'weekly' ? 'custom' : val,
+    RepeatFrequencySchema,
+  ).optional(),
   repeatDays: z.array(z.number()).optional(),
   repeatMonthDay: z.number().optional(),
   completedDates: z.array(z.string()).optional(),
