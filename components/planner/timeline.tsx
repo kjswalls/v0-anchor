@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { isSameDay, format } from 'date-fns';
 import { useTimeFormat } from '@/lib/use-time-format';
-import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
+import { shouldShowOnDate, toDateStr, isRecurring, isCompletedOnDate } from '@/lib/recurrence';
 
 function getBucketConfig(use24h: boolean): Record<TimeBucket, {
   icon: typeof Clock;
@@ -81,10 +81,18 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onClick }: TaskCardProps) {
-  const { compactMode, chillMode, toggleTaskStatus, unscheduleTask, deleteTask, getProjectEmoji, setHoveredItem, getProject, moveTaskToProjectBlock, moveTaskOutOfProjectBlock } = usePlannerStore();
+  const { compactMode, chillMode, toggleTaskStatus, unscheduleTask, deleteTask, getProjectEmoji, setHoveredItem, getProject, moveTaskToProjectBlock, moveTaskOutOfProjectBlock, selectedDate, userTimezone } = usePlannerStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const showMeta = !chillMode || isHovered;
+
+  // For recurring tasks, derive completion from completedDates for the viewed date
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);
+  const taskIsRecurring = isRecurring(task);
+  const isTaskDoneOnDate = taskIsRecurring
+    ? isCompletedOnDate(task, selectedDateStr)
+    : task.status === 'completed';
   
   // Check if task's project has a time block
   const project = task.project ? getProject(task.project) : undefined;
@@ -138,7 +146,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         className={cn(
           'group/card relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px] items-center' : 'py-3 min-h-[72px] items-start',
-          task.status === 'completed' && 'opacity-60',
+          isTaskDoneOnDate && 'opacity-60',
         )}
       >
         {/* Large background emoji */}
@@ -156,16 +164,16 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           data-testid="task-complete-button"
           onClick={(e) => {
             e.stopPropagation();
-            toggleTaskStatus(task.id);
+            toggleTaskStatus(task.id, undefined, taskIsRecurring ? selectedDate : undefined);
           }}
           className={cn(
             'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 self-center',
-            task.status === 'completed'
+            isTaskDoneOnDate
               ? 'bg-primary border-primary'
               : 'border-muted-foreground/40 hover:border-primary'
           )}
         >
-          {task.status === 'completed' && (
+          {isTaskDoneOnDate && (
             <Check className="h-3 w-3 text-primary-foreground" />
           )}
         </button>
@@ -177,7 +185,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             className={cn(
               'font-medium text-foreground leading-tight line-clamp-2',
               compactMode ? 'text-xs' : 'text-sm',
-              task.status === 'completed' && 'line-through text-muted-foreground'
+              isTaskDoneOnDate && 'line-through text-muted-foreground'
             )}
           >
             {task.title}
@@ -315,14 +323,15 @@ interface HabitCardProps {
 }
 
 function HabitCard({ habit, onClick }: HabitCardProps) {
-  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate } = usePlannerStore();
+  const { toggleHabitStatus, getHabitGroupEmoji, getHabitGroupColor, setHoveredItem, compactMode, chillMode, selectedDate, userTimezone } = usePlannerStore();
   const [isHovered, setIsHovered] = useState(false);
   const showMeta = !chillMode || isHovered;
   const groupEmoji = getHabitGroupEmoji(habit.group);
   const groupColor = getHabitGroupColor(habit.group);
 
   // Derive effective status for the viewed date
-  const dateStr = selectedDate.toISOString().split('T')[0];
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dateStr = toDateStr(selectedDate, resolvedTimezone);
   const isCompletedOnDate = habit.completedDates.includes(dateStr);
   const isSkippedOnDate = (habit.skippedDates ?? []).includes(dateStr);
   const countOnDate = (habit.dailyCounts ?? {})[dateStr] ?? 0;
@@ -555,10 +564,12 @@ interface DraggableBlockTaskProps {
   task: Task;
   onClick: () => void;
   compactMode: boolean;
-  toggleTaskStatus: (id: string) => void;
+  toggleTaskStatus: (id: string, status?: import('@/lib/planner-types').TaskStatus, date?: Date) => void;
+  selectedDate: Date;
+  selectedDateStr: string;
 }
 
-function DraggableBlockTask({ task, onClick, compactMode, toggleTaskStatus }: DraggableBlockTaskProps) {
+function DraggableBlockTask({ task, onClick, compactMode, toggleTaskStatus, selectedDate, selectedDateStr }: DraggableBlockTaskProps) {
   const {
     attributes,
     listeners,
@@ -571,8 +582,13 @@ function DraggableBlockTask({ task, onClick, compactMode, toggleTaskStatus }: Dr
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
   } : undefined;
 
+  const taskIsRecurring = isRecurring(task);
+  const isTaskDoneOnDate = taskIsRecurring
+    ? isCompletedOnDate(task, selectedDateStr)
+    : task.status === 'completed';
+
   return (
-    <div 
+    <div
       ref={setNodeRef}
       style={style}
       className={cn('group/blocktask relative flex items-center gap-1', isDragging && 'opacity-50 z-50')}
@@ -587,39 +603,39 @@ function DraggableBlockTask({ task, onClick, compactMode, toggleTaskStatus }: Dr
       >
         <GripVertical className={compactMode ? 'h-3 w-3' : 'h-4 w-4'} />
       </button>
-      
+
       {/* Task content */}
       <div
         onClick={onClick}
         className={cn(
           'flex-1 flex items-center gap-2 rounded-lg bg-card border border-border/50 cursor-pointer hover:border-border transition-all',
           compactMode ? 'px-2 py-1' : 'px-3 py-2',
-          task.status === 'completed' && 'opacity-60'
+          isTaskDoneOnDate && 'opacity-60'
         )}
       >
         {/* Checkbox */}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleTaskStatus(task.id);
+            toggleTaskStatus(task.id, undefined, taskIsRecurring ? selectedDate : undefined);
           }}
           className={cn(
             'flex-shrink-0 rounded-full border-2 flex items-center justify-center transition-colors',
             compactMode ? 'w-3.5 h-3.5' : 'w-4 h-4',
-            task.status === 'completed'
+            isTaskDoneOnDate
               ? 'bg-primary border-primary'
               : 'border-muted-foreground/40 hover:border-primary'
           )}
         >
-          {task.status === 'completed' && (
+          {isTaskDoneOnDate && (
             <Check className={compactMode ? 'h-2 w-2' : 'h-2.5 w-2.5'} />
           )}
         </button>
-        
+
         <span className={cn(
           'flex-1',
           compactMode ? 'text-xs' : 'text-sm',
-          task.status === 'completed' && 'line-through text-muted-foreground'
+          isTaskDoneOnDate && 'line-through text-muted-foreground'
         )}>
           {task.title}
         </span>
@@ -637,7 +653,9 @@ interface ProjectBlockProps {
 }
 
 function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
-  const { compactMode, toggleTaskStatus, getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } = usePlannerStore();
+  const { compactMode, toggleTaskStatus, getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock, selectedDate, userTimezone } = usePlannerStore();
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);
   
   // Tasks that are inside the project block (for today)
   const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
@@ -690,12 +708,14 @@ function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockPro
       {tasksInBlock.length > 0 && (
         <div className={cn(compactMode ? 'space-y-0.5 mb-1.5' : 'space-y-2 mb-3')}>
           {tasksInBlock.map((task) => (
-            <DraggableBlockTask 
-              key={task.id} 
-              task={task} 
+            <DraggableBlockTask
+              key={task.id}
+              task={task}
               onClick={() => onTaskClick(task)}
               compactMode={compactMode}
               toggleTaskStatus={toggleTaskStatus}
+              selectedDate={selectedDate}
+              selectedDateStr={selectedDateStr}
             />
           ))}
         </div>
@@ -1428,20 +1448,31 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
 
   // Filter tasks by selected date and search query
   const tasksForDate = useMemo(() => {
-    const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+    const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);
     return filteredTasks.filter((task) => {
       // If no start date, show in sidebar only (not on timeline)
       if (!task.startDate) return false;
       // startDate is always a yyyy-MM-dd string; handle legacy ISO format just in case
-      const taskDateStr = task.startDate.includes('T')
+      const taskStartDateStr = task.startDate.includes('T')
         ? task.startDate.split('T')[0]
         : task.startDate;
-      const matchesDate = taskDateStr === selectedDateStr;
+      let matchesDate: boolean;
+      if (isRecurring(task)) {
+        // Recurring tasks: show if shouldShowOnDate AND startDate is on or before selected date
+        matchesDate = shouldShowOnDate(task, selectedDateStr, resolvedTimezone) && taskStartDateStr <= selectedDateStr;
+        // Exclude completed recurring tasks when showCompletedTasks is false
+        if (matchesDate && !showCompletedTasks && isCompletedOnDate(task, selectedDateStr)) {
+          return false;
+        }
+      } else {
+        // One-off tasks: exact date match
+        matchesDate = taskStartDateStr === selectedDateStr;
+      }
       // Check search query
       const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesDate && matchesSearch;
     });
-  }, [filteredTasks, selectedDate, searchQuery]);
+  }, [filteredTasks, selectedDate, resolvedTimezone, searchQuery, showCompletedTasks]);
 
   // Filter habits by search query
   const filteredHabitsForDate = useMemo(() => {

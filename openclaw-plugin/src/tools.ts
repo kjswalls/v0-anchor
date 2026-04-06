@@ -81,15 +81,16 @@ export function registerTools(api: any, cfg: PluginConfig): void {
   // ── anchor_update_task ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_update_task',
-    description: 'Update an existing task in Anchor. To complete a task, set status to "completed".',
+    description: 'Update an existing task in Anchor. For one-off tasks, set status to complete them. For recurring tasks, use completedDates instead of status to record per-date completions.',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
       title: Type.Optional(Type.String()),
-      status: Type.Optional(Type.String({ description: 'pending | completed | cancelled' })),
+      status: Type.Optional(Type.String({ description: 'pending | completed | cancelled (one-off tasks only; not for recurring tasks)' })),
       startDate: Type.Optional(Type.String({ description: 'YYYY-MM-DD' })),
       startTime: Type.Optional(Type.String({ description: 'HH:MM' })),
       priority: Type.Optional(Type.String({ description: 'low | medium | high' })),
       project: Type.Optional(Type.String({ description: 'Project name' })),
+      completedDates: Type.Optional(Type.Array(Type.String(), { description: '(recurring tasks only) full set of ISO date strings YYYY-MM-DD in user\'s timezone representing all completion dates' })),
     }),
     async execute(params: {
       id: string
@@ -99,6 +100,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       startTime?: string
       priority?: string
       project?: string
+      completedDates?: string[]
     }) {
       const { id, ...fields } = params
       const body: Record<string, unknown> = {}
@@ -108,6 +110,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       if (fields.startTime !== undefined) body.startTime = fields.startTime
       if (fields.priority !== undefined) body.priority = fields.priority
       if (fields.project !== undefined) body.project = fields.project
+      if (fields.completedDates !== undefined) body.completedDates = fields.completedDates
 
       const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks/${id}`, {
         method: 'PATCH',

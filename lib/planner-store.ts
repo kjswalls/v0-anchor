@@ -26,6 +26,7 @@ import {
   updateTask as dbUpdateTask,
   deleteTask as dbDeleteTask,
   restoreTask as dbRestoreTask,
+  dbToggleTaskCompletedDate,
   createHabit as dbCreateHabit,
   updateHabit as dbUpdateHabit,
   deleteHabit as dbDeleteHabit,
@@ -40,6 +41,7 @@ import {
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
 import { saveSettings } from './settings-service';
+import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 
 interface PlannerStore {
   tasks: Task[];
@@ -91,7 +93,7 @@ interface PlannerStore {
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
-  toggleTaskStatus: (id: string) => void;
+  toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
   scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
@@ -463,19 +465,36 @@ export const usePlannerStore = create<PlannerStore>()(
         dbDeleteTask(id).catch(console.error);
       },
 
-      toggleTaskStatus: (id) => {
+      toggleTaskStatus: (id, status?, date?) => {
         const task = get().tasks.find((t) => t.id === id);
-        const newStatus: TaskStatus = task?.status === 'completed' ? 'pending' : 'completed';
-        setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task?.title || 'Unknown'}`);
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id
-              ? { ...t, status: t.status === 'completed' ? 'pending' : 'completed' }
-              : t
-          ),
-        }));
+        if (!task) return;
 
-        dbUpdateTask(id, { status: newStatus }).catch(console.error);
+        if (isRecurring(task)) {
+          // Per-date completion tracking — never change global status
+          const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+          const dateStr = toDateStr(date ?? get().selectedDate, userTimezone);
+          const alreadyDone = isCompletedOnDate(task, dateStr);
+          const newCompletedDates = alreadyDone
+            ? (task.completedDates ?? []).filter(d => d !== dateStr)
+            : [...(task.completedDates ?? []), dateStr];
+
+          setNextActionLabel(`${alreadyDone ? 'Uncomplete' : 'Complete'} task on ${dateStr}: ${task.title}`);
+          const updatedTask = { ...task, completedDates: newCompletedDates };
+          set((state) => ({
+            tasks: state.tasks.map(t => t.id === id ? updatedTask : t),
+          }));
+          dbToggleTaskCompletedDate(id, dateStr).catch(console.error);
+        } else {
+          // One-off task — existing behavior unchanged
+          const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
+          setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task.title}`);
+          set((state) => ({
+            tasks: state.tasks.map((t) =>
+              t.id === id ? { ...t, status: newStatus } : t
+            ),
+          }));
+          dbUpdateTask(id, { status: newStatus }).catch(console.error);
+        }
       },
 
       scheduleTask: (id, bucket, time, date) => {
@@ -627,7 +646,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const habit = get().habits.find((h) => h.id === id);
         const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
         setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
-        const dateStr = getDateString(date ?? new Date());
+        const dateStr = toDateStr(date ?? get().selectedDate, get().userTimezone);
 
         let updatedHabit: Habit | null = null;
 
@@ -1020,11 +1039,22 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Sync status changes for tasks present in both states
+          // Full diff: sync all changed fields for tasks present in both states
           restoredTasks.forEach((t: Task) => {
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
-              if (cur && cur.status !== t.status) dbUpdateTask(t.id, { status: t.status }).catch(console.error);
+              if (cur) {
+                const patch: Partial<Task> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
+                for (const key of taskKeys) {
+                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
+                    (patch as Record<string, unknown>)[key] = t[key];
+                  }
+                }
+                if (Object.keys(patch).length > 0) {
+                  dbUpdateTask(t.id, patch).catch(console.error);
+                }
+              }
             }
           });
 
@@ -1103,11 +1133,22 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Sync status changes for tasks present in both states
+          // Full diff: sync all changed fields for tasks present in both states
           restoredTasks.forEach((t: Task) => {
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
-              if (cur && cur.status !== t.status) dbUpdateTask(t.id, { status: t.status }).catch(console.error);
+              if (cur) {
+                const patch: Partial<Task> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
+                for (const key of taskKeys) {
+                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
+                    (patch as Record<string, unknown>)[key] = t[key];
+                  }
+                }
+                if (Object.keys(patch).length > 0) {
+                  dbUpdateTask(t.id, patch).catch(console.error);
+                }
+              }
             }
           });
 

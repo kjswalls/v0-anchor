@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestHabit, cleanupTestData } from './helpers/api';
-import { format, nextSaturday, nextMonday, nextWednesday } from 'date-fns';
-import { getTodayInTz } from './helpers/dates';
+import { getAccessToken, createTestTask, createTestHabit, cleanupTestData } from './helpers/api';
+import { format, nextSaturday, nextMonday, nextWednesday, addDays } from 'date-fns';
+import { getTodayInTz, getTodayStr } from './helpers/dates';
 
 
 /**
@@ -42,6 +42,146 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
 test.describe('Recurring tasks and habits', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
+  });
+
+  test('recurring task appears on its start date', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Daily task start ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await page.waitForTimeout(500);
+
+      // Should be visible on today (the start date)
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('recurring task appears on a future matching day (after start date)', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Daily future ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+
+      // Navigate to tomorrow — daily task should still be visible
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('recurring task does NOT appear before its start date', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Future only ${Date.now()}`;
+    const tomorrow = addDays(getTodayInTz(), 1);
+    const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: tomorrowStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await page.waitForTimeout(500);
+
+      // Today: task should NOT be visible (startDate is tomorrow)
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).not.toBeVisible();
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('completing a recurring task on one day does not affect other days', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Isolated completion ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await page.waitForTimeout(500);
+
+      // Complete on today
+      const taskCard = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle });
+      await expect(taskCard).toBeVisible({ timeout: 5_000 });
+      await taskCard.locator('[data-testid="task-complete-button"]').click();
+      await page.waitForTimeout(300);
+
+      // Navigate to tomorrow — task should appear un-completed (no strikethrough)
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+      const tomorrowTaskCard = page.locator('[data-tour="timeline"]').getByText(taskTitle).first();
+      await expect(tomorrowTaskCard).toBeVisible({ timeout: 5_000 });
+      // Confirm not completed: title should not have line-through styling
+      await expect(tomorrowTaskCard).not.toHaveClass(/line-through/);
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('one-off task is unaffected by recurring task changes', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const todayStr = getTodayStr();
+    const taskTitle = `One-off task ${Date.now()}`;
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await page.waitForTimeout(500);
+
+      // One-off task should be visible today
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+
+      // Navigate to tomorrow — one-off task should NOT appear (it's date-specific)
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).not.toBeVisible();
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
   });
 
   // Known bug: recurring tasks/habits may appear on wrong days — issue #90

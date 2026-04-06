@@ -1,11 +1,12 @@
-export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, } from './schemas.js';
+export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, } from './schemas.js';
 import { z } from 'zod';
-import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, AnchorContextResponseSchema, AnchorChangeEventSchema } from './schemas.js';
+import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, AnchorContextResponseSchema, AnchorChangeEventSchema } from './schemas.js';
 export type Priority = z.infer<typeof PrioritySchema>;
 export type TimeBucket = z.infer<typeof TimeBucketSchema>;
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export type HabitStatus = z.infer<typeof HabitStatusSchema>;
 export type RepeatFrequency = z.infer<typeof RepeatFrequencySchema>;
+export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
 export type HabitGroupType = z.infer<typeof HabitGroupSchema>;
 export type Task = z.infer<typeof TaskSchema>;
