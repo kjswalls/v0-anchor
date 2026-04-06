@@ -37,9 +37,12 @@ export async function runSetup(): Promise<void> {
     process.exit(1)
   }
 
-  // 2. Print instructions
+  // 2. Print instructions — use OSC 8 hyperlink if the terminal supports it
+  const link = process.env.TERM_PROGRAM || process.env.WT_SESSION || process.env.ITERM_SESSION_ID
+    ? `\x1b]8;;${connectUrl}\x1b\\${connectUrl}\x1b]8;;\x1b\\`
+    : connectUrl
   console.log('  Open this URL in your browser:')
-  console.log(`  ${connectUrl}\n`)
+  console.log(`  ${link}\n`)
   console.log('  Waiting for authorization...\n')
 
   // 3. Poll loop

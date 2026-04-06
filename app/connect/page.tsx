@@ -34,8 +34,11 @@ function ConnectPageInner() {
   }, []);
 
   function handleLogin() {
+    // Route through /auth/callback so Supabase PKCE exchange happens before
+    // landing back on the connect page. Direct redirect skips exchangeCodeForSession.
     const returnTo = `/connect${code ? `?code=${encodeURIComponent(code)}` : ''}`;
-    router.push(`/login?redirect=${encodeURIComponent(returnTo)}`);
+    const callbackUrl = `/auth/callback?next=${encodeURIComponent(returnTo)}`;
+    router.push(`/login?redirect=${encodeURIComponent(callbackUrl)}`);
   }
 
   async function handleAuthorize() {
