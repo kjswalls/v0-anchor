@@ -58,6 +58,7 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
   return (
     <>
       <div
+        data-testid="mobile-task-card"
         className={cn(
           'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
           isTaskDone && 'opacity-60'
@@ -69,8 +70,9 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
             {projectEmoji}
           </span>
         )}
-        
+
         <button
+          data-testid="mobile-task-complete-button"
           onClick={(e) => {
             e.stopPropagation();
             toggleTaskStatus(task.id);
