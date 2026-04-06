@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase-service'
 
 /**
  * POST /api/agent/connect/authorize
  *
- * Authorizes a pending device session. Requires a valid Supabase session cookie.
+ * Authorizes a pending device session. Requires a valid Supabase access token
+ * passed as a Bearer token in the Authorization header. Using Bearer token instead
+ * of cookies because this route is called from a browser page that may have just
+ * completed an OAuth login (Google), where the session lives in-memory/localStorage
+ * rather than an HttpOnly cookie.
+ *
  * Body: { userCode: "ABCD-1234" }
  *
  * - Looks up the session by user_code (status=pending, not expired)
@@ -15,9 +19,16 @@ import { createServiceClient } from '@/lib/supabase-service'
  */
 export async function POST(req: NextRequest) {
   try {
-    // Require session auth
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Require Bearer token auth — supports post-OAuth flows where cookies aren't set
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    if (!bearerToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Validate the token by calling getUser with it via service client
+    const service = createServiceClient()
+    const { data: { user }, error: authError } = await service.auth.getUser(bearerToken)
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -27,8 +38,6 @@ export async function POST(req: NextRequest) {
     if (!userCode) {
       return NextResponse.json({ error: 'Missing userCode' }, { status: 400 })
     }
-
-    const service = createServiceClient()
 
     // Look up the pending, unexpired session
     const { data: session, error: sessionErr } = await service

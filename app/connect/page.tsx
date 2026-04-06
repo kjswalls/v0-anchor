@@ -41,9 +41,19 @@ function ConnectPageInner() {
   async function handleAuthorize() {
     setState({ kind: 'authorizing' });
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        setState({ kind: 'error', message: 'No active session. Please log in again.' });
+        return;
+      }
       const res = await fetch('/api/agent/connect/authorize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ userCode: code }),
       });
       const data = await res.json();
