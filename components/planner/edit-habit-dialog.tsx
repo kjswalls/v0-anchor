@@ -106,7 +106,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
       title: title.trim(),
       group,
       repeatFrequency,
-      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
       repeatMonthDay: repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
       timesPerDay: parseInt(timesPerDay) || 1,
       startTime: startTime || undefined,

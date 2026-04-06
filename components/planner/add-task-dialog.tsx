@@ -194,7 +194,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
     timeBucket: effectiveTimeBucket,
     startTime: taskStartTime || undefined,
     repeatFrequency: taskRepeatFrequency !== 'none' ? taskRepeatFrequency : undefined,
-    repeatDays: (taskRepeatFrequency === 'custom' || taskRepeatFrequency === 'weekly') ? taskRepeatDays : undefined,
+    repeatDays: taskRepeatFrequency === 'custom' ? taskRepeatDays : undefined,
     repeatMonthDay: taskRepeatFrequency === 'monthly' ? taskRepeatMonthDay : undefined,
   });
   
@@ -212,7 +212,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
       timeBucket: habitTimeBucket,
       startTime: habitStartTime || undefined,
       repeatFrequency: habitRepeatFrequency,
-      repeatDays: (habitRepeatFrequency === 'custom' || habitRepeatFrequency === 'weekly') ? habitRepeatDays : undefined,
+      repeatDays: habitRepeatFrequency === 'custom' ? habitRepeatDays : undefined,
       repeatMonthDay: habitRepeatFrequency === 'monthly' ? habitRepeatMonthDay : undefined,
       timesPerDay: parseInt(habitTimesPerDay) || 1,
     });

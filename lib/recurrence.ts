@@ -28,7 +28,8 @@ export function shouldShowOnDate(
       // Legacy — treat same as custom
       return item.repeatDays?.includes(dayOfWeek) ?? false;
     case 'monthly': {
-      const targetDay = item.repeatMonthDay || 1;
+      if (!Number.isFinite(item.repeatMonthDay)) return false;
+      const targetDay = item.repeatMonthDay as number;
       const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
       const clampedTarget = Math.min(targetDay, lastDayOfMonth);
       return dayOfMonth === clampedTarget;

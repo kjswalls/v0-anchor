@@ -293,8 +293,8 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
   // Get tasks and habits for a specific day
   const getItemsForDay = (date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    
+    const dateStr = toDateStr(date, resolvedTimezone);
+
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
       const taskDateStr = normalizeDateStr(task.startDate);
@@ -342,11 +342,11 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
   // Get recurring project blocks for a specific date
   const getRecurringProjectsForDate = (date: Date) => {
-    const dayOfWeek = date.getDay(); // 0 = Sunday
+    const dayOfWeek = new Date(toDateStr(date, resolvedTimezone) + 'T00:00:00').getDay(); // 0 = Sunday
     const dateOfMonth = date.getDate(); // 1-31
     return projects.filter((p) => {
       if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
-      
+
       switch (p.repeatFrequency) {
         case 'daily':
           return true;
@@ -354,8 +354,6 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
           return dayOfWeek >= 1 && dayOfWeek <= 5;
         case 'weekends':
           return dayOfWeek === 0 || dayOfWeek === 6;
-        case 'weekly':
-          return p.repeatDays?.includes(dayOfWeek) ?? false;
         case 'monthly':
           const targetDay = p.repeatMonthDay || 1;
           const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();

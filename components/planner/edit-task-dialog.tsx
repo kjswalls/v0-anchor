@@ -128,7 +128,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       duration: duration ? parseInt(duration) : undefined,
       startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
-      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
       repeatMonthDay: repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
     });
 
