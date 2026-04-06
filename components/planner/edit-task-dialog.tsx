@@ -128,7 +128,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
       duration: duration ? parseInt(duration) : undefined,
       startTime: startTime || undefined,
       repeatFrequency: repeatFrequency !== 'none' ? repeatFrequency : undefined,
-      repeatDays: (repeatFrequency === 'custom' || repeatFrequency === 'weekly') ? repeatDays : undefined,
+      repeatDays: repeatFrequency === 'custom' ? repeatDays : undefined,
       repeatMonthDay: repeatFrequency === 'monthly' ? repeatMonthDay : undefined,
     });
 
@@ -392,23 +392,28 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
               </SelectContent>
             </Select>
 
-            {(repeatFrequency === 'weekly' || repeatFrequency === 'custom') && (
-              <div className="flex gap-1">
-                {WEEKDAY_LABELS.map((day, index) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(index)}
-                    className={cn(
-                      'w-8 h-8 rounded-md text-xs font-medium transition-colors',
-                      repeatDays.includes(index)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
-                    )}
-                  >
-                    {day}
-                  </button>
-                ))}
+            {repeatFrequency === 'custom' && (
+              <div className="space-y-1">
+                <div className="flex gap-1">
+                  {WEEKDAY_LABELS.map((day, index) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDay(index)}
+                      className={cn(
+                        'w-8 h-8 rounded-md text-xs font-medium transition-colors',
+                        repeatDays.includes(index)
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                      )}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+                {repeatDays.length === 0 && (
+                  <p className="text-xs text-destructive">Select at least one day</p>
+                )}
               </div>
             )}
 
@@ -449,7 +454,11 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
             <Trash2 className="h-4 w-4" />
             <span className="sr-only">Delete task</span>
           </Button>
-          <Button onClick={handleSave} className="flex-1 min-w-0">
+          <Button
+            onClick={handleSave}
+            className="flex-1 min-w-0"
+            disabled={repeatFrequency === 'custom' && repeatDays.length === 0}
+          >
             Save Changes
           </Button>
         </DialogFooter>

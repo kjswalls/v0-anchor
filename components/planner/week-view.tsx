@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Check, Clock, Flame, Plus, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { shouldShowOnDate, toDateStr } from '@/lib/recurrence';
 
 interface WeekViewProps {
   onTaskClick: (task: Task) => void;
@@ -250,7 +251,8 @@ function DroppableCell({ dropId, children, className, disabled, glowColor }: Dro
 }
 
 export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProps) {
-  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, weekStartDay } = usePlannerStore();
+  const { selectedDate, setSelectedDate, tasks, habits, projects, compactMode, chillMode, getProjectEmoji, getHabitGroupEmoji, timelineItemFilter, setTimelineItemFilter, showCurrentTimeIndicator, weekStartDay, userTimezone } = usePlannerStore();
+  const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Hover state for navigation
   const [prevWeekHovered, setPrevWeekHovered] = useState(false);
@@ -291,18 +293,15 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
   // Get tasks and habits for a specific day
   const getItemsForDay = (date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    
+    const dateStr = toDateStr(date, resolvedTimezone);
+
     const dayTasks = tasks.filter((task) => {
       if (!task.startDate) return false;
       const taskDateStr = normalizeDateStr(task.startDate);
       return taskDateStr === dateStr;
     });
 
-    // For habits - show all habits to match the day view behavior
-    // The day view shows all habits regardless of repeat frequency
-    // Individual habit filtering by day is handled elsewhere if needed
-    const dayHabits = habits;
+    const dayHabits = habits.filter(h => shouldShowOnDate(h, dateStr, resolvedTimezone));
 
     return { tasks: dayTasks, habits: dayHabits };
   };
@@ -343,11 +342,11 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
 
   // Get recurring project blocks for a specific date
   const getRecurringProjectsForDate = (date: Date) => {
-    const dayOfWeek = date.getDay(); // 0 = Sunday
+    const dayOfWeek = new Date(toDateStr(date, resolvedTimezone) + 'T00:00:00').getDay(); // 0 = Sunday
     const dateOfMonth = date.getDate(); // 1-31
     return projects.filter((p) => {
       if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
-      
+
       switch (p.repeatFrequency) {
         case 'daily':
           return true;
@@ -355,8 +354,6 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
           return dayOfWeek >= 1 && dayOfWeek <= 5;
         case 'weekends':
           return dayOfWeek === 0 || dayOfWeek === 6;
-        case 'weekly':
-          return p.repeatDays?.includes(dayOfWeek) ?? false;
         case 'monthly':
           const targetDay = p.repeatMonthDay || 1;
           const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();

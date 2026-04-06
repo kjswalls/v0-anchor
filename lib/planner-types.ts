@@ -91,7 +91,6 @@ export const REPEAT_FREQUENCY_LABELS: Record<RepeatFrequency, string> = {
   daily:    'Daily',
   weekdays: 'Weekdays',
   weekends: 'Weekends',
-  weekly:   'Weekly',
   monthly:  'Monthly',
   custom:   'Custom days',
 };

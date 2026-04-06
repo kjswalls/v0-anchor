@@ -7,7 +7,7 @@ export const TimeBucketSchema = z.enum(['anytime', 'morning', 'afternoon', 'even
 export const TaskStatusSchema = z.enum(['pending', 'completed', 'cancelled'])
 export const HabitStatusSchema = z.enum(['pending', 'done', 'skipped'])
 export const RepeatFrequencySchema = z.enum([
-  'none', 'daily', 'weekly', 'weekdays', 'weekends', 'monthly', 'custom',
+  'none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom',
 ])
 
 // ── Core entities ──────────────────────────────────────────────────────────────
@@ -49,6 +49,14 @@ export const TaskSchema = z.object({
   inProjectBlock: z.boolean().optional(),
   previousStartTime: z.string().optional(),
   previousStartDate: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Must select at least one day when using custom repeat frequency',
+      path: ['repeatDays'],
+    });
+  }
 })
 
 export const HabitSchema = z.object({
@@ -67,6 +75,14 @@ export const HabitSchema = z.object({
   repeatMonthDay: z.number().optional(),
   timesPerDay: z.number().optional(),
   currentDayCount: z.number().optional(),
+}).superRefine((data, ctx) => {
+  if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Must select at least one day when using custom repeat frequency',
+      path: ['repeatDays'],
+    });
+  }
 })
 
 // ── API response schemas ───────────────────────────────────────────────────────
