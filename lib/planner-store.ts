@@ -26,6 +26,7 @@ import {
   updateTask as dbUpdateTask,
   deleteTask as dbDeleteTask,
   restoreTask as dbRestoreTask,
+  dbToggleTaskCompletedDate,
   createHabit as dbCreateHabit,
   updateHabit as dbUpdateHabit,
   deleteHabit as dbDeleteHabit,
@@ -482,7 +483,7 @@ export const usePlannerStore = create<PlannerStore>()(
           set((state) => ({
             tasks: state.tasks.map(t => t.id === id ? updatedTask : t),
           }));
-          dbUpdateTask(id, { completedDates: newCompletedDates }).catch(console.error);
+          dbToggleTaskCompletedDate(id, dateStr).catch(console.error);
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');

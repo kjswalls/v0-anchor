@@ -137,6 +137,15 @@ export async function restoreTask(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function dbToggleTaskCompletedDate(id: string, dateStr: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.rpc("toggle_task_completed_date", {
+    task_id: id,
+    date_str: dateStr,
+  });
+  if (error) throw error;
+}
+
 // ---- Habit row type ----
 interface HabitRow {
   id: string;
