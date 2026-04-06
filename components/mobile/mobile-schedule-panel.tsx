@@ -179,6 +179,7 @@ function MobileScheduledHabit({ habit, onClick }: { habit: Habit; onClick: () =>
 
   return (
     <div
+      data-testid="mobile-habit-card"
       className={cn(
         'group relative flex items-start gap-3 p-3 rounded-xl border-2 transition-all',
         'border-border/40 active:border-border',
