@@ -24,7 +24,7 @@ import { MiniWeekNav } from './mini-week-nav';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, TimeBucket, Project } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { shouldShowOnDate, isRecurring, isCompletedOnDate } from '@/lib/recurrence';
+import { shouldShowOnDate, isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { useDroppable } from '@dnd-kit/core';
 
 const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string }> = {
@@ -482,7 +482,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
   const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Get items for selected date
-  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);
 
   // Get recurring projects for the selected date
   const recurringProjectsForDate = useMemo(() => {
@@ -532,7 +532,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
         if (!task.timeBucket) return;
         if (!task.startDate) {
           // Unscheduled tasks: only show today
-          if (!isToday(selectedDate)) return;
+          if (selectedDateStr !== toDateStr(new Date(), resolvedTimezone)) return;
         } else if (isRecurring(task)) {
           // Recurring tasks: show if recurrence matches AND startDate ≤ selectedDate
           const taskStartDateStr = task.startDate.includes("T")
@@ -544,7 +544,10 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
           if (!showCompletedTasks && isCompletedOnDate(task, selectedDateStr)) return;
         } else {
           // One-off tasks: exact date match
-          if (task.startDate !== selectedDateStr) return;
+          const taskStartDateStr = task.startDate.includes("T")
+            ? task.startDate.split("T")[0]
+            : task.startDate;
+          if (taskStartDateStr !== selectedDateStr) return;
         }
         buckets[task.timeBucket].tasks.push(task);
       });
