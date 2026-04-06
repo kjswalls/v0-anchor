@@ -39,6 +39,21 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
   await expect(page.locator('header').getByText(expectedLabel)).toBeVisible({ timeout: 3_000 });
 }
 
+/**
+ * Navigate the currently displayed date by a relative number of days.
+ * Positive = forward, negative = backward. Does not depend on getTodayInTz()
+ * so it works correctly from any currently displayed date.
+ */
+async function navigateByDaysFromCurrent(page: import('@playwright/test').Page, days: number) {
+  const nextBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') }).first();
+  const prevBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-left') }).first();
+  const btn = days >= 0 ? nextBtn : prevBtn;
+  for (let i = 0; i < Math.abs(days); i++) {
+    await btn.click();
+    await page.waitForTimeout(150);
+  }
+}
+
 test.describe('Recurring tasks and habits', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
@@ -258,6 +273,186 @@ test.describe('Recurring tasks and habits', () => {
       await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [], [habitId]);
+    }
+  });
+
+  test('habit completion persists when navigating away and back', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const habitTitle = `Persist habit ${Date.now()}`;
+    const habitId = await createTestHabit(page, accessToken, {
+      title: habitTitle,
+      repeatFrequency: 'daily',
+      timeBucket: 'morning',
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await page.waitForTimeout(500);
+
+      // Find habit card in timeline and click its complete button
+      const habitCard = page.locator('[data-tour="timeline"]').locator('[data-testid="habit-card"]').filter({ hasText: habitTitle });
+      await expect(habitCard).toBeVisible({ timeout: 5_000 });
+      await habitCard.locator('[data-testid="habit-complete-button"]').click();
+      await page.waitForTimeout(300);
+
+      // Navigate to tomorrow
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+
+      // Navigate back to today
+      await navigateByDaysFromCurrent(page, -1);
+
+      // Habit title should still show as completed (line-through)
+      const habitTitleEl = page.locator('[data-tour="timeline"]').locator('[data-testid="habit-card"]').filter({ hasText: habitTitle }).getByText(habitTitle).first();
+      await expect(habitTitleEl).toHaveClass(/line-through/);
+    } finally {
+      await cleanupTestData(page, accessToken, [], [habitId]);
+    }
+  });
+});
+
+test.describe('Mobile', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  async function openMobileSchedule(page: import('@playwright/test').Page) {
+    await page.click('[data-tour="tab-schedule"]');
+    await page.waitForTimeout(300);
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+  });
+
+  test('mobile: recurring task appears on future day', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Mobile daily future ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await openMobileSchedule(page);
+
+      // Navigate to tomorrow — daily task should be visible
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+      await expect(
+        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+      ).toBeVisible({ timeout: 5_000 });
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('mobile: completing recurring task marks it done, stays incomplete on other days', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Mobile complete recurring ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await openMobileSchedule(page);
+
+      // Find task card on today and mark complete
+      const taskCard = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle });
+      await expect(taskCard).toBeVisible({ timeout: 5_000 });
+      await taskCard.locator('[data-testid="mobile-task-complete-button"]').click();
+      await page.waitForTimeout(300);
+
+      // Navigate to tomorrow — task should appear un-completed
+      const tomorrow = addDays(getTodayInTz(), 1);
+      await navigateToDate(page, tomorrow);
+      await page.waitForTimeout(500);
+      await expect(
+        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+      ).toBeVisible({ timeout: 5_000 });
+      // Confirm task title is not struck through on tomorrow
+      const tomorrowTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
+      await expect(tomorrowTaskTitle).not.toHaveClass(/line-through/);
+
+      // Navigate back to today (schedule tab stays open — no need to re-open it)
+      await navigateByDaysFromCurrent(page, -1);
+      const todayTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
+      await expect(todayTaskTitle).toHaveClass(/line-through/);
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('mobile: weekday-only habit does not appear on weekend', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const habitTitle = `Mobile weekdays only ${Date.now()}`;
+    const habitId = await createTestHabit(page, accessToken, {
+      title: habitTitle,
+      repeatFrequency: 'weekdays',
+      timeBucket: 'morning',
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await openMobileSchedule(page);
+
+      // Navigate to next Saturday — weekday habit should NOT be visible
+      const saturday = nextSaturday(getTodayInTz());
+      await navigateToDate(page, saturday);
+      await page.waitForTimeout(500);
+      await expect(
+        page.locator('[data-testid="mobile-habit-card"]').filter({ hasText: habitTitle })
+      ).not.toBeVisible();
+    } finally {
+      await cleanupTestData(page, accessToken, [], [habitId]);
+    }
+  });
+
+  test('mobile: task with today start date appears on correct day not yesterday (UTC off-by-one regression)', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = `Mobile today only ${Date.now()}`;
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await page.reload();
+      await page.waitForURL('/');
+      await openMobileSchedule(page);
+
+      // Stay on today — task should be visible
+      await expect(
+        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+      ).toBeVisible({ timeout: 5_000 });
+
+      // Navigate to yesterday — task should NOT appear
+      const yesterday = addDays(getTodayInTz(), -1);
+      await navigateToDate(page, yesterday);
+      await page.waitForTimeout(500);
+      await expect(
+        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+      ).not.toBeVisible();
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 });

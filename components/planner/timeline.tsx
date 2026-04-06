@@ -410,6 +410,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
   // Normal state (pending or done)
   return (
     <div
+      data-testid="habit-card"
       className="group relative flex items-stretch gap-1"
       onMouseEnter={() => { setHoveredItem(habit.id, 'habit'); setIsHovered(true); }}
       onMouseLeave={() => { setHoveredItem(null, null); setIsHovered(false); }}
@@ -484,6 +485,7 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           </div>
         ) : (
           <button
+            data-testid="habit-complete-button"
             onClick={(e) => {
               e.stopPropagation();
               handleIncrement();
