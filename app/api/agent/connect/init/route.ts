@@ -34,12 +34,6 @@ export async function POST(req: NextRequest) {
   try {
     const service = createServiceClient()
 
-    // Get client IP for rate limiting
-    const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-      req.headers.get('x-real-ip') ??
-      'unknown'
-
     // Cleanup expired sessions (simple maintenance on every init)
     await service
       .from('connect_sessions')

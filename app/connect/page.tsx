@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 
@@ -12,22 +12,25 @@ type State =
   | { kind: 'authorized' }
   | { kind: 'error'; message: string };
 
-export default function ConnectPage() {
+function ConnectPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const code = searchParams.get('code') ?? '';
 
   const [state, setState] = useState<State>({ kind: 'loading' });
 
-  useEffect(() => {
+  async function checkAuth() {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        setState({ kind: 'needs-login' });
-      } else {
-        setState({ kind: 'ready', email: user.email ?? '' });
-      }
-    });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setState({ kind: 'needs-login' });
+    } else {
+      setState({ kind: 'ready', email: user.email ?? '' });
+    }
+  }
+
+  useEffect(() => {
+    checkAuth();
   }, []);
 
   function handleLogin() {
@@ -157,7 +160,7 @@ export default function ConnectPage() {
             <p className="text-sm font-medium text-destructive">Authorization failed</p>
             <p className="text-xs text-muted-foreground">{state.message}</p>
             <button
-              onClick={() => setState({ kind: 'loading' })}
+              onClick={() => { setState({ kind: 'loading' }); checkAuth(); }}
               className="text-xs text-primary hover:underline"
             >
               Try again
@@ -166,5 +169,17 @@ export default function ConnectPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ConnectPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    }>
+      <ConnectPageInner />
+    </Suspense>
   );
 }
