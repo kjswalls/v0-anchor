@@ -527,12 +527,13 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
     };
 
     // Filter tasks
+    const todayDateStr = toDateStr(new Date(), resolvedTimezone);
     if (timelineItemFilter !== 'habits') {
       tasks.forEach((task) => {
         if (!task.timeBucket) return;
         if (!task.startDate) {
           // Unscheduled tasks: only show today
-          if (selectedDateStr !== toDateStr(new Date(), resolvedTimezone)) return;
+          if (selectedDateStr !== todayDateStr) return;
         } else if (isRecurring(task)) {
           // Recurring tasks: show if recurrence matches AND startDate ≤ selectedDate
           const taskStartDateStr = toDateStr(new Date(task.startDate), resolvedTimezone);
