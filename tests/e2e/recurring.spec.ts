@@ -39,6 +39,21 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
   await expect(page.locator('header').getByText(expectedLabel)).toBeVisible({ timeout: 3_000 });
 }
 
+/**
+ * Navigate the currently displayed date by a relative number of days.
+ * Positive = forward, negative = backward. Does not depend on getTodayInTz()
+ * so it works correctly from any currently displayed date.
+ */
+async function navigateByDaysFromCurrent(page: import('@playwright/test').Page, days: number) {
+  const nextBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') }).first();
+  const prevBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-left') }).first();
+  const btn = days >= 0 ? nextBtn : prevBtn;
+  for (let i = 0; i < Math.abs(days); i++) {
+    await btn.click();
+    await page.waitForTimeout(150);
+  }
+}
+
 test.describe('Recurring tasks and habits', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
@@ -286,10 +301,8 @@ test.describe('Recurring tasks and habits', () => {
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
 
-      // Navigate back to today via reload (navigateToDate origin is always today, so diff=0 after going to tomorrow)
-      await page.reload();
-      await page.waitForURL('/');
-      await page.waitForTimeout(500);
+      // Navigate back to today
+      await navigateByDaysFromCurrent(page, -1);
 
       // Habit title should still show as completed (line-through)
       const habitTitleEl = page.locator('[data-tour="timeline"]').locator('[data-testid="habit-card"]').filter({ hasText: habitTitle }).getByText(habitTitle).first();
@@ -375,11 +388,8 @@ test.describe('Mobile', () => {
       const tomorrowTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
       await expect(tomorrowTaskTitle).not.toHaveClass(/line-through/);
 
-      // Navigate back to today via reload (navigateToDate origin is always today, so diff=0 after going to tomorrow)
-      await page.reload();
-      await page.waitForURL('/');
-      await page.waitForTimeout(500);
-      await openMobileSchedule(page);
+      // Navigate back to today (schedule tab stays open — no need to re-open it)
+      await navigateByDaysFromCurrent(page, -1);
       const todayTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
       await expect(todayTaskTitle).toHaveClass(/line-through/);
     } finally {
