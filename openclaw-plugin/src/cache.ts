@@ -71,3 +71,10 @@ export async function fetchContext(cfg: PluginConfig): Promise<void> {
     fetchedAt: Date.now(),
   }
 }
+
+/** Test helper — resets all module-level singletons. */
+export function resetCacheState(): void {
+  cache = null
+  lastInjectedAt.clear()
+  lastModifiedAt = null
+}
