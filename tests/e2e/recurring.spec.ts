@@ -301,6 +301,13 @@ test.describe('Recurring tasks and habits', () => {
 });
 
 test.describe('Mobile', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  async function openMobileSchedule(page: import('@playwright/test').Page) {
+    await page.click('[data-tour="tab-schedule"]');
+    await page.waitForTimeout(300);
+  }
+
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
   });
@@ -320,9 +327,7 @@ test.describe('Mobile', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.click('[data-tour="tab-schedule"]');
-      await page.waitForTimeout(300);
+      await openMobileSchedule(page);
 
       // Navigate to tomorrow — daily task should be visible
       const tomorrow = addDays(getTodayInTz(), 1);
@@ -351,9 +356,7 @@ test.describe('Mobile', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.click('[data-tour="tab-schedule"]');
-      await page.waitForTimeout(300);
+      await openMobileSchedule(page);
 
       // Find task card on today and mark complete
       const taskCard = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle });
@@ -376,8 +379,7 @@ test.describe('Mobile', () => {
       await page.reload();
       await page.waitForURL('/');
       await page.waitForTimeout(500);
-      await page.click('[data-tour="tab-schedule"]');
-      await page.waitForTimeout(300);
+      await openMobileSchedule(page);
       const todayTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
       await expect(todayTaskTitle).toHaveClass(/line-through/);
     } finally {
@@ -397,9 +399,7 @@ test.describe('Mobile', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.click('[data-tour="tab-schedule"]');
-      await page.waitForTimeout(300);
+      await openMobileSchedule(page);
 
       // Navigate to next Saturday — weekday habit should NOT be visible
       const saturday = nextSaturday(getTodayInTz());
@@ -427,9 +427,7 @@ test.describe('Mobile', () => {
     try {
       await page.reload();
       await page.waitForURL('/');
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.click('[data-tour="tab-schedule"]');
-      await page.waitForTimeout(300);
+      await openMobileSchedule(page);
 
       // Stay on today — task should be visible
       await expect(
