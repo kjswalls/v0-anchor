@@ -137,10 +137,9 @@ test.describe('Recurring tasks and habits', () => {
       await page.waitForTimeout(500);
 
       // Complete on today
-      const taskCard = page.locator('[data-tour="timeline"]').getByText(taskTitle).first();
+      const taskCard = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle });
       await expect(taskCard).toBeVisible({ timeout: 5_000 });
-      const completeBtn = page.locator('[data-testid="task-complete-button"]').first();
-      await completeBtn.click();
+      await taskCard.locator('[data-testid="task-complete-button"]').click();
       await page.waitForTimeout(300);
 
       // Navigate to tomorrow — task should appear un-completed (no strikethrough)

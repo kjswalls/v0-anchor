@@ -472,7 +472,7 @@ export const usePlannerStore = create<PlannerStore>()(
         if (isRecurring(task)) {
           // Per-date completion tracking — never change global status
           const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-          const dateStr = date ? toDateStr(date, userTimezone) : toDateStr(new Date(), userTimezone);
+          const dateStr = toDateStr(date ?? get().selectedDate, userTimezone);
           const alreadyDone = isCompletedOnDate(task, dateStr);
           const newCompletedDates = alreadyDone
             ? (task.completedDates ?? []).filter(d => d !== dateStr)
@@ -1039,17 +1039,19 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Sync status and completedDates changes for tasks present in both states
+          // Full diff: sync all changed fields for tasks present in both states
           restoredTasks.forEach((t: Task) => {
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
-                const statusChanged = cur.status !== t.status;
-                const completedDatesChanged = JSON.stringify(cur.completedDates ?? []) !== JSON.stringify(t.completedDates ?? []);
-                if (statusChanged || completedDatesChanged) {
-                  const patch: Record<string, unknown> = {};
-                  if (statusChanged) patch.status = t.status;
-                  if (completedDatesChanged) patch.completedDates = t.completedDates ?? [];
+                const patch: Record<string, unknown> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate'];
+                for (const key of taskKeys) {
+                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
+                    patch[key] = t[key];
+                  }
+                }
+                if (Object.keys(patch).length > 0) {
                   dbUpdateTask(t.id, patch).catch(console.error);
                 }
               }
@@ -1131,17 +1133,19 @@ export const usePlannerStore = create<PlannerStore>()(
           const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
           restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
           currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Sync status and completedDates changes for tasks present in both states
+          // Full diff: sync all changed fields for tasks present in both states
           restoredTasks.forEach((t: Task) => {
             if (currentTaskIds.has(t.id)) {
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
-                const statusChanged = cur.status !== t.status;
-                const completedDatesChanged = JSON.stringify(cur.completedDates ?? []) !== JSON.stringify(t.completedDates ?? []);
-                if (statusChanged || completedDatesChanged) {
-                  const patch: Record<string, unknown> = {};
-                  if (statusChanged) patch.status = t.status;
-                  if (completedDatesChanged) patch.completedDates = t.completedDates ?? [];
+                const patch: Record<string, unknown> = {};
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate'];
+                for (const key of taskKeys) {
+                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
+                    patch[key] = t[key];
+                  }
+                }
+                if (Object.keys(patch).length > 0) {
                   dbUpdateTask(t.id, patch).catch(console.error);
                 }
               }

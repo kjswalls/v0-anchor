@@ -1460,6 +1460,10 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       if (isRecurring(task)) {
         // Recurring tasks: show if shouldShowOnDate AND startDate is on or before selected date
         matchesDate = shouldShowOnDate(task, selectedDateStr, resolvedTimezone) && taskStartDateStr <= selectedDateStr;
+        // Exclude completed recurring tasks when showCompletedTasks is false
+        if (matchesDate && !showCompletedTasks && isCompletedOnDate(task, selectedDateStr)) {
+          return false;
+        }
       } else {
         // One-off tasks: exact date match
         matchesDate = taskStartDateStr === selectedDateStr;
@@ -1468,7 +1472,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
       const matchesSearch = !searchQuery || task.title.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesDate && matchesSearch;
     });
-  }, [filteredTasks, selectedDate, resolvedTimezone, searchQuery]);
+  }, [filteredTasks, selectedDate, resolvedTimezone, searchQuery, showCompletedTasks]);
 
   // Filter habits by search query
   const filteredHabitsForDate = useMemo(() => {
