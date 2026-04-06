@@ -1,17 +1,17 @@
 -- Migration: convert legacy 'weekly' repeat_frequency to 'custom' and enforce valid values
 
--- Convert weekly → custom in tasks (preserve repeat_days, default to [] if null)
+-- Convert weekly → custom in tasks (preserve repeat_days, default to {} if null)
 UPDATE tasks
 SET
   repeat_frequency = 'custom',
-  repeat_days = COALESCE(repeat_days, '[]'::jsonb)
+  repeat_days = COALESCE(repeat_days, ARRAY[]::integer[])
 WHERE repeat_frequency = 'weekly';
 
--- Convert weekly → custom in habits (preserve repeat_days, default to [] if null)
+-- Convert weekly → custom in habits (preserve repeat_days, default to {} if null)
 UPDATE habits
 SET
   repeat_frequency = 'custom',
-  repeat_days = COALESCE(repeat_days, '[]'::jsonb)
+  repeat_days = COALESCE(repeat_days, ARRAY[]::integer[])
 WHERE repeat_frequency = 'weekly';
 
 -- Add check constraint on tasks
