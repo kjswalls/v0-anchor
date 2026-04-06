@@ -544,14 +544,16 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
           if (selectedDateStr !== todayDateStr) return;
         } else if (isRecurring(task)) {
           // Recurring tasks: show if recurrence matches AND startDate ≤ selectedDate
-          const taskStartDateStr = toDateStr(new Date(task.startDate), resolvedTimezone);
+          // Use .split('T')[0] to avoid UTC-midnight timezone shift when parsing date-only strings
+          const taskStartDateStr = task.startDate.split('T')[0];
           if (!shouldShowOnDate(task, selectedDateStr, resolvedTimezone)) return;
           if (taskStartDateStr > selectedDateStr) return;
           // Exclude if completed on this date and showCompletedTasks is false
           if (!showCompletedTasks && isCompletedOnDate(task, selectedDateStr)) return;
         } else {
           // One-off tasks: exact date match
-          const taskStartDateStr = toDateStr(new Date(task.startDate), resolvedTimezone);
+          // Use .split('T')[0] to avoid UTC-midnight timezone shift when parsing date-only strings
+          const taskStartDateStr = task.startDate.split('T')[0];
           if (taskStartDateStr !== selectedDateStr) return;
         }
         buckets[task.timeBucket].tasks.push(task);
