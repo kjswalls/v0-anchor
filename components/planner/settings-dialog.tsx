@@ -385,42 +385,49 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             >
               {/* OpenClaw — primary, shown first */}
               <div className="space-y-3">
-                <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-foreground">OpenClaw</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Connect your personal AI agent — uses your memory, personality, and context.</p>
-                    </div>
-                    <Switch
-                      checked={provider === 'openclaw'}
-                      onCheckedChange={(v) => setProvider(v ? 'openclaw' : 'none')}
-                    />
-                  </div>
+                <SettingRow
+                  label="OpenClaw"
+                  description="Connect your personal AI agent — uses your memory, personality, and context."
+                >
+                  <Switch
+                    checked={provider === 'openclaw'}
+                    onCheckedChange={(v) => setProvider(v ? 'openclaw' : 'none')}
+                  />
+                </SettingRow>
 
-                  {provider === 'openclaw' && (
-                    <div className="pt-2 border-t border-border space-y-2">
-                      {openclawConn.kind !== 'resolved' ? (
-                        <p className="text-xs text-muted-foreground">Checking connection…</p>
-                      ) : openclawConn.chatUrl ? (
-                        <div className="space-y-1">
-                          <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
-                            Connected
-                          </Badge>
-                          <p className="text-[11px] text-muted-foreground">
-                            Agent: {openclawConn.agentId?.trim() || 'main'}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Not connected</p>
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">
-                            Run <code className="text-foreground/90">openclaw anchor-context setup</code> to connect.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {provider === 'openclaw' && (
+                  <div className="space-y-1 pl-0">
+                    {openclawConn.kind !== 'resolved' ? (
+                      <p className="text-xs text-muted-foreground">Checking connection…</p>
+                    ) : openclawConn.chatUrl ? (
+                      <div className="space-y-1">
+                        <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
+                          Connected
+                        </Badge>
+                        <p className="text-[11px] text-muted-foreground">
+                          Agent: {openclawConn.agentId?.trim() || 'main'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-muted-foreground">Not connected</p>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Run <code className="text-foreground/90">openclaw anchor-context setup</code> to connect,{' '}
+                          or{' '}
+                          <a
+                            href="/connect"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            open the connect page
+                          </a>
+                          {' '}in your browser.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Beacon fallback — secondary */}
                 <div className="rounded-lg border border-border px-3 py-3 space-y-3">

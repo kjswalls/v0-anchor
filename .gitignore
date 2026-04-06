@@ -16,3 +16,6 @@ node_modules/
 .next/
 .DS_Store
 .env.test
+supabase/.temp/
+test-results/
+docs/test-implementation-plan.md

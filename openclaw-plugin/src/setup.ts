@@ -1,53 +1,117 @@
-import * as readline from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
 import { readConfigFileSnapshotForWrite, writeConfigFile } from 'openclaw/plugin-sdk/config-runtime'
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/config-runtime'
 
+const ANCHOR_URL = 'https://v0-anchor-plum.vercel.app'
+const POLL_INTERVAL_MS = 3000
+const MAX_WAIT_MS = 15 * 60 * 1000 // 15 minutes
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function runSetup(): Promise<void> {
-  const rl = readline.createInterface({ input, output })
+  console.log('\n⚓  Anchor — Device Authorization\n')
 
-  console.log('\n⚓  Anchor Context Plugin — Setup\n')
-  console.log('You\'ll need your personal Anchor API key.')
-  console.log('Generate one at: Anchor → Settings → AI Assistant → OpenClaw → "Generate key"\n')
-
-  const anchorUrl = (await rl.question('Anchor URL (e.g. https://anchor.yourdomain.com): ')).trim().replace(/\/$/, '')
-  if (!anchorUrl.startsWith('http')) {
-    console.error('❌  URL must start with http:// or https://')
-    rl.close()
-    process.exit(1)
-  }
-
-  const apiKey = (await rl.question('Your Anchor API key (anchor_xxx...): ')).trim()
-  if (!apiKey.startsWith('anchor_')) {
-    const confirm = (await rl.question('⚠️  Key doesn\'t look like an Anchor key. Continue? (y/N): ')).trim()
-    if (confirm.toLowerCase() !== 'y') { rl.close(); process.exit(1) }
-  }
-
-  const webhookSecret = (await rl.question('Webhook secret for payload verification (optional, Enter to skip): ')).trim()
-  rl.close()
-
-  // Validate key by calling the context endpoint
-  console.log('\n🔍  Validating key...')
+  // 1. Initialize session
+  let sessionId: string
+  let userCode: string
+  let connectUrl: string
   try {
-    const res = await fetch(`${anchorUrl}/api/agent/context`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    })
+    const res = await fetch(`${ANCHOR_URL}/api/agent/connect/init`, { method: 'POST' })
     if (!res.ok) {
-      console.error(`❌  Validation failed: ${res.status} ${res.statusText}`)
-      console.error('    Double-check your URL and API key and try again.')
+      const body = await res.json().catch(() => ({}))
+      console.error(`❌  Failed to start session: ${body.error ?? res.statusText}`)
       process.exit(1)
     }
-    const data = await res.json() as { tasks: unknown[]; habits: unknown[]; userId: string }
-    console.log(`✅  Connected! Found ${data.tasks?.length ?? 0} tasks, ${data.habits?.length ?? 0} habits.`)
+    const data = await res.json() as {
+      sessionId: string
+      userCode: string
+      connectUrl: string
+      expiresAt: string
+    }
+    sessionId = data.sessionId
+    userCode = data.userCode
+    connectUrl = data.connectUrl
   } catch (err) {
     console.error(`❌  Could not reach Anchor: ${(err as Error).message}`)
     process.exit(1)
   }
 
-  // Read current config, patch, and write back
+  // 2. Print instructions
+  console.log('  Open this URL in your browser:')
+  console.log(`  ${connectUrl}\n`)
+  console.log('  Waiting for authorization...\n')
+
+  // 3. Poll loop
+  const deadline = Date.now() + MAX_WAIT_MS
+  let dots = 0
+
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS)
+
+    let poll: { status: string; apiKey?: string; anchorUrl?: string; error?: string }
+    try {
+      const pollRes = await fetch(
+        `${ANCHOR_URL}/api/agent/connect/poll?session=${encodeURIComponent(sessionId)}`
+      )
+      poll = await pollRes.json()
+    } catch {
+      // Network hiccup — retry on next interval
+      process.stdout.write('.')
+      dots++
+      continue
+    }
+
+    if (poll.status === 'authorized' && poll.apiKey) {
+      if (dots > 0) process.stdout.write('\n')
+
+      // 4. Validate the key works
+      try {
+        const ctxRes = await fetch(`${ANCHOR_URL}/api/agent/context`, {
+          headers: { Authorization: `Bearer ${poll.apiKey}` },
+        })
+        if (!ctxRes.ok) {
+          console.error(`\n❌  Key validation failed: ${ctxRes.status} ${ctxRes.statusText}`)
+          process.exit(1)
+        }
+        const ctx = await ctxRes.json() as { tasks?: unknown[]; habits?: unknown[] }
+        console.log(`\n✅  Connected! Found ${ctx.tasks?.length ?? 0} tasks, ${ctx.habits?.length ?? 0} habits.`)
+      } catch (err) {
+        console.error(`\n❌  Could not validate connection: ${(err as Error).message}`)
+        process.exit(1)
+      }
+
+      // 5. Write config
+      await writePluginConfig(poll.anchorUrl ?? ANCHOR_URL, poll.apiKey)
+      console.log('Config saved. Restart the gateway: openclaw gateway restart\n')
+      return
+    }
+
+    if (poll.status === 'expired') {
+      if (dots > 0) process.stdout.write('\n')
+      console.error('\n❌  Session expired. Run setup again.')
+      process.exit(1)
+    }
+
+    if (poll.status === 'consumed') {
+      if (dots > 0) process.stdout.write('\n')
+      console.error('\n❌  Session already used. Run setup again.')
+      process.exit(1)
+    }
+
+    // Still pending
+    process.stdout.write('.')
+    dots++
+  }
+
+  if (dots > 0) process.stdout.write('\n')
+  console.error('\n❌  Timed out waiting for authorization.')
+  process.exit(1)
+}
+
+async function writePluginConfig(anchorUrl: string, apiKey: string): Promise<void> {
   const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite()
 
-  // Deep-patch the config
   const config = snapshot.config as OpenClawConfig & Record<string, unknown>
   const plugins = ((config.plugins ?? {}) as Record<string, unknown>)
   const entries = ((plugins.entries ?? {}) as Record<string, unknown>)
@@ -57,19 +121,11 @@ export async function runSetup(): Promise<void> {
     ...existing,
     enabled: true,
     config: {
-      'anchor-context': {
-        anchorUrl,
-        apiKey,
-        ...(webhookSecret ? { webhookSecret } : {}),
-      },
+      'anchor-context': { anchorUrl, apiKey },
     },
   }
   plugins.entries = entries
   ;(config as Record<string, unknown>).plugins = plugins
 
   await writeConfigFile(config, writeOptions)
-
-  console.log('\n✅  Config saved!')
-  console.log('🔄  Restart the gateway to activate: openclaw gateway restart')
-  console.log('\nOnce active, I\'ll have full visibility into your Anchor tasks and habits from any channel. 🐉\n')
 }
