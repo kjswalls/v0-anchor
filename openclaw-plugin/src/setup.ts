@@ -114,6 +114,14 @@ async function writePluginConfig(anchorUrl: string, apiKey: string): Promise<voi
 
   const config = snapshot.config as OpenClawConfig & Record<string, unknown>
   const plugins = ((config.plugins ?? {}) as Record<string, unknown>)
+
+  // Add anchor-context to plugins.allow if not already present
+  const allow = Array.isArray(plugins.allow) ? [...plugins.allow] : []
+  if (!allow.includes('anchor-context')) {
+    allow.push('anchor-context')
+  }
+  plugins.allow = allow
+
   const entries = ((plugins.entries ?? {}) as Record<string, unknown>)
   const existing = ((entries['anchor-context'] ?? {}) as Record<string, unknown>)
 
