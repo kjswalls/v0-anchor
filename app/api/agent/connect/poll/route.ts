@@ -57,10 +57,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Update last_polled_at
-    await service
+    const { error: pollUpdateErr } = await service
       .from('connect_sessions')
       .update({ last_polled_at: new Date().toISOString() })
       .eq('id', sessionId)
+
+    if (pollUpdateErr) {
+      console.warn('[poll] Failed to update last_polled_at:', pollUpdateErr.message)
+    }
 
     if (session.status === 'pending') {
       return NextResponse.json({ status: 'pending' })

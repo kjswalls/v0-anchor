@@ -75,11 +75,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Mark session as authorized
+    // Mark session as authorized (status guard prevents double-authorization race)
     const { error: updateErr } = await service
       .from('connect_sessions')
       .update({ status: 'authorized', user_id: user.id, api_key: apiKey })
       .eq('id', session.id)
+      .eq('status', 'pending')
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 })

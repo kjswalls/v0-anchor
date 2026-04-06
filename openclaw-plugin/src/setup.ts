@@ -82,7 +82,7 @@ export async function runSetup(): Promise<void> {
       }
 
       // 5. Write config
-      await writePluginConfig(ANCHOR_URL, poll.apiKey)
+      await writePluginConfig(poll.anchorUrl ?? ANCHOR_URL, poll.apiKey)
       console.log('Config saved. Restart the gateway: openclaw gateway restart\n')
       return
     }

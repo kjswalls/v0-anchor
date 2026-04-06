@@ -370,6 +370,28 @@ describe('GET /api/agent/connect/poll', () => {
     expect(body.anchorUrl).toBe('https://v0-anchor-plum.vercel.app');
   });
 
+  it('returns { status: "consumed" } without apiKey for already-consumed sessions', async () => {
+    enqueue(
+      {
+        data: {
+          id: 'session-1',
+          status: 'consumed',
+          expires_at: new Date(Date.now() + 60000).toISOString(),
+          api_key: 'anchor_abc123',
+          last_polled_at: null,
+        },
+        error: null,
+      },
+      { data: null, error: null }, // update last_polled_at
+    );
+    const { GET } = await import('@/app/api/agent/connect/poll/route');
+    const req = makeRequest('http://localhost/api/agent/connect/poll?session=session-1');
+    const res = await GET(req);
+    const body = await res.json();
+    expect(body.status).toBe('consumed');
+    expect(body.apiKey).toBeUndefined();
+  });
+
   it('allows polling when last_polled_at is old enough (>2s)', async () => {
     enqueue(
       {

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +10,14 @@ import { Label } from '@/components/ui/label';
 
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
+function LoginPageInner() {
+  const searchParams = useSearchParams();
+  // After auth, redirect back to the requested page (e.g. /connect?code=...) or default to /auth/callback
+  const redirectParam = searchParams.get('redirect');
+  const postAuthUrl = redirectParam
+    ? decodeURIComponent(redirectParam)
+    : '/auth/callback';
+
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -23,7 +32,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}${postAuthUrl}`,
       },
     });
 
@@ -43,7 +52,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}${postAuthUrl}`,
       },
     });
 
@@ -55,6 +64,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
+
       <div className="w-full max-w-sm space-y-8">
         {/* Logo / Title */}
         <div className="text-center space-y-2">
@@ -138,5 +148,17 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    }>
+      <LoginPageInner />
+    </Suspense>
   );
 }

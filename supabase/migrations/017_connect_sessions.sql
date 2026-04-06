@@ -22,6 +22,11 @@ create table if not exists connect_sessions (
 
 alter table connect_sessions enable row level security;
 
+-- Index for rate-limit count query in init (pending sessions in last hour)
+create index if not exists connect_sessions_pending_created_idx
+  on connect_sessions (status, created_at)
+  where status = 'pending';
+
 -- Block all access by default for anon/authenticated — service_role bypasses RLS
 revoke all on table connect_sessions from anon;
 

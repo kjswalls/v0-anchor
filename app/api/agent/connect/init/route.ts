@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase-service'
 
 const ANCHOR_URL = 'https://v0-anchor-plum.vercel.app'
 const SESSION_TTL_MS = 15 * 60 * 1000 // 15 minutes
-const MAX_PENDING_PER_IP_PER_HOUR = 10
+const MAX_PENDING_SESSIONS_PER_HOUR = 10
 
 // Unambiguous chars for user codes — no O/I/L (alpha) or 0/1 (digits)
 const ALPHA_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ' // 23 chars
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: countErr.message }, { status: 500 })
     }
 
-    if ((count ?? 0) >= MAX_PENDING_PER_IP_PER_HOUR) {
+    if ((count ?? 0) >= MAX_PENDING_SESSIONS_PER_HOUR) {
       return NextResponse.json(
         { error: 'Too many pending sessions. Try again later.' },
         { status: 429 }
