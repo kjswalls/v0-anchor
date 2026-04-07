@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { format, addDays } from 'date-fns';
-import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+
+import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,19 +11,38 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
+import { shouldShowOnDate } from '@/lib/recurrence';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function todayStr() {
-  return format(new Date(), 'yyyy-MM-dd');
+function todayStr(tz?: string | null) {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Date().toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
-function tomorrowStr() {
-  return format(addDays(new Date(), 1), 'yyyy-MM-dd');
+function tomorrowStr(tz?: string | null) {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Parse today's date parts and add 1 day in UTC to avoid browser-TZ drift
+  const [y, m, d] = todayStr(resolvedTz).split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, d + 1));
+  return tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+/** Build a Date at UTC noon for the given YYYY-MM-DD string — safe for Calendar fromDate. */
+function dateFromYmd(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+
+/** Format a Date as YYYY-MM-DD in the given timezone (avoids browser-TZ drift in Calendar onSelect). */
+function formatDateInTz(date: Date, tz?: string | null): string {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return date.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
 function encouragingMessage(completedCount: number, totalCount: number): string {
@@ -38,28 +57,33 @@ function encouragingMessage(completedCount: number, totalCount: number): string 
   return "Every task you touched today moved things forward. That counts.";
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask } = usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
 
-  const today = todayStr();
+  const today = todayStr(userTimezone);
 
   // Partition today's tasks — live view for completed section
   const { completedTasks, pendingTasks: livePendingTasks } = useMemo(() => {
     const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
     return {
       completedTasks: todayTasks.filter((t) => t.status === 'completed'),
+      // Note: recurring tasks won't appear here — their startDate is the series start date,
+      // not today, so they're excluded naturally by the startDate === today filter above.
       pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
     };
   }, [tasks, today]);
 
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
-  // Using useState instead of useRef so that when the snapshot is captured on
-  // open, the component re-renders with the correct (store-loaded) task list.
   const [pendingTasksSnapshot, setPendingTasksSnapshot] = useState<typeof livePendingTasks>(livePendingTasks);
   useEffect(() => {
     if (isOpen) {
@@ -69,30 +93,49 @@ export function EODReview() {
   }, [isOpen]);
   const pendingTasks = isOpen ? pendingTasksSnapshot : livePendingTasks;
 
-  // Partition today's habits
+  // Partition today's habits (scoped to habits that should show today)
   const { doneHabits, skippedHabits } = useMemo(() => {
+    const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayHabits = habits.filter((h) => shouldShowOnDate(h, today, resolvedTz));
     return {
-      doneHabits: habits.filter((h) => h.completedDates.includes(today) || h.status === 'done'),
-      skippedHabits: habits.filter(
+      doneHabits: todayHabits.filter((h) => h.completedDates.includes(today) || h.status === 'done'),
+      skippedHabits: todayHabits.filter(
         (h) =>
           h.skippedDates.includes(today) ||
           (h.status === 'skipped' && !h.completedDates.includes(today))
       ),
     };
-  }, [habits, today]);
-
-  // Which pending tasks the user has checked to carry forward
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(livePendingTasks.map((t) => t.id))
-  );
+  }, [habits, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
 
+  // Per-task pill actions (replaces selectedIds)
+  const [taskActions, setTaskActions] = useState<Map<string, TaskAction>>(new Map());
+
+  // Undo stack: stores previous state before an action was taken
+  type UndoEntry = { startDate: string | null | undefined; isScheduled?: boolean; timeBucket?: string; startTime?: string | null };
+  const [undoStack, setUndoStack] = useState<Map<string, UndoEntry>>(new Map());
+
+  // Which task's date picker popover is open (desktop only)
+  const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
+
+  // Refs to hidden <input type="date"> elements for mobile date picking
+  const mobileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  // Reset session state when modal closes so stale data doesn't persist into next open
+  useEffect(() => {
+    if (!isOpen) {
+      setTaskActions(new Map());
+      setUndoStack(new Map());
+      setDatePickerOpenId(null);
+      mobileInputRefs.current = new Map();
+    }
+  }, [isOpen]);
+
   const handleMarkDone = (id: string) => {
     updateTask(id, { status: 'completed' });
     setJustCompletedIds((prev) => new Set(prev).add(id));
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const handleUnmarkDone = (id: string) => {
@@ -100,25 +143,55 @@ export function EODReview() {
     setJustCompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
-  const toggleSelected = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+  const handleMoveTo = (id: string, date: string) => {
+    const task = pendingTasks.find((t) => t.id === id);
+    setUndoStack((prev) => {
+      const next = new Map(prev);
+      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, startTime: task?.startTime ?? null });
       return next;
     });
+    setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'moved', to: date }); return next; });
+    updateTask(id, { startDate: date });
   };
 
-  const handleMoveToTomorrow = () => {
-    const tomorrow = tomorrowStr();
-    selectedIds.forEach((id) => {
-      updateTask(id, { startDate: tomorrow });
+  const handleDismiss = (id: string) => {
+    const task = pendingTasks.find((t) => t.id === id);
+    setUndoStack((prev) => {
+      const next = new Map(prev);
+      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket, startTime: task?.startTime ?? null });
+      return next;
     });
-    setSelectedIds(new Set());
+    setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'dismissed' }); return next; });
+    unscheduleTask(id);
+  };
+
+  const handleUndo = (id: string) => {
+    const prev = undoStack.get(id);
+    if (!prev) return;
+    if (prev.isScheduled !== undefined) {
+      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any, startTime: prev.startTime ?? undefined });
+    } else {
+      updateTask(id, { startDate: prev.startDate ?? undefined, startTime: prev.startTime ?? undefined });
+    }
+    setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
+    setUndoStack((s) => { const next = new Map(s); next.delete(id); return next; });
+  };
+
+  const handleMoveAllToTomorrow = () => {
+    const tomorrow = tomorrowStr(userTimezone);
+    pendingTasks
+      .filter((t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id))
+      .forEach((t) => handleMoveTo(t.id, tomorrow));
   };
 
   const handleDone = async () => {
     await saveLastReviewDate(userId, today);
   };
+
+  // Count unactioned pending tasks (not completed in session, not in taskActions)
+  const unactionedCount = pendingTasks.filter(
+    (t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id)
+  ).length;
 
   // Use livePendingTasks for counts so encouragement copy reflects actual state
   const totalToday = completedTasks.length + livePendingTasks.length;
@@ -203,15 +276,19 @@ export function EODReview() {
                   Carrying forward
                 </h3>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                Check the ones you&apos;d like to move to tomorrow — or leave them here for now.
-              </p>
               <ul className="space-y-1">
                 {pendingTasks.map((task) => {
                   const isDone = justCompletedIds.has(task.id);
+                  const action = taskActions.get(task.id);
+                  const hasAction = action !== undefined;
+
                   return (
-                    <li key={task.id} className="flex items-center gap-2 py-1">
-                      {/* Done toggle — click again to undo */}
+                    <li
+                      key={task.id}
+                      data-testid={`eod-task-row-${task.id}`}
+                      className="flex items-center gap-2 py-1"
+                    >
+                      {/* Done toggle — click filled circle to undo */}
                       <button
                         onClick={() => isDone ? handleUnmarkDone(task.id) : handleMarkDone(task.id)}
                         className={cn(
@@ -233,33 +310,100 @@ export function EODReview() {
                         {task.title}
                       </span>
 
-                      {/* Carry forward checkbox */}
+                      {/* Action pills — hidden once task is marked done */}
                       {!isDone && (
-                        <Checkbox
-                          id={`eod-task-${task.id}`}
-                          checked={selectedIds.has(task.id)}
-                          onCheckedChange={() => toggleSelected(task.id)}
-                          className="shrink-0"
-                        />
+                        hasAction ? (
+                          /* After action: show subtle Undo link */
+                          <button
+                            data-testid={`eod-undo-btn-${task.id}`}
+                            onClick={() => handleUndo(task.id)}
+                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                          >
+                            Undo
+                          </button>
+                        ) : (
+                          /* Unactioned: show pill buttons */
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Tomorrow → */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs gap-1 px-2"
+                              data-testid={`eod-tomorrow-btn-${task.id}`}
+                              onClick={() => handleMoveTo(task.id, tomorrowStr(userTimezone))}
+                            >
+                              Tomorrow
+                              <ArrowRight className="h-3 w-3" />
+                            </Button>
+
+                            {/* 📅 Date picker — Popover on desktop, native input on mobile */}
+                            <Popover
+                              open={datePickerOpenId === task.id}
+                              onOpenChange={(open) => {
+                                if (open && typeof window !== 'undefined' && window.innerWidth <= 640) {
+                                  // Mobile: trigger native date input instead of popover
+                                  mobileInputRefs.current.get(task.id)?.showPicker?.();
+                                } else if (open) {
+                                  setDatePickerOpenId(task.id);
+                                } else {
+                                  setDatePickerOpenId(null);
+                                }
+                              }}
+                            >
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2"
+                                  data-testid={`eod-datepicker-btn-${task.id}`}
+                                >
+                                  📅
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="end">
+                                <Calendar
+                                  mode="single"
+                                  fromDate={dateFromYmd(tomorrowStr(userTimezone))}
+                                  onSelect={(date) => {
+                                    if (date) {
+                                      handleMoveTo(task.id, formatDateInTz(date, userTimezone));
+                                      setDatePickerOpenId(null);
+                                    }
+                                  }}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            {/* Hidden native date input — triggered by 📅 button on mobile (≤640px) */}
+                            <input
+                              type="date"
+                              min={tomorrowStr(userTimezone)}
+                              className="sr-only"
+                              ref={(el) => {
+                                if (el) mobileInputRefs.current.set(task.id, el);
+                                else mobileInputRefs.current.delete(task.id);
+                              }}
+                              onChange={(e) => {
+                                if (e.target.value) handleMoveTo(task.id, e.target.value);
+                              }}
+                            />
+
+                            {/* ✕ Dismiss */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs px-2"
+                              data-testid={`eod-dismiss-btn-${task.id}`}
+                              onClick={() => handleDismiss(task.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )
                       )}
                     </li>
                   );
                 })}
               </ul>
-              <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-                Circle = mark done (click again to undo) · Checkbox = carry to tomorrow
-              </p>
-              {selectedIds.size > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 h-7 text-xs gap-1.5"
-                  onClick={handleMoveToTomorrow}
-                >
-                  <ArrowRight className="h-3 w-3" />
-                  Move {selectedIds.size} to tomorrow
-                </Button>
-              )}
             </section>
           )}
 
@@ -299,7 +443,22 @@ export function EODReview() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end pt-4 mt-2 border-t border-border shrink-0">
+        <div className="flex items-center justify-between pt-4 mt-2 border-t border-border shrink-0">
+          {/* Move all to tomorrow — visible whenever ≥1 unactioned pending task */}
+          {unactionedCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              data-testid="eod-move-all-btn"
+              onClick={handleMoveAllToTomorrow}
+            >
+              <ArrowRight className="h-3 w-3" />
+              Move all to tomorrow
+            </Button>
+          ) : (
+            <span />
+          )}
           <Button size="sm" onClick={handleDone}>
             Done for today
           </Button>

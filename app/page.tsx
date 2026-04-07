@@ -139,6 +139,30 @@ export default function PlannerPage() {
     });
   }, []);
 
+  // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('eod') !== '1') return;
+
+    const openAndClear = () => {
+      useEODStore.getState().open();
+      window.history.replaceState({}, '', '/');
+    };
+
+    if (!usePlannerStore.getState().isLoading) {
+      openAndClear();
+    } else {
+      const unsub = usePlannerStore.subscribe((state) => {
+        if (!state.isLoading) {
+          openAndClear();
+          unsub();
+        }
+      });
+      return unsub;
+    }
+  }, []);
+
   // EOD auto-trigger: open the EOD review modal when the review time has passed today
   const eodStore = useEODStore();
   useEffect(() => {
