@@ -242,7 +242,7 @@ export function EODReview() {
               <div className="flex items-center gap-2 mb-2">
                 <ArrowRight className="h-4 w-4 text-sky-400" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Carrying forward
+                  Today
                 </h3>
               </div>
               <ul className="space-y-1">
@@ -305,8 +305,9 @@ export function EODReview() {
                               <ArrowRight className="h-3 w-3" />
                             </Button>
 
-                            {/* 📅 Date picker — native input overlaid on mobile, Popover on desktop */}
-                            <div className="relative">
+                            {/* 📅 Date picker — native input on mobile, Popover on desktop */}
+                            <>
+                              {/* Desktop: shadcn Popover + Calendar */}
                               <Popover
                                 open={datePickerOpenId === task.id}
                                 onOpenChange={(open) => setDatePickerOpenId(open ? task.id : null)}
@@ -315,7 +316,7 @@ export function EODReview() {
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 text-xs px-2"
+                                    className="hidden sm:inline-flex h-7 text-xs px-2"
                                     data-testid={`eod-datepicker-btn-${task.id}`}
                                   >
                                     📅
@@ -334,17 +335,18 @@ export function EODReview() {
                                   />
                                 </PopoverContent>
                               </Popover>
-                              {/* Native date input overlaid on button — reliable tap target on mobile */}
+                              {/* Mobile: native date input styled as a button */}
                               <input
                                 type="date"
                                 aria-label="Move task to date"
                                 min={tomorrowStr(userTimezone)}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer sm:hidden"
+                                className="sm:hidden h-7 text-xs px-2 rounded-md border border-input bg-background cursor-pointer appearance-none w-[2.25rem] text-center"
+                                onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                                 onChange={(e) => {
                                   if (e.target.value) handleMoveTo(task.id, e.target.value);
                                 }}
                               />
-                            </div>
+                            </>
 
                             {/* ✕ Dismiss */}
                             <Button
