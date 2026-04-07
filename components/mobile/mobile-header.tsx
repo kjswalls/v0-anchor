@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useEODStore } from '@/lib/eod-store';
+import { useMorningStore } from '@/lib/morning-store';
 import { useTheme } from 'next-themes';
 import { saveSettings } from '@/lib/settings-service';
 import { cn } from '@/lib/utils';
@@ -19,6 +21,7 @@ interface MobileHeaderProps {
 
 export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
   const { selectedDate, setSelectedDate, undo, redo, canUndo, canRedo, userId } = usePlannerStore();
+  const eodStore = useEODStore();
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -122,6 +125,26 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
         </Button>
 
         <UserProfileDropdown onOpenSettings={onOpenSettings} />
+
+        {/* DEV: manual trigger buttons for testing — remove before launch */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title="[DEV] Reset morning check"
+        >
+          ☀️
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => eodStore.open()}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title="[DEV] Trigger EOD review"
+        >
+          🌙
+        </Button>
 
         <div className="w-px h-5 bg-border mx-1" />
         
