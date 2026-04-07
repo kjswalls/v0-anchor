@@ -12,9 +12,15 @@ import { createServiceClient } from '@/lib/supabase-service';
  * If CRON_SECRET is not set, the check is skipped (for local dev).
  */
 export async function GET(req: NextRequest) {
-  // Auth check — skip if CRON_SECRET is not configured (local dev)
+  // Auth check
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
+  if (!cronSecret) {
+    // In production, fail closed if secret is not configured
+    if (process.env.NODE_ENV !== 'development') {
+      return NextResponse.json({ error: 'CRON secret not configured' }, { status: 500 });
+    }
+    // In development, allow bypass
+  } else {
     const authHeader = req.headers.get('authorization');
     if (authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -79,21 +85,33 @@ export async function GET(req: NextRequest) {
 
     // Send push notification
     try {
-      await fetch(`${appUrl}/api/push/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-service-key': process.env.SUPABASE_SECRET_KEY ?? '',
-        },
-        body: JSON.stringify({
-          userId,
-          title: 'End of day 🌙',
-          body: "How'd today go?",
-          url: '/?eod=1',
-        }),
-      });
-    } catch {
-      // Non-fatal — continue to next user
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      let pushResponse: Response;
+      try {
+        pushResponse = await fetch(`${appUrl}/api/push/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-service-key': process.env.SUPABASE_SECRET_KEY ?? '',
+          },
+          body: JSON.stringify({
+            userId,
+            title: 'End of day 🌙',
+            body: "How'd today go?",
+            url: '/?eod=1',
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!pushResponse.ok) {
+        console.error('[eod-notify] Push send failed for', userId, pushResponse.status);
+        continue;
+      }
+    } catch (err) {
+      console.error('[eod-notify] Push fetch threw for', userId, err);
       continue;
     }
 

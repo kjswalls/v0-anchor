@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check, X } from 'lucide-react';
 import {
   Dialog,
@@ -20,12 +20,16 @@ import { shouldShowOnDate } from '@/lib/recurrence';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function todayStr() {
-  return format(new Date(), 'yyyy-MM-dd');
+function todayStr(tz?: string | null) {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new Date().toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
-function tomorrowStr() {
-  return format(addDays(new Date(), 1), 'yyyy-MM-dd');
+function tomorrowStr(tz?: string | null) {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
 function encouragingMessage(completedCount: number, totalCount: number): string {
@@ -52,7 +56,7 @@ export function EODReview() {
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
-  const today = todayStr();
+  const today = todayStr(userTimezone);
 
   // Partition today's tasks — live view for completed section
   const { completedTasks, pendingTasks: livePendingTasks } = useMemo(() => {
@@ -97,7 +101,7 @@ export function EODReview() {
   const [taskActions, setTaskActions] = useState<Map<string, TaskAction>>(new Map());
 
   // Undo stack: stores previous state before an action was taken
-  type UndoEntry = { startDate: string | null | undefined; isScheduled?: boolean; timeBucket?: string };
+  type UndoEntry = { startDate: string | null | undefined; isScheduled?: boolean; timeBucket?: string; startTime?: string | null };
   const [undoStack, setUndoStack] = useState<Map<string, UndoEntry>>(new Map());
 
   // Which task's date picker popover is open (desktop only)
@@ -105,6 +109,16 @@ export function EODReview() {
 
   // Refs to hidden <input type="date"> elements for mobile date picking
   const mobileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+
+  // Reset session state when modal closes so stale data doesn't persist into next open
+  useEffect(() => {
+    if (!isOpen) {
+      setTaskActions(new Map());
+      setUndoStack(new Map());
+      setDatePickerOpenId(null);
+      mobileInputRefs.current = new Map();
+    }
+  }, [isOpen]);
 
   const handleMarkDone = (id: string) => {
     updateTask(id, { status: 'completed' });
@@ -120,7 +134,7 @@ export function EODReview() {
     const task = pendingTasks.find((t) => t.id === id);
     setUndoStack((prev) => {
       const next = new Map(prev);
-      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null });
+      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, startTime: task?.startTime ?? null });
       return next;
     });
     setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'moved', to: date }); return next; });
@@ -131,7 +145,7 @@ export function EODReview() {
     const task = pendingTasks.find((t) => t.id === id);
     setUndoStack((prev) => {
       const next = new Map(prev);
-      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket });
+      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket, startTime: task?.startTime ?? null });
       return next;
     });
     setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'dismissed' }); return next; });
@@ -142,16 +156,16 @@ export function EODReview() {
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
-      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any });
+      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any, startTime: prev.startTime ?? undefined });
     } else {
-      updateTask(id, { startDate: prev.startDate ?? undefined });
+      updateTask(id, { startDate: prev.startDate ?? undefined, startTime: prev.startTime ?? undefined });
     }
     setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
     setUndoStack((s) => { const next = new Map(s); next.delete(id); return next; });
   };
 
   const handleMoveAllToTomorrow = () => {
-    const tomorrow = tomorrowStr();
+    const tomorrow = tomorrowStr(userTimezone);
     pendingTasks
       .filter((t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id))
       .forEach((t) => handleMoveTo(t.id, tomorrow));
@@ -303,7 +317,7 @@ export function EODReview() {
                               size="sm"
                               className="h-7 text-xs gap-1 px-2"
                               data-testid={`eod-tomorrow-btn-${task.id}`}
-                              onClick={() => handleMoveTo(task.id, tomorrowStr())}
+                              onClick={() => handleMoveTo(task.id, tomorrowStr(userTimezone))}
                             >
                               Tomorrow
                               <ArrowRight className="h-3 w-3" />
@@ -336,7 +350,7 @@ export function EODReview() {
                               <PopoverContent className="w-auto p-0" align="end">
                                 <Calendar
                                   mode="single"
-                                  fromDate={addDays(new Date(), 1)}
+                                  fromDate={new Date(tomorrowStr(userTimezone) + 'T00:00:00')}
                                   onSelect={(date) => {
                                     if (date) {
                                       handleMoveTo(task.id, format(date, 'yyyy-MM-dd'));
@@ -349,7 +363,7 @@ export function EODReview() {
                             {/* Hidden native date input — triggered by 📅 button on mobile (≤640px) */}
                             <input
                               type="date"
-                              min={tomorrowStr()}
+                              min={tomorrowStr(userTimezone)}
                               className="sr-only"
                               ref={(el) => {
                                 if (el) mobileInputRefs.current.set(task.id, el);

@@ -143,9 +143,22 @@ export default function PlannerPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('eod') === '1') {
+    if (params.get('eod') !== '1') return;
+
+    const openAndClear = () => {
       useEODStore.getState().open();
       window.history.replaceState({}, '', '/');
+    };
+
+    if (!usePlannerStore.getState().isLoading) {
+      openAndClear();
+    } else {
+      const unsub = usePlannerStore.subscribe((state) => {
+        if (!state.isLoading) {
+          openAndClear();
+          unsub();
+        }
+      });
     }
   }, []);
 
