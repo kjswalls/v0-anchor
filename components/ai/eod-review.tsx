@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { format } from 'date-fns';
+
 import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check, X } from 'lucide-react';
 import {
   Dialog,
@@ -27,10 +27,22 @@ function todayStr(tz?: string | null) {
 
 function tomorrowStr(tz?: string | null) {
   const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  // Build tomorrow from today's tz-aware date string to avoid UTC-offset drift
-  const today = new Date(todayStr(resolvedTz) + 'T12:00:00');
-  today.setDate(today.getDate() + 1);
-  return today.toLocaleDateString('en-CA', { timeZone: resolvedTz });
+  // Parse today's date parts and add 1 day in UTC to avoid browser-TZ drift
+  const [y, m, d] = todayStr(resolvedTz).split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, d + 1));
+  return tomorrow.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+/** Build a Date at UTC noon for the given YYYY-MM-DD string — safe for Calendar fromDate. */
+function dateFromYmd(ymd: string): Date {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12));
+}
+
+/** Format a Date as YYYY-MM-DD in the given timezone (avoids browser-TZ drift in Calendar onSelect). */
+function formatDateInTz(date: Date, tz?: string | null): string {
+  const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return date.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
 function encouragingMessage(completedCount: number, totalCount: number): string {
@@ -351,10 +363,10 @@ export function EODReview() {
                               <PopoverContent className="w-auto p-0" align="end">
                                 <Calendar
                                   mode="single"
-                                  fromDate={new Date(tomorrowStr(userTimezone) + 'T00:00:00')}
+                                  fromDate={dateFromYmd(tomorrowStr(userTimezone))}
                                   onSelect={(date) => {
                                     if (date) {
-                                      handleMoveTo(task.id, format(date, 'yyyy-MM-dd'));
+                                      handleMoveTo(task.id, formatDateInTz(date, userTimezone));
                                       setDatePickerOpenId(null);
                                     }
                                   }}
