@@ -14,10 +14,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!apiKey.startsWith('sk-')) {
-    return NextResponse.json({
-      valid: false,
-      error: 'Key format looks wrong — OpenAI keys start with "sk-".',
-    });
+    return NextResponse.json(
+      { valid: false, error: 'Key format looks wrong — OpenAI keys start with "sk-".' },
+      { status: 400 }
+    );
   }
 
   try {
