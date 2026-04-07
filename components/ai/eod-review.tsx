@@ -53,7 +53,8 @@ function actionLabel(action: TaskAction, userTimezone: string | null | undefined
     if (action.to === tomorrow) return 'Moved to tomorrow';
     const [y, m, d] = action.to.split('-').map(Number);
     const date = new Date(Date.UTC(y, m - 1, d, 12));
-    const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const resolvedTz = userTimezone ?? 'UTC';
+    const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: resolvedTz });
     return `Rescheduled to ${formatted}`;
   }
   return '';
@@ -336,6 +337,7 @@ export function EODReview() {
                               {/* Native date input overlaid on button — reliable tap target on mobile */}
                               <input
                                 type="date"
+                                aria-label="Move task to date"
                                 min={tomorrowStr(userTimezone)}
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer sm:hidden"
                                 onChange={(e) => {
