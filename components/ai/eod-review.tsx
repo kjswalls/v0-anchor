@@ -67,7 +67,7 @@ type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask, unscheduleTask } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus } = usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
@@ -75,12 +75,13 @@ export function EODReview() {
   const today = todayStr(userTimezone);
 
   // Partition today's tasks — live view for pending section
-  const { pendingTasks: livePendingTasks } = useMemo(() => {
+  const { pendingTasks: livePendingTasks, completedTasks } = useMemo(() => {
     const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
     return {
       // Note: recurring tasks won't appear here — their startDate is the series start date,
       // not today, so they're excluded naturally by the startDate === today filter above.
       pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
+      completedTasks: todayTasks.filter((t) => t.status === 'completed'),
     };
   }, [tasks, today]);
 
@@ -139,6 +140,10 @@ export function EODReview() {
   const handleUnmarkDone = (id: string) => {
     updateTask(id, { status: 'pending' });
     setJustCompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+  };
+
+  const handleToggleHabit = (id: string, targetStatus: 'done' | 'pending' | 'skipped') => {
+    toggleHabitStatus(id, targetStatus, undefined, new Date());
   };
 
   const handleMoveTo = (id: string, date: string) => {
@@ -214,22 +219,46 @@ export function EODReview() {
 
         <div className="flex-1 overflow-y-auto space-y-5 pr-1">
 
-          {/* ── Done habits ───────────────────────────────────── */}
-          {doneHabits.length > 0 && (
+          {/* ── Done today (completed tasks + done habits) ────── */}
+          {(completedTasks.length > 0 || doneHabits.length > 0) && (
             <section>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Habits kept
+                  Done today
                 </h3>
               </div>
               <ul className="space-y-1.5">
+                {completedTasks.map((task) => (
+                  <li key={task.id} className="flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => handleUnmarkDone(task.id)}
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      title="Undo"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                    <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
+                      {task.title}
+                    </span>
+                  </li>
+                ))}
                 {doneHabits.map((habit) => (
-                  <li key={habit.id} className="flex items-center gap-2">
-                    <span className="text-sm text-foreground">{habit.title}</span>
+                  <li key={habit.id} className="flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => handleToggleHabit(habit.id, 'pending')}
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      title="Undo"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                    <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
+                      {habit.title}
+                    </span>
                     {habit.streak > 1 && (
                       <span className="text-xs text-amber-500">🔥 {habit.streak}</span>
                     )}
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">Habit</span>
                   </li>
                 ))}
               </ul>
@@ -240,9 +269,8 @@ export function EODReview() {
           {pendingTasks.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-2">
-                <ArrowRight className="h-4 w-4 text-sky-400" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Today
+                  Still on your list
                 </h3>
               </div>
               <ul className="space-y-1">
@@ -335,17 +363,21 @@ export function EODReview() {
                                   />
                                 </PopoverContent>
                               </Popover>
-                              {/* Mobile: native date input styled as a button */}
-                              <input
-                                type="date"
-                                aria-label="Move task to date"
-                                min={tomorrowStr(userTimezone)}
-                                className="sm:hidden h-7 text-xs px-2 rounded-md border border-input bg-background cursor-pointer appearance-none w-[2.25rem] text-center"
-                                onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
-                                onChange={(e) => {
-                                  if (e.target.value) handleMoveTo(task.id, e.target.value);
-                                }}
-                              />
+                              {/* Mobile: label wrapping sr-only input — avoids onChange firing on scroll */}
+                              <label
+                                htmlFor={`date-input-${task.id}`}
+                                className="sm:hidden inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background cursor-pointer text-sm"
+                              >
+                                📅
+                                <input
+                                  id={`date-input-${task.id}`}
+                                  type="date"
+                                  min={tomorrowStr(userTimezone)}
+                                  className="sr-only"
+                                  onBlur={(e) => { if (e.target.value) handleMoveTo(task.id, e.target.value); }}
+                                  aria-label="Move task to date"
+                                />
+                              </label>
                             </>
 
                             {/* ✕ Dismiss */}
@@ -374,24 +406,30 @@ export function EODReview() {
               <div className="flex items-center gap-2 mb-2">
                 <Circle className="h-4 w-4 text-muted-foreground/50" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Set aside today
+                  Skipped today
                 </h3>
               </div>
               <ul className="space-y-1.5">
                 {skippedHabits.map((habit) => (
-                  <li key={habit.id} className="text-sm text-muted-foreground">
-                    {habit.title}
+                  <li key={habit.id} className="flex items-center gap-2">
+                    <span className="flex-1 text-sm text-muted-foreground min-w-0 truncate">{habit.title}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs px-2 shrink-0"
+                      onClick={() => handleToggleHabit(habit.id, 'done')}
+                    >
+                      Mark done
+                    </Button>
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-muted-foreground italic">
-                Tomorrow&apos;s a fresh start.
-              </p>
             </section>
           )}
 
           {/* Empty state */}
-          {pendingTasks.length === 0 &&
+          {completedTasks.length === 0 &&
+            pendingTasks.length === 0 &&
             doneHabits.length === 0 &&
             skippedHabits.length === 0 && (
               <div className="text-center py-6">
