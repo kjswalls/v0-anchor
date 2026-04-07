@@ -10,7 +10,8 @@ import { buildAnchorContext } from '@/lib/ai-context'
 import { createClient } from '@/lib/supabase'
 import { isOnboardingComplete } from '@/lib/user-profile'
 import { OnboardingChat } from './onboarding-chat'
-import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store'
+import { useAISettingsStore } from '@/lib/ai-settings-store'
+import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { cn } from '@/lib/utils'
 import { useTimeFormat } from '@/lib/use-time-format'
@@ -36,7 +37,11 @@ const MIN_WIDTH = 320
 const MAX_WIDTH = 600
 const DEFAULT_WIDTH = 380
 
-export function ChatSidebar() {
+interface ChatSidebarProps {
+  onOpenSettings?: () => void;
+}
+
+export function ChatSidebar({ onOpenSettings }: ChatSidebarProps) {
   const { rightSidebarOpen: isOpen, rightSidebarHovered, rightSidebarHoverEnabled, setRightSidebarOpen: setIsOpen, toggleRightSidebar, setRightSidebarHovered } = useSidebarStore()
   const isVisible = isOpen || (rightSidebarHoverEnabled && rightSidebarHovered)
   const timeFormatStr = useTimeFormat()
@@ -58,6 +63,7 @@ export function ChatSidebar() {
   const sidebarRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const aiProvider = useAISettingsStore((s) => s.provider)
+  const aiApiKey = useAISettingsStore((s) => s.apiKey)
   const prevAiProviderRef = useRef(aiProvider)
   const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME
 
@@ -229,9 +235,8 @@ export function ChatSidebar() {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState()
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups })
       // Intentionally reading fresh values via getState() to avoid stale closures.
-      const { provider, apiKey, model, personality, systemPrompt } =
-        useAISettingsStore.getState()
-      const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality]
+      const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState()
+      const effectiveSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
 
 
 
@@ -444,19 +449,36 @@ export function ChatSidebar() {
                         <MessageSquarePlus className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.25} />
                         <Sparkles className="h-4 w-4 text-primary/60 absolute -top-1 -right-1" />
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-foreground">
-                          {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
-                        </p>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          {aiProvider === 'openclaw'
-                            ? `Ask anything — ${displayName} knows your tasks, habits, and projects.`
-                            : aiProvider === 'none'
-                            ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
-                            : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
-                          }
-                        </p>
-                      </div>
+                      {aiProvider === 'openai' && !aiApiKey ? (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-foreground">API key needed</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Beacon needs an API key to get started.
+                          </p>
+                          {onOpenSettings && (
+                            <button
+                              onClick={onOpenSettings}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              → Go to Settings
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-foreground">
+                            {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {aiProvider === 'openclaw'
+                              ? `Ask anything — ${displayName} knows your tasks, habits, and projects.`
+                              : aiProvider === 'none'
+                              ? <span>Connect <span className="text-foreground font-medium">OpenClaw</span> in Settings for your personal AI agent, or add an OpenAI key to use Beacon.</span>
+                              : 'Ask me to break down tasks, plan your day, or think through what to tackle next.'
+                            }
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3 px-4 pb-4 -mt-8">

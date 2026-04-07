@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus, Check, Loader2, AlertCircle } from 'lucide-react';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import {
   Dialog,
@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
-import { useAISettingsStore, AIProvider } from '@/lib/ai-settings-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { saveSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
@@ -124,9 +124,39 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     provider, setProvider,
     apiKey, setApiKey,
     model, setModel,
-    personality, setPersonality,
-    systemPrompt, setSystemPrompt,
   } = useAISettingsStore();
+
+  type KeyValidation = 'idle' | 'validating' | 'valid' | 'invalid';
+  const [keyValidation, setKeyValidation] = useState<KeyValidation>('idle');
+  const [keyValidationError, setKeyValidationError] = useState('');
+  // Reset validation when key changes
+  useEffect(() => {
+    setKeyValidation('idle');
+    setKeyValidationError('');
+  }, [apiKey]);
+
+  const validateKey = async (key: string) => {
+    if (!key) return;
+    setKeyValidation('validating');
+    setKeyValidationError('');
+    try {
+      const res = await fetch('/api/validate-openai-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: key }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setKeyValidation('valid');
+      } else {
+        setKeyValidation('invalid');
+        setKeyValidationError(data.error ?? 'Key validation failed.');
+      }
+    } catch {
+      setKeyValidation('invalid');
+      setKeyValidationError('Could not reach the server — check your connection.');
+    }
+  };
 
   type OpenclawConnState =
     | { kind: 'inactive' }
@@ -446,9 +476,29 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   {provider === 'openai' && (
                     <div className="space-y-2 pt-1 border-t border-border">
                       <SettingRow label="API Key" description="Stored locally only">
-                        <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
-                          placeholder="sk-..." className="w-44 h-8 text-xs" />
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            onBlur={() => validateKey(apiKey)}
+                            placeholder="sk-..."
+                            className="w-44 h-8 text-xs"
+                          />
+                          {keyValidation === 'validating' && (
+                            <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
+                          )}
+                          {keyValidation === 'valid' && (
+                            <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                          )}
+                          {keyValidation === 'invalid' && (
+                            <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                          )}
+                        </div>
                       </SettingRow>
+                      {keyValidation === 'invalid' && keyValidationError && (
+                        <p className="text-xs text-destructive leading-snug">{keyValidationError}</p>
+                      )}
                       <SettingRow label="Model" description="">
                         <Select value={model} onValueChange={setModel}>
                           <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -456,17 +506,6 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                             <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
                             <SelectItem value="gpt-4o">gpt-4o</SelectItem>
                             <SelectItem value="gpt-4-turbo">gpt-4-turbo</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </SettingRow>
-                      <SettingRow label="Personality" description="">
-                        <Select value={personality} onValueChange={(v) => setPersonality(v as typeof personality)}>
-                          <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">Default</SelectItem>
-                            <SelectItem value="professional">Professional</SelectItem>
-                            <SelectItem value="motivational">Motivational</SelectItem>
-                            <SelectItem value="minimal">Minimal</SelectItem>
                           </SelectContent>
                         </Select>
                       </SettingRow>
