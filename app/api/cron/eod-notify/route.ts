@@ -9,7 +9,7 @@ import { createServiceClient } from '@/lib/supabase-service';
  * time and who haven't been notified today, then sends them a push notification.
  *
  * Auth: Authorization: Bearer <CRON_SECRET> (Vercel sets this automatically).
- * If CRON_SECRET is not set, the check is skipped (for local dev).
+ * If CRON_SECRET is not set: returns 500 in production, bypasses auth in development.
  */
 export async function GET(req: NextRequest) {
   // Auth check

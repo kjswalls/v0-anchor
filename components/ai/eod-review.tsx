@@ -27,9 +27,10 @@ function todayStr(tz?: string | null) {
 
 function tomorrowStr(tz?: string | null) {
   const resolvedTz = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toLocaleDateString('en-CA', { timeZone: resolvedTz });
+  // Build tomorrow from today's tz-aware date string to avoid UTC-offset drift
+  const today = new Date(todayStr(resolvedTz) + 'T12:00:00');
+  today.setDate(today.getDate() + 1);
+  return today.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
 function encouragingMessage(completedCount: number, totalCount: number): string {

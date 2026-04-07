@@ -159,6 +159,7 @@ export default function PlannerPage() {
           unsub();
         }
       });
+      return unsub;
     }
   }, []);
 
