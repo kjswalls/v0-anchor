@@ -9,7 +9,8 @@ import { buildAnchorContext } from '@/lib/ai-context';
 import { createClient } from '@/lib/supabase';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { OnboardingChat } from '@/components/ai/onboarding-chat';
-import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -30,7 +31,11 @@ const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
 const ASSISTANT_NAME = 'Beacon';
 const OPENCLAW_NAME = 'OpenClaw';
 
-export function MobileChatPanel() {
+interface MobileChatPanelProps {
+  onOpenSettings?: () => void;
+}
+
+export function MobileChatPanel({ onOpenSettings }: MobileChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +49,7 @@ export function MobileChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const aiProvider = useAISettingsStore((s) => s.provider);
+  const aiApiKey = useAISettingsStore((s) => s.apiKey);
   const prevAiProviderRef = useRef(aiProvider);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const activeTab = useMobileNavStore((s) => s.activeTab);
@@ -166,9 +172,8 @@ export function MobileChatPanel() {
     try {
       const { tasks, habits, projects, habitGroups } = usePlannerStore.getState();
       const context = buildAnchorContext({ tasks, habits, projects, habitGroups });
-      const { provider, apiKey, model, personality, systemPrompt } =
-        useAISettingsStore.getState();
-      const effectiveSystemPrompt = personality === 'custom' ? systemPrompt : PERSONALITY_PROMPTS[personality];
+      const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();
+      const effectiveSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT;
 
 
 
@@ -331,17 +336,34 @@ export function MobileChatPanel() {
                   <MessageSquarePlus className="h-14 w-14 text-muted-foreground/40" strokeWidth={1.25} />
                   <Sparkles className="h-6 w-6 text-primary/60 absolute -top-1 -right-1" />
                 </div>
-                <div className="space-y-2">
-                  <p className="text-lg font-medium text-foreground">
-                    Plan with {displayName}
-                  </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
-                    {aiProvider === 'none'
-                      ? 'Connect an AI provider in Settings to start chatting.'
-                      : 'Ask me anything about your day'
-                    }
-                  </p>
-                </div>
+                {aiProvider === 'openai' && !aiApiKey ? (
+                  <div className="space-y-2">
+                    <p className="text-lg font-medium text-foreground">API key needed</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
+                      Beacon needs an API key to get started.
+                    </p>
+                    {onOpenSettings && (
+                      <button
+                        onClick={onOpenSettings}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        → Go to Settings
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-lg font-medium text-foreground">
+                      Plan with {displayName}
+                    </p>
+                    <p className="text-sm text-muted-foreground leading-relaxed max-w-[280px]">
+                      {aiProvider === 'none'
+                        ? 'Connect an AI provider in Settings to start chatting.'
+                        : 'Ask me anything about your day'
+                      }
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-3 px-4 pb-4 -mt-12">

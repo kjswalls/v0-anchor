@@ -583,7 +583,7 @@ const handleAddFromTopNav = () => {
               />
             )}
             
-            <ChatSidebar />
+            <ChatSidebar onOpenSettings={() => setSettingsOpen(true)} />
           </main>
         </div>
       </div>
@@ -613,7 +613,7 @@ const handleAddFromTopNav = () => {
             />
           )}
           {activeTab === 'chat' && (
-            <MobileChatPanel />
+            <MobileChatPanel onOpenSettings={() => setSettingsOpen(true)} />
           )}
         </div>
         <MobileTabBar />

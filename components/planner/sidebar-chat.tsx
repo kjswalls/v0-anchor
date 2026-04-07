@@ -5,7 +5,8 @@ import { Send, Sparkles, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useAISettingsStore, PERSONALITY_PROMPTS } from '@/lib/ai-settings-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -27,8 +28,7 @@ function LoadingDots() {
 }
 
 export function SidebarChat() {
-  const { provider, apiKey, model, assistantName, personality, systemPrompt } =
-    useAISettingsStore();
+  const { provider, apiKey, model, assistantName, systemPrompt } = useAISettingsStore();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -53,9 +53,8 @@ export function SidebarChat() {
   }, [input]);
 
   const getEffectiveSystemPrompt = useCallback(() => {
-    if (personality === 'custom') return systemPrompt;
-    return PERSONALITY_PROMPTS[personality];
-  }, [personality, systemPrompt]);
+    return systemPrompt || BEACON_SYSTEM_PROMPT;
+  }, [systemPrompt]);
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
