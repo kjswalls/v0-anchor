@@ -98,12 +98,16 @@ export async function GET(req: NextRequest) {
     }
 
     // Record that we've notified this user today
-    await service
+    const { error: updateError } = await service
       .from('user_settings')
       .update({ last_eod_notified_date: userToday })
       .eq('user_id', userId);
 
-    notified++;
+    if (!updateError) {
+      notified++;
+    } else {
+      console.error('[eod-notify] Failed to update notified date for', userId, updateError.message);
+    }
   }
 
   return NextResponse.json({ ok: true, notified });

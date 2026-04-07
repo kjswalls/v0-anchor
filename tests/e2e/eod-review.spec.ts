@@ -190,10 +190,11 @@ test.describe('End of day (EOD) review modal', () => {
       const popover = page.locator('[data-radix-popper-content-wrapper]');
       await expect(popover).toBeVisible({ timeout: 3_000 });
 
-      // Select tomorrow's date from the calendar by clicking the day cell
-      // We rely on the aria-label which date-fns/shadcn Calendar sets to the full date string
+      // Select tomorrow's date from the calendar by clicking the day button.
+      // shadcn Calendar renders day buttons with aria-label like "April 8, 2026".
       const tomorrowDate = new Date(TOMORROW + 'T12:00:00');
-      await popover.getByRole('gridcell', { name: new RegExp(String(tomorrowDate.getDate())) }).first().click();
+      const ariaLabel = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      await popover.getByRole('button', { name: ariaLabel }).click();
 
       // Undo link should appear and pills gone
       await expect(page.getByTestId(`eod-undo-btn-${taskId}`)).toBeVisible({ timeout: 3_000 });

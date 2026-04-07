@@ -142,9 +142,9 @@ export function EODReview() {
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
-      updateTask(id, { startDate: prev.startDate, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket });
+      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any });
     } else {
-      updateTask(id, { startDate: prev.startDate });
+      updateTask(id, { startDate: prev.startDate ?? undefined });
     }
     setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
     setUndoStack((s) => { const next = new Map(s); next.delete(id); return next; });
