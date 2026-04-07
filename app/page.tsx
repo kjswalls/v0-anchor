@@ -139,6 +139,16 @@ export default function PlannerPage() {
     });
   }, []);
 
+  // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('eod') === '1') {
+      useEODStore.getState().open();
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
   // EOD auto-trigger: open the EOD review modal when the review time has passed today
   const eodStore = useEODStore();
   useEffect(() => {
