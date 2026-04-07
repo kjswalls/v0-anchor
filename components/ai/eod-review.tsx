@@ -16,6 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
+import { shouldShowOnDate } from '@/lib/recurrence';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,9 +47,10 @@ type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask } = usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const today = todayStr();
 
@@ -74,17 +76,19 @@ export function EODReview() {
   }, [isOpen]);
   const pendingTasks = isOpen ? pendingTasksSnapshot : livePendingTasks;
 
-  // Partition today's habits
+  // Partition today's habits (scoped to habits that should show today)
   const { doneHabits, skippedHabits } = useMemo(() => {
+    const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayHabits = habits.filter((h) => shouldShowOnDate(h, today, resolvedTz));
     return {
-      doneHabits: habits.filter((h) => h.completedDates.includes(today) || h.status === 'done'),
-      skippedHabits: habits.filter(
+      doneHabits: todayHabits.filter((h) => h.completedDates.includes(today) || h.status === 'done'),
+      skippedHabits: todayHabits.filter(
         (h) =>
           h.skippedDates.includes(today) ||
           (h.status === 'skipped' && !h.completedDates.includes(today))
       ),
     };
-  }, [habits, today]);
+  }, [habits, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
@@ -92,8 +96,9 @@ export function EODReview() {
   // Per-task pill actions (replaces selectedIds)
   const [taskActions, setTaskActions] = useState<Map<string, TaskAction>>(new Map());
 
-  // Undo stack: stores previous startDate before an action was taken
-  const [undoStack, setUndoStack] = useState<Map<string, { startDate: string | null }>>(new Map());
+  // Undo stack: stores previous state before an action was taken
+  type UndoEntry = { startDate: string | null | undefined; isScheduled?: boolean; timeBucket?: string };
+  const [undoStack, setUndoStack] = useState<Map<string, UndoEntry>>(new Map());
 
   // Which task's date picker popover is open (desktop only)
   const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
@@ -126,17 +131,21 @@ export function EODReview() {
     const task = pendingTasks.find((t) => t.id === id);
     setUndoStack((prev) => {
       const next = new Map(prev);
-      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null });
+      if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket });
       return next;
     });
     setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'dismissed' }); return next; });
-    updateTask(id, { startDate: null });
+    unscheduleTask(id);
   };
 
   const handleUndo = (id: string) => {
     const prev = undoStack.get(id);
     if (!prev) return;
-    updateTask(id, { startDate: prev.startDate });
+    if (prev.isScheduled !== undefined) {
+      updateTask(id, { startDate: prev.startDate, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket });
+    } else {
+      updateTask(id, { startDate: prev.startDate });
+    }
     setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
     setUndoStack((s) => { const next = new Map(s); next.delete(id); return next; });
   };

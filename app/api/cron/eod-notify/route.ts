@@ -66,17 +66,16 @@ export async function GET(req: NextRequest) {
     // Skip if already notified today
     if (lastNotifiedDate === userToday) continue;
 
-    // Compute eodReviewTime + 5 minutes for the window end
-    const [eodHour, eodMin] = eodReviewTime.split(':').map(Number);
-    const windowEndMin = eodMin + 5;
-    const windowEndHour = windowEndMin >= 60 ? eodHour + 1 : eodHour;
-    const windowEnd = [
-      String(windowEndHour % 24).padStart(2, '0'),
-      String(windowEndMin % 60).padStart(2, '0'),
-    ].join(':');
-
     // Fire if local time is within [eodReviewTime, eodReviewTime + 5min)
-    if (userNow < eodReviewTime || userNow >= windowEnd) continue;
+    const toMinutes = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+    const eodMinutes = toMinutes(eodReviewTime);
+    const nowMinutes = toMinutes(userNow);
+    const windowEndMinutes = eodMinutes + 5;
+    // Handle midnight rollover
+    const inWindow = windowEndMinutes >= 1440
+      ? nowMinutes >= eodMinutes || nowMinutes < (windowEndMinutes - 1440)
+      : nowMinutes >= eodMinutes && nowMinutes < windowEndMinutes;
+    if (!inWindow) continue;
 
     // Send push notification
     try {

@@ -193,7 +193,6 @@ test.describe('End of day (EOD) review modal', () => {
       // Select tomorrow's date from the calendar by clicking the day cell
       // We rely on the aria-label which date-fns/shadcn Calendar sets to the full date string
       const tomorrowDate = new Date(TOMORROW + 'T12:00:00');
-      const dayLabel = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
       await popover.getByRole('gridcell', { name: new RegExp(String(tomorrowDate.getDate())) }).first().click();
 
       // Undo link should appear and pills gone
@@ -206,9 +205,6 @@ test.describe('End of day (EOD) review modal', () => {
       }).first();
       await nextDayBtn.click();
       await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
-
-      // Suppress TS unused var warning
-      void dayLabel;
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -253,7 +249,6 @@ test.describe('End of day (EOD) review modal', () => {
 
   test('move all skips already actioned tasks', async ({ page }) => {
     const TODAY = getTodayStr();
-    const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
     const title1 = `EOD skip-actioned A ${Date.now()}`;
     const title2 = `EOD skip-actioned B ${Date.now()}`;
@@ -286,8 +281,6 @@ test.describe('End of day (EOD) review modal', () => {
       await nextDayBtn.click();
       await expect(page.locator('[data-tour="timeline"]').getByText(title1)).toBeVisible({ timeout: 5_000 });
       await expect(page.locator('[data-tour="timeline"]').getByText(title2)).toBeVisible({ timeout: 5_000 });
-
-      void TOMORROW;
     } finally {
       await cleanupTestData(page, accessToken, [taskId1, taskId2]);
     }
@@ -358,17 +351,7 @@ test.describe('End of day (EOD) review modal', () => {
         await page.reload();
         await page.waitForURL('/');
 
-        // On mobile, the EOD trigger button may be in a different location.
-        // Use the dev trigger if visible, otherwise open via eodStore directly.
-        const eodBtn = page.getByTitle('[DEV] Trigger EOD review');
-        if (await eodBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-          await eodBtn.click();
-        } else {
-          await page.evaluate(() => {
-            // @ts-ignore
-            window.__eodStore?.getState()?.open?.();
-          });
-        }
+        await openEODReview(page);
 
         const dialog = page.getByRole('dialog', { name: 'End of day' });
         await expect(dialog).toBeVisible({ timeout: 5_000 });
