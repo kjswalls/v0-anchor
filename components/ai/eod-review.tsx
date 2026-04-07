@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
-import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check, X } from 'lucide-react';
+import { Moon, CheckCircle2, Circle, ArrowRight, Check, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -45,16 +45,18 @@ function formatDateInTz(date: Date, tz?: string | null): string {
   return date.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
-function encouragingMessage(completedCount: number, totalCount: number): string {
-  if (totalCount === 0) return "A fresh slate today — sometimes that's exactly what you need.";
-  if (completedCount === totalCount)
-    return "You wrapped up everything on your list today. That's a genuinely great day.";
-  if (completedCount === 0)
-    return "Some days are for rest and regrouping. What matters is you showed up.";
-  const pct = completedCount / totalCount;
-  if (pct >= 0.75) return "You got the big stuff done. The rest carries forward with ease.";
-  if (pct >= 0.5) return "More than halfway through — that's solid progress worth celebrating.";
-  return "Every task you touched today moved things forward. That counts.";
+function actionLabel(action: TaskAction, userTimezone: string | null | undefined): string {
+  if (!action) return '';
+  if (action.type === 'dismissed') return 'Moved to sidebar';
+  if (action.type === 'moved') {
+    const tomorrow = tomorrowStr(userTimezone);
+    if (action.to === tomorrow) return 'Moved to tomorrow';
+    const [y, m, d] = action.to.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d, 12));
+    const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return `Rescheduled to ${formatted}`;
+  }
+  return '';
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,11 +73,10 @@ export function EODReview() {
 
   const today = todayStr(userTimezone);
 
-  // Partition today's tasks — live view for completed section
-  const { completedTasks, pendingTasks: livePendingTasks } = useMemo(() => {
+  // Partition today's tasks — live view for pending section
+  const { pendingTasks: livePendingTasks } = useMemo(() => {
     const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
     return {
-      completedTasks: todayTasks.filter((t) => t.status === 'completed'),
       // Note: recurring tasks won't appear here — their startDate is the series start date,
       // not today, so they're excluded naturally by the startDate === today filter above.
       pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
@@ -120,16 +121,12 @@ export function EODReview() {
   // Which task's date picker popover is open (desktop only)
   const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
 
-  // Refs to hidden <input type="date"> elements for mobile date picking
-  const mobileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-
   // Reset session state when modal closes so stale data doesn't persist into next open
   useEffect(() => {
     if (!isOpen) {
       setTaskActions(new Map());
       setUndoStack(new Map());
       setDatePickerOpenId(null);
-      mobileInputRefs.current = new Map();
     }
   }, [isOpen]);
 
@@ -193,10 +190,6 @@ export function EODReview() {
     (t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id)
   ).length;
 
-  // Use livePendingTasks for counts so encouragement copy reflects actual state
-  const totalToday = completedTasks.length + livePendingTasks.length;
-  const message = encouragingMessage(completedTasks.length, totalToday);
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
       <DialogContent className="sm:max-w-lg bg-card border-border max-h-[85vh] overflow-hidden flex flex-col gap-0">
@@ -219,31 +212,6 @@ export function EODReview() {
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-5 pr-1">
-
-          {/* ── Completed tasks ───────────────────────────────── */}
-          {completedTasks.length > 0 && (
-            <section>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-amber-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Wrapped up today
-                </h3>
-              </div>
-              <ul className="space-y-1.5">
-                {completedTasks.map((task) => (
-                  <li key={task.id} className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                    <span className="text-sm text-foreground leading-snug">{task.title}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {/* Encouraging message */}
-              <p className="mt-3 text-xs text-muted-foreground italic leading-relaxed">
-                {message}
-              </p>
-            </section>
-          )}
 
           {/* ── Done habits ───────────────────────────────────── */}
           {doneHabits.length > 0 && (
@@ -313,13 +281,13 @@ export function EODReview() {
                       {/* Action pills — hidden once task is marked done */}
                       {!isDone && (
                         hasAction ? (
-                          /* After action: show subtle Undo link */
+                          /* After action: show action label + Undo link */
                           <button
                             data-testid={`eod-undo-btn-${task.id}`}
                             onClick={() => handleUndo(task.id)}
-                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
                           >
-                            Undo
+                            {actionLabel(action, userTimezone)} · <span className="underline">Undo</span>
                           </button>
                         ) : (
                           /* Unactioned: show pill buttons */
@@ -336,56 +304,45 @@ export function EODReview() {
                               <ArrowRight className="h-3 w-3" />
                             </Button>
 
-                            {/* 📅 Date picker — Popover on desktop, native input on mobile */}
-                            <Popover
-                              open={datePickerOpenId === task.id}
-                              onOpenChange={(open) => {
-                                if (open && typeof window !== 'undefined' && window.innerWidth <= 640) {
-                                  // Mobile: trigger native date input instead of popover
-                                  mobileInputRefs.current.get(task.id)?.showPicker?.();
-                                } else if (open) {
-                                  setDatePickerOpenId(task.id);
-                                } else {
-                                  setDatePickerOpenId(null);
-                                }
-                              }}
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs px-2"
-                                  data-testid={`eod-datepicker-btn-${task.id}`}
-                                >
-                                  📅
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                  mode="single"
-                                  fromDate={dateFromYmd(tomorrowStr(userTimezone))}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      handleMoveTo(task.id, formatDateInTz(date, userTimezone));
-                                      setDatePickerOpenId(null);
-                                    }
-                                  }}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                            {/* Hidden native date input — triggered by 📅 button on mobile (≤640px) */}
-                            <input
-                              type="date"
-                              min={tomorrowStr(userTimezone)}
-                              className="sr-only"
-                              ref={(el) => {
-                                if (el) mobileInputRefs.current.set(task.id, el);
-                                else mobileInputRefs.current.delete(task.id);
-                              }}
-                              onChange={(e) => {
-                                if (e.target.value) handleMoveTo(task.id, e.target.value);
-                              }}
-                            />
+                            {/* 📅 Date picker — native input overlaid on mobile, Popover on desktop */}
+                            <div className="relative">
+                              <Popover
+                                open={datePickerOpenId === task.id}
+                                onOpenChange={(open) => setDatePickerOpenId(open ? task.id : null)}
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs px-2"
+                                    data-testid={`eod-datepicker-btn-${task.id}`}
+                                  >
+                                    📅
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="end">
+                                  <Calendar
+                                    mode="single"
+                                    fromDate={dateFromYmd(tomorrowStr(userTimezone))}
+                                    onSelect={(date) => {
+                                      if (date) {
+                                        handleMoveTo(task.id, formatDateInTz(date, userTimezone));
+                                        setDatePickerOpenId(null);
+                                      }
+                                    }}
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                              {/* Native date input overlaid on button — reliable tap target on mobile */}
+                              <input
+                                type="date"
+                                min={tomorrowStr(userTimezone)}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer sm:hidden"
+                                onChange={(e) => {
+                                  if (e.target.value) handleMoveTo(task.id, e.target.value);
+                                }}
+                              />
+                            </div>
 
                             {/* ✕ Dismiss */}
                             <Button
@@ -430,8 +387,7 @@ export function EODReview() {
           )}
 
           {/* Empty state */}
-          {completedTasks.length === 0 &&
-            pendingTasks.length === 0 &&
+          {pendingTasks.length === 0 &&
             doneHabits.length === 0 &&
             skippedHabits.length === 0 && (
               <div className="text-center py-6">
