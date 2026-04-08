@@ -81,7 +81,13 @@ export function EODReview() {
   // Partition today's tasks — live view for pending section
   const { pendingTasks: livePendingTasks, completedTasks } = useMemo(() => {
     const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const todayTasks = tasks.filter((t) => t.status !== 'cancelled' && shouldShowOnDate(t, today, resolvedTz));
+    const todayTasks = tasks.filter((t) => {
+      if (t.status === 'cancelled') return false;
+      // One-off tasks: match by startDate
+      if (!isRecurring(t)) return t.startDate === today;
+      // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
+      return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
+    });
     return {
       pendingTasks: todayTasks.filter((t) => !isTaskDoneToday(t)),
       completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
