@@ -16,7 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate } from '@/lib/recurrence';
+import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,23 +67,33 @@ type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus } = usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const today = todayStr(userTimezone);
 
+  // Helper: is this task done for today (handles recurring via completedDates)
+  const isTaskDoneToday = (task: (typeof tasks)[0]): boolean =>
+    isRecurring(task) ? isCompletedOnDate(task, today) : task.status === 'completed';
+
   // Partition today's tasks — live view for pending section
   const { pendingTasks: livePendingTasks, completedTasks } = useMemo(() => {
-    const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
+    const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayTasks = tasks.filter((t) => t.status !== 'cancelled' && shouldShowOnDate(t, today, resolvedTz));
     return {
-      // Note: recurring tasks won't appear here — their startDate is the series start date,
-      // not today, so they're excluded naturally by the startDate === today filter above.
-      pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
-      completedTasks: todayTasks.filter((t) => t.status === 'completed'),
+      pendingTasks: todayTasks.filter((t) => !isTaskDoneToday(t)),
+      completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
-  }, [tasks, today]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, today, userTimezone]);
+
+  // Tasks marked complete during this EOD session
+  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
+
+  // Tasks uncompleted from "Done today" during this session (needed to surface them in pending list)
+  const [justUncompletedIds, setJustUncompletedIds] = useState<Set<string>>(new Set());
 
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
@@ -94,7 +104,16 @@ export function EODReview() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-  const pendingTasks = isOpen ? pendingTasksSnapshot : livePendingTasks;
+  const pendingTasks = useMemo(() => {
+    if (!isOpen) return livePendingTasks;
+    // Merge any tasks uncompleted from "Done today" that weren't in the original snapshot
+    const snapshotIds = new Set(pendingTasksSnapshot.map((t) => t.id));
+    const extras = tasks.filter(
+      (t) => justUncompletedIds.has(t.id) && !isTaskDoneToday(t) && !snapshotIds.has(t.id)
+    );
+    return [...pendingTasksSnapshot, ...extras];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pendingTasksSnapshot, tasks, justUncompletedIds]);
 
   // Partition today's habits (scoped to habits that should show today)
   const { doneHabits, skippedHabits } = useMemo(() => {
@@ -110,8 +129,11 @@ export function EODReview() {
     };
   }, [habits, today, userTimezone]);
 
-  // Tasks marked complete during this EOD session
-  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
+  // Tasks already done when modal opened — excludes in-session completions shown in pending section
+  const preExistingCompletedTasks = useMemo(
+    () => completedTasks.filter((t) => !justCompletedIds.has(t.id)),
+    [completedTasks, justCompletedIds]
+  );
 
   // Per-task pill actions (replaces selectedIds)
   const [taskActions, setTaskActions] = useState<Map<string, TaskAction>>(new Map());
@@ -126,6 +148,8 @@ export function EODReview() {
   // Reset session state when modal closes so stale data doesn't persist into next open
   useEffect(() => {
     if (!isOpen) {
+      setJustCompletedIds(new Set());
+      setJustUncompletedIds(new Set());
       setTaskActions(new Map());
       setUndoStack(new Map());
       setDatePickerOpenId(null);
@@ -133,13 +157,18 @@ export function EODReview() {
   }, [isOpen]);
 
   const handleMarkDone = (id: string) => {
-    updateTask(id, { status: 'completed' });
+    toggleTaskStatus(id, 'completed', new Date());
     setJustCompletedIds((prev) => new Set(prev).add(id));
+    setJustUncompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const handleUnmarkDone = (id: string) => {
-    updateTask(id, { status: 'pending' });
+    toggleTaskStatus(id, 'pending', new Date());
     setJustCompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    // Track tasks uncompleted from "Done today" that weren't in the original snapshot
+    if (!pendingTasksSnapshot.some((t) => t.id === id)) {
+      setJustUncompletedIds((prev) => new Set(prev).add(id));
+    }
   };
 
   const handleToggleHabit = (id: string, targetStatus: 'done' | 'pending' | 'skipped') => {
@@ -220,7 +249,7 @@ export function EODReview() {
         <div className="flex-1 overflow-y-auto space-y-5 pr-1">
 
           {/* ── Done today (completed tasks + done habits) ────── */}
-          {(completedTasks.length > 0 || doneHabits.length > 0) && (
+          {(preExistingCompletedTasks.length > 0 || doneHabits.length > 0) && (
             <section>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -229,7 +258,7 @@ export function EODReview() {
                 </h3>
               </div>
               <ul className="space-y-1.5">
-                {completedTasks.map((task) => (
+                {preExistingCompletedTasks.map((task) => (
                   <li key={task.id} className="flex items-center gap-2 py-0.5">
                     <button
                       onClick={() => handleUnmarkDone(task.id)}
@@ -428,7 +457,7 @@ export function EODReview() {
           )}
 
           {/* Empty state */}
-          {completedTasks.length === 0 &&
+          {preExistingCompletedTasks.length === 0 &&
             pendingTasks.length === 0 &&
             doneHabits.length === 0 &&
             skippedHabits.length === 0 && (
