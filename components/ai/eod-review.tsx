@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
-import { Moon, CheckCircle2, Circle, ArrowRight, Sparkles, Check, X } from 'lucide-react';
+import { Moon, CheckCircle2, Circle, ArrowRight, Check, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate } from '@/lib/recurrence';
+import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,16 +45,19 @@ function formatDateInTz(date: Date, tz?: string | null): string {
   return date.toLocaleDateString('en-CA', { timeZone: resolvedTz });
 }
 
-function encouragingMessage(completedCount: number, totalCount: number): string {
-  if (totalCount === 0) return "A fresh slate today — sometimes that's exactly what you need.";
-  if (completedCount === totalCount)
-    return "You wrapped up everything on your list today. That's a genuinely great day.";
-  if (completedCount === 0)
-    return "Some days are for rest and regrouping. What matters is you showed up.";
-  const pct = completedCount / totalCount;
-  if (pct >= 0.75) return "You got the big stuff done. The rest carries forward with ease.";
-  if (pct >= 0.5) return "More than halfway through — that's solid progress worth celebrating.";
-  return "Every task you touched today moved things forward. That counts.";
+function actionLabel(action: TaskAction, userTimezone: string | null | undefined): string {
+  if (!action) return '';
+  if (action.type === 'dismissed') return 'Moved to sidebar';
+  if (action.type === 'moved') {
+    const tomorrow = tomorrowStr(userTimezone);
+    if (action.to === tomorrow) return 'Moved to tomorrow';
+    const [y, m, d] = action.to.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d, 12));
+    const resolvedTz = userTimezone ?? 'UTC';
+    const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: resolvedTz });
+    return `Rescheduled to ${formatted}`;
+  }
+  return '';
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -64,23 +67,39 @@ type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask, unscheduleTask } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus } = usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const today = todayStr(userTimezone);
 
-  // Partition today's tasks — live view for completed section
-  const { completedTasks, pendingTasks: livePendingTasks } = useMemo(() => {
-    const todayTasks = tasks.filter((t) => t.startDate === today && t.status !== 'cancelled');
+  // Helper: is this task done for today (handles recurring via completedDates)
+  const isTaskDoneToday = (task: (typeof tasks)[0]): boolean =>
+    isRecurring(task) ? isCompletedOnDate(task, today) : task.status === 'completed';
+
+  // Partition today's tasks — live view for pending section
+  const { pendingTasks: livePendingTasks, completedTasks } = useMemo(() => {
+    const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayTasks = tasks.filter((t) => {
+      if (t.status === 'cancelled') return false;
+      // One-off tasks: match by startDate
+      if (!isRecurring(t)) return t.startDate === today;
+      // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
+      return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
+    });
     return {
-      completedTasks: todayTasks.filter((t) => t.status === 'completed'),
-      // Note: recurring tasks won't appear here — their startDate is the series start date,
-      // not today, so they're excluded naturally by the startDate === today filter above.
-      pendingTasks: todayTasks.filter((t) => t.status === 'pending'),
+      pendingTasks: todayTasks.filter((t) => !isTaskDoneToday(t)),
+      completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
-  }, [tasks, today]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, today, userTimezone]);
+
+  // Tasks marked complete during this EOD session
+  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
+
+  // Tasks uncompleted from "Done today" during this session (needed to surface them in pending list)
+  const [justUncompletedIds, setJustUncompletedIds] = useState<Set<string>>(new Set());
 
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
@@ -91,7 +110,16 @@ export function EODReview() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
-  const pendingTasks = isOpen ? pendingTasksSnapshot : livePendingTasks;
+  const pendingTasks = useMemo(() => {
+    if (!isOpen) return livePendingTasks;
+    // Merge any tasks uncompleted from "Done today" that weren't in the original snapshot
+    const snapshotIds = new Set(pendingTasksSnapshot.map((t) => t.id));
+    const extras = tasks.filter(
+      (t) => justUncompletedIds.has(t.id) && !isTaskDoneToday(t) && !snapshotIds.has(t.id)
+    );
+    return [...pendingTasksSnapshot, ...extras];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pendingTasksSnapshot, tasks, justUncompletedIds]);
 
   // Partition today's habits (scoped to habits that should show today)
   const { doneHabits, skippedHabits } = useMemo(() => {
@@ -107,8 +135,11 @@ export function EODReview() {
     };
   }, [habits, today, userTimezone]);
 
-  // Tasks marked complete during this EOD session
-  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
+  // Tasks already done when modal opened — excludes in-session completions shown in pending section
+  const preExistingCompletedTasks = useMemo(
+    () => completedTasks.filter((t) => !justCompletedIds.has(t.id)),
+    [completedTasks, justCompletedIds]
+  );
 
   // Per-task pill actions (replaces selectedIds)
   const [taskActions, setTaskActions] = useState<Map<string, TaskAction>>(new Map());
@@ -120,27 +151,34 @@ export function EODReview() {
   // Which task's date picker popover is open (desktop only)
   const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
 
-  // Refs to hidden <input type="date"> elements for mobile date picking
-  const mobileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
-
   // Reset session state when modal closes so stale data doesn't persist into next open
   useEffect(() => {
     if (!isOpen) {
+      setJustCompletedIds(new Set());
+      setJustUncompletedIds(new Set());
       setTaskActions(new Map());
       setUndoStack(new Map());
       setDatePickerOpenId(null);
-      mobileInputRefs.current = new Map();
     }
   }, [isOpen]);
 
   const handleMarkDone = (id: string) => {
-    updateTask(id, { status: 'completed' });
+    toggleTaskStatus(id, 'completed', new Date());
     setJustCompletedIds((prev) => new Set(prev).add(id));
+    setJustUncompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
   };
 
   const handleUnmarkDone = (id: string) => {
-    updateTask(id, { status: 'pending' });
+    toggleTaskStatus(id, 'pending', new Date());
     setJustCompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    // Track tasks uncompleted from "Done today" that weren't in the original snapshot
+    if (!pendingTasksSnapshot.some((t) => t.id === id)) {
+      setJustUncompletedIds((prev) => new Set(prev).add(id));
+    }
+  };
+
+  const handleToggleHabit = (id: string, targetStatus: 'done' | 'pending' | 'skipped') => {
+    toggleHabitStatus(id, targetStatus, undefined, new Date());
   };
 
   const handleMoveTo = (id: string, date: string) => {
@@ -193,10 +231,6 @@ export function EODReview() {
     (t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id)
   ).length;
 
-  // Use livePendingTasks for counts so encouragement copy reflects actual state
-  const totalToday = completedTasks.length + livePendingTasks.length;
-  const message = encouragingMessage(completedTasks.length, totalToday);
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
       <DialogContent className="sm:max-w-lg bg-card border-border max-h-[85vh] overflow-hidden flex flex-col gap-0">
@@ -220,47 +254,46 @@ export function EODReview() {
 
         <div className="flex-1 overflow-y-auto space-y-5 pr-1">
 
-          {/* ── Completed tasks ───────────────────────────────── */}
-          {completedTasks.length > 0 && (
-            <section>
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-amber-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Wrapped up today
-                </h3>
-              </div>
-              <ul className="space-y-1.5">
-                {completedTasks.map((task) => (
-                  <li key={task.id} className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
-                    <span className="text-sm text-foreground leading-snug">{task.title}</span>
-                  </li>
-                ))}
-              </ul>
-
-              {/* Encouraging message */}
-              <p className="mt-3 text-xs text-muted-foreground italic leading-relaxed">
-                {message}
-              </p>
-            </section>
-          )}
-
-          {/* ── Done habits ───────────────────────────────────── */}
-          {doneHabits.length > 0 && (
+          {/* ── Done today (completed tasks + done habits) ────── */}
+          {(preExistingCompletedTasks.length > 0 || doneHabits.length > 0) && (
             <section>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Habits kept
+                  Done today
                 </h3>
               </div>
               <ul className="space-y-1.5">
+                {preExistingCompletedTasks.map((task) => (
+                  <li key={task.id} className="flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => handleUnmarkDone(task.id)}
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      title="Undo"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                    <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
+                      {task.title}
+                    </span>
+                  </li>
+                ))}
                 {doneHabits.map((habit) => (
-                  <li key={habit.id} className="flex items-center gap-2">
-                    <span className="text-sm text-foreground">{habit.title}</span>
+                  <li key={habit.id} className="flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => handleToggleHabit(habit.id, 'pending')}
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      title="Undo"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                    <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
+                      {habit.title}
+                    </span>
                     {habit.streak > 1 && (
                       <span className="text-xs text-amber-500">🔥 {habit.streak}</span>
                     )}
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">Habit</span>
                   </li>
                 ))}
               </ul>
@@ -271,9 +304,8 @@ export function EODReview() {
           {pendingTasks.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-2">
-                <ArrowRight className="h-4 w-4 text-sky-400" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Carrying forward
+                  Still on your list
                 </h3>
               </div>
               <ul className="space-y-1">
@@ -313,13 +345,13 @@ export function EODReview() {
                       {/* Action pills — hidden once task is marked done */}
                       {!isDone && (
                         hasAction ? (
-                          /* After action: show subtle Undo link */
+                          /* After action: show action label + Undo link */
                           <button
                             data-testid={`eod-undo-btn-${task.id}`}
                             onClick={() => handleUndo(task.id)}
-                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                            className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
                           >
-                            Undo
+                            {actionLabel(action, userTimezone)} · <span className="underline">Undo</span>
                           </button>
                         ) : (
                           /* Unactioned: show pill buttons */
@@ -336,56 +368,52 @@ export function EODReview() {
                               <ArrowRight className="h-3 w-3" />
                             </Button>
 
-                            {/* 📅 Date picker — Popover on desktop, native input on mobile */}
-                            <Popover
-                              open={datePickerOpenId === task.id}
-                              onOpenChange={(open) => {
-                                if (open && typeof window !== 'undefined' && window.innerWidth <= 640) {
-                                  // Mobile: trigger native date input instead of popover
-                                  mobileInputRefs.current.get(task.id)?.showPicker?.();
-                                } else if (open) {
-                                  setDatePickerOpenId(task.id);
-                                } else {
-                                  setDatePickerOpenId(null);
-                                }
-                              }}
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-xs px-2"
-                                  data-testid={`eod-datepicker-btn-${task.id}`}
-                                >
-                                  📅
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                  mode="single"
-                                  fromDate={dateFromYmd(tomorrowStr(userTimezone))}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      handleMoveTo(task.id, formatDateInTz(date, userTimezone));
-                                      setDatePickerOpenId(null);
-                                    }
-                                  }}
+                            {/* 📅 Date picker — native input on mobile, Popover on desktop */}
+                            <>
+                              {/* Desktop: shadcn Popover + Calendar */}
+                              <Popover
+                                open={datePickerOpenId === task.id}
+                                onOpenChange={(open) => setDatePickerOpenId(open ? task.id : null)}
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="hidden sm:inline-flex h-7 text-xs px-2"
+                                    data-testid={`eod-datepicker-btn-${task.id}`}
+                                  >
+                                    📅
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="end">
+                                  <Calendar
+                                    mode="single"
+                                    fromDate={dateFromYmd(tomorrowStr(userTimezone))}
+                                    onSelect={(date) => {
+                                      if (date) {
+                                        handleMoveTo(task.id, formatDateInTz(date, userTimezone));
+                                        setDatePickerOpenId(null);
+                                      }
+                                    }}
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                              {/* Mobile: label wrapping sr-only input — avoids onChange firing on scroll */}
+                              <label
+                                htmlFor={`date-input-${task.id}`}
+                                className="sm:hidden inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background cursor-pointer text-sm"
+                              >
+                                📅
+                                <input
+                                  id={`date-input-${task.id}`}
+                                  type="date"
+                                  min={tomorrowStr(userTimezone)}
+                                  className="sr-only"
+                                  onBlur={(e) => { if (e.target.value) handleMoveTo(task.id, e.target.value); }}
+                                  aria-label="Move task to date"
                                 />
-                              </PopoverContent>
-                            </Popover>
-                            {/* Hidden native date input — triggered by 📅 button on mobile (≤640px) */}
-                            <input
-                              type="date"
-                              min={tomorrowStr(userTimezone)}
-                              className="sr-only"
-                              ref={(el) => {
-                                if (el) mobileInputRefs.current.set(task.id, el);
-                                else mobileInputRefs.current.delete(task.id);
-                              }}
-                              onChange={(e) => {
-                                if (e.target.value) handleMoveTo(task.id, e.target.value);
-                              }}
-                            />
+                              </label>
+                            </>
 
                             {/* ✕ Dismiss */}
                             <Button
@@ -413,24 +441,29 @@ export function EODReview() {
               <div className="flex items-center gap-2 mb-2">
                 <Circle className="h-4 w-4 text-muted-foreground/50" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Set aside today
+                  Skipped today
                 </h3>
               </div>
               <ul className="space-y-1.5">
                 {skippedHabits.map((habit) => (
-                  <li key={habit.id} className="text-sm text-muted-foreground">
-                    {habit.title}
+                  <li key={habit.id} className="flex items-center gap-2">
+                    <span className="flex-1 text-sm text-muted-foreground min-w-0 truncate">{habit.title}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs px-2 shrink-0"
+                      onClick={() => handleToggleHabit(habit.id, 'done')}
+                    >
+                      Mark done
+                    </Button>
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-muted-foreground italic">
-                Tomorrow&apos;s a fresh start.
-              </p>
             </section>
           )}
 
           {/* Empty state */}
-          {completedTasks.length === 0 &&
+          {preExistingCompletedTasks.length === 0 &&
             pendingTasks.length === 0 &&
             doneHabits.length === 0 &&
             skippedHabits.length === 0 && (
