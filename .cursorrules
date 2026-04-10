@@ -27,12 +27,34 @@ You are an expert full-stack developer assisting with "Anchor", a neurodivergent
 - **Unit Tests**: Vitest for pure logic (recurrence engine, date utils, search parser, undo/redo store).
 - Do not break existing tests. If adding core logic (especially date math or task recurrence), add Vitest coverage.
 
+## Project Status
+Anchor is in **dogfood phase** as of April 2026. Core features are shipped. Focus is polish, stability, and pre-launch cleanup before public release.
+- GitHub Projects board: https://github.com/users/kjswalls/projects/1 (Phase field is source of truth)
+- Repo: https://github.com/kjswalls/v0-anchor
+
 ## Current Priorities (What we are working on right now)
+- Push notifications / reminders (#49, #50, #51, #168) — deferred to Phase 2.
+- Beacon easy setup UI — remove Personality dropdown, key validation on blur, friendly empty state (#58).
 - Mobile responsiveness polish (#48).
 - Soft deletes implementation (#52).
-- OpenClaw plugin single-token setup (simplifying the onboarding flow so users just paste one token) (#57).
-- Beacon easy setup UI (paste OpenAI/Anthropic key to activate) (#58).
-- Resolving PR #101 (Test Suite implementation - verifying E2E passes before merge).
+- Undo-redo E2E test failures in `undo-redo.spec.ts` — underlying bug fixed (PR #154), tests need rewrite (#177).
+- Beacon Phase 2 issues: ND-aware system prompt (#169), self-intro (#170), localStorage (#171), action tier (#172), Pro hosted AI (#173), proactive design (#174), MCP design (#175).
+
+## Beacon (Anchor's Built-in AI)
+- Anchor's AI assistant is named **Beacon** — do not rename or refer to it as anything else.
+- Three tiers: Free (read-only, ~5 msg/day), Pro (full actions, Anchor-hosted), Power (BYOK + OpenClaw).
+- Action tier uses native Anchor API routes (`/api/agent/*`) — NOT OpenClaw.
+- The moat is the ND-aware system prompt (overload recognition, task avoidance, reframing, time blindness).
+- SSE streaming for chat (not WebSockets — serverless constraint).
+
+## Hard-Won Lessons (Do Not Repeat These Bugs)
+- **`shouldShowOnDate`** returns false for non-recurring tasks — NEVER use as a general "show today" filter.
+- **iOS native date `onChange`** fires on every scroll tick — use `onBlur` instead.
+- **`label` + `sr-only`** is the correct accessible pattern for mobile date pickers.
+- **Timezone safety**: ALL date math must use user's timezone from DB settings or `X-Timezone` header. Never default to UTC.
+- **Migrations**: Always create a NEW migration file in `supabase/migrations/`. Never edit existing ones. Remind user to run it in Supabase SQL editor.
+- **Recurrence**: `weekly` recurrence type was removed from schema (migration 014). Valid types are `daily`, `weekdays`, `weekends`, `custom`.
+- **Undo/redo**: Task card can disappear after undo in test context — related to optimistic update timing, not store logic.
 
 ## Git & Workflow Rules
 - **Branching**: Never push directly to `main`. Always use `feat/...` or `fix/...` branches.
