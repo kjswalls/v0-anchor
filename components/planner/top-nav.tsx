@@ -212,25 +212,28 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+    <header className="flex items-center justify-between px-6 py-4 border-b-[3px] border-border bg-card">
       <div className="flex items-center gap-4">
-        {/* Anchor logo mark */}
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-foreground flex-shrink-0"
-          aria-label="Anchor"
-        >
-          <circle cx="12" cy="5" r="2" />
-          <line x1="12" y1="7" x2="12" y2="22" />
-          <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
-        </svg>
+        {/* Anchor logo mark - refreshed brutalist style */}
+        <div className="flex items-center gap-2">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-primary flex-shrink-0"
+            aria-label="Anchor"
+          >
+            <circle cx="12" cy="5" r="2" />
+            <line x1="12" y1="7" x2="12" y2="22" />
+            <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+          </svg>
+          <span className="font-mono font-bold text-sm tracking-wider text-foreground hidden lg:inline">ANCHOR</span>
+        </div>
         
         <div className="flex items-center gap-2 ml-6">
           <Button
@@ -436,19 +439,19 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           type="single"
           value={viewMode}
           onValueChange={(value) => value && setViewMode(value as ViewMode)}
-          className="bg-secondary rounded-lg p-0.5"
+          className="bg-secondary rounded-md p-0.5 border-2 border-border"
         >
           <ToggleGroupItem
             value="day"
-            className="h-7 px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm rounded-md"
+            className="h-7 px-3 text-xs font-mono font-bold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
           >
-            Day
+            DAY
           </ToggleGroupItem>
           <ToggleGroupItem
             value="week"
-            className="h-7 px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm rounded-md"
+            className="h-7 px-3 text-xs font-mono font-bold uppercase tracking-wide data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
           >
-            Week
+            WEEK
           </ToggleGroupItem>
         </ToggleGroup>
         

@@ -27,11 +27,11 @@ import { cn } from '@/lib/utils';
 import { shouldShowOnDate, isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { useDroppable } from '@dnd-kit/core';
 
-const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string }> = {
-  anytime: { label: 'Anytime', timeRange: 'Flexible', colorClass: 'bg-anytime' },
-  morning: { label: 'Morning', timeRange: '5am - 12pm', colorClass: 'bg-morning' },
-  afternoon: { label: 'Afternoon', timeRange: '12pm - 5pm', colorClass: 'bg-afternoon' },
-  evening: { label: 'Evening', timeRange: '5pm - 12am', colorClass: 'bg-evening' },
+const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string; textClass: string }> = {
+  anytime: { label: 'ANYTIME', timeRange: 'Flexible', colorClass: 'bg-anytime', textClass: 'text-white dark:text-foreground' },
+  morning: { label: 'MORNING', timeRange: '5am - 12pm', colorClass: 'bg-morning', textClass: 'text-stone-900' },
+  afternoon: { label: 'AFTERNOON', timeRange: '12pm - 5pm', colorClass: 'bg-afternoon', textClass: 'text-stone-900' },
+  evening: { label: 'EVENING', timeRange: '5pm - 12am', colorClass: 'bg-evening', textClass: 'text-white' },
 };
 
 interface MobileSchedulePanelProps {
@@ -60,8 +60,12 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
       <div
         data-testid="mobile-task-card"
         className={cn(
-          'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
-          isTaskDone && 'opacity-60'
+          'group relative flex items-start gap-3 p-3 rounded-md bg-card border-2 border-border active:border-foreground/30 transition-all',
+          isTaskDone && 'opacity-60',
+          task.priority && 'border-l-[3px]',
+          task.priority === 'high' && 'border-l-priority-high',
+          task.priority === 'medium' && 'border-l-priority-medium',
+          task.priority === 'low' && 'border-l-priority-low',
         )}
         onClick={onClick}
       >
@@ -78,14 +82,14 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
             toggleTaskStatus(task.id);
           }}
           className={cn(
-            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors mt-0.5',
+            'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors mt-0.5',
             isTaskDone
               ? 'bg-primary border-primary'
-              : 'border-muted-foreground/40 active:border-primary'
+              : 'border-foreground/30 active:border-primary'
           )}
         >
           {isTaskDone && (
-            <Check className="h-3 w-3 text-primary-foreground" />
+            <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
           )}
         </button>
         
@@ -181,12 +185,13 @@ function MobileScheduledHabit({ habit, onClick }: { habit: Habit; onClick: () =>
     <div
       data-testid="mobile-habit-card"
       className={cn(
-        'group relative flex items-start gap-3 p-3 rounded-xl border-2 transition-all',
-        'border-border/40 active:border-border',
+        'group relative flex items-start gap-3 p-3 rounded-md border-2 border-l-4 transition-all',
+        'border-border active:border-foreground/30',
         currentStatus === 'done' && 'opacity-70'
       )}
       style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 10%, transparent) 0%, color-mix(in oklch, ${groupColor} 3%, transparent) 100%)`,
+        borderLeftColor: groupColor,
       }}
       onClick={onClick}
     >
@@ -425,28 +430,33 @@ function TimeBucketSection({
     <div 
       ref={setNodeRef}
       className={cn(
-        'rounded-xl border border-border/50 overflow-hidden transition-colors',
+        'rounded-md border-[3px] overflow-hidden transition-colors',
         isOver && 'border-primary bg-primary/5',
-        isActive && 'ring-2 ring-primary/20'
+        isActive && 'ring-2 ring-primary/20',
+        !isOver && !isActive && (
+          bucket === 'morning' ? 'border-morning' :
+          bucket === 'afternoon' ? 'border-afternoon' :
+          bucket === 'evening' ? 'border-evening' :
+          'border-anytime'
+        )
       )}
     >
-      {/* Bucket header */}
+      {/* Bucket header - full-width colored bar */}
       <button
         className={cn(
           'w-full flex items-center justify-between px-4 py-3 transition-colors',
-          config.colorClass + '/10'
+          config.colorClass
         )}
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
-        <div className="flex items-center gap-2">
-          <div className={cn('w-2 h-2 rounded-full', config.colorClass)} />
-          <span className="text-sm font-medium text-foreground">{config.label}</span>
-          <span className="text-xs text-muted-foreground">({itemCount})</span>
+        <div className="flex items-center gap-3">
+          <span className={cn('text-sm font-mono font-bold tracking-wider', config.textClass)}>{config.label}</span>
+          <span className={cn('text-xs font-mono opacity-70', config.textClass)}>({itemCount})</span>
         </div>
         {isCollapsed ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <ChevronDown className={cn('h-4 w-4', config.textClass)} />
         ) : (
-          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          <ChevronUp className={cn('h-4 w-4', config.textClass)} />
         )}
       </button>
       

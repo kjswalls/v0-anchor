@@ -41,6 +41,12 @@ const priorityLabels: Record<Priority, string> = {
   low: 'Low',
 };
 
+const priorityStripes: Record<Priority, string> = {
+  high: 'border-l-priority-high',
+  medium: 'border-l-priority-medium',
+  low: 'border-l-priority-low',
+};
+
 // ─── Task Item ────────────────────────────────────────────────────────────────
 
 interface TaskItemProps {
@@ -69,9 +75,12 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group relative flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
+        'group relative flex items-center gap-2 p-3 rounded-md bg-card border-2 border-border hover:border-foreground/30 transition-all cursor-pointer w-full overflow-hidden',
         isDragging && 'opacity-50 shadow-lg z-50',
-        task.status === 'completed' && 'opacity-60'
+        task.status === 'completed' && 'opacity-60',
+        // Priority stripe
+        task.priority && 'border-l-[3px]',
+        task.priority && priorityStripes[task.priority],
       )}
       onClick={onClick}
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
@@ -103,14 +112,14 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+          'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 hover:border-primary'
+            : 'border-foreground/30 hover:border-primary'
         )}
       >
         {task.status === 'completed' && (
-          <Check className="h-3 w-3 text-primary-foreground" />
+          <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
         )}
       </button>
       
@@ -204,12 +213,13 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer w-full overflow-hidden relative',
-        'border-border/60 hover:border-border',
+        'group flex items-center gap-2 p-3 rounded-md border-2 border-l-4 transition-all cursor-pointer w-full overflow-hidden relative',
+        'border-border hover:border-foreground/30',
         habit.status === 'done' && 'opacity-70'
       )}
       style={{
         background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 12%, transparent) 0%, color-mix(in oklch, ${groupColor} 4%, transparent) 100%)`,
+        borderLeftColor: groupColor,
       }}
       onClick={onClick}
       onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
@@ -578,30 +588,30 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         onMouseLeave={() => setIsHovered(false)}
       >
         {/* Tab switcher */}
-      <div className={cn('flex border-b border-border h-16 items-center', !isVisible && 'hidden')}>
+      <div className={cn('flex border-b-[3px] border-border h-16 items-center', !isVisible && 'hidden')}>
         <button
           className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
+            'flex-1 py-3 text-sm font-mono font-bold uppercase tracking-wider transition-colors h-full flex items-center justify-center',
             activeTab === 'tasks'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b-[3px] border-primary -mb-[3px]'
               : 'text-muted-foreground hover:text-foreground'
           )}
           onClick={() => setActiveTab('tasks')}
         >
-          Tasks
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
+          TASKS
+          <span className="ml-1.5 text-muted-foreground/70 text-xs font-sans font-normal">({unscheduledTasks.length})</span>
         </button>
         <button
           className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
+            'flex-1 py-3 text-sm font-mono font-bold uppercase tracking-wider transition-colors h-full flex items-center justify-center',
             activeTab === 'habits'
-              ? 'text-foreground border-b-2 border-primary'
+              ? 'text-foreground border-b-[3px] border-primary -mb-[3px]'
               : 'text-muted-foreground hover:text-foreground'
           )}
           onClick={() => setActiveTab('habits')}
         >
-          Habits
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
+          HABITS
+          <span className="ml-1.5 text-muted-foreground/70 text-xs font-sans font-normal">({habits.length})</span>
         </button>
       </div>
 
@@ -685,9 +695,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
               {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
                 <div key={groupName}>
                   {groupBy !== 'none' && (
-                    <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                    <h3 className="text-xs font-mono font-bold text-muted-foreground mb-2 px-1 uppercase tracking-wider">
                       {groupName}
-                      <span className="ml-1 text-muted-foreground/60">({groupTasks.length})</span>
+                      <span className="ml-1.5 text-muted-foreground/60 font-sans font-normal normal-case tracking-normal">({groupTasks.length})</span>
                     </h3>
                   )}
                   <div className="space-y-2">
@@ -795,9 +805,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
               {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
                 <div key={groupName}>
                   {habitGroupBy !== 'none' && (
-                    <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                    <h3 className="text-xs font-mono font-bold text-muted-foreground mb-2 px-1 uppercase tracking-wider">
                       {groupName}
-                      <span className="ml-1 text-muted-foreground/60">({groupHabits.length})</span>
+                      <span className="ml-1.5 text-muted-foreground/60 font-sans font-normal normal-case tracking-normal">({groupHabits.length})</span>
                     </h3>
                   )}
                   <div className="space-y-2">

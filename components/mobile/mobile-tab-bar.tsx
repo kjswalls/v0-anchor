@@ -22,7 +22,7 @@ export function MobileTabBar() {
   ];
 
   return (
-    <nav className="flex items-center justify-around border-t border-border bg-card pb-safe">
+    <nav className="flex items-center justify-around border-t-[3px] border-border bg-card pb-safe">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
@@ -35,14 +35,14 @@ export function MobileTabBar() {
             className={cn(
               'flex flex-col items-center justify-center gap-1 py-2 px-6 min-w-[72px] transition-colors',
               isActive 
-                ? 'text-primary' 
+                ? 'text-primary border-t-[3px] border-primary -mt-[3px]' 
                 : 'text-muted-foreground'
             )}
           >
             <Icon className={cn('h-5 w-5', isActive && 'stroke-[2.5]')} />
             <span className={cn(
-              'text-[10px] font-medium',
-              isActive && 'font-semibold'
+              'text-[10px] font-mono font-medium uppercase tracking-wide',
+              isActive && 'font-bold'
             )}>
               {tab.label}
             </span>
