@@ -212,32 +212,35 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-      <div className="flex items-center gap-4">
+    <header className="flex items-center justify-between px-6 py-3 border-b border-border bg-card">
+      <div className="flex items-center gap-5">
         {/* Anchor logo mark */}
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-foreground flex-shrink-0"
-          aria-label="Anchor"
-        >
-          <circle cx="12" cy="5" r="2" />
-          <line x1="12" y1="7" x2="12" y2="22" />
-          <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
-        </svg>
+        <div className="flex items-center gap-2.5">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-primary flex-shrink-0"
+            aria-label="Anchor"
+          >
+            <circle cx="12" cy="5" r="2" />
+            <line x1="12" y1="7" x2="12" y2="22" />
+            <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+          </svg>
+          <span className="text-lg font-semibold text-foreground tracking-tight">Anchor</span>
+        </div>
         
-        <div className="flex items-center gap-2 ml-6">
+        <div className="flex items-center gap-1 ml-4">
           <Button
             variant="ghost"
             size="icon"
             onClick={goPrevious}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-secondary"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -246,9 +249,8 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             <PopoverTrigger asChild>
               <Button 
                 variant="ghost" 
-                className="h-8 px-3 text-sm font-medium text-foreground hover:bg-secondary"
+                className="h-9 px-4 text-sm font-semibold text-foreground hover:bg-secondary"
               >
-                <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
                 {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="w-32" />}
               </Button>
             </PopoverTrigger>
@@ -266,7 +268,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             variant="ghost"
             size="icon"
             onClick={goNext}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-secondary"
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -276,7 +278,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             size="sm"
             onClick={goToToday}
             disabled={mounted && isToday(selectedDate)}
-            className="h-8 px-3 text-sm ml-2 relative"
+            className="h-8 px-3 text-xs font-semibold ml-3 relative"
           >
             {mounted && isToday(selectedDate) && (() => {
               const now = new Date();
@@ -475,9 +477,9 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
         <Button
           size="sm"
           onClick={onAddClick}
-          className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+          className="h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold shadow-sm"
         >
-          <Plus className="h-4 w-4 mr-1" />
+          <Plus className="h-4 w-4 mr-1.5" />
           Add
         </Button>
       </div>

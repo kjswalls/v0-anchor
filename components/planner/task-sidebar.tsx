@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen, Clock, Repeat, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { GripVertical, Filter, ChevronDown, X, Check, Trash2, ChevronRight, Plus, FolderOpen, Clock, Repeat, PanelLeftClose, PanelLeft, Inbox, Flag, Layers } from 'lucide-react';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,7 +30,6 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, GroupBy, Priority } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
@@ -41,8 +40,13 @@ const priorityLabels: Record<Priority, string> = {
   low: 'Low',
 };
 
-// ─── Task Item ────────────────────────────────────────────────────────────────
+const priorityColors: Record<Priority, string> = {
+  high: 'bg-priority-high/10 text-priority-high border-priority-high/20',
+  medium: 'bg-priority-medium/10 text-priority-medium border-priority-medium/20',
+  low: 'bg-priority-low/10 text-priority-low border-priority-low/20',
+};
 
+// Task Item
 interface TaskItemProps {
   task: Task;
   onClick: () => void;
@@ -69,7 +73,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group relative flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
+        'group relative flex items-start gap-3 p-3 rounded-lg bg-card border border-border shadow-sm hover:shadow-md transition-all cursor-pointer w-full overflow-hidden',
         isDragging && 'opacity-50 shadow-lg z-50',
         task.status === 'completed' && 'opacity-60'
       )}
@@ -77,36 +81,28 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
       onMouseLeave={() => setHoveredItem(null, null)}
     >
-      {/* Large background emoji */}
-      {projectEmoji && (
-        <span
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
-          style={{ lineHeight: 1 }}
-        >
-          {projectEmoji}
-        </span>
-      )}
-
+      {/* Drag handle */}
       <button
         {...attributes}
         {...listeners}
-        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none relative z-10 flex-shrink-0"
+        className="opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity touch-none relative z-10 flex-shrink-0 mt-0.5"
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <GripVertical className="h-4 w-4 text-muted-foreground/50" />
       </button>
       
+      {/* Checkbox */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all relative z-10 mt-0.5',
           task.status === 'completed'
             ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 hover:border-primary'
+            : 'border-border hover:border-primary'
         )}
       >
         {task.status === 'completed' && (
@@ -114,49 +110,52 @@ function TaskItem({ task, onClick }: TaskItemProps) {
         )}
       </button>
       
+      {/* Content */}
       <div className="flex-1 min-w-0 relative z-10">
         <p
           className={cn(
-            'text-sm font-medium text-foreground leading-tight line-clamp-2',
+            'text-sm font-medium text-foreground leading-snug',
             task.status === 'completed' && 'line-through text-muted-foreground'
           )}
         >
           {task.title}
         </p>
         
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-muted-foreground">
+        {/* Meta row */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
           {projectEmoji && task.project && (
-            <span className="flex items-center gap-1 leading-none">
+            <span className="flex items-center gap-1 leading-none px-1.5 py-0.5 rounded bg-secondary">
               <span className="text-sm">{projectEmoji}</span>
-              <span>{task.project}</span>
+              <span className="font-medium">{task.project}</span>
             </span>
           )}
           {task.duration && (
-            <span className="flex items-center gap-0.5">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary">
               <Clock className="h-3 w-3" />
               {task.duration}m
             </span>
           )}
           {task.priority && (
             <span className={cn(
-              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-              task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+              'px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border',
+              priorityColors[task.priority]
             )}>
               {priorityLabels[task.priority]}
             </span>
           )}
           {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-            <Repeat className="h-3 w-3" />
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary">
+              <Repeat className="h-3 w-3" />
+            </span>
           )}
         </div>
       </div>
       
+      {/* Delete button */}
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity mt-0.5 flex-shrink-0 relative z-10"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0 relative z-10"
         onClick={(e) => {
           e.stopPropagation();
           setShowDeleteConfirm(true);
@@ -170,7 +169,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{task.title}". This action cannot be undone.
+              This will permanently delete &quot;{task.title}&quot;. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -188,8 +187,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
   );
 }
 
-// ─── Habit Item ───────────────────────────────────────────────────────────────
-
+// Habit Item
 interface HabitItemProps {
   habit: Habit;
   onClick: () => void;
@@ -204,54 +202,61 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer w-full overflow-hidden relative',
-        'border-border/60 hover:border-border',
+        'group flex items-start gap-3 p-3 rounded-lg border-2 bg-card shadow-sm hover:shadow-md transition-all cursor-pointer w-full overflow-hidden relative',
+        'border-border hover:border-border',
         habit.status === 'done' && 'opacity-70'
       )}
-      style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 12%, transparent) 0%, color-mix(in oklch, ${groupColor} 4%, transparent) 100%)`,
-      }}
       onClick={onClick}
       onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
       onMouseLeave={() => setHoveredItem(null, null)}
     >
-      {/* Background emoji */}
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.08] select-none pointer-events-none" style={{ lineHeight: 1 }}>
-        {groupEmoji}
-      </span>
+      {/* Colored left accent */}
+      <div 
+        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
+        style={{ backgroundColor: groupColor }}
+      />
+
+      {/* Spacer for drag handle alignment */}
+      <div className="w-4 flex-shrink-0" />
 
       {/* Status circle */}
       <div className={cn(
-        'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
-        habit.status === 'done' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+        'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 mt-0.5',
+        habit.status === 'done' ? 'bg-primary border-primary' : 'border-border'
       )}>
-        {habit.status === 'done' && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+        {habit.status === 'done' && <Check className="h-3 w-3 text-primary-foreground" />}
       </div>
 
+      {/* Content */}
       <div className="flex-1 min-w-0 relative z-10">
         <p className={cn(
-          'text-sm text-foreground leading-tight',
+          'text-sm font-medium text-foreground leading-snug',
           habit.status === 'done' && 'line-through text-muted-foreground'
         )}>
           {habit.title}
         </p>
 
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
           {habit.group && (
-            <span className="flex items-center gap-1 leading-none">
+            <span className="flex items-center gap-1 leading-none px-1.5 py-0.5 rounded bg-secondary">
               {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
-              <span>{habit.group}</span>
+              <span className="font-medium">{habit.group}</span>
             </span>
           )}
           {habit.timesPerDay && habit.timesPerDay > 1 && (
-            <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
+            <span className="px-1.5 py-0.5 rounded bg-secondary font-medium">
+              {habit.currentDayCount || 0}/{habit.timesPerDay}
+            </span>
           )}
           {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
-            <Repeat className="h-3 w-3" />
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary">
+              <Repeat className="h-3 w-3" />
+            </span>
           )}
         </div>
       </div>
 
+      {/* Delete button */}
       <Button
         variant="ghost"
         size="icon"
@@ -269,7 +274,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{habit.title}" and all its history. This action cannot be undone.
+              This will permanently delete &quot;{habit.title}&quot; and all its history. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -287,8 +292,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
   );
 }
 
-// ─── Filter Button ────────────────────────────────────────────────────────────
-
+// Filter Button
 function FilterButton() {
   const { filters, setFilters, clearFilters, projects, getProjectEmoji } = usePlannerStore();
   const [filterOpen, setFilterOpen] = useState(false);
@@ -345,43 +349,50 @@ function FilterButton() {
           variant="outline"
           size="sm"
           className={cn(
-            'h-7 px-2 text-xs',
+            'h-8 px-3 text-xs font-medium',
             hasActiveFilters && 'border-primary text-primary'
           )}
         >
-          <Filter className="h-3.5 w-3.5 mr-1" />
+          <Filter className="h-3.5 w-3.5 mr-1.5" />
           Filter
           {hasActiveFilters && (
-            <span className="ml-1 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center">
+            <span className="ml-1.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center font-semibold">
               {activeFilterCount}
             </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-48 p-1">
-        <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">Filter by</div>
+      <PopoverContent align="start" className="w-48 p-1.5">
+        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1.5">Filter by</div>
         
-        {/* Project filter - only show if there are projects */}
         {projects.length > 0 && (
           <Popover open={activeSubmenu === 'project'}>
             <PopoverTrigger asChild>
               <button 
-                className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm"
+                className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-accent rounded-md transition-colors"
                 onMouseEnter={() => handleMouseEnter('project')}
                 onMouseLeave={handleMouseLeave}
               >
-                <span>Project</span>
-                <ChevronRight className="h-3 w-3" />
+                <div className="flex items-center gap-2">
+                  <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Project</span>
+                </div>
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
             </PopoverTrigger>
             <PopoverContent 
-              side="right" align="start" className="w-36 p-1" sideOffset={0}
+              side="right" align="start" className="w-40 p-1.5" sideOffset={0}
               onMouseEnter={() => handleMouseEnter('project')}
               onMouseLeave={handleMouseLeave}
             >
               {projects.map((project) => (
-                <button key={project.name} className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectProject(project.name)}>
-                  {project.emoji} {project.name}
+                <button 
+                  key={project.name} 
+                  className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors flex items-center gap-2" 
+                  onClick={() => handleSelectProject(project.name)}
+                >
+                  <span>{project.emoji}</span>
+                  <span>{project.name}</span>
                 </button>
               ))}
             </PopoverContent>
@@ -391,54 +402,60 @@ function FilterButton() {
         <Popover open={activeSubmenu === 'priority'}>
           <PopoverTrigger asChild>
             <button 
-              className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm"
+              className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-accent rounded-md transition-colors"
               onMouseEnter={() => handleMouseEnter('priority')}
               onMouseLeave={handleMouseLeave}
             >
-              <span>Priority</span>
-              <ChevronRight className="h-3 w-3" />
+              <div className="flex items-center gap-2">
+                <Flag className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Priority</span>
+              </div>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </PopoverTrigger>
           <PopoverContent 
-            side="right" align="start" className="w-28 p-1" sideOffset={0}
+            side="right" align="start" className="w-32 p-1.5" sideOffset={0}
             onMouseEnter={() => handleMouseEnter('priority')}
             onMouseLeave={handleMouseLeave}
           >
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('high')}>High</button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('medium')}>Medium</button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectPriority('low')}>Low</button>
+            <button className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors" onClick={() => handleSelectPriority('high')}>High</button>
+            <button className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors" onClick={() => handleSelectPriority('medium')}>Medium</button>
+            <button className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors" onClick={() => handleSelectPriority('low')}>Low</button>
           </PopoverContent>
         </Popover>
 
         <Popover open={activeSubmenu === 'status'}>
           <PopoverTrigger asChild>
             <button 
-              className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-accent rounded-sm"
+              className="w-full flex items-center justify-between px-2 py-2 text-sm hover:bg-accent rounded-md transition-colors"
               onMouseEnter={() => handleMouseEnter('status')}
               onMouseLeave={handleMouseLeave}
             >
-              <span>Status</span>
-              <ChevronRight className="h-3 w-3" />
+              <div className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Status</span>
+              </div>
+              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </PopoverTrigger>
           <PopoverContent 
-            side="right" align="start" className="w-28 p-1" sideOffset={0}
+            side="right" align="start" className="w-32 p-1.5" sideOffset={0}
             onMouseEnter={() => handleMouseEnter('status')}
             onMouseLeave={handleMouseLeave}
           >
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('pending')}>Pending</button>
-            <button className="w-full px-2 py-1.5 text-xs text-left hover:bg-accent rounded-sm" onClick={() => handleSelectStatus('completed')}>Completed</button>
+            <button className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors" onClick={() => handleSelectStatus('pending')}>Pending</button>
+            <button className="w-full px-2 py-2 text-sm text-left hover:bg-accent rounded-md transition-colors" onClick={() => handleSelectStatus('completed')}>Completed</button>
           </PopoverContent>
         </Popover>
         
         {hasActiveFilters && (
           <>
-            <div className="h-px bg-border my-1" />
+            <div className="h-px bg-border my-1.5" />
             <button
-              className="w-full flex items-center px-2 py-1.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
+              className="w-full flex items-center px-2 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors"
               onClick={() => { clearFilters(); setFilterOpen(false); }}
             >
-              <X className="h-3 w-3 mr-1" />
+              <X className="h-3.5 w-3.5 mr-2" />
               Clear filters
             </button>
           </>
@@ -448,8 +465,7 @@ function FilterButton() {
   );
 }
 
-// ─── Main Sidebar ────────────────��────────────────────────────────────────────
-
+// Main Sidebar
 interface TaskSidebarProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
@@ -468,7 +484,6 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
   const [habitGroupBy, setHabitGroupBy] = useState<'none' | 'group'>('group');
   const showControls = !chillMode || isHovered;
 
-  // Auto-switch tab when filter changes to show only available items
   useEffect(() => {
     if (timelineItemFilter === 'tasks') {
       setActiveTab('tasks');
@@ -477,20 +492,16 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     }
   }, [timelineItemFilter]);
 
-  // Droppable for sidebar (to unschedule tasks)
   const { isOver, setNodeRef: setDroppableRef } = useDroppable({
     id: 'sidebar',
   });
 
-  // Check if any filters are active
   const hasActiveFilters = !!(filters.status || filters.priority || filters.project);
 
-  // Filter unscheduled tasks (exclude tasks assigned to buckets - they show in the bucket's untimed section)
   const unscheduledTasks = tasks.filter((task) => {
     if (task.isScheduled) return false;
-    if (task.timeBucket) return false; // Task is assigned to a bucket, show it there instead
+    if (task.timeBucket) return false;
     
-    // Apply filters
     if (filters.status && filters.status !== task.status) return false;
     if (filters.priority && filters.priority !== task.priority) return false;
     if (filters.project && filters.project !== task.project) return false;
@@ -498,7 +509,6 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     return true;
   });
 
-  // Group tasks by selected grouping
   const groupedTasks = useMemo(() => {
     if (groupBy === 'none') return { 'All Tasks': unscheduledTasks };
     
@@ -525,27 +535,11 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
     return groups;
   }, [unscheduledTasks, groupBy]);
 
-  // Group habits by habit group
-  const habitsByGroup = useMemo(() => {
-    const groups: Record<string, typeof habits> = {};
-    
-    habits.forEach((habit) => {
-      const key = habit.group || 'Ungrouped';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(habit);
-    });
-    
-    return groups;
-  }, [habits]);
-
-  // Filter and group habits based on habitStatusFilter and habitGroupBy
   const groupedHabits = useMemo(() => {
-    // First filter by status
     const filteredHabits = habitStatusFilter === 'all' 
       ? habits 
       : habits.filter((h) => h.status === habitStatusFilter);
     
-    // Then group
     if (habitGroupBy === 'none') {
       return { 'All Habits': filteredHabits };
     }
@@ -571,286 +565,311 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         className={cn(
           'border-r border-border bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
           isVisible ? 'w-80' : 'w-0 border-r-0',
-          leftSidebarHovered && !leftSidebarOpen && 'shadow-xl z-20 absolute left-0 top-0 bottom-0',
+          leftSidebarHovered && !leftSidebarOpen && 'shadow-2xl z-20 absolute left-0 top-0 bottom-0',
           isOver && 'bg-primary/5 border-primary'
         )}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
+        {/* Header with title */}
+        <div className={cn('px-5 pt-5 pb-3', !isVisible && 'hidden')}>
+          <div className="flex items-center gap-2">
+            <Inbox className="h-5 w-5 text-muted-foreground" />
+            <h2 className="text-lg font-semibold text-foreground">Inbox</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Unscheduled tasks and habits</p>
+        </div>
+
         {/* Tab switcher */}
-      <div className={cn('flex border-b border-border h-16 items-center', !isVisible && 'hidden')}>
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
-            activeTab === 'tasks'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('tasks')}
-        >
-          Tasks
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
-        </button>
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
-            activeTab === 'habits'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('habits')}
-        >
-          Habits
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
-        </button>
-      </div>
-
-      {/* Tasks pane */}
-      {isVisible && activeTab === 'tasks' && (
-        <>
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              {/* Filter and Group buttons - hidden in chill mode until hovered */}
-              <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
-                <FilterButton />
-                
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                      Group
-                      <ChevronDown className="h-3 w-3 ml-1" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
-                      <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="project" className="text-xs">Project</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="priority" className="text-xs">Priority</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Icon buttons - always visible */}
-              <div className="flex items-center gap-1 ml-auto">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onManageCategories} title="Manage Projects & Groups">
-                  <FolderOpen className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onAddClick} title="Add task">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            
-            {hasActiveFilters && (
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {filters.project && (
-                  <Badge variant="secondary" className="text-xs h-5 px-2 gap-1">
-                    {filters.project}
-                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, project: undefined }); }} className="hover:text-destructive">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                )}
-                {filters.priority && (
-                  <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
-                    {filters.priority}
-                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, priority: undefined }); }} className="hover:text-destructive">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                )}
-                {filters.status && (
-                  <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
-                    {filters.status}
-                    <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, status: undefined }); }} className="hover:text-destructive">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                )}
-                <button
-                  className="flex items-center px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
-                  onClick={() => clearFilters()}
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Clear all
-                </button>
-              </div>
+        <div className={cn('flex border-b border-border mx-5', !isVisible && 'hidden')}>
+          <button
+            className={cn(
+              'flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-1.5',
+              activeTab === 'tasks'
+                ? 'text-foreground border-b-2 border-primary -mb-px'
+                : 'text-muted-foreground hover:text-foreground'
             )}
-          </div>
+            onClick={() => setActiveTab('tasks')}
+          >
+            Tasks
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-semibold">
+              {unscheduledTasks.length}
+            </Badge>
+          </button>
+          <button
+            className={cn(
+              'flex-1 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-1.5',
+              activeTab === 'habits'
+                ? 'text-foreground border-b-2 border-primary -mb-px'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('habits')}
+          >
+            Habits
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-semibold">
+              {habits.length}
+            </Badge>
+          </button>
+        </div>
 
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-3 space-y-4">
-              {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
-                <div key={groupName}>
-                  {groupBy !== 'none' && (
-                    <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                      {groupName}
-                      <span className="ml-1 text-muted-foreground/60">({groupTasks.length})</span>
-                    </h3>
-                  )}
-                  <div className="space-y-2">
-                    {groupTasks.map((task) => (
-                      <TaskItem key={task.id} task={task} onClick={() => onTaskClick(task)} />
-                    ))}
-                  </div>
+        {/* Tasks pane */}
+        {isVisible && activeTab === 'tasks' && (
+          <>
+            <div className="px-5 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
+                  <FilterButton />
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 px-3 text-xs font-medium">
+                        <Layers className="h-3.5 w-3.5 mr-1.5" />
+                        Group
+                        <ChevronDown className="h-3 w-3 ml-1.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuRadioGroup value={groupBy} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+                        <DropdownMenuRadioItem value="none" className="text-sm">None</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="project" className="text-sm">Project</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="priority" className="text-sm">Priority</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="status" className="text-sm">Status</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              ))}
+
+                <div className="flex items-center gap-1 ml-auto">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onManageCategories} title="Manage Projects & Groups">
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                  <Button variant="default" size="sm" className="h-8 px-3" onClick={onAddClick} title="Add task">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </div>
               
-              {unscheduledTasks.length === 0 && (
-                <div className="text-center py-10 flex flex-col items-center gap-3">
-                  <p className="text-sm text-muted-foreground font-medium">What do you want to do today?</p>
+              {hasActiveFilters && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {filters.project && (
+                    <Badge variant="secondary" className="text-xs h-6 px-2 gap-1.5 font-medium">
+                      {filters.project}
+                      <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, project: undefined }); }} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {filters.priority && (
+                    <Badge variant="secondary" className="text-xs h-6 px-2 gap-1.5 capitalize font-medium">
+                      {filters.priority}
+                      <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, priority: undefined }); }} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {filters.status && (
+                    <Badge variant="secondary" className="text-xs h-6 px-2 gap-1.5 capitalize font-medium">
+                      {filters.status}
+                      <button onClick={(e) => { e.stopPropagation(); setFilters({ ...filters, status: undefined }); }} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
                   <button
-                    onClick={onAddClick}
-                    className="text-xs text-primary hover:underline underline-offset-2"
+                    className="flex items-center px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded-md font-medium"
+                    onClick={() => clearFilters()}
                   >
-                    + Add Task
+                    <X className="h-3 w-3 mr-1" />
+                    Clear all
                   </button>
                 </div>
               )}
             </div>
-          </ScrollArea>
-        </>
-      )}
 
-      {/* Habits pane */}
-      {isVisible && activeTab === 'habits' && (
-        <>
-          <div className="p-4 border-b border-border space-y-3">
-            <div className="flex items-center gap-2">
-              {/* Filter and Group buttons - hidden in chill mode until hovered */}
-              <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
-                {/* Status filter */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className={cn('h-7 px-2 text-xs', habitStatusFilter !== 'all' && 'border-primary text-primary')}>
-                      <Filter className="h-3.5 w-3.5 mr-1" />
-                      {habitStatusFilter === 'all' ? 'Filter' : habitStatusFilter.charAt(0).toUpperCase() + habitStatusFilter.slice(1)}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuRadioGroup value={habitStatusFilter} onValueChange={(v) => setHabitStatusFilter(v as typeof habitStatusFilter)}>
-                      <DropdownMenuRadioItem value="all" className="text-xs">All statuses</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="pending" className="text-xs">Pending</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="done" className="text-xs">Done</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="skipped" className="text-xs">Skipped</DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Group by */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                      Group
-                      <ChevronDown className="h-3 w-3 ml-1" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuRadioGroup value={habitGroupBy} onValueChange={(v) => setHabitGroupBy(v as typeof habitGroupBy)}>
-                      <DropdownMenuRadioItem value="group" className="text-xs">Group</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="status" className="text-xs">Status</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="repeat" className="text-xs">Repetition</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="bucket" className="text-xs">Time bucket</DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="none" className="text-xs">None</DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              {/* Icon buttons - always visible */}
-              <div className="flex items-center gap-1 ml-auto">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onManageCategories} title="Manage Groups">
-                  <FolderOpen className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onAddHabitClick} title="Add habit">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Active filter badge */}
-            {habitStatusFilter !== 'all' && (
-              <div className="flex flex-wrap gap-1.5">
-                <Badge variant="secondary" className="text-xs h-5 px-2 gap-1 capitalize">
-                  {habitStatusFilter}
-                  <button onClick={(e) => { e.stopPropagation(); setHabitStatusFilter('all'); }} className="hover:text-destructive">
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-                <button
-                  className="flex items-center px-2 py-0.5 text-xs text-destructive hover:bg-destructive/10 rounded-sm"
-                  onClick={() => setHabitStatusFilter('all')}
-                >
-                  <X className="h-3 w-3 mr-1" />
-                  Clear all
-                </button>
-              </div>
-            )}
-          </div>
-
-          <ScrollArea className="flex-1 min-h-0">
-            <div className="p-3 space-y-4">
-              {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
-                <div key={groupName}>
-                  {habitGroupBy !== 'none' && (
-                    <h3 className="text-xs font-medium text-muted-foreground mb-2 px-1">
-                      {groupName}
-                      <span className="ml-1 text-muted-foreground/60">({groupHabits.length})</span>
-                    </h3>
-                  )}
-                  <div className="space-y-2">
-                    {groupHabits.map((habit) => (
-                      <HabitItem key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
-                    ))}
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-4 space-y-5">
+                {Object.entries(groupedTasks).map(([groupName, groupTasks]) => (
+                  <div key={groupName}>
+                    {groupBy !== 'none' && (
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 px-1">
+                        {groupName}
+                        <span className="ml-1.5 text-muted-foreground/60">({groupTasks.length})</span>
+                      </h3>
+                    )}
+                    <div className="space-y-2">
+                      {groupTasks.map((task) => (
+                        <TaskItem key={task.id} task={task} onClick={() => onTaskClick(task)} />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-
-              {Object.values(groupedHabits).flat().length === 0 && (
-                <div className="text-center py-10 flex flex-col items-center gap-3">
-                  <p className="text-sm text-muted-foreground font-medium">
-                    {habits.length === 0 ? 'Build a streak — add your first habit' : 'No habits match the filter'}
-                  </p>
-                  {habits.length === 0 ? (
-                    <button
-                      onClick={onAddHabitClick}
-                      className="text-xs text-primary hover:underline underline-offset-2"
+                ))}
+                
+                {unscheduledTasks.length === 0 && (
+                  <div className="text-center py-12 flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
+                      <Inbox className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">No unscheduled tasks</p>
+                      <p className="text-xs text-muted-foreground mt-1">Add a task to get started</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAddClick}
+                      className="mt-2"
                     >
-                      + Add Habit
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add Task
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </>
+        )}
+
+        {/* Habits pane */}
+        {isVisible && activeTab === 'habits' && (
+          <>
+            <div className="px-5 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className={cn('flex items-center gap-2 transition-opacity', !showControls && 'opacity-0 pointer-events-none')}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn('h-8 px-3 text-xs font-medium', habitStatusFilter !== 'all' && 'border-primary text-primary')}>
+                        <Filter className="h-3.5 w-3.5 mr-1.5" />
+                        {habitStatusFilter === 'all' ? 'Filter' : habitStatusFilter.charAt(0).toUpperCase() + habitStatusFilter.slice(1)}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuRadioGroup value={habitStatusFilter} onValueChange={(v) => setHabitStatusFilter(v as typeof habitStatusFilter)}>
+                        <DropdownMenuRadioItem value="all" className="text-sm">All statuses</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="pending" className="text-sm">Pending</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="done" className="text-sm">Done</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="skipped" className="text-sm">Skipped</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 px-3 text-xs font-medium">
+                        <Layers className="h-3.5 w-3.5 mr-1.5" />
+                        Group
+                        <ChevronDown className="h-3 w-3 ml-1.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuRadioGroup value={habitGroupBy} onValueChange={(v) => setHabitGroupBy(v as typeof habitGroupBy)}>
+                        <DropdownMenuRadioItem value="group" className="text-sm">Group</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="none" className="text-sm">None</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div className="flex items-center gap-1 ml-auto">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onManageCategories} title="Manage Groups">
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                  <Button variant="default" size="sm" className="h-8 px-3" onClick={onAddHabitClick} title="Add habit">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              {habitStatusFilter !== 'all' && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  <Badge variant="secondary" className="text-xs h-6 px-2 gap-1.5 capitalize font-medium">
+                    {habitStatusFilter}
+                    <button onClick={(e) => { e.stopPropagation(); setHabitStatusFilter('all'); }} className="hover:text-destructive">
+                      <X className="h-3 w-3" />
                     </button>
-                  ) : (
-                    <p className="text-xs text-muted-foreground/70">Try changing or clearing the filter</p>
-                  )}
+                  </Badge>
+                  <button
+                    className="flex items-center px-2 py-1 text-xs text-destructive hover:bg-destructive/10 rounded-md font-medium"
+                    onClick={() => setHabitStatusFilter('all')}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Clear all
+                  </button>
                 </div>
               )}
             </div>
-          </ScrollArea>
-        </>
-      )}
-      
-</aside>
 
-      {/* Toggle button - positioned outside the aside so it's always visible */}
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="p-4 space-y-5">
+                {Object.entries(groupedHabits).map(([groupName, groupHabits]) => (
+                  <div key={groupName}>
+                    {habitGroupBy !== 'none' && (
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 px-1">
+                        {groupName}
+                        <span className="ml-1.5 text-muted-foreground/60">({groupHabits.length})</span>
+                      </h3>
+                    )}
+                    <div className="space-y-2">
+                      {groupHabits.map((habit) => (
+                        <HabitItem key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {Object.values(groupedHabits).flat().length === 0 && (
+                  <div className="text-center py-12 flex flex-col items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center">
+                      <Repeat className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {habits.length === 0 ? 'No habits yet' : 'No habits match the filter'}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {habits.length === 0 ? 'Build a streak by adding your first habit' : 'Try changing or clearing the filter'}
+                      </p>
+                    </div>
+                    {habits.length === 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onAddHabitClick}
+                        className="mt-2"
+                      >
+                        <Plus className="h-4 w-4 mr-1.5" />
+                        Add Habit
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </>
+        )}
+      </aside>
+
+      {/* Toggle button */}
       <button
         onClick={toggleLeftSidebar}
         className={cn(
           'absolute top-1/2 -translate-y-1/2 z-30',
-          'flex items-center gap-1.5 px-1.5 py-3',
-          'rounded-r-lg border border-l-0 border-border',
-          'bg-card text-foreground shadow-md',
-          'hover:bg-accent transition-colors duration-200',
+          'flex items-center justify-center',
+          'w-6 h-12 rounded-r-lg',
+          'border border-l-0 border-border',
+          'bg-card text-muted-foreground shadow-md',
+          'hover:bg-accent hover:text-foreground transition-colors duration-200',
         )}
-        style={{ left: isVisible ? 'calc(20rem - 2px)' : '-2px' }}
+        style={{ left: isVisible ? 'calc(20rem - 1px)' : '-1px' }}
         title={leftSidebarOpen ? 'Collapse sidebar (Cmd+[)' : 'Expand sidebar (Cmd+[)'}
       >
         {leftSidebarOpen ? (
-          <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
+          <PanelLeftClose className="h-3.5 w-3.5" />
         ) : (
-          <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+          <PanelLeft className="h-3.5 w-3.5" />
         )}
       </button>
     </div>
   );
-  }
+}

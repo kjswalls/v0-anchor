@@ -499,59 +499,38 @@ const handleAddFromTopNav = () => {
               />
             )}
 
-            {/* Item visibility toggle and action feed - toggle centered, feed on right */}
-            <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
-              {/* Centered visibility toggle */}
-              <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary pointer-events-auto">
-                  <Button
-                    variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('all')}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('tasks')}
-                  >
-                    Tasks
-                  </Button>
-                  <Button
-                    variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('habits')}
-                  >
-                    Habits
-                  </Button>
-                </div>
+            {/* Timeline header - filter toggle and action feed */}
+            <div className="relative flex items-center justify-between px-6 border-b border-border flex-shrink-0 h-12">
+              {/* Filter toggle */}
+              <div className="flex items-center gap-1 p-0.5 rounded-lg bg-secondary">
+                <Button
+                  variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-3 text-xs font-medium"
+                  onClick={() => setTimelineItemFilter('all')}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-3 text-xs font-medium"
+                  onClick={() => setTimelineItemFilter('tasks')}
+                >
+                  Tasks
+                </Button>
+                <Button
+                  variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-3 text-xs font-medium"
+                  onClick={() => setTimelineItemFilter('habits')}
+                >
+                  Habits
+                </Button>
               </div>
               
-              {/* Action feed on the right */}
-              <div className="ml-auto z-10 flex items-center gap-2">
-                {/* DEV: manual trigger buttons for testing — remove before launch */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
-                  onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
-                  title="[DEV] Reset morning check (clears dismissed state)"
-                >
-                  ☀️
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
-                  onClick={() => eodStore.open()}
-                  title="[DEV] Trigger EOD review"
-                >
-                  🌙
-                </Button>
+              {/* Action feed */}
+              <div className="flex items-center gap-2">
                 <ActionFeed />
               </div>
             </div>
