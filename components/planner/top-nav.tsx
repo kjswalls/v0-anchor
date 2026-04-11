@@ -212,7 +212,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+    <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-card/80 backdrop-blur-lg">
       <div className="flex items-center gap-4">
         {/* Anchor logo mark */}
         <svg

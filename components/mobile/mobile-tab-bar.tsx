@@ -22,7 +22,7 @@ export function MobileTabBar() {
   ];
 
   return (
-    <nav className="flex items-center justify-around border-t border-border bg-card pb-safe">
+    <nav className="flex items-center justify-around border-t border-white/10 bg-card/80 backdrop-blur-lg pb-safe">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;

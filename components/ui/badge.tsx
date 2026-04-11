@@ -17,6 +17,13 @@ const badgeVariants = cva(
           'border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
         outline:
           'text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+        // Priority badge variants - solid fills for better visibility
+        'priority-high':
+          'border-transparent rounded-full bg-priority-high text-white font-semibold',
+        'priority-medium':
+          'border-transparent rounded-full bg-priority-medium text-black font-semibold',
+        'priority-low':
+          'border-transparent rounded-full bg-priority-low text-white font-semibold',
       },
     },
     defaultVariants: {

@@ -31,39 +31,49 @@ function getBucketConfig(use24h: boolean): Record<TimeBucket, {
   bgClass: string;
   borderClass: string;
   glowColor: string;
+  headerGradient: string;
+  cardBorderClass: string;
 }> {
   return {
     anytime: {
       icon: Sparkles,
       label: 'Anytime',
       timeRange: 'Flexible',
-      bgClass: 'bg-anytime/30',
-      borderClass: 'border-anytime/50',
-      glowColor: 'oklch(0.92 0.02 240 / 0.5)',
+      bgClass: 'bg-anytime/40',
+      borderClass: 'border-anytime/60',
+      glowColor: 'oklch(0.50 0.04 270 / 0.5)',
+      headerGradient: 'bg-gradient-anytime',
+      cardBorderClass: 'border-l-4 border-l-anytime',
     },
     morning: {
       icon: Sunrise,
       label: 'Morning',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning, use24h),
-      bgClass: 'bg-morning/20',
-      borderClass: 'border-morning/40',
-      glowColor: 'oklch(0.88 0.12 85 / 0.6)',
+      bgClass: 'bg-morning/30',
+      borderClass: 'border-morning/50',
+      glowColor: 'oklch(0.75 0.16 75 / 0.6)',
+      headerGradient: 'bg-gradient-morning',
+      cardBorderClass: 'border-l-4 border-l-morning',
     },
     afternoon: {
       icon: Sun,
       label: 'Afternoon',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon, use24h),
-      bgClass: 'bg-afternoon/20',
-      borderClass: 'border-afternoon/40',
-      glowColor: 'oklch(0.85 0.12 45 / 0.6)',
+      bgClass: 'bg-afternoon/30',
+      borderClass: 'border-afternoon/50',
+      glowColor: 'oklch(0.70 0.14 210 / 0.6)',
+      headerGradient: 'bg-gradient-afternoon',
+      cardBorderClass: 'border-l-4 border-l-afternoon',
     },
     evening: {
       icon: Moon,
       label: 'Evening',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening, use24h),
-      bgClass: 'bg-evening/20',
-      borderClass: 'border-evening/40',
-      glowColor: 'oklch(0.75 0.12 280 / 0.6)',
+      bgClass: 'bg-evening/30',
+      borderClass: 'border-evening/50',
+      glowColor: 'oklch(0.60 0.18 285 / 0.6)',
+      headerGradient: 'bg-gradient-evening',
+      cardBorderClass: 'border-l-4 border-l-evening',
     },
   };
 }
@@ -144,7 +154,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       <div
         onClick={onClick}
         className={cn(
-          'group/card relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
+          'group/card relative flex gap-3 px-4 rounded-xl bg-card/80 backdrop-blur-sm border border-white/10 hover:border-white/20 hover:bg-card transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px] items-center' : 'py-3 min-h-[72px] items-start',
           isTaskDoneOnDate && 'opacity-60',
         )}
@@ -210,10 +220,10 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             )}
             {task.priority && (
               <span className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-opacity',
-                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-                task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-opacity',
+                task.priority === 'high' && 'bg-priority-high text-white',
+                task.priority === 'medium' && 'bg-priority-medium text-black',
+                task.priority === 'low' && 'bg-priority-low text-white',
                 !showMeta && 'opacity-0'
               )}>
                 {priorityLabels[task.priority]}
@@ -422,29 +432,29 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       <div
         onClick={onClick}
         className={cn(
-          'relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer flex-1 overflow-hidden',
+          'relative flex items-center gap-3 px-4 rounded-xl border transition-all cursor-pointer flex-1 overflow-hidden',
           compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
-          'border-border/60 hover:border-border',
-          effectiveStatus === 'done' && 'ring-2 ring-primary/20 border-primary/30'
+          'border-white/10 hover:border-white/20 bg-card/80 backdrop-blur-sm',
+          effectiveStatus === 'done' && 'ring-2 ring-primary/30 border-primary/40'
         )}
         style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
+        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 20%, var(--card)) 0%, color-mix(in oklch, ${groupColor} 8%, var(--card)) 100%)`,
         backgroundImage: `
           repeating-linear-gradient(
             45deg,
             transparent,
             transparent 2px,
-            rgba(255, 255, 255, 0.02) 2px,
-            rgba(255, 255, 255, 0.02) 4px
+            rgba(255, 255, 255, 0.015) 2px,
+            rgba(255, 255, 255, 0.015) 4px
           ),
           repeating-linear-gradient(
             -45deg,
             transparent,
             transparent 2px,
-            rgba(0, 0, 0, 0.02) 2px,
-            rgba(0, 0, 0, 0.02) 4px
+            rgba(0, 0, 0, 0.015) 2px,
+            rgba(0, 0, 0, 0.015) 4px
           ),
-          linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)
+          linear-gradient(135deg, color-mix(in oklch, ${groupColor} 20%, var(--card)) 0%, color-mix(in oklch, ${groupColor} 8%, var(--card)) 100%)
         `,
       }}
     >
@@ -1190,13 +1200,12 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   return (
     <div
       className={cn(
-        'relative rounded-xl border-2 border-dashed transition-all overflow-visible min-h-[80px]',
-        config.borderClass,
-        (isOver || isOverUnscheduled) && 'border-solid border-primary bg-primary/5',
+        'relative rounded-xl border border-white/10 bg-card/40 backdrop-blur-sm transition-all overflow-visible min-h-[80px]',
+        (isOver || isOverUnscheduled) && 'border-primary bg-primary/10',
         isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background min-h-[120px]'
       )}
       style={isCurrentBucket ? { 
-        boxShadow: `0 0 25px -3px ${config.glowColor}`,
+        boxShadow: `0 0 30px -5px ${config.glowColor}`,
         '--tw-ring-color': config.glowColor,
       } as React.CSSProperties : undefined}
       onMouseEnter={() => setIsHovered(true)}
@@ -1235,18 +1244,20 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
       
       {/* Header + untimed section */}
       <div>
-        {/* Header */}
+        {/* Gradient Header */}
         <div className={cn(
-          'rounded-t-lg flex items-center justify-between',
-          compactMode ? 'px-4 py-2' : 'px-4 py-3',
-          config.bgClass,
+          'rounded-t-xl flex items-center justify-between',
+          compactMode ? 'px-4 py-2.5' : 'px-5 py-3.5',
+          config.headerGradient,
         )}>
-          <div className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-muted-foreground" />
-            <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-            <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 rounded-lg bg-white/20 backdrop-blur-sm">
+              <Icon className="h-4 w-4 text-white drop-shadow-sm" />
+            </div>
+            <h3 className={cn('font-bold text-white drop-shadow-sm', compactMode ? 'text-sm' : 'text-base')}>{config.label}</h3>
+            <span className={cn('text-white/70 transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
             {totalItems > 0 && (
-              <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
+              <Badge className={cn('text-xs h-5 px-2 bg-white/20 text-white border-0 backdrop-blur-sm transition-opacity', !showExtras && 'opacity-0')}>
                 {totalItems}
               </Badge>
             )}
@@ -1257,7 +1268,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 px-2 text-xs text-white/80 hover:text-white hover:bg-white/20"
               onClick={() => onAddClick(bucket, 'task')}
             >
               <Plus className="h-3 w-3 mr-1" />
@@ -1266,7 +1277,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 px-2 text-xs text-white/80 hover:text-white hover:bg-white/20"
               onClick={() => onAddClick(bucket, 'habit')}
             >
               <Plus className="h-3 w-3 mr-1" />

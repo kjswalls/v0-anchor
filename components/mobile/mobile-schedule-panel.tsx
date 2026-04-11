@@ -27,11 +27,11 @@ import { cn } from '@/lib/utils';
 import { shouldShowOnDate, isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { useDroppable } from '@dnd-kit/core';
 
-const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string }> = {
-  anytime: { label: 'Anytime', timeRange: 'Flexible', colorClass: 'bg-anytime' },
-  morning: { label: 'Morning', timeRange: '5am - 12pm', colorClass: 'bg-morning' },
-  afternoon: { label: 'Afternoon', timeRange: '12pm - 5pm', colorClass: 'bg-afternoon' },
-  evening: { label: 'Evening', timeRange: '5pm - 12am', colorClass: 'bg-evening' },
+const bucketConfig: Record<TimeBucket, { label: string; timeRange: string; colorClass: string; headerGradient: string }> = {
+  anytime: { label: 'Anytime', timeRange: 'Flexible', colorClass: 'bg-anytime', headerGradient: 'bg-gradient-anytime' },
+  morning: { label: 'Morning', timeRange: '5am - 12pm', colorClass: 'bg-morning', headerGradient: 'bg-gradient-morning' },
+  afternoon: { label: 'Afternoon', timeRange: '12pm - 5pm', colorClass: 'bg-afternoon', headerGradient: 'bg-gradient-afternoon' },
+  evening: { label: 'Evening', timeRange: '5pm - 12am', colorClass: 'bg-evening', headerGradient: 'bg-gradient-evening' },
 };
 
 interface MobileSchedulePanelProps {
@@ -60,7 +60,7 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
       <div
         data-testid="mobile-task-card"
         className={cn(
-          'group relative flex items-start gap-3 p-3 rounded-xl bg-card border border-border/50 active:border-border transition-all',
+          'group relative flex items-start gap-3 p-3 rounded-xl bg-card/80 backdrop-blur-sm border border-white/10 active:border-white/20 transition-all',
           isTaskDone && 'opacity-60'
         )}
         onClick={onClick}
@@ -181,12 +181,12 @@ function MobileScheduledHabit({ habit, onClick }: { habit: Habit; onClick: () =>
     <div
       data-testid="mobile-habit-card"
       className={cn(
-        'group relative flex items-start gap-3 p-3 rounded-xl border-2 transition-all',
-        'border-border/40 active:border-border',
+        'group relative flex items-start gap-3 p-3 rounded-xl border transition-all',
+        'border-white/10 active:border-white/20 bg-card/80 backdrop-blur-sm',
         currentStatus === 'done' && 'opacity-70'
       )}
       style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 10%, transparent) 0%, color-mix(in oklch, ${groupColor} 3%, transparent) 100%)`,
+        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 18%, var(--card)) 0%, color-mix(in oklch, ${groupColor} 6%, var(--card)) 100%)`,
       }}
       onClick={onClick}
     >
@@ -425,28 +425,30 @@ function TimeBucketSection({
     <div 
       ref={setNodeRef}
       className={cn(
-        'rounded-xl border border-border/50 overflow-hidden transition-colors',
-        isOver && 'border-primary bg-primary/5',
-        isActive && 'ring-2 ring-primary/20'
+        'rounded-xl border border-white/10 overflow-hidden transition-colors bg-card/40 backdrop-blur-sm',
+        isOver && 'border-primary bg-primary/10',
+        isActive && 'ring-2 ring-primary/30'
       )}
     >
-      {/* Bucket header */}
+      {/* Gradient Bucket header */}
       <button
         className={cn(
-          'w-full flex items-center justify-between px-4 py-3 transition-colors',
-          config.colorClass + '/10'
+          'w-full flex items-center justify-between px-4 py-3.5 transition-colors',
+          config.headerGradient
         )}
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
-        <div className="flex items-center gap-2">
-          <div className={cn('w-2 h-2 rounded-full', config.colorClass)} />
-          <span className="text-sm font-medium text-foreground">{config.label}</span>
-          <span className="text-xs text-muted-foreground">({itemCount})</span>
+        <div className="flex items-center gap-3">
+          <div className="p-1 rounded-lg bg-white/20 backdrop-blur-sm">
+            <div className="w-2 h-2 rounded-full bg-white" />
+          </div>
+          <span className="text-sm font-bold text-white drop-shadow-sm">{config.label}</span>
+          <span className="text-xs text-white/70 bg-white/20 px-2 py-0.5 rounded-full">{itemCount}</span>
         </div>
         {isCollapsed ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <ChevronDown className="h-4 w-4 text-white/80" />
         ) : (
-          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          <ChevronUp className="h-4 w-4 text-white/80" />
         )}
       </button>
       

@@ -123,7 +123,7 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
         {...attributes}
         {...listeners}
         className={cn(
-          'group relative flex items-start gap-3 p-4 rounded-xl bg-card border border-border/50 active:border-border transition-all',
+          'group relative flex items-start gap-3 p-4 rounded-xl bg-card/80 backdrop-blur-sm border border-white/10 active:border-white/20 transition-all',
           isDragging && 'opacity-50 shadow-lg z-50',
           task.status === 'completed' && 'opacity-60'
         )}
@@ -181,10 +181,10 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
             )}
             {task.priority && (
               <span className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-                task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                task.priority === 'high' && 'bg-priority-high text-white',
+                task.priority === 'medium' && 'bg-priority-medium text-black',
+                task.priority === 'low' && 'bg-priority-low text-white',
               )}>
                 {priorityLabels[task.priority]}
               </span>
@@ -349,12 +349,12 @@ function MobileHabitItem({ habit, onClick }: { habit: Habit; onClick: () => void
   return (
     <div
       className={cn(
-        'group flex items-start gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer w-full overflow-hidden relative',
-        'border-border/60 active:border-border',
+        'group flex items-start gap-3 p-4 rounded-xl border transition-all cursor-pointer w-full overflow-hidden relative',
+        'border-white/10 active:border-white/20 bg-card/80 backdrop-blur-sm',
         habit.status === 'done' && 'opacity-70'
       )}
       style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 12%, transparent) 0%, color-mix(in oklch, ${groupColor} 4%, transparent) 100%)`,
+        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 18%, var(--card)) 0%, color-mix(in oklch, ${groupColor} 6%, var(--card)) 100%)`,
       }}
       onClick={onClick}
     >

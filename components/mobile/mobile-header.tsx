@@ -30,7 +30,7 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
   }, []);
 
   return (
-    <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+    <header className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-card/80 backdrop-blur-lg">
       <div className="flex items-center gap-3">
         {/* Anchor logo mark */}
         <svg

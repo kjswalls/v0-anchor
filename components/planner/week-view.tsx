@@ -33,27 +33,31 @@ const bucketTimes: Record<TimeBucket, string> = {
   evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
-// Bucket styling config matching the day view
-const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowColor: string }> = {
+// Bucket styling config matching the day view with gradients
+const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; glowColor: string; headerGradient: string }> = {
   anytime: {
-    borderClass: 'border-anytime/50',
-    bgClass: 'bg-anytime/30',
-    glowColor: 'oklch(0.92 0.02 240 / 0.5)',
+    borderClass: 'border-anytime/60',
+    bgClass: 'bg-anytime/40',
+    glowColor: 'oklch(0.50 0.04 270 / 0.5)',
+    headerGradient: 'bg-gradient-anytime',
   },
   morning: {
-    borderClass: 'border-morning/40',
-    bgClass: 'bg-morning/20',
-    glowColor: 'oklch(0.88 0.12 85 / 0.6)',
+    borderClass: 'border-morning/50',
+    bgClass: 'bg-morning/30',
+    glowColor: 'oklch(0.75 0.16 75 / 0.6)',
+    headerGradient: 'bg-gradient-morning',
   },
   afternoon: {
-    borderClass: 'border-afternoon/40',
-    bgClass: 'bg-afternoon/20',
-    glowColor: 'oklch(0.85 0.12 45 / 0.6)',
+    borderClass: 'border-afternoon/50',
+    bgClass: 'bg-afternoon/30',
+    glowColor: 'oklch(0.70 0.14 210 / 0.6)',
+    headerGradient: 'bg-gradient-afternoon',
   },
   evening: {
-    borderClass: 'border-evening/40',
-    bgClass: 'bg-evening/20',
-    glowColor: 'oklch(0.75 0.12 280 / 0.6)',
+    borderClass: 'border-evening/50',
+    bgClass: 'bg-evening/30',
+    glowColor: 'oklch(0.60 0.18 285 / 0.6)',
+    headerGradient: 'bg-gradient-evening',
   },
 };
 
@@ -92,7 +96,7 @@ function DraggableTaskPill({ task, onClick, date, dateStr }: DraggableTaskPillPr
       style={style}
       className={cn(
         'w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1',
-        'bg-card border border-border/50 hover:border-border transition-colors cursor-pointer',
+        'bg-card/80 backdrop-blur-sm border border-white/10 hover:border-white/20 transition-colors cursor-pointer',
         isTaskDoneOnDate && 'opacity-50',
         isDragging && 'opacity-50 shadow-lg z-50'
       )}
@@ -495,10 +499,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             >
               {/* Time label */}
               <div className="flex flex-col items-end justify-start pr-2 pt-1 flex-shrink-0">
-                <span className="text-xs font-medium text-muted-foreground">
+                <span className="text-xs font-bold text-foreground">
                   {bucketLabels[bucket]}
                 </span>
-                <span className="text-[10px] text-muted-foreground/60">
+                <span className="text-[10px] text-muted-foreground">
                   {bucketTimes[bucket]}
                 </span>
               </div>
@@ -562,10 +566,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     dropId={dropId}
                     disabled={isPastDay}
                     className={cn(
-                      'relative rounded-lg border-2 border-dashed p-1.5 space-y-1 transition-all',
-                      style.borderClass,
+                      'relative rounded-xl border border-white/10 bg-card/30 backdrop-blur-sm p-1.5 space-y-1 transition-all',
                       compactMode ? 'min-h-[80px] overflow-y-auto' : 'min-h-0',
-                      isSelected && 'border-primary/30 bg-primary/5',
+                      isSelected && 'border-primary/40 bg-primary/10',
                       isToday(day) && !isSelected && style.bgClass
                     )}
                     glowColor={isCurrentCell ? style.glowColor : undefined}
