@@ -4,152 +4,182 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Warm Brutalist Palette - Light Mode */
-  /* Warm off-whites and creams */
-  --background: oklch(0.97 0.008 70);
-  --foreground: oklch(0.18 0.02 55);
-  --card: oklch(0.995 0.004 70);
-  --card-foreground: oklch(0.18 0.02 55);
-  --popover: oklch(0.995 0.004 70);
-  --popover-foreground: oklch(0.18 0.02 55);
+  /* Premium Gradient Cards - Light Mode */
+  /* Cool neutral canvas */
+  --background: oklch(0.97 0.005 250);
+  --foreground: oklch(0.15 0.015 250);
+  --card: oklch(0.995 0.003 250);
+  --card-foreground: oklch(0.15 0.015 250);
+  --popover: oklch(0.995 0.003 250);
+  --popover-foreground: oklch(0.15 0.015 250);
   
-  /* Coral primary - warm and inviting */
-  --primary: oklch(0.65 0.18 30);
+  /* Rich coral/peach primary */
+  --primary: oklch(0.68 0.16 28);
   --primary-foreground: oklch(0.98 0 0);
   
-  /* Warm stone secondary */
-  --secondary: oklch(0.92 0.012 70);
-  --secondary-foreground: oklch(0.25 0.02 55);
+  /* Cool slate secondary */
+  --secondary: oklch(0.94 0.006 250);
+  --secondary-foreground: oklch(0.20 0.015 250);
   
-  /* Muted warm tones */
-  --muted: oklch(0.94 0.008 70);
-  --muted-foreground: oklch(0.45 0.015 55);
+  /* Muted cool tones */
+  --muted: oklch(0.95 0.005 250);
+  --muted-foreground: oklch(0.45 0.01 250);
   
   /* Accent */
-  --accent: oklch(0.92 0.015 70);
-  --accent-foreground: oklch(0.18 0.02 55);
+  --accent: oklch(0.94 0.008 250);
+  --accent-foreground: oklch(0.15 0.015 250);
   
-  /* Destructive - warm red */
-  --destructive: oklch(0.55 0.2 25);
+  /* Destructive */
+  --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
   
-  /* Borders - visible but warm */
-  --border: oklch(0.85 0.015 70);
-  --input: oklch(0.90 0.01 70);
-  --ring: oklch(0.65 0.18 30);
+  /* Borders - subtle but present */
+  --border: oklch(0.88 0.008 250);
+  --input: oklch(0.92 0.006 250);
+  --ring: oklch(0.68 0.16 28);
   
-  /* Time Bucket Colors - Bold and Distinct */
-  --morning: oklch(0.75 0.16 75);
-  --morning-muted: oklch(0.92 0.06 75);
-  --afternoon: oklch(0.72 0.14 30);
-  --afternoon-muted: oklch(0.92 0.05 30);
-  --evening: oklch(0.55 0.18 290);
-  --evening-muted: oklch(0.90 0.06 290);
-  --anytime: oklch(0.55 0.04 60);
-  --anytime-muted: oklch(0.92 0.02 60);
+  /* Time Bucket Gradients - Rich but sophisticated */
+  /* Morning: warm gold to soft amber */
+  --morning-start: oklch(0.82 0.14 85);
+  --morning-end: oklch(0.78 0.12 70);
+  --morning: oklch(0.80 0.13 78);
+  --morning-muted: oklch(0.96 0.04 80);
   
-  /* Priority Colors - Bold Left Accent Stripes */
+  /* Afternoon: peach to warm coral */
+  --afternoon-start: oklch(0.80 0.12 45);
+  --afternoon-end: oklch(0.72 0.14 25);
+  --afternoon: oklch(0.76 0.13 35);
+  --afternoon-muted: oklch(0.96 0.04 35);
+  
+  /* Evening: deep indigo to cool violet */
+  --evening-start: oklch(0.45 0.16 280);
+  --evening-end: oklch(0.52 0.18 300);
+  --evening: oklch(0.48 0.17 290);
+  --evening-muted: oklch(0.94 0.04 290);
+  
+  /* Anytime: cool gray to slate */
+  --anytime-start: oklch(0.65 0.02 250);
+  --anytime-end: oklch(0.55 0.03 260);
+  --anytime: oklch(0.60 0.025 255);
+  --anytime-muted: oklch(0.95 0.01 250);
+  
+  /* Priority Colors - Clear visual indicators */
   --priority-high: oklch(0.62 0.22 25);
-  --priority-medium: oklch(0.78 0.16 85);
-  --priority-low: oklch(0.60 0.14 175);
+  --priority-medium: oklch(0.78 0.14 85);
+  --priority-low: oklch(0.62 0.12 180);
   
   /* Habit group colors */
   --habit-wellness: oklch(0.65 0.14 160);
   --habit-work: oklch(0.60 0.14 250);
   --habit-personal: oklch(0.65 0.12 320);
   
-  --chart-1: oklch(0.65 0.18 30);
-  --chart-2: oklch(0.75 0.16 75);
-  --chart-3: oklch(0.72 0.14 30);
-  --chart-4: oklch(0.55 0.18 290);
-  --chart-5: oklch(0.60 0.14 175);
+  --chart-1: oklch(0.68 0.16 28);
+  --chart-2: oklch(0.80 0.13 78);
+  --chart-3: oklch(0.76 0.13 35);
+  --chart-4: oklch(0.48 0.17 290);
+  --chart-5: oklch(0.62 0.12 180);
   
-  --radius: 0.5rem;
+  --radius: 0.75rem;
   
-  --sidebar: oklch(0.96 0.008 70);
-  --sidebar-foreground: oklch(0.18 0.02 55);
-  --sidebar-primary: oklch(0.65 0.18 30);
+  --sidebar: oklch(0.98 0.004 250);
+  --sidebar-foreground: oklch(0.15 0.015 250);
+  --sidebar-primary: oklch(0.68 0.16 28);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.92 0.012 70);
-  --sidebar-accent-foreground: oklch(0.18 0.02 55);
-  --sidebar-border: oklch(0.85 0.015 70);
-  --sidebar-ring: oklch(0.65 0.18 30);
+  --sidebar-accent: oklch(0.94 0.006 250);
+  --sidebar-accent-foreground: oklch(0.15 0.015 250);
+  --sidebar-border: oklch(0.88 0.008 250);
+  --sidebar-ring: oklch(0.68 0.16 28);
 }
 
 .dark {
-  /* Warm Brutalist Palette - Dark Mode */
-  /* Deep warm charcoal - slight warmth, not cold gray */
-  --background: oklch(0.14 0.015 55);
-  --foreground: oklch(0.93 0.01 70);
-  --card: oklch(0.18 0.012 55);
-  --card-foreground: oklch(0.93 0.01 70);
-  --popover: oklch(0.18 0.012 55);
-  --popover-foreground: oklch(0.93 0.01 70);
+  /* Premium Gradient Cards - Dark Mode */
+  /* Deep cool slate/navy canvas */
+  --background: oklch(0.13 0.02 260);
+  --foreground: oklch(0.94 0.008 250);
+  --card: oklch(0.18 0.018 258);
+  --card-foreground: oklch(0.94 0.008 250);
+  --popover: oklch(0.18 0.018 258);
+  --popover-foreground: oklch(0.94 0.008 250);
   
-  /* Coral primary - stays vibrant */
-  --primary: oklch(0.70 0.16 32);
-  --primary-foreground: oklch(0.12 0.01 55);
+  /* Rich coral primary */
+  --primary: oklch(0.72 0.15 28);
+  --primary-foreground: oklch(0.12 0.015 260);
   
-  /* Warm stone secondary */
-  --secondary: oklch(0.22 0.012 55);
-  --secondary-foreground: oklch(0.88 0.01 70);
+  /* Cool slate secondary */
+  --secondary: oklch(0.20 0.018 258);
+  --secondary-foreground: oklch(0.90 0.008 250);
   
-  /* Muted warm tones */
-  --muted: oklch(0.24 0.01 55);
-  --muted-foreground: oklch(0.60 0.015 60);
+  /* Muted cool tones */
+  --muted: oklch(0.22 0.015 258);
+  --muted-foreground: oklch(0.58 0.012 250);
   
   /* Accent */
-  --accent: oklch(0.24 0.015 55);
-  --accent-foreground: oklch(0.93 0.01 70);
+  --accent: oklch(0.22 0.018 258);
+  --accent-foreground: oklch(0.94 0.008 250);
   
   /* Destructive */
-  --destructive: oklch(0.50 0.18 25);
-  --destructive-foreground: oklch(0.93 0.01 70);
+  --destructive: oklch(0.55 0.20 25);
+  --destructive-foreground: oklch(0.94 0.008 250);
   
   /* Borders - visible structure */
-  --border: oklch(0.30 0.015 55);
-  --input: oklch(0.22 0.012 55);
-  --ring: oklch(0.70 0.16 32);
+  --border: oklch(0.28 0.018 258);
+  --input: oklch(0.22 0.015 258);
+  --ring: oklch(0.72 0.15 28);
   
-  /* Time Bucket Colors - Bold in Dark Mode */
-  --morning: oklch(0.75 0.16 75);
-  --morning-muted: oklch(0.22 0.04 75);
-  --afternoon: oklch(0.72 0.14 30);
-  --afternoon-muted: oklch(0.22 0.04 30);
-  --evening: oklch(0.60 0.18 290);
-  --evening-muted: oklch(0.22 0.05 290);
-  --anytime: oklch(0.50 0.04 60);
-  --anytime-muted: oklch(0.20 0.02 60);
+  /* Time Bucket Gradients - Vibrant in dark mode */
+  /* Morning: warm gold to soft amber */
+  --morning-start: oklch(0.78 0.15 82);
+  --morning-end: oklch(0.72 0.13 68);
+  --morning: oklch(0.75 0.14 75);
+  --morning-muted: oklch(0.22 0.05 78);
   
-  /* Priority Colors - Bold Left Accent Stripes */
-  --priority-high: oklch(0.65 0.22 25);
-  --priority-medium: oklch(0.80 0.16 85);
-  --priority-low: oklch(0.65 0.14 175);
+  /* Afternoon: peach to warm coral */
+  --afternoon-start: oklch(0.75 0.13 42);
+  --afternoon-end: oklch(0.68 0.15 22);
+  --afternoon: oklch(0.72 0.14 32);
+  --afternoon-muted: oklch(0.22 0.05 32);
+  
+  /* Evening: deep indigo to cool violet */
+  --evening-start: oklch(0.50 0.18 278);
+  --evening-end: oklch(0.58 0.20 298);
+  --evening: oklch(0.54 0.19 288);
+  --evening-muted: oklch(0.22 0.06 288);
+  
+  /* Anytime: cool gray to slate */
+  --anytime-start: oklch(0.50 0.025 255);
+  --anytime-end: oklch(0.42 0.03 265);
+  --anytime: oklch(0.46 0.028 260);
+  --anytime-muted: oklch(0.20 0.015 258);
+  
+  /* Priority Colors */
+  --priority-high: oklch(0.68 0.22 25);
+  --priority-medium: oklch(0.82 0.14 85);
+  --priority-low: oklch(0.68 0.12 180);
   
   /* Habit group colors - dark mode */
-  --habit-wellness: oklch(0.55 0.14 160);
+  --habit-wellness: oklch(0.58 0.14 160);
   --habit-work: oklch(0.55 0.14 250);
-  --habit-personal: oklch(0.55 0.12 320);
+  --habit-personal: oklch(0.58 0.12 320);
   
-  --chart-1: oklch(0.70 0.16 32);
-  --chart-2: oklch(0.75 0.16 75);
-  --chart-3: oklch(0.72 0.14 30);
-  --chart-4: oklch(0.60 0.18 290);
-  --chart-5: oklch(0.65 0.14 175);
+  --chart-1: oklch(0.72 0.15 28);
+  --chart-2: oklch(0.75 0.14 75);
+  --chart-3: oklch(0.72 0.14 32);
+  --chart-4: oklch(0.54 0.19 288);
+  --chart-5: oklch(0.68 0.12 180);
   
-  --sidebar: oklch(0.16 0.012 55);
-  --sidebar-foreground: oklch(0.93 0.01 70);
-  --sidebar-primary: oklch(0.70 0.16 32);
-  --sidebar-primary-foreground: oklch(0.12 0.01 55);
-  --sidebar-accent: oklch(0.22 0.012 55);
-  --sidebar-accent-foreground: oklch(0.93 0.01 70);
-  --sidebar-border: oklch(0.30 0.015 55);
-  --sidebar-ring: oklch(0.70 0.16 32);
+  --sidebar: oklch(0.15 0.018 260);
+  --sidebar-foreground: oklch(0.94 0.008 250);
+  --sidebar-primary: oklch(0.72 0.15 28);
+  --sidebar-primary-foreground: oklch(0.12 0.015 260);
+  --sidebar-accent: oklch(0.20 0.018 258);
+  --sidebar-accent-foreground: oklch(0.94 0.008 250);
+  --sidebar-border: oklch(0.28 0.018 258);
+  --sidebar-ring: oklch(0.72 0.15 28);
 }
 
 @theme inline {
   --font-sans: var(--font-sans), 'Inter', system-ui, sans-serif;
-  --font-mono: var(--font-mono), 'Space Mono', monospace;
+  --font-display: var(--font-display), 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
   
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -175,10 +205,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
   --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 6px);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -190,12 +220,20 @@
   
   /* Custom planner colors */
   --color-morning: var(--morning);
+  --color-morning-start: var(--morning-start);
+  --color-morning-end: var(--morning-end);
   --color-morning-muted: var(--morning-muted);
   --color-afternoon: var(--afternoon);
+  --color-afternoon-start: var(--afternoon-start);
+  --color-afternoon-end: var(--afternoon-end);
   --color-afternoon-muted: var(--afternoon-muted);
   --color-evening: var(--evening);
+  --color-evening-start: var(--evening-start);
+  --color-evening-end: var(--evening-end);
   --color-evening-muted: var(--evening-muted);
   --color-anytime: var(--anytime);
+  --color-anytime-start: var(--anytime-start);
+  --color-anytime-end: var(--anytime-end);
   --color-anytime-muted: var(--anytime-muted);
   
   /* Priority colors */
@@ -259,11 +297,6 @@
   display: none;
 }
 
-/* Radial gradient utility for chevron backgrounds */
-.bg-gradient-radial {
-  background: radial-gradient(circle, var(--tw-gradient-from) 0%, var(--tw-gradient-via) 50%, var(--tw-gradient-to) 100%);
-}
-
 /* Safe area padding for iOS devices with notches/home indicators */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -289,40 +322,31 @@
   scroll-behavior: auto !important;
 }
 
-/* Brutalist card styles */
-.brutalist-card {
-  @apply border-2 border-border bg-card shadow-none;
-  transition: border-color 0.15s ease;
+/* Premium gradient bucket headers */
+.bucket-gradient-morning {
+  background: linear-gradient(135deg, var(--morning-start) 0%, var(--morning-end) 100%);
 }
 
-.brutalist-card:hover {
-  @apply border-foreground/30;
+.bucket-gradient-afternoon {
+  background: linear-gradient(135deg, var(--afternoon-start) 0%, var(--afternoon-end) 100%);
 }
 
-/* Time bucket section styles */
-.bucket-section {
-  @apply relative;
+.bucket-gradient-evening {
+  background: linear-gradient(135deg, var(--evening-start) 0%, var(--evening-end) 100%);
 }
 
-.bucket-section::before {
-  content: '';
-  @apply absolute left-0 top-0 bottom-0 w-[3px];
+.bucket-gradient-anytime {
+  background: linear-gradient(135deg, var(--anytime-start) 0%, var(--anytime-end) 100%);
 }
 
-.bucket-morning::before {
-  background-color: var(--morning);
+/* Task card elevated styles */
+.task-card {
+  @apply bg-card border border-border/60 shadow-sm;
+  transition: all 0.15s ease;
 }
 
-.bucket-afternoon::before {
-  background-color: var(--afternoon);
-}
-
-.bucket-evening::before {
-  background-color: var(--evening);
-}
-
-.bucket-anytime::before {
-  background-color: var(--anytime);
+.task-card:hover {
+  @apply shadow-md border-border;
 }
 
 /* Priority accent stripes */
@@ -341,14 +365,12 @@
   border-left-color: var(--priority-low);
 }
 
-/* Habit card styles - distinct from tasks */
+/* Habit card with group color accent */
 .habit-card {
-  @apply border-l-4;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 4px,
-    var(--muted) 4px,
-    var(--muted) 5px
-  );
+  @apply border-l-4 bg-card border border-border/60 shadow-sm;
+  transition: all 0.15s ease;
+}
+
+.habit-card:hover {
+  @apply shadow-md border-border;
 }

@@ -20,10 +20,10 @@ interface WeekViewProps {
 const TIME_BUCKETS: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
 
 const bucketLabels: Record<TimeBucket, string> = {
-  anytime: 'ANYTIME',
-  morning: 'MORNING',
-  afternoon: 'AFTERNOON',
-  evening: 'EVENING',
+  anytime: 'Anytime',
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
 };
 
 const bucketTimes: Record<TimeBucket, string> = {
@@ -33,35 +33,35 @@ const bucketTimes: Record<TimeBucket, string> = {
   evening: formatBucketRange(TIME_BUCKET_RANGES.evening),
 };
 
-// Bucket styling config matching the day view - brutalist design
-const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; headerBgClass: string; headerTextClass: string; glowColor: string }> = {
+// Bucket styling config matching the day view - premium gradient cards
+const bucketStyles: Record<TimeBucket, { borderClass: string; bgClass: string; headerGradientClass: string; headerTextClass: string; glowColor: string }> = {
   anytime: {
-    borderClass: 'border-anytime',
+    borderClass: 'border-anytime/40',
     bgClass: 'bg-anytime-muted',
-    headerBgClass: 'bg-anytime',
-    headerTextClass: 'text-white dark:text-foreground',
-    glowColor: 'oklch(0.55 0.04 60 / 0.4)',
+    headerGradientClass: 'bucket-gradient-anytime',
+    headerTextClass: 'text-white',
+    glowColor: 'oklch(0.46 0.028 260 / 0.4)',
   },
   morning: {
-    borderClass: 'border-morning',
+    borderClass: 'border-morning/40',
     bgClass: 'bg-morning-muted',
-    headerBgClass: 'bg-morning',
+    headerGradientClass: 'bucket-gradient-morning',
     headerTextClass: 'text-stone-900',
-    glowColor: 'oklch(0.75 0.16 75 / 0.5)',
+    glowColor: 'oklch(0.75 0.14 75 / 0.5)',
   },
   afternoon: {
-    borderClass: 'border-afternoon',
+    borderClass: 'border-afternoon/40',
     bgClass: 'bg-afternoon-muted',
-    headerBgClass: 'bg-afternoon',
+    headerGradientClass: 'bucket-gradient-afternoon',
     headerTextClass: 'text-stone-900',
-    glowColor: 'oklch(0.72 0.14 30 / 0.5)',
+    glowColor: 'oklch(0.72 0.14 32 / 0.5)',
   },
   evening: {
-    borderClass: 'border-evening',
+    borderClass: 'border-evening/40',
     bgClass: 'bg-evening-muted',
-    headerBgClass: 'bg-evening',
+    headerGradientClass: 'bucket-gradient-evening',
     headerTextClass: 'text-white',
-    glowColor: 'oklch(0.60 0.18 290 / 0.5)',
+    glowColor: 'oklch(0.54 0.19 288 / 0.5)',
   },
 };
 
@@ -426,14 +426,14 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   <div 
                     key={bucket} 
                     className={cn(
-                      'rounded-md border-2 overflow-hidden opacity-70',
+                      'rounded-xl border overflow-hidden opacity-70 shadow-sm',
                       style.borderClass,
                       !compactMode && 'flex-1 min-h-0',
                       compactMode && 'min-h-[50px]'
                     )}
                   >
                     {/* Colored header */}
-                    <div className={cn('w-full px-1.5 py-1', style.headerBgClass)}>
+                    <div className={cn('w-full px-1.5 py-1', style.headerGradientClass)}>
                       <div className="h-1.5 w-8 rounded-full bg-white/40" />
                     </div>
                     {/* Placeholder item rows */}
@@ -503,10 +503,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
             >
               {/* Time label */}
               <div className="flex flex-col items-end justify-start pr-2 pt-1 flex-shrink-0">
-                <span className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground">
+                <span className="text-[10px] font-semibold text-muted-foreground">
                   {bucketLabels[bucket]}
                 </span>
-                <span className="text-[9px] font-mono text-muted-foreground/60">
+                <span className="text-[9px] text-muted-foreground/60">
                   {bucketTimes[bucket]}
                 </span>
               </div>
@@ -570,10 +570,10 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                     dropId={dropId}
                     disabled={isPastDay}
                     className={cn(
-                      'relative rounded-md border-2 p-1.5 space-y-1 transition-all',
+                      'relative rounded-xl border p-1.5 space-y-1 transition-all shadow-sm',
                       style.borderClass,
                       compactMode ? 'min-h-[80px] overflow-y-auto' : 'min-h-0',
-                      isSelected && 'border-primary bg-primary/5',
+                      isSelected && 'border-primary bg-primary/5 shadow-md',
                       isToday(day) && !isSelected && style.bgClass
                     )}
                     glowColor={isCurrentCell ? style.glowColor : undefined}
@@ -729,14 +729,14 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                   <div 
                     key={bucket} 
                     className={cn(
-                      'rounded-md border-2 overflow-hidden opacity-70',
+                      'rounded-xl border overflow-hidden opacity-70 shadow-sm',
                       style.borderClass,
                       !compactMode && 'flex-1 min-h-0',
                       compactMode && 'min-h-[50px]'
                     )}
                   >
                     {/* Colored header */}
-                    <div className={cn('w-full px-1.5 py-1', style.headerBgClass)}>
+                    <div className={cn('w-full px-1.5 py-1', style.headerGradientClass)}>
                       <div className="h-1.5 w-8 rounded-full bg-white/40" />
                     </div>
                     {/* Placeholder item rows */}
