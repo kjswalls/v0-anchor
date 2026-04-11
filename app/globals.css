@@ -4,114 +4,129 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Calm, minimal palette - soft whites and grays with gentle accents */
-  --background: oklch(0.985 0.002 240);
-  --foreground: oklch(0.25 0.01 250);
+  /* Light mode - clean and professional with teal accents */
+  --background: oklch(0.98 0.005 250);
+  --foreground: oklch(0.15 0.015 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.01 250);
+  --card-foreground: oklch(0.15 0.015 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.01 250);
-  --primary: oklch(0.45 0.12 250);
+  --popover-foreground: oklch(0.15 0.015 260);
+  --primary: oklch(0.5 0.15 180);
   --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.96 0.005 240);
-  --secondary-foreground: oklch(0.35 0.01 250);
-  --muted: oklch(0.94 0.005 240);
-  --muted-foreground: oklch(0.5 0.01 250);
-  --accent: oklch(0.85 0.08 180);
-  --accent-foreground: oklch(0.25 0.05 180);
-  --destructive: oklch(0.6 0.15 25);
+  --secondary: oklch(0.95 0.008 250);
+  --secondary-foreground: oklch(0.25 0.015 260);
+  --muted: oklch(0.93 0.008 250);
+  --muted-foreground: oklch(0.45 0.01 260);
+  --accent: oklch(0.55 0.12 175);
+  --accent-foreground: oklch(0.15 0.015 260);
+  --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.9 0.005 240);
-  --input: oklch(0.92 0.005 240);
-  --ring: oklch(0.45 0.12 250);
+  --border: oklch(0.88 0.008 250);
+  --input: oklch(0.92 0.008 250);
+  --ring: oklch(0.5 0.15 180);
   
-  /* Custom planner colors */
-  --morning: oklch(0.88 0.08 85);
-  --afternoon: oklch(0.85 0.08 45);
-  --evening: oklch(0.75 0.08 280);
-  --anytime: oklch(0.92 0.02 240);
+  /* Time bucket colors - vibrant and distinct */
+  --morning: oklch(0.85 0.12 85);
+  --afternoon: oklch(0.8 0.14 45);
+  --evening: oklch(0.7 0.12 290);
+  --anytime: oklch(0.9 0.04 180);
   
-  /* Priority colors - gentle tones */
-  --priority-high: oklch(0.75 0.12 25);
-  --priority-medium: oklch(0.8 0.1 85);
-  --priority-low: oklch(0.75 0.08 180);
+  /* Priority colors */
+  --priority-high: oklch(0.6 0.2 25);
+  --priority-medium: oklch(0.75 0.14 85);
+  --priority-low: oklch(0.6 0.12 180);
   
   /* Habit group colors */
-  --habit-wellness: oklch(0.8 0.1 160);
-  --habit-work: oklch(0.75 0.1 250);
-  --habit-personal: oklch(0.8 0.08 320);
+  --habit-wellness: oklch(0.65 0.14 155);
+  --habit-work: oklch(0.55 0.14 260);
+  --habit-personal: oklch(0.65 0.1 330);
   
-  --chart-1: oklch(0.7 0.12 250);
-  --chart-2: oklch(0.75 0.1 180);
-  --chart-3: oklch(0.8 0.08 85);
-  --chart-4: oklch(0.75 0.1 320);
-  --chart-5: oklch(0.7 0.12 25);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.98 0.002 240);
-  --sidebar-foreground: oklch(0.25 0.01 250);
-  --sidebar-primary: oklch(0.45 0.12 250);
+  --chart-1: oklch(0.55 0.14 180);
+  --chart-2: oklch(0.6 0.12 155);
+  --chart-3: oklch(0.75 0.12 85);
+  --chart-4: oklch(0.6 0.1 290);
+  --chart-5: oklch(0.6 0.16 25);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.97 0.005 250);
+  --sidebar-foreground: oklch(0.15 0.015 260);
+  --sidebar-primary: oklch(0.5 0.15 180);
   --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.94 0.005 240);
-  --sidebar-accent-foreground: oklch(0.25 0.01 250);
-  --sidebar-border: oklch(0.9 0.005 240);
-  --sidebar-ring: oklch(0.45 0.12 250);
+  --sidebar-accent: oklch(0.93 0.008 250);
+  --sidebar-accent-foreground: oklch(0.15 0.015 260);
+  --sidebar-border: oklch(0.88 0.008 250);
+  --sidebar-ring: oklch(0.5 0.15 180);
 }
 
 .dark {
-  --background: oklch(0.14 0.01 250);
-  --foreground: oklch(0.92 0.005 240);
-  --card: oklch(0.18 0.01 250);
-  --card-foreground: oklch(0.92 0.005 240);
-  --popover: oklch(0.18 0.01 250);
-  --popover-foreground: oklch(0.92 0.005 240);
-  --primary: oklch(0.7 0.12 250);
-  --primary-foreground: oklch(0.14 0.01 250);
-  --secondary: oklch(0.22 0.01 250);
-  --secondary-foreground: oklch(0.88 0.005 240);
-  --muted: oklch(0.22 0.01 250);
-  --muted-foreground: oklch(0.6 0.01 250);
-  --accent: oklch(0.5 0.08 180);
-  --accent-foreground: oklch(0.92 0.005 240);
-  --destructive: oklch(0.5 0.15 25);
-  --destructive-foreground: oklch(0.92 0.005 240);
-  --border: oklch(0.26 0.01 250);
-  --input: oklch(0.22 0.01 250);
-  --ring: oklch(0.7 0.12 250);
+  /* Deep cool charcoal base with subtle blue undertone - premium productivity feel */
+  --background: oklch(0.11 0.015 260);
+  --foreground: oklch(0.95 0.005 250);
+  --card: oklch(0.15 0.018 260);
+  --card-foreground: oklch(0.95 0.005 250);
+  --popover: oklch(0.13 0.018 260);
+  --popover-foreground: oklch(0.95 0.005 250);
   
-  /* Custom planner colors - dark mode */
-  --morning: oklch(0.45 0.08 85);
-  --afternoon: oklch(0.45 0.08 45);
-  --evening: oklch(0.4 0.08 280);
-  --anytime: oklch(0.26 0.02 240);
+  /* Vibrant teal/cyan primary - Chinese super-app accent */
+  --primary: oklch(0.72 0.15 180);
+  --primary-foreground: oklch(0.1 0.02 260);
   
-  /* Priority colors - dark mode */
-  --priority-high: oklch(0.55 0.12 25);
-  --priority-medium: oklch(0.55 0.1 85);
-  --priority-low: oklch(0.5 0.08 180);
+  --secondary: oklch(0.18 0.015 260);
+  --secondary-foreground: oklch(0.9 0.005 250);
+  --muted: oklch(0.2 0.012 260);
+  --muted-foreground: oklch(0.55 0.01 260);
   
-  /* Habit group colors - dark mode */
-  --habit-wellness: oklch(0.5 0.1 160);
-  --habit-work: oklch(0.5 0.1 250);
-  --habit-personal: oklch(0.5 0.08 320);
+  /* Teal accent for highlights */
+  --accent: oklch(0.65 0.12 175);
+  --accent-foreground: oklch(0.95 0.005 250);
   
-  --chart-1: oklch(0.6 0.12 250);
-  --chart-2: oklch(0.55 0.1 180);
-  --chart-3: oklch(0.6 0.08 85);
-  --chart-4: oklch(0.55 0.1 320);
-  --chart-5: oklch(0.55 0.12 25);
-  --sidebar: oklch(0.16 0.01 250);
-  --sidebar-foreground: oklch(0.92 0.005 240);
-  --sidebar-primary: oklch(0.7 0.12 250);
-  --sidebar-primary-foreground: oklch(0.14 0.01 250);
-  --sidebar-accent: oklch(0.22 0.01 250);
-  --sidebar-accent-foreground: oklch(0.92 0.005 240);
-  --sidebar-border: oklch(0.26 0.01 250);
-  --sidebar-ring: oklch(0.7 0.12 250);
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.95 0.005 250);
+  --border: oklch(0.22 0.015 260);
+  --input: oklch(0.18 0.015 260);
+  --ring: oklch(0.72 0.15 180);
+  
+  /* Time bucket colors - bold, distinct identity for each period */
+  --morning: oklch(0.65 0.16 85);     /* Warm golden amber */
+  --afternoon: oklch(0.6 0.18 45);    /* Energetic orange */
+  --evening: oklch(0.55 0.18 290);    /* Rich violet/purple */
+  --anytime: oklch(0.45 0.08 180);    /* Subtle teal */
+  
+  /* Priority colors - high contrast, meaningful */
+  --priority-high: oklch(0.6 0.2 25);      /* Vivid coral red */
+  --priority-medium: oklch(0.7 0.16 85);   /* Bright amber */
+  --priority-low: oklch(0.6 0.12 180);     /* Calm teal */
+  
+  /* Habit group colors - vibrant but harmonious */
+  --habit-wellness: oklch(0.6 0.15 155);   /* Fresh green */
+  --habit-work: oklch(0.55 0.15 260);      /* Deep blue */
+  --habit-personal: oklch(0.6 0.12 330);   /* Soft pink */
+  
+  --chart-1: oklch(0.65 0.15 180);
+  --chart-2: oklch(0.6 0.12 155);
+  --chart-3: oklch(0.7 0.14 85);
+  --chart-4: oklch(0.55 0.12 290);
+  --chart-5: oklch(0.6 0.16 25);
+  
+  /* Sidebar - slightly elevated from background */
+  --sidebar: oklch(0.13 0.018 260);
+  --sidebar-foreground: oklch(0.95 0.005 250);
+  --sidebar-primary: oklch(0.72 0.15 180);
+  --sidebar-primary-foreground: oklch(0.1 0.02 260);
+  --sidebar-accent: oklch(0.2 0.015 260);
+  --sidebar-accent-foreground: oklch(0.95 0.005 250);
+  --sidebar-border: oklch(0.25 0.015 260);
+  --sidebar-ring: oklch(0.72 0.15 180);
 }
 
 @theme inline {
-  --font-sans: var(--font-sans), 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', var(--font-sans), system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  
+  /* Bucket-specific glow effects */
+  --glow-morning: 0 0 40px oklch(0.65 0.16 85 / 0.3);
+  --glow-afternoon: 0 0 40px oklch(0.6 0.18 45 / 0.3);
+  --glow-evening: 0 0 40px oklch(0.55 0.18 290 / 0.3);
+  --glow-anytime: 0 0 40px oklch(0.45 0.08 180 / 0.2);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

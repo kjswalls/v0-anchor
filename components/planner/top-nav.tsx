@@ -212,45 +212,48 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-      <div className="flex items-center gap-4">
-        {/* Anchor logo mark */}
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="text-foreground flex-shrink-0"
-          aria-label="Anchor"
-        >
-          <circle cx="12" cy="5" r="2" />
-          <line x1="12" y1="7" x2="12" y2="22" />
-          <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
-        </svg>
+    <header className="flex items-center justify-between px-5 h-16 border-b border-border/50 bg-card/80 backdrop-blur-sm">
+      <div className="flex items-center gap-3">
+        {/* Anchor logo mark - bold and prominent */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative">
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-primary flex-shrink-0"
+              aria-label="Anchor"
+            >
+              <circle cx="12" cy="5" r="2" />
+              <line x1="12" y1="7" x2="12" y2="22" />
+              <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+            </svg>
+          </div>
+          <span className="text-lg font-bold tracking-tight text-foreground hidden lg:block">Anchor</span>
+        </div>
         
-        <div className="flex items-center gap-2 ml-6">
-          <Button
-            variant="ghost"
-            size="icon"
+        {/* Date navigation - compact pill design */}
+        <div className="flex items-center gap-1 ml-4 bg-secondary/60 rounded-xl p-1">
+          <button
             onClick={goPrevious}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all"
           >
             <ChevronLeft className="h-4 w-4" />
-          </Button>
+          </button>
           
           <Popover>
             <PopoverTrigger asChild>
-              <Button 
-                variant="ghost" 
-                className="h-8 px-3 text-sm font-medium text-foreground hover:bg-secondary"
+              <button 
+                className="h-8 px-3 flex items-center gap-2 text-sm font-semibold text-foreground hover:bg-background/60 rounded-lg transition-all"
               >
-                <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-                {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="w-32" />}
-              </Button>
+                <Calendar className="h-3.5 w-3.5 text-primary" />
+                {mounted ? format(selectedDate, 'EEE, MMM d') : <span className="w-24" />}
+              </button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
               <CalendarComponent
@@ -262,45 +265,45 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
             </PopoverContent>
           </Popover>
           
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={goNext}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-background/60 transition-all"
           >
             <ChevronRight className="h-4 w-4" />
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={goToToday}
-            disabled={mounted && isToday(selectedDate)}
-            className="h-8 px-3 text-sm ml-2 relative"
-          >
-            {mounted && isToday(selectedDate) && (() => {
-              const now = new Date();
-              const currentMinutes = now.getHours() * 60 + now.getMinutes();
-              const toMinutes = (hhmm: string) => {
-                const [h, m] = hhmm.split(':').map(Number);
-                return h * 60 + m;
-              };
-              const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
-              const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
-              const isAfterSunset = currentMinutes >= sunsetMins;
-              return isAfterSunset ? (
-                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
-              ) : (
-                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
-              );
-            })()}
-            Today
-          </Button>
-
+          </button>
         </div>
+        
+        {/* Today button - accent style */}
+        <button
+          onClick={goToToday}
+          disabled={mounted && isToday(selectedDate)}
+          className={cn(
+            'h-8 px-3.5 text-xs font-semibold rounded-lg transition-all relative',
+            mounted && isToday(selectedDate)
+              ? 'bg-primary/15 text-primary border border-primary/30'
+              : 'bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary'
+          )}
+        >
+          {mounted && isToday(selectedDate) && (() => {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const toMinutes = (hhmm: string) => {
+              const [h, m] = hhmm.split(':').map(Number);
+              return h * 60 + m;
+            };
+            const sunsetMins = sunsetTime ? toMinutes(sunsetTime) : 20 * 60;
+            const isAfterSunset = currentMinutes >= sunsetMins;
+            return isAfterSunset ? (
+              <Moon className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 text-evening" />
+            ) : (
+              <Sun className="absolute -top-1.5 -right-1.5 h-3.5 w-3.5 text-morning" />
+            );
+          })()}
+          Today
+        </button>
       </div>
       
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {/* Search */}
         <div 
           ref={searchRef}
@@ -432,54 +435,59 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           )}
         </div>
 
-        <ToggleGroup
-          type="single"
-          value={viewMode}
-          onValueChange={(value) => value && setViewMode(value as ViewMode)}
-          className="bg-secondary rounded-lg p-0.5"
-        >
-          <ToggleGroupItem
-            value="day"
-            className="h-7 px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm rounded-md"
+        {/* View toggle - pill style */}
+        <div className="bg-secondary/60 rounded-xl p-1 flex">
+          <button
+            onClick={() => setViewMode('day')}
+            className={cn(
+              'h-7 px-3.5 text-xs font-semibold rounded-lg transition-all',
+              viewMode === 'day'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
             Day
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="week"
-            className="h-7 px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm rounded-md"
+          </button>
+          <button
+            onClick={() => setViewMode('week')}
+            className={cn(
+              'h-7 px-3.5 text-xs font-semibold rounded-lg transition-all',
+              viewMode === 'week'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
           >
             Week
-          </ToggleGroupItem>
-        </ToggleGroup>
+          </button>
+        </div>
         
-        <Button
-          variant="ghost"
-          size="icon"
+        {/* Theme toggle */}
+        <button
           onClick={() => {
             if (!mounted) return;
             const newTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
             setTheme(newTheme);
             if (userId) saveSettings(userId, { theme: newTheme });
           }}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all"
         >
           {mounted ? (
             resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
           ) : (
             <span className="h-4 w-4" />
           )}
-        </Button>
+        </button>
 
         <UserProfileDropdown onOpenSettings={onOpenSettings} />
         
-        <Button
-          size="sm"
+        {/* Add button - bold primary action */}
+        <button
           onClick={onAddClick}
-          className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90"
+          className="h-9 px-4 bg-primary text-primary-foreground font-semibold text-sm rounded-xl hover:bg-primary/90 transition-all flex items-center gap-1.5 shadow-lg shadow-primary/25"
         >
-          <Plus className="h-4 w-4 mr-1" />
-          Add
-        </Button>
+          <Plus className="h-4 w-4" />
+          <span>Add</span>
+        </button>
       </div>
     </header>
   );

@@ -31,39 +31,54 @@ function getBucketConfig(use24h: boolean): Record<TimeBucket, {
   bgClass: string;
   borderClass: string;
   glowColor: string;
+  accentColor: string;
+  gradientFrom: string;
+  gradientTo: string;
 }> {
   return {
     anytime: {
       icon: Sparkles,
       label: 'Anytime',
       timeRange: 'Flexible',
-      bgClass: 'bg-anytime/30',
-      borderClass: 'border-anytime/50',
-      glowColor: 'oklch(0.92 0.02 240 / 0.5)',
+      bgClass: 'bg-anytime/15',
+      borderClass: 'border-anytime/40',
+      glowColor: 'oklch(0.45 0.08 180 / 0.3)',
+      accentColor: 'text-anytime',
+      gradientFrom: 'from-anytime/20',
+      gradientTo: 'to-anytime/5',
     },
     morning: {
       icon: Sunrise,
       label: 'Morning',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.morning, use24h),
-      bgClass: 'bg-morning/20',
-      borderClass: 'border-morning/40',
-      glowColor: 'oklch(0.88 0.12 85 / 0.6)',
+      bgClass: 'bg-morning/12',
+      borderClass: 'border-morning/50',
+      glowColor: 'oklch(0.65 0.16 85 / 0.4)',
+      accentColor: 'text-morning',
+      gradientFrom: 'from-morning/25',
+      gradientTo: 'to-morning/5',
     },
     afternoon: {
       icon: Sun,
       label: 'Afternoon',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.afternoon, use24h),
-      bgClass: 'bg-afternoon/20',
-      borderClass: 'border-afternoon/40',
-      glowColor: 'oklch(0.85 0.12 45 / 0.6)',
+      bgClass: 'bg-afternoon/12',
+      borderClass: 'border-afternoon/50',
+      glowColor: 'oklch(0.6 0.18 45 / 0.4)',
+      accentColor: 'text-afternoon',
+      gradientFrom: 'from-afternoon/25',
+      gradientTo: 'to-afternoon/5',
     },
     evening: {
       icon: Moon,
       label: 'Evening',
       timeRange: formatBucketRange(TIME_BUCKET_RANGES.evening, use24h),
-      bgClass: 'bg-evening/20',
-      borderClass: 'border-evening/40',
-      glowColor: 'oklch(0.75 0.12 280 / 0.6)',
+      bgClass: 'bg-evening/12',
+      borderClass: 'border-evening/50',
+      glowColor: 'oklch(0.55 0.18 290 / 0.4)',
+      accentColor: 'text-evening',
+      gradientFrom: 'from-evening/25',
+      gradientTo: 'to-evening/5',
     },
   };
 }
@@ -144,15 +159,15 @@ function TaskCard({ task, onClick }: TaskCardProps) {
       <div
         onClick={onClick}
         className={cn(
-          'group/card relative flex gap-3 px-4 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer flex-1 overflow-hidden',
-          compactMode ? 'py-2 min-h-[52px] items-center' : 'py-3 min-h-[72px] items-start',
-          isTaskDoneOnDate && 'opacity-60',
+          'group/card relative flex gap-3 px-4 rounded-xl bg-card/90 border border-border/40 hover:border-primary/40 hover:bg-card transition-all cursor-pointer flex-1 overflow-hidden',
+          compactMode ? 'py-2.5 min-h-[52px] items-center' : 'py-3.5 min-h-[72px] items-start',
+          isTaskDoneOnDate && 'opacity-50',
         )}
       >
         {/* Large background emoji */}
         {projectEmoji && (
           <span
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.05] select-none pointer-events-none"
             style={{ lineHeight: 1 }}
           >
             {projectEmoji}
@@ -167,10 +182,10 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             toggleTaskStatus(task.id, undefined, taskIsRecurring ? selectedDate : undefined);
           }}
           className={cn(
-            'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10 self-center',
+            'flex-shrink-0 w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all relative z-10 self-center',
             isTaskDoneOnDate
               ? 'bg-primary border-primary'
-              : 'border-muted-foreground/40 hover:border-primary'
+              : 'border-muted-foreground/30 hover:border-primary hover:bg-primary/10'
           )}
         >
           {isTaskDoneOnDate && (
@@ -179,11 +194,11 @@ function TaskCard({ task, onClick }: TaskCardProps) {
         </button>
 
         {/* Content */}
-        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
+        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1.5')}>
           {/* Title */}
           <p
             className={cn(
-              'font-medium text-foreground leading-tight line-clamp-2',
+              'font-semibold text-foreground leading-tight line-clamp-2',
               compactMode ? 'text-xs' : 'text-sm',
               isTaskDoneOnDate && 'line-through text-muted-foreground'
             )}
@@ -191,50 +206,50 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             {task.title}
           </p>
 
-          {/* Meta row - emoji, duration, priority, time */}
-          <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
+          {/* Meta row - compact pill badges */}
+          <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
             {projectEmoji && task.project && (
-              <span className={cn('flex items-center gap-1 leading-none transition-opacity', !showMeta && 'opacity-0')}>
-                <span className="text-sm">{projectEmoji}</span>
-                <span>{task.project}</span>
+              <span className={cn('flex items-center gap-1 leading-none bg-secondary/60 px-1.5 py-0.5 rounded-md transition-opacity', !showMeta && 'opacity-0')}>
+                <span className="text-xs">{projectEmoji}</span>
+                <span className="font-medium">{task.project}</span>
               </span>
             )}
             {task.startTime && (
-              <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{task.startTime}</span>
+              <span className={cn('font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-md transition-opacity', !showMeta && 'opacity-0')}>{task.startTime}</span>
             )}
             {task.duration && (
-              <span className="flex items-center gap-0.5">
-                <Clock className="h-3 w-3" />
+              <span className="flex items-center gap-0.5 bg-secondary/60 px-1.5 py-0.5 rounded-md font-medium">
+                <Clock className="h-2.5 w-2.5" />
                 {task.duration}m
               </span>
             )}
             {task.priority && (
               <span className={cn(
-                'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-opacity',
-                task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-                task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-                task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+                'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-opacity',
+                task.priority === 'high' && 'bg-priority-high/20 text-priority-high',
+                task.priority === 'medium' && 'bg-priority-medium/20 text-priority-medium',
+                task.priority === 'low' && 'bg-priority-low/20 text-priority-low',
                 !showMeta && 'opacity-0'
               )}>
                 {priorityLabels[task.priority]}
               </span>
             )}
             {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-              <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
+              <span className={cn('bg-secondary/60 p-1 rounded-md transition-opacity', !showMeta && 'opacity-0')}>
+                <Repeat className="h-2.5 w-2.5" />
+              </span>
             )}
           </div>
         </div>
 
         {/* Action buttons - back to sidebar and delete */}
         <div className={cn(
-          'flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10 self-center',
+          'flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity flex-shrink-0 relative z-10 self-center',
         )}>
           {/* Move to project block button */}
           {canMoveToBlock && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-primary"
+            <button
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
               onClick={(e) => {
                 e.stopPropagation();
                 moveTaskToProjectBlock(task.id);
@@ -242,15 +257,13 @@ function TaskCard({ task, onClick }: TaskCardProps) {
               title={`Move to ${project?.name} block`}
             >
               <Plus className="h-3.5 w-3.5" />
-            </Button>
+            </button>
           )}
           
           {/* Move out of project block button */}
           {canMoveOutOfBlock && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            <button
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
               onClick={(e) => {
                 e.stopPropagation();
                 moveTaskOutOfProjectBlock(task.id);
@@ -258,14 +271,12 @@ function TaskCard({ task, onClick }: TaskCardProps) {
               title="Restore original time"
             >
               <Minus className="h-3.5 w-3.5" />
-            </Button>
+            </button>
           )}
           
           {/* Back to sidebar button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          <button
+            className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
             onClick={(e) => {
               e.stopPropagation();
               unscheduleTask(task.id);
@@ -273,13 +284,11 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             title="Move to sidebar"
           >
             <ArrowLeftToLine className="h-3.5 w-3.5" />
-          </Button>
+          </button>
           
           {/* Delete button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+          <button
+            className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
             onClick={(e) => {
               e.stopPropagation();
               setShowDeleteConfirm(true);
@@ -287,7 +296,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
             title="Delete task"
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          </button>
         </div>
       </div>
       
@@ -422,35 +431,18 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       <div
         onClick={onClick}
         className={cn(
-          'relative flex items-center gap-3 px-4 rounded-xl border-2 transition-all cursor-pointer flex-1 overflow-hidden',
-          compactMode ? 'py-2 min-h-[52px]' : 'py-3 min-h-[72px]',
-          'border-border/60 hover:border-border',
-          effectiveStatus === 'done' && 'ring-2 ring-primary/20 border-primary/30'
+          'relative flex items-center gap-3 px-4 rounded-xl border transition-all cursor-pointer flex-1 overflow-hidden',
+          compactMode ? 'py-2.5 min-h-[52px]' : 'py-3.5 min-h-[72px]',
+          'border-border/40 hover:border-primary/40 bg-card/50 hover:bg-card/80',
+          effectiveStatus === 'done' && 'ring-1 ring-primary/30 border-primary/40 bg-primary/5'
         )}
         style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)`,
-        backgroundImage: `
-          repeating-linear-gradient(
-            45deg,
-            transparent,
-            transparent 2px,
-            rgba(255, 255, 255, 0.02) 2px,
-            rgba(255, 255, 255, 0.02) 4px
-          ),
-          repeating-linear-gradient(
-            -45deg,
-            transparent,
-            transparent 2px,
-            rgba(0, 0, 0, 0.02) 2px,
-            rgba(0, 0, 0, 0.02) 4px
-          ),
-          linear-gradient(135deg, color-mix(in oklch, ${groupColor} 15%, transparent) 0%, color-mix(in oklch, ${groupColor} 5%, transparent) 100%)
-        `,
-      }}
-    >
+          background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 12%, transparent) 0%, color-mix(in oklch, ${groupColor} 4%, transparent) 100%)`,
+        }}
+      >
       {/* Large background emoji */}
       <span 
-        className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.1] select-none pointer-events-none"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.06] select-none pointer-events-none"
         style={{ lineHeight: 1 }}
       >
         {groupEmoji}
@@ -460,17 +452,17 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
       <div className="relative z-10 flex items-center gap-3 w-full">
         {/* Checkbox / Multi-complete counter */}
         {showMultiCompleteControls ? (
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleDecrement();
               }}
-              className="w-5 h-5 rounded-full border border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
+              className="w-6 h-6 rounded-lg border border-border/60 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
             >
-              <Minus className="h-2.5 w-2.5 text-muted-foreground" />
+              <Minus className="h-3 w-3 text-muted-foreground" />
             </button>
-            <span className="text-sm font-bold text-primary w-4 text-center animate-in scale-in duration-300">
+            <span className="text-sm font-bold text-primary w-5 text-center animate-in scale-in duration-300">
               {effectiveCount}
             </span>
             <button
@@ -478,9 +470,9 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
                 e.stopPropagation();
                 handleIncrement();
               }}
-              className="w-5 h-5 rounded-full border border-muted-foreground/30 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
+              className="w-6 h-6 rounded-lg border border-border/60 flex items-center justify-center hover:border-primary hover:bg-primary/10 transition-all"
             >
-              <Plus className="h-2.5 w-2.5 text-muted-foreground" />
+              <Plus className="h-3 w-3 text-muted-foreground" />
             </button>
           </div>
         ) : (
@@ -491,9 +483,9 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
               handleIncrement();
             }}
             className={cn(
-              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
+              'w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 relative',
               effectiveStatus === 'done' && 'bg-primary border-primary',
-              effectiveStatus === 'pending' && 'border-muted-foreground/40 hover:border-primary'
+              effectiveStatus === 'pending' && 'border-muted-foreground/30 hover:border-primary hover:bg-primary/10'
             )}
           >
             {effectiveStatus === 'done' && (
@@ -502,10 +494,10 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
           </button>
         )}
         
-        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1')}>
+        <div className={cn('flex-1 min-w-0 relative z-10', compactMode ? 'flex flex-row flex-wrap gap-2 items-center' : 'flex flex-col gap-1.5')}>
           <span
             className={cn(
-              'font-medium text-foreground leading-tight line-clamp-2',
+              'font-semibold text-foreground leading-tight line-clamp-2',
               compactMode ? 'text-xs' : 'text-sm',
               effectiveStatus === 'done' && 'line-through text-muted-foreground'
             )}
@@ -513,47 +505,47 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
             {habit.title}
           </span>
           
-          {/* Meta row - group, times per day, start time */}
-          <div className={cn('flex items-center gap-2 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
+          {/* Meta row - compact pill badges */}
+          <div className={cn('flex items-center gap-1.5 text-xs text-muted-foreground', compactMode && 'flex-shrink-0')}>
             {habit.group && (
-              <span className={cn('flex items-center gap-1 leading-none transition-opacity', !showMeta && 'opacity-0')}>
-                {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
-                <span>{habit.group}</span>
+              <span className={cn('flex items-center gap-1 leading-none bg-secondary/60 px-1.5 py-0.5 rounded-md transition-opacity', !showMeta && 'opacity-0')}>
+                {groupEmoji && <span className="text-xs">{groupEmoji}</span>}
+                <span className="font-medium">{habit.group}</span>
               </span>
             )}
             {habit.startTime && (
-              <span className={cn('font-medium transition-opacity', !showMeta && 'opacity-0')}>{habit.startTime}</span>
+              <span className={cn('font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-md transition-opacity', !showMeta && 'opacity-0')}>{habit.startTime}</span>
             )}
             {habit.timesPerDay && habit.timesPerDay > 1 && (
-              <span>{effectiveCount || 0}/{habit.timesPerDay} today</span>
+              <span className="bg-secondary/60 px-1.5 py-0.5 rounded-md font-medium">{effectiveCount || 0}/{habit.timesPerDay}</span>
             )}
             {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
-              <Repeat className={cn('h-3 w-3 transition-opacity', !showMeta && 'opacity-0')} />
+              <span className={cn('bg-secondary/60 p-1 rounded-md transition-opacity', !showMeta && 'opacity-0')}>
+                <Repeat className="h-2.5 w-2.5" />
+              </span>
             )}
           </div>
         </div>
         
         {/* Streak badge */}
         {habit.streak > 0 && (
-          <div className="flex items-center gap-0.5 bg-orange-500/15 px-2 py-1 rounded-md flex-shrink-0">
+          <div className="flex items-center gap-1 bg-orange-500/20 px-2 py-1 rounded-lg flex-shrink-0">
             <Flame className="h-3.5 w-3.5 text-orange-500" />
-            <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">{habit.streak}</span>
+            <span className="text-xs font-bold text-orange-500">{habit.streak}</span>
           </div>
         )}
 
         {/* Skip button - always visible for pending habits */}
         {effectiveStatus === 'pending' && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          <button
+            className="h-7 px-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary rounded-lg transition-all"
             onClick={(e) => {
               e.stopPropagation();
               toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate);
             }}
           >
             Skip
-          </Button>
+          </button>
         )}
       </div>
       </div>
@@ -1190,15 +1182,18 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
   return (
     <div
       className={cn(
-        'relative rounded-xl border-2 border-dashed transition-all overflow-visible min-h-[80px]',
-        config.borderClass,
-        (isOver || isOverUnscheduled) && 'border-solid border-primary bg-primary/5',
-        isCurrentBucket && 'ring-2 ring-offset-2 ring-offset-background min-h-[120px]'
+        'relative rounded-2xl border transition-all overflow-visible min-h-[80px]',
+        'bg-gradient-to-br',
+        config.gradientFrom,
+        config.gradientTo,
+        'border-border/40',
+        (isOver || isOverUnscheduled) && 'border-primary/60 bg-primary/10',
+        isCurrentBucket && 'ring-1 ring-offset-2 ring-offset-background min-h-[120px]'
       )}
       style={isCurrentBucket ? { 
-        boxShadow: `0 0 25px -3px ${config.glowColor}`,
+        boxShadow: `0 0 40px -5px ${config.glowColor}, inset 0 1px 0 0 rgba(255,255,255,0.05)`,
         '--tw-ring-color': config.glowColor,
-      } as React.CSSProperties : undefined}
+      } as React.CSSProperties : { boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.03)' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -1213,7 +1208,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             {/* Invisible hover area */}
             <div className="absolute -left-4 right-1 -top-2 -bottom-2 cursor-default pointer-events-auto" />
             {/* Clock icon */}
-            <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={2.5} />
+            <Clock className={cn('absolute -left-4 w-3.5 h-3.5 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity', config.accentColor)} strokeWidth={2.5} />
           </div>
           {/* Dashed line and dot - z-10 to render in front of task/habit cards with gradient opacity */}
           <div
@@ -1226,52 +1221,52 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             }}
           >
             {/* Glowing dot */}
-            <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
+            <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', bucket === 'morning' ? 'bg-morning' : bucket === 'afternoon' ? 'bg-afternoon' : bucket === 'evening' ? 'bg-evening' : 'bg-primary')} style={{ boxShadow: `0 0 8px 3px ${config.glowColor}` }} />
             {/* Dashed line */}
-            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 mr-1" />
+            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-foreground/30 mr-1" />
           </div>
         </>
       )}
       
       {/* Header + untimed section */}
       <div>
-        {/* Header */}
+        {/* Header - bold and distinctive */}
         <div className={cn(
-          'rounded-t-lg flex items-center justify-between',
-          compactMode ? 'px-4 py-2' : 'px-4 py-3',
+          'rounded-t-2xl flex items-center justify-between backdrop-blur-sm',
+          compactMode ? 'px-4 py-2.5' : 'px-5 py-3.5',
           config.bgClass,
         )}>
-          <div className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-muted-foreground" />
-            <h3 className={cn('font-medium text-foreground', compactMode ? 'text-xs' : 'text-sm')}>{config.label}</h3>
-            <span className={cn('text-muted-foreground transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+          <div className="flex items-center gap-3">
+            <div className={cn('p-1.5 rounded-lg', config.bgClass)}>
+              <Icon className={cn('h-4 w-4', config.accentColor)} />
+            </div>
+            <div className="flex items-center gap-2">
+              <h3 className={cn('font-bold text-foreground tracking-tight', compactMode ? 'text-sm' : 'text-base')}>{config.label}</h3>
+              <span className={cn('text-muted-foreground font-medium transition-opacity', compactMode ? 'text-[10px]' : 'text-xs', !showExtras && 'opacity-0')}>{config.timeRange}</span>
+            </div>
             {totalItems > 0 && (
-              <Badge variant="secondary" className={cn('text-xs h-5 px-1.5 transition-opacity', !showExtras && 'opacity-0')}>
+              <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-md transition-opacity', config.bgClass, config.accentColor, !showExtras && 'opacity-0')}>
                 {totalItems}
-              </Badge>
+              </span>
             )}
           </div>
           
-          {/* Add buttons */}
-          <div className={cn('flex items-center gap-1 transition-opacity', !showExtras && 'opacity-0')}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+          {/* Add buttons - compact pill style */}
+          <div className={cn('flex items-center gap-1.5 transition-opacity', !showExtras && 'opacity-0')}>
+            <button
+              className="h-7 px-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground bg-card/50 hover:bg-card rounded-lg transition-all flex items-center gap-1"
               onClick={() => onAddClick(bucket, 'task')}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <Plus className="h-3 w-3" />
               Task
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+            </button>
+            <button
+              className="h-7 px-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground bg-card/50 hover:bg-card rounded-lg transition-all flex items-center gap-1"
               onClick={() => onAddClick(bucket, 'habit')}
             >
-              <Plus className="h-3 w-3 mr-1" />
+              <Plus className="h-3 w-3" />
               Habit
-            </Button>
+            </button>
           </div>
         </div>
 
@@ -1280,15 +1275,15 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         {(hasUntimed || activeId) && (
           <div
             ref={setUnscheduledRef}
-            className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}
+            className={cn(compactMode ? 'px-3 pt-2 space-y-1.5' : 'px-4 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-4'))}
           >
             {/* Untimed Habits */}
             {untimedHabits.length > 0 && (
-              <div className="flex gap-2">
-                <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+              <div className="flex gap-3">
+                <div className="w-14 text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest text-right flex-shrink-0 pt-2.5">
                   Habits
                 </div>
-                <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                <div className={cn('flex-1 border-l-2 border-border/20 pl-4 py-1', compactMode ? 'space-y-1.5' : 'space-y-2')}>
                   {untimedHabits.map((habit) => (
                     <HabitCard key={habit.id} habit={habit} onClick={() => onHabitClick(habit)} />
                   ))}
@@ -1298,11 +1293,11 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
             {/* Untimed Tasks */}
             {untimedTasks.length > 0 && (
-              <div className="flex gap-2">
-                <div className="w-12 text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right flex-shrink-0 pt-2">
+              <div className="flex gap-3">
+                <div className="w-14 text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest text-right flex-shrink-0 pt-2.5">
                   Tasks
                 </div>
-                <div className={cn('flex-1 border-l border-border/30 pl-3 py-1', compactMode ? 'space-y-1' : 'space-y-2')}>
+                <div className={cn('flex-1 border-l-2 border-border/20 pl-4 py-1', compactMode ? 'space-y-1.5' : 'space-y-2')}>
                   {untimedTasks.map((task) => (
                     <TaskCard key={task.id} task={task} onClick={() => onTaskClick(task)} />
                   ))}
@@ -1377,8 +1372,8 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
           {activeId && bucket !== 'anytime' ? (
             <EmptyBucketDropZone bucket={bucket} isActive={true} />
           ) : (
-            <p className="text-sm text-muted-foreground/70">
-              Drag tasks here or use + buttons above
+            <p className="text-xs font-medium text-muted-foreground/50">
+              Drag tasks here or tap + above
             </p>
           )}
         </div>

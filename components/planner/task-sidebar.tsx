@@ -69,9 +69,9 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        'group relative flex items-center gap-2 p-3 rounded-xl bg-card border border-border/50 hover:border-border transition-all cursor-pointer w-full overflow-hidden',
-        isDragging && 'opacity-50 shadow-lg z-50',
-        task.status === 'completed' && 'opacity-60'
+        'group relative flex items-center gap-2.5 p-3 rounded-xl bg-card/80 border border-border/40 hover:border-primary/30 hover:bg-card transition-all cursor-pointer w-full overflow-hidden',
+        isDragging && 'opacity-50 shadow-xl z-50 ring-2 ring-primary/30',
+        task.status === 'completed' && 'opacity-50'
       )}
       onClick={onClick}
       onMouseEnter={() => setHoveredItem(task.id, 'task')}
@@ -80,7 +80,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       {/* Large background emoji */}
       {projectEmoji && (
         <span
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-5xl opacity-[0.06] select-none pointer-events-none"
           style={{ lineHeight: 1 }}
         >
           {projectEmoji}
@@ -94,7 +94,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
         onClick={(e) => e.stopPropagation()}
         suppressHydrationWarning
       >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <GripVertical className="h-4 w-4 text-muted-foreground/60" />
       </button>
       
       <button
@@ -103,10 +103,10 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           toggleTaskStatus(task.id);
         }}
         className={cn(
-          'flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
+          'flex-shrink-0 w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all relative z-10',
           task.status === 'completed'
             ? 'bg-primary border-primary'
-            : 'border-muted-foreground/40 hover:border-primary'
+            : 'border-muted-foreground/30 hover:border-primary hover:bg-primary/10'
         )}
       >
         {task.status === 'completed' && (
@@ -117,53 +117,53 @@ function TaskItem({ task, onClick }: TaskItemProps) {
       <div className="flex-1 min-w-0 relative z-10">
         <p
           className={cn(
-            'text-sm font-medium text-foreground leading-tight line-clamp-2',
+            'text-sm font-semibold text-foreground leading-tight line-clamp-2',
             task.status === 'completed' && 'line-through text-muted-foreground'
           )}
         >
           {task.title}
         </p>
         
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-xs text-muted-foreground">
           {projectEmoji && task.project && (
-            <span className="flex items-center gap-1 leading-none">
-              <span className="text-sm">{projectEmoji}</span>
-              <span>{task.project}</span>
+            <span className="flex items-center gap-1 leading-none bg-secondary/60 px-1.5 py-0.5 rounded-md">
+              <span className="text-xs">{projectEmoji}</span>
+              <span className="font-medium">{task.project}</span>
             </span>
           )}
           {task.duration && (
-            <span className="flex items-center gap-0.5">
-              <Clock className="h-3 w-3" />
+            <span className="flex items-center gap-0.5 bg-secondary/60 px-1.5 py-0.5 rounded-md font-medium">
+              <Clock className="h-2.5 w-2.5" />
               {task.duration}m
             </span>
           )}
           {task.priority && (
             <span className={cn(
-              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium',
-              task.priority === 'high' && 'bg-priority-high/15 text-priority-high',
-              task.priority === 'medium' && 'bg-priority-medium/15 text-priority-medium',
-              task.priority === 'low' && 'bg-priority-low/15 text-priority-low',
+              'flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide',
+              task.priority === 'high' && 'bg-priority-high/20 text-priority-high',
+              task.priority === 'medium' && 'bg-priority-medium/20 text-priority-medium',
+              task.priority === 'low' && 'bg-priority-low/20 text-priority-low',
             )}>
               {priorityLabels[task.priority]}
             </span>
           )}
           {task.repeatFrequency && task.repeatFrequency !== 'none' && (
-            <Repeat className="h-3 w-3" />
+            <span className="bg-secondary/60 p-1 rounded-md">
+              <Repeat className="h-2.5 w-2.5" />
+            </span>
           )}
         </div>
       </div>
       
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity mt-0.5 flex-shrink-0 relative z-10"
+      <button
+        className="h-7 w-7 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all flex-shrink-0 relative z-10"
         onClick={(e) => {
           e.stopPropagation();
           setShowDeleteConfirm(true);
         }}
       >
         <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      </button>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
@@ -204,65 +204,65 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 p-3 rounded-lg border-2 transition-all cursor-pointer w-full overflow-hidden relative',
-        'border-border/60 hover:border-border',
-        habit.status === 'done' && 'opacity-70'
+        'group flex items-center gap-2.5 p-3 rounded-xl border transition-all cursor-pointer w-full overflow-hidden relative',
+        'border-border/40 hover:border-primary/30 bg-card/50 hover:bg-card/80',
+        habit.status === 'done' && 'opacity-60'
       )}
       style={{
-        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 12%, transparent) 0%, color-mix(in oklch, ${groupColor} 4%, transparent) 100%)`,
+        background: `linear-gradient(135deg, color-mix(in oklch, ${groupColor} 10%, transparent) 0%, color-mix(in oklch, ${groupColor} 3%, transparent) 100%)`,
       }}
       onClick={onClick}
       onMouseEnter={() => setHoveredItem(habit.id, 'habit')}
       onMouseLeave={() => setHoveredItem(null, null)}
     >
       {/* Background emoji */}
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.08] select-none pointer-events-none" style={{ lineHeight: 1 }}>
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.05] select-none pointer-events-none" style={{ lineHeight: 1 }}>
         {groupEmoji}
       </span>
 
       {/* Status circle */}
       <div className={cn(
-        'flex-shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors relative z-10',
-        habit.status === 'done' ? 'bg-primary border-primary' : 'border-muted-foreground/40'
+        'flex-shrink-0 w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all relative z-10',
+        habit.status === 'done' ? 'bg-primary border-primary' : 'border-muted-foreground/30 hover:border-primary'
       )}>
         {habit.status === 'done' && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
       </div>
 
       <div className="flex-1 min-w-0 relative z-10">
         <p className={cn(
-          'text-sm text-foreground leading-tight',
+          'text-sm font-semibold text-foreground leading-tight',
           habit.status === 'done' && 'line-through text-muted-foreground'
         )}>
           {habit.title}
         </p>
 
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap text-xs text-muted-foreground">
           {habit.group && (
-            <span className="flex items-center gap-1 leading-none">
-              {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
-              <span>{habit.group}</span>
+            <span className="flex items-center gap-1 leading-none bg-secondary/60 px-1.5 py-0.5 rounded-md">
+              {groupEmoji && <span className="text-xs">{groupEmoji}</span>}
+              <span className="font-medium">{habit.group}</span>
             </span>
           )}
           {habit.timesPerDay && habit.timesPerDay > 1 && (
-            <span>{habit.currentDayCount || 0}/{habit.timesPerDay} today</span>
+            <span className="bg-secondary/60 px-1.5 py-0.5 rounded-md font-medium">{habit.currentDayCount || 0}/{habit.timesPerDay}</span>
           )}
           {habit.repeatFrequency && habit.repeatFrequency !== 'none' && habit.repeatFrequency !== 'daily' && (
-            <Repeat className="h-3 w-3" />
+            <span className="bg-secondary/60 p-1 rounded-md">
+              <Repeat className="h-2.5 w-2.5" />
+            </span>
           )}
         </div>
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity relative z-10"
+      <button
+        className="h-7 w-7 flex items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all relative z-10"
         onClick={(e) => {
           e.stopPropagation();
           setShowDeleteConfirm(true);
         }}
       >
         <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      </button>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
@@ -569,40 +569,52 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       <aside 
         ref={setDroppableRef}
         className={cn(
-          'border-r border-border bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
+          'border-r border-border/50 bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
           isVisible ? 'w-80' : 'w-0 border-r-0',
-          leftSidebarHovered && !leftSidebarOpen && 'shadow-xl z-20 absolute left-0 top-0 bottom-0',
+          leftSidebarHovered && !leftSidebarOpen && 'shadow-2xl z-20 absolute left-0 top-0 bottom-0',
           isOver && 'bg-primary/5 border-primary'
         )}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Tab switcher */}
-      <div className={cn('flex border-b border-border h-16 items-center', !isVisible && 'hidden')}>
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
-            activeTab === 'tasks'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('tasks')}
-        >
-          Tasks
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({unscheduledTasks.length})</span>
-        </button>
-        <button
-          className={cn(
-            'flex-1 py-3 text-base font-medium transition-colors h-full flex items-center justify-center',
-            activeTab === 'habits'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-          onClick={() => setActiveTab('habits')}
-        >
-          Habits
-          <span className="ml-1.5 text-muted-foreground/70 text-xs">({habits.length})</span>
-        </button>
+        {/* Tab switcher - bold pill design */}
+      <div className={cn('p-3 border-b border-border/50', !isVisible && 'hidden')}>
+        <div className="bg-secondary/50 rounded-xl p-1 flex">
+          <button
+            className={cn(
+              'flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2',
+              activeTab === 'tasks'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('tasks')}
+          >
+            Tasks
+            <span className={cn(
+              'text-[10px] font-bold px-1.5 py-0.5 rounded-md',
+              activeTab === 'tasks' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+            )}>
+              {unscheduledTasks.length}
+            </span>
+          </button>
+          <button
+            className={cn(
+              'flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2',
+              activeTab === 'habits'
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            onClick={() => setActiveTab('habits')}
+          >
+            Habits
+            <span className={cn(
+              'text-[10px] font-bold px-1.5 py-0.5 rounded-md',
+              activeTab === 'habits' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+            )}>
+              {habits.length}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Tasks pane */}
@@ -837,18 +849,18 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
         onClick={toggleLeftSidebar}
         className={cn(
           'absolute top-1/2 -translate-y-1/2 z-30',
-          'flex items-center gap-1.5 px-1.5 py-3',
-          'rounded-r-lg border border-l-0 border-border',
-          'bg-card text-foreground shadow-md',
-          'hover:bg-accent transition-colors duration-200',
+          'flex items-center gap-1.5 px-1 py-4',
+          'rounded-r-xl border border-l-0 border-border/50',
+          'bg-card/90 backdrop-blur-sm text-foreground shadow-lg',
+          'hover:bg-accent hover:border-primary/30 transition-all duration-200',
         )}
         style={{ left: isVisible ? 'calc(20rem - 2px)' : '-2px' }}
         title={leftSidebarOpen ? 'Collapse sidebar (Cmd+[)' : 'Expand sidebar (Cmd+[)'}
       >
         {leftSidebarOpen ? (
-          <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
+          <PanelLeftClose className="h-4 w-4 text-muted-foreground" />
         ) : (
-          <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+          <PanelLeft className="h-4 w-4 text-primary" />
         )}
       </button>
     </div>

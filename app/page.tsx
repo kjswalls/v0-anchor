@@ -60,6 +60,7 @@ import {
 } from '@dnd-kit/core';
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 function KbdHint() {
   const [isMac, setIsMac] = useState(false);
@@ -448,17 +449,17 @@ const handleAddFromTopNav = () => {
       <>
         {/* Desktop skeleton */}
         <div className="hidden md:flex h-[100dvh] flex-col bg-background">
-          <div className="h-14 border-b border-border bg-card" />
+          <div className="h-16 border-b border-border/50 bg-card/80" />
           <div className="flex-1 flex overflow-hidden">
-            <div className="w-80 border-r border-border bg-sidebar" />
+            <div className="w-80 border-r border-border/50 bg-sidebar" />
             <main className="flex-1 bg-background" />
           </div>
         </div>
         {/* Mobile skeleton */}
         <div className="flex md:hidden h-[100dvh] flex-col bg-background">
-          <div className="h-14 border-b border-border bg-card" />
+          <div className="h-16 border-b border-border/50 bg-card/80" />
           <div className="flex-1 bg-background" />
-          <div className="h-14 border-t border-border bg-card" />
+          <div className="h-16 border-t border-border/50 bg-card/80" />
         </div>
       </>
     );
@@ -500,58 +501,63 @@ const handleAddFromTopNav = () => {
             )}
 
             {/* Item visibility toggle and action feed - toggle centered, feed on right */}
-            <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
+            <div className="relative flex items-center px-5 border-b border-border/50 flex-shrink-0 h-14 bg-card/30">
               {/* Centered visibility toggle */}
               <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary pointer-events-auto">
-                  <Button
-                    variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
+                <div className="flex items-center gap-0.5 p-1 rounded-xl bg-secondary/50 pointer-events-auto">
+                  <button
+                    className={cn(
+                      'h-7 px-3.5 text-xs font-semibold rounded-lg transition-all',
+                      timelineItemFilter === 'all'
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
                     onClick={() => setTimelineItemFilter('all')}
                   >
                     All
-                  </Button>
-                  <Button
-                    variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
+                  </button>
+                  <button
+                    className={cn(
+                      'h-7 px-3.5 text-xs font-semibold rounded-lg transition-all',
+                      timelineItemFilter === 'tasks'
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
                     onClick={() => setTimelineItemFilter('tasks')}
                   >
                     Tasks
-                  </Button>
-                  <Button
-                    variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
+                  </button>
+                  <button
+                    className={cn(
+                      'h-7 px-3.5 text-xs font-semibold rounded-lg transition-all',
+                      timelineItemFilter === 'habits'
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
                     onClick={() => setTimelineItemFilter('habits')}
                   >
                     Habits
-                  </Button>
+                  </button>
                 </div>
               </div>
               
               {/* Action feed on the right */}
               <div className="ml-auto z-10 flex items-center gap-2">
                 {/* DEV: manual trigger buttons for testing — remove before launch */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
+                <button
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all text-sm"
                   onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
                   title="[DEV] Reset morning check (clears dismissed state)"
                 >
-                  ☀️
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
+                  <span className="text-morning">&#9728;</span>
+                </button>
+                <button
+                  className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-all text-sm"
                   onClick={() => eodStore.open()}
                   title="[DEV] Trigger EOD review"
                 >
-                  🌙
-                </Button>
+                  <span className="text-evening">&#9790;</span>
+                </button>
                 <ActionFeed />
               </div>
             </div>
