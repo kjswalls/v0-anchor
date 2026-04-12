@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { AtlasNodeComponent } from './atlas-node';
+import { AtlasAnimations } from './atlas-animations';
 import type { AtlasNode } from '@/lib/atlas-store';
 
 interface AtlasRingsProps {
@@ -143,17 +144,26 @@ export function AtlasRings({
         fill="url(#centerGlow)"
       />
       
+      {/* Ambient animations layer (behind rings) */}
+      <AtlasAnimations
+        size={size}
+        centerX={centerX}
+        centerY={centerY}
+        ringRadii={ringPaths.map(r => r.radius)}
+      />
+      
       {/* Ring arcs - drawn from innermost (top) to outermost */}
       {ringPaths.map((ring, index) => (
         <g key={`ring-${index}`}>
-          {/* Ring background arc */}
+          {/* Ring background arc with subtle pulse */}
           <path
             d={ring.path}
             fill="none"
             stroke="var(--border)"
             strokeWidth={3}
             strokeLinecap="round"
-            opacity={0.6}
+            className="atlas-ring-pulse"
+            style={{ animationDelay: `${index * 0.5}s` }}
           />
           
           {/* Active ring segment highlight */}
