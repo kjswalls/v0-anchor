@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { AtlasNodeComponent } from './atlas-node';
 import { AtlasAnimations } from './atlas-animations';
 import type { AtlasItem, RingConfig } from '@/lib/atlas-store';
@@ -70,7 +70,7 @@ export function AtlasRings({
   onZoomOut,
   size,
 }: AtlasRingsProps) {
-  const { setRingRotation, getLineage } = useAtlasStore();
+  const { getLineage } = useAtlasStore();
   
   // Center positioned below visible area for rainbow effect
   const centerX = size / 2;
@@ -129,11 +129,23 @@ export function AtlasRings({
     });
   }, [rings, centerX, centerY, selectedLineage, selectedItemId]);
   
+  // Track the last processed selection to avoid redundant updates
+  const lastProcessedSelectionRef = useRef<string | null>(null);
+  
   // Update ring rotations when an item is selected
   useEffect(() => {
+    // Avoid re-processing the same selection
+    if (lastProcessedSelectionRef.current === selectedItemId) {
+      return;
+    }
+    lastProcessedSelectionRef.current = selectedItemId;
+    
+    // Get the store action directly to avoid dependency issues
+    const store = useAtlasStore.getState();
+    
     if (!selectedItemId) {
       // Reset all rotations
-      rings.forEach((_, idx) => setRingRotation(idx, 0));
+      rings.forEach((_, idx) => store.setRingRotation(idx, 0));
       return;
     }
     
@@ -142,7 +154,8 @@ export function AtlasRings({
       const itemIndex = ring.items.findIndex(item => item.id === selectedItemId);
       if (itemIndex >= 0) {
         const rotation = calculateRotationToCenter(itemIndex, ring.items.length);
-        setRingRotation(ringIdx, rotation);
+        store.setRingRotation(ringIdx, rotation);
+        return; // This ring is handled
       }
       
       // Also rotate child rings to center children of selected item
@@ -153,11 +166,11 @@ export function AtlasRings({
         if (firstChildIdx >= 0) {
           const midChildIdx = firstChildIdx + Math.floor(childrenOfSelected.length / 2);
           const rotation = calculateRotationToCenter(midChildIdx, ring.items.length);
-          setRingRotation(ringIdx, rotation);
+          store.setRingRotation(ringIdx, rotation);
         }
       }
     });
-  }, [selectedItemId, rings, setRingRotation]);
+  }, [selectedItemId, rings]);
   
   // Find connection lines from selected item to its children across rings
   const connectionLines = useMemo(() => {
