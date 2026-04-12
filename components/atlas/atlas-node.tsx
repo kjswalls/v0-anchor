@@ -39,7 +39,7 @@ export function AtlasNodeComponent({
         e.stopPropagation();
         onDoubleClick();
       }}
-      className="cursor-pointer transition-transform duration-200 hover:scale-110"
+      className="cursor-pointer atlas-node-hover"
       role="button"
       aria-label={`${node.name}: ${node.completedCount} of ${node.taskCount} tasks completed`}
     >
@@ -50,7 +50,7 @@ export function AtlasNodeComponent({
         r={nodeSize / 2 + 8}
         fill={node.color}
         opacity={glowIntensity * 0.4}
-        className="blur-sm"
+        className="atlas-node-glow"
         style={{
           filter: `blur(${4 + glowIntensity * 8}px)`,
         }}

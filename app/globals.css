@@ -245,3 +245,13 @@
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Atlas node hover effects - glow on hover instead of scale */
+.atlas-node-hover .atlas-node-glow {
+  transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+}
+
+.atlas-node-hover:hover .atlas-node-glow {
+  opacity: 0.8 !important;
+  filter: blur(12px) !important;
+}

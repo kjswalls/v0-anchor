@@ -13,10 +13,12 @@ interface AtlasRingsProps {
   size: number;
 }
 
-// Arc configuration - top-down orientation like Calendary
-// Arcs curve downward from top, nodes positioned on upper portion
-const ARC_START_ANGLE = -160; // degrees (left side, curving down)
-const ARC_END_ANGLE = -20; // degrees (right side, curving down)
+// Arc configuration - rainbow orientation like Calendary
+// Arcs curve downward with crest at TOP, nodes spread across the top
+// Using standard math convention: 0° = right, 90° = down, 180° = left, 270° = up
+// For rainbow shape: sweep from ~200° (lower-left) through 270° (top) to ~340° (lower-right)
+const ARC_START_ANGLE = 200; // degrees (lower-left)
+const ARC_END_ANGLE = 340; // degrees (lower-right)
 const ARC_SPAN = ARC_END_ANGLE - ARC_START_ANGLE; // 140 degrees
 
 function polarToCartesian(
@@ -25,7 +27,8 @@ function polarToCartesian(
   radius: number,
   angleInDegrees: number
 ): { x: number; y: number } {
-  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  // Standard SVG angle: 0° = right (3 o'clock), angles go clockwise
+  const angleInRadians = (angleInDegrees * Math.PI) / 180.0;
   return {
     x: centerX + radius * Math.cos(angleInRadians),
     y: centerY + radius * Math.sin(angleInRadians),
@@ -57,21 +60,21 @@ export function AtlasRings({
   ringCount = 3,
   size,
 }: AtlasRingsProps) {
-  // Center positioned at the bottom center of the SVG area
-  // so arcs emanate upward/outward from the bottom
+  // Center positioned below the visible area so arcs appear as rainbow curves
+  // with the crest at the top
   const centerX = size / 2;
-  const centerY = size * 0.85; // Center near bottom so arcs curve upward
+  const centerY = size * 1.1; // Center below view, arcs curve upward into view
   
-  // Calculate ring radii - larger rings that fill more space
-  // Outermost ring (top-tier projects) is smallest radius and appears at the top
-  // Innermost ring (sub-projects) is largest radius and appears lower
-  const minRadius = size * 0.30; // Smallest ring (top-tier) 
-  const maxRadius = size * 0.75; // Largest ring (deeper levels)
+  // Calculate ring radii - larger rings extend higher on screen
+  // Ring 0 (top-tier projects) = largest radius, appears highest (near top of viewport)
+  // Inner rings = smaller radii, appear lower
+  const minRadius = size * 0.50; // Smallest ring radius
+  const maxRadius = size * 1.0; // Largest ring radius (extends to top of container)
   const ringSpacing = (maxRadius - minRadius) / Math.max(ringCount - 1, 1);
   
   // Distribute nodes across rings
-  // Ring 0 = innermost (smallest radius, highest in visual hierarchy - top tier projects)
-  // Ring 1, 2, ... = progressively outer rings (sub-projects)
+  // Ring 0 = outermost (largest radius, highest on screen - top tier projects)
+  // Ring 1, 2, ... = progressively inner rings (sub-projects, lower on screen)
   const nodePositions = useMemo(() => {
     const positions: Array<{
       node: AtlasNode;
@@ -95,8 +98,8 @@ export function AtlasRings({
       const angleStep = ARC_SPAN / Math.max(nodesInThisRing + 1, 2);
       const angle = ARC_START_ANGLE + angleStep * (indexInRing + 1);
       
-      // Rings go from small (top) to large (bottom)
-      const radius = minRadius + ringIndex * ringSpacing;
+      // Ring 0 = largest radius (top), higher rings = smaller radius (lower on screen)
+      const radius = maxRadius - ringIndex * ringSpacing;
       const { x, y } = polarToCartesian(centerX, centerY, radius, angle);
       
       positions.push({ node, ringIndex, x, y });
@@ -105,16 +108,16 @@ export function AtlasRings({
     return positions;
   }, [nodes, ringCount, centerX, centerY, minRadius, ringSpacing]);
   
-  // Generate ring paths
+  // Generate ring paths (from largest/topmost to smallest/lowest)
   const ringPaths = useMemo(() => {
     return Array.from({ length: ringCount }, (_, i) => {
-      const radius = minRadius + i * ringSpacing;
+      const radius = maxRadius - i * ringSpacing;
       return {
         path: describeArc(centerX, centerY, radius, ARC_START_ANGLE, ARC_END_ANGLE),
         radius,
       };
     });
-  }, [ringCount, minRadius, ringSpacing, centerX, centerY]);
+  }, [ringCount, maxRadius, ringSpacing, centerX, centerY]);
 
   return (
     <svg
@@ -123,19 +126,20 @@ export function AtlasRings({
       viewBox={`0 0 ${size} ${size}`}
       className="overflow-visible"
     >
-      {/* Background glow for center area (at bottom) */}
+      {/* Background glow for center area (below visible area) */}
       <defs>
-        <radialGradient id="centerGlow" cx="50%" cy="85%" r="40%">
-          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.1" />
+        <radialGradient id="centerGlow" cx="50%" cy="100%" r="50%">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.08" />
           <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
         </radialGradient>
       </defs>
       
-      {/* Subtle center glow */}
-      <circle
+      {/* Subtle center glow at bottom */}
+      <ellipse
         cx={centerX}
-        cy={centerY}
-        r={minRadius * 0.6}
+        cy={size}
+        rx={size * 0.4}
+        ry={size * 0.2}
         fill="url(#centerGlow)"
       />
       

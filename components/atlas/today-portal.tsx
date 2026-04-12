@@ -33,7 +33,7 @@ export function TodayPortal({
         width: portalSize,
         height: portalSize,
         left: '50%',
-        bottom: `${size * 0.15 - portalSize / 2}px`, // Position at bottom center where arcs emanate
+        bottom: '16px', // Position near bottom of the rings container
         transform: 'translateX(-50%)',
       }}
       onClick={(e) => {
