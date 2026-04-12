@@ -26,15 +26,14 @@ function polarToCartesian(
   };
 }
 
-// Orbiting dot component
+// Orbiting dot component - slow, subtle, ring-colored
 function OrbitingDot({
   centerX,
   centerY,
   radius,
   duration,
   delay,
-  size = 4,
-  color = 'var(--primary)',
+  size = 3,
 }: {
   centerX: number;
   centerY: number;
@@ -42,7 +41,6 @@ function OrbitingDot({
   duration: number;
   delay: number;
   size?: number;
-  color?: string;
 }) {
   const [angle, setAngle] = useState(ARC_START_ANGLE);
   const animationRef = useRef<number>();
@@ -79,36 +77,36 @@ function OrbitingDot({
 
   return (
     <g>
-      {/* Glow effect */}
+      {/* Soft glow - matches ring color */}
       <circle
         cx={pos.x}
         cy={pos.y}
-        r={size * 2}
-        fill={color}
-        opacity={0.3}
-        style={{ filter: 'blur(4px)' }}
+        r={size * 3}
+        fill="var(--border)"
+        opacity={0.15}
+        style={{ filter: 'blur(6px)' }}
       />
-      {/* Core dot */}
+      {/* Core dot - slightly brighter than ring */}
       <circle
         cx={pos.x}
         cy={pos.y}
         r={size}
-        fill={color}
-        opacity={0.9}
+        fill="var(--muted-foreground)"
+        opacity={0.4}
       />
-      {/* Bright center */}
+      {/* Tiny bright center */}
       <circle
         cx={pos.x}
         cy={pos.y}
-        r={size * 0.4}
-        fill="white"
-        opacity={0.8}
+        r={size * 0.3}
+        fill="var(--foreground)"
+        opacity={0.5}
       />
     </g>
   );
 }
 
-// Background sparkle/twinkle component
+// Background sparkle/twinkle component - very subtle
 function Sparkle({
   x,
   y,
@@ -125,7 +123,7 @@ function Sparkle({
       cx={x}
       cy={y}
       r={size}
-      fill="var(--primary)"
+      fill="var(--muted-foreground)"
       className="atlas-sparkle"
       style={{
         animationDelay: `${delay}ms`,
@@ -134,22 +132,18 @@ function Sparkle({
   );
 }
 
-// Dashed rotating ring
+// Dashed rotating ring with visible flowing animation
 function DashedOrbit({
   centerX,
   centerY,
   radius,
-  duration,
   clockwise = true,
 }: {
   centerX: number;
   centerY: number;
   radius: number;
-  duration: number;
   clockwise?: boolean;
 }) {
-  const pathId = useMemo(() => `dashed-orbit-${radius}-${Math.random()}`, [radius]);
-  
   // Create arc path for dashed line
   const arcPath = useMemo(() => {
     const start = polarToCartesian(centerX, centerY, radius, ARC_START_ANGLE);
@@ -163,32 +157,28 @@ function DashedOrbit({
     <path
       d={arcPath}
       fill="none"
-      stroke="var(--primary)"
-      strokeWidth={1}
-      strokeDasharray="4 8"
+      stroke="var(--border)"
+      strokeWidth={1.5}
+      strokeDasharray="6 12"
       strokeLinecap="round"
-      opacity={0.3}
+      opacity={0.4}
       className={clockwise ? 'atlas-dash-rotate-cw' : 'atlas-dash-rotate-ccw'}
-      style={{
-        animationDuration: `${duration}ms`,
-        transformOrigin: `${centerX}px ${centerY}px`,
-      }}
     />
   );
 }
 
 export function AtlasAnimations({ size, centerX, centerY, ringRadii }: AtlasAnimationsProps) {
-  // Generate random sparkles in the background
+  // Generate fewer, more subtle sparkles
   const sparkles = useMemo(() => {
     const particles: { x: number; y: number; size: number; delay: number }[] = [];
-    const count = 40;
+    const count = 15; // Reduced count
     
     for (let i = 0; i < count; i++) {
       // Distribute sparkles across the upper portion of the view
       const x = Math.random() * size;
-      const y = Math.random() * size * 0.8; // Keep in upper 80%
-      const sparkleSize = 1 + Math.random() * 2;
-      const delay = Math.random() * 3000;
+      const y = Math.random() * size * 0.7; // Keep in upper 70%
+      const sparkleSize = 0.5 + Math.random() * 1; // Smaller sizes
+      const delay = Math.random() * 5000; // Longer stagger
       
       particles.push({ x, y, size: sparkleSize, delay });
     }
@@ -196,25 +186,25 @@ export function AtlasAnimations({ size, centerX, centerY, ringRadii }: AtlasAnim
     return particles;
   }, [size]);
 
-  // Orbiting dots configuration - one or two per ring
+  // Orbiting dots configuration - slower, fewer
   const orbitingDots = useMemo(() => {
     const dots: { radius: number; duration: number; delay: number; size: number }[] = [];
     
     ringRadii.forEach((radius, index) => {
-      // Primary orbiting dot
+      // Primary orbiting dot - much slower
       dots.push({
-        radius: radius + 2, // Slightly outside the ring
-        duration: 8000 + index * 2000, // Slower for outer rings
-        delay: index * 500,
-        size: 3,
+        radius: radius,
+        duration: 25000 + index * 5000, // 25-40 seconds per orbit
+        delay: index * 2000,
+        size: 2.5,
       });
       
-      // Secondary dot on some rings (going opposite direction effect via delay)
-      if (index % 2 === 0) {
+      // Secondary dot on alternating rings
+      if (index % 2 === 1) {
         dots.push({
-          radius: radius - 2, // Slightly inside the ring
-          duration: 10000 + index * 1500,
-          delay: 4000 + index * 300,
+          radius: radius,
+          duration: 30000 + index * 3000,
+          delay: 12000 + index * 1500,
           size: 2,
         });
       }
@@ -225,7 +215,7 @@ export function AtlasAnimations({ size, centerX, centerY, ringRadii }: AtlasAnim
 
   return (
     <g className="atlas-animations">
-      {/* Background sparkles */}
+      {/* Background sparkles - very subtle */}
       {sparkles.map((sparkle, i) => (
         <Sparkle
           key={`sparkle-${i}`}
@@ -242,13 +232,12 @@ export function AtlasAnimations({ size, centerX, centerY, ringRadii }: AtlasAnim
           key={`dashed-${index}`}
           centerX={centerX}
           centerY={centerY}
-          radius={radius + (index % 2 === 0 ? 12 : -12)}
-          duration={20000 + index * 5000}
+          radius={radius + (index % 2 === 0 ? 15 : -15)}
           clockwise={index % 2 === 0}
         />
       ))}
       
-      {/* Orbiting dots */}
+      {/* Orbiting dots - slow and subtle */}
       {orbitingDots.map((dot, i) => (
         <OrbitingDot
           key={`orbit-dot-${i}`}

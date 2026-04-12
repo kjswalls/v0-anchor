@@ -256,52 +256,50 @@
   filter: blur(12px) !important;
 }
 
-/* Atlas sparkle/twinkle animation */
+/* Atlas sparkle/twinkle animation - very slow and subtle */
 @keyframes atlas-sparkle {
   0%, 100% {
     opacity: 0;
-    transform: scale(0.5);
+    transform: scale(0.3);
   }
   50% {
-    opacity: 0.6;
+    opacity: 0.15;
     transform: scale(1);
   }
 }
 
 .atlas-sparkle {
-  animation: atlas-sparkle 3s ease-in-out infinite;
+  animation: atlas-sparkle 8s ease-in-out infinite;
 }
 
-/* Atlas ring pulse animation (very subtle) */
+/* Atlas ring pulse animation - subtle but visible */
 @keyframes atlas-ring-pulse {
   0%, 100% {
-    opacity: 0.6;
-    stroke-width: 3;
+    opacity: 0.5;
   }
   50% {
-    opacity: 0.75;
-    stroke-width: 3.5;
+    opacity: 0.7;
   }
 }
 
 .atlas-ring-pulse {
-  animation: atlas-ring-pulse 4s ease-in-out infinite;
+  animation: atlas-ring-pulse 6s ease-in-out infinite;
 }
 
-/* Dashed orbit stroke animation */
+/* Dashed orbit stroke animation - flowing dashes */
 @keyframes atlas-dash-flow {
   0% {
     stroke-dashoffset: 0;
   }
   100% {
-    stroke-dashoffset: -24;
+    stroke-dashoffset: -36;
   }
 }
 
 .atlas-dash-rotate-cw {
-  animation: atlas-dash-flow 2s linear infinite;
+  animation: atlas-dash-flow 3s linear infinite;
 }
 
 .atlas-dash-rotate-ccw {
-  animation: atlas-dash-flow 2s linear infinite reverse;
+  animation: atlas-dash-flow 3s linear infinite reverse;
 }
