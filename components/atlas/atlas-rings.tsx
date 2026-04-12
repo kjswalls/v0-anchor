@@ -151,7 +151,7 @@ export function AtlasRings({
             d={ring.path}
             fill="none"
             stroke="var(--border)"
-            strokeWidth={2}
+            strokeWidth={3}
             strokeLinecap="round"
             opacity={0.6}
           />
@@ -161,7 +161,7 @@ export function AtlasRings({
             d={ring.path}
             fill="none"
             stroke="var(--primary)"
-            strokeWidth={2.5}
+            strokeWidth={4}
             strokeLinecap="round"
             opacity={0.15}
           />

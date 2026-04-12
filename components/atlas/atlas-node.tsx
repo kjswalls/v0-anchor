@@ -22,7 +22,7 @@ export function AtlasNodeComponent({
   onClick,
   onDoubleClick,
 }: AtlasNodeProps) {
-  const nodeSize = 48;
+  const nodeSize = 56;
   const glowIntensity = node.activityLevel;
   const progressPercent = node.taskCount > 0 
     ? (node.completedCount / node.taskCount) * 100 
@@ -116,8 +116,8 @@ export function AtlasNodeComponent({
         y={2}
         textAnchor="middle"
         dominantBaseline="middle"
-        className="text-lg select-none pointer-events-none"
-        style={{ fontSize: '20px' }}
+        className="text-xl select-none pointer-events-none"
+        style={{ fontSize: '24px' }}
       >
         {node.emoji}
       </text>
