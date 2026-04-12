@@ -5,6 +5,7 @@ import { TopNav } from '@/components/planner/top-nav';
 import { TaskSidebar } from '@/components/planner/task-sidebar';
 import { Timeline, inferDropTime } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
+import { AtlasView } from '@/components/atlas/atlas-view';
 import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
@@ -385,7 +386,7 @@ const handleAddFromTopNav = () => {
   };
 
   // Mobile swipe to switch tabs
-  const MOBILE_TABS: MobileTab[] = ['tasks', 'schedule', 'chat'];
+  const MOBILE_TABS: MobileTab[] = ['tasks', 'schedule', 'atlas', 'chat'];
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
       const idx = MOBILE_TABS.indexOf(activeTab);
@@ -499,67 +500,71 @@ const handleAddFromTopNav = () => {
               />
             )}
 
-            {/* Item visibility toggle and action feed - toggle centered, feed on right */}
-            <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
-              {/* Centered visibility toggle */}
-              <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
-                <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary pointer-events-auto">
+            {/* Item visibility toggle and action feed - toggle centered, feed on right (hidden in Atlas mode) */}
+            {viewMode !== 'atlas' && (
+              <div className="relative flex items-center px-4 border-b border-border flex-shrink-0 h-16">
+                {/* Centered visibility toggle */}
+                <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
+                  <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-secondary pointer-events-auto">
+                    <Button
+                      variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setTimelineItemFilter('all')}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setTimelineItemFilter('tasks')}
+                    >
+                      Tasks
+                    </Button>
+                    <Button
+                      variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setTimelineItemFilter('habits')}
+                    >
+                      Habits
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Action feed on the right */}
+                <div className="ml-auto z-10 flex items-center gap-2">
+                  {/* DEV: manual trigger buttons for testing — remove before launch */}
                   <Button
-                    variant={timelineItemFilter === 'all' ? 'default' : 'ghost'}
+                    variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('all')}
+                    className="h-6 px-2 text-xs text-muted-foreground"
+                    onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
+                    title="[DEV] Reset morning check (clears dismissed state)"
                   >
-                    All
+                    ☀️
                   </Button>
                   <Button
-                    variant={timelineItemFilter === 'tasks' ? 'default' : 'ghost'}
+                    variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('tasks')}
+                    className="h-6 px-2 text-xs text-muted-foreground"
+                    onClick={() => eodStore.open()}
+                    title="[DEV] Trigger EOD review"
                   >
-                    Tasks
+                    🌙
                   </Button>
-                  <Button
-                    variant={timelineItemFilter === 'habits' ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => setTimelineItemFilter('habits')}
-                  >
-                    Habits
-                  </Button>
+                  <ActionFeed />
                 </div>
               </div>
-              
-              {/* Action feed on the right */}
-              <div className="ml-auto z-10 flex items-center gap-2">
-                {/* DEV: manual trigger buttons for testing — remove before launch */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
-                  onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
-                  title="[DEV] Reset morning check (clears dismissed state)"
-                >
-                  ☀️
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-muted-foreground"
-                  onClick={() => eodStore.open()}
-                  title="[DEV] Trigger EOD review"
-                >
-                  🌙
-                </Button>
-                <ActionFeed />
-              </div>
-            </div>
+            )}
 
-            <MorningCheck />
+            {viewMode !== 'atlas' && <MorningCheck />}
 
             <div data-tour="timeline" className="flex-1 flex flex-col bg-background overflow-hidden">
-              {viewMode === 'day' ? (
+              {viewMode === 'atlas' ? (
+                <AtlasView onExitAtlas={() => usePlannerStore.getState().setViewMode('day')} />
+              ) : viewMode === 'day' ? (
                 <Timeline
                   onTaskClick={handleTaskClick}
                   onHabitClick={handleHabitClick}
@@ -611,6 +616,9 @@ const handleAddFromTopNav = () => {
               onAddClick={handleAddFromTimeline}
               activeId={activeId}
             />
+          )}
+          {activeTab === 'atlas' && (
+            <AtlasView onExitAtlas={() => useMobileNavStore.getState().setActiveTab('schedule')} />
           )}
           {activeTab === 'chat' && (
             <MobileChatPanel onOpenSettings={() => setSettingsOpen(true)} />

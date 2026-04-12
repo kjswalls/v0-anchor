@@ -1,6 +1,6 @@
 'use client';
 
-import { ListTodo, CalendarDays, Sparkles } from 'lucide-react';
+import { ListTodo, CalendarDays, Sparkles, Globe } from 'lucide-react';
 import { useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ export function MobileTabBar() {
   const tabs: { id: MobileTab; label: string; icon: typeof ListTodo }[] = [
     { id: 'tasks', label: 'To Do', icon: ListTodo },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
+    { id: 'atlas', label: 'Atlas', icon: Globe },
     { id: 'chat', label: getAITabLabel(provider), icon: Sparkles },
   ];
 

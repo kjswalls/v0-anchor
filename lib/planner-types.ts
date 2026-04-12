@@ -24,7 +24,7 @@ export type {
 // ── App-only types ────────────────────────────────────────────────────────────
 
 export type HabitGroup = string;
-export type ViewMode = 'day' | 'week';
+export type ViewMode = 'day' | 'week' | 'atlas';
 export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
 

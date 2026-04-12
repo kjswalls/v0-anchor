@@ -450,6 +450,12 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
           >
             Week
           </ToggleGroupItem>
+          <ToggleGroupItem
+            value="atlas"
+            className="h-7 px-3 text-xs data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm rounded-md"
+          >
+            Atlas
+          </ToggleGroupItem>
         </ToggleGroup>
         
         <Button

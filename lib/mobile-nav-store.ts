@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type MobileTab = 'tasks' | 'schedule' | 'chat';
+export type MobileTab = 'tasks' | 'schedule' | 'atlas' | 'chat';
 
 interface MobileNavStore {
   activeTab: MobileTab;
