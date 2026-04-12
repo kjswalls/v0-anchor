@@ -323,23 +323,26 @@ export function AtlasRings({
             />
           )}
           
-          {/* Ring label */}
-          {ring.label && !ring.isFaded && (
+          {/* Ring label - curved text on left side of arc */}
+          {ring.label && (
             <>
               <defs>
+                {/* Path runs along the outer edge of the ring, positioned on the left side */}
                 <path
                   id={`labelPath-${ringIdx}`}
-                  d={describeArc(centerX, centerY, radius + 14, ARC_START_ANGLE, ARC_START_ANGLE + 35)}
+                  d={describeArc(centerX, centerY, radius + 18, ARC_START_ANGLE - 5, ARC_START_ANGLE + 40)}
                 />
               </defs>
               <text
                 fill="var(--muted-foreground)"
-                fontSize="9"
-                fontWeight="300"
-                letterSpacing="0.15em"
-                opacity={0.5}
+                fontSize="10"
+                fontWeight="200"
+                fontFamily="system-ui, sans-serif"
+                letterSpacing="0.2em"
+                opacity={ring.isFaded ? 0.25 : 0.6}
+                style={{ textTransform: 'uppercase' }}
               >
-                <textPath href={`#labelPath-${ringIdx}`} startOffset="2%">
+                <textPath href={`#labelPath-${ringIdx}`} startOffset="5%">
                   {ring.label}
                 </textPath>
               </text>
