@@ -3,11 +3,11 @@
 import { Circle, CheckCircle2, Clock } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import type { AtlasNode } from '@/lib/atlas-store';
+import type { AtlasItem } from '@/lib/atlas-store';
 import type { MockTask } from '@/lib/atlas-mock-data';
 
 interface AtlasTaskPanelProps {
-  selectedNode: AtlasNode | null;
+  selectedNode: AtlasItem | null;
   tasks: MockTask[];
   onClose: () => void;
   layout?: 'vertical' | 'horizontal';

@@ -256,20 +256,20 @@
   filter: blur(12px) !important;
 }
 
-/* Atlas sparkle/twinkle animation - very slow and subtle */
+/* Atlas sparkle/twinkle animation - slow and subtle */
 @keyframes atlas-sparkle {
   0%, 100% {
     opacity: 0;
     transform: scale(0.3);
   }
   50% {
-    opacity: 0.15;
+    opacity: 0.35;
     transform: scale(1);
   }
 }
 
 .atlas-sparkle {
-  animation: atlas-sparkle 8s ease-in-out infinite;
+  animation: atlas-sparkle 6s ease-in-out infinite;
 }
 
 /* Atlas ring pulse animation - subtle but visible */

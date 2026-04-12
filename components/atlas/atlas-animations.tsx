@@ -77,30 +77,39 @@ function OrbitingDot({
 
   return (
     <g>
-      {/* Soft glow - matches ring color */}
+      {/* Outer glow - softer, larger */}
       <circle
         cx={pos.x}
         cy={pos.y}
-        r={size * 3}
-        fill="var(--border)"
+        r={size * 5}
+        fill="var(--primary)"
         opacity={0.15}
-        style={{ filter: 'blur(6px)' }}
+        style={{ filter: 'blur(8px)' }}
       />
-      {/* Core dot - slightly brighter than ring */}
+      {/* Inner glow - brighter */}
+      <circle
+        cx={pos.x}
+        cy={pos.y}
+        r={size * 2.5}
+        fill="var(--primary)"
+        opacity={0.3}
+        style={{ filter: 'blur(4px)' }}
+      />
+      {/* Core dot - bright */}
       <circle
         cx={pos.x}
         cy={pos.y}
         r={size}
-        fill="var(--muted-foreground)"
-        opacity={0.4}
+        fill="var(--foreground)"
+        opacity={0.7}
       />
       {/* Tiny bright center */}
       <circle
         cx={pos.x}
         cy={pos.y}
-        r={size * 0.3}
-        fill="var(--foreground)"
-        opacity={0.5}
+        r={size * 0.4}
+        fill="white"
+        opacity={0.9}
       />
     </g>
   );
@@ -157,11 +166,11 @@ function DashedOrbit({
     <path
       d={arcPath}
       fill="none"
-      stroke="var(--border)"
+      stroke="var(--muted-foreground)"
       strokeWidth={1.5}
-      strokeDasharray="6 12"
+      strokeDasharray="4 10"
       strokeLinecap="round"
-      opacity={0.4}
+      opacity={0.5}
       className={clockwise ? 'atlas-dash-rotate-cw' : 'atlas-dash-rotate-ccw'}
     />
   );

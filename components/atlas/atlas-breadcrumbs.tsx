@@ -4,10 +4,13 @@ import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+import type { AtlasItemType } from '@/lib/atlas-store';
+
 interface Breadcrumb {
   id: string;
   name: string;
   emoji: string;
+  type?: AtlasItemType;
 }
 
 interface AtlasBreadcrumbsProps {
@@ -23,12 +26,9 @@ export function AtlasBreadcrumbs({
   onBack,
   canGoBack,
 }: AtlasBreadcrumbsProps) {
-  if (breadcrumbs.length <= 1) {
-    return null;
-  }
-
+  // Always show breadcrumbs for navigation context
   return (
-    <div className="flex items-center gap-1 px-4 py-2">
+    <div className="flex items-center gap-1 px-4 py-2 border-b border-border/50 bg-background/80 backdrop-blur-sm">
       {/* Back button */}
       <Button
         variant="ghost"

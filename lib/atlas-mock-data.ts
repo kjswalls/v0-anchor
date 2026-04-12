@@ -1,4 +1,4 @@
-import type { AtlasNode } from './atlas-store';
+import type { AtlasItem } from './atlas-store';
 
 // Project colors that work in both light and dark themes
 export const PROJECT_COLORS = {
@@ -7,51 +7,69 @@ export const PROJECT_COLORS = {
   personal: 'oklch(0.65 0.12 320)', // Pink/Purple
   learning: 'oklch(0.7 0.15 85)', // Yellow/Gold
   creative: 'oklch(0.65 0.15 25)', // Orange/Red
-  social: 'oklch(0.6 0.15 280)', // Purple
 };
 
-// Generate mock atlas nodes from projects
-// In production, this would derive from the planner store
-export function generateMockAtlasNodes(): AtlasNode[] {
+// Generate hierarchical atlas data: Projects > Tasks > Subtasks
+export function generateMockAtlasItems(): AtlasItem[] {
   return [
     {
       id: 'work',
       name: 'Work',
       emoji: '💼',
       color: PROJECT_COLORS.work,
+      type: 'project',
       activityLevel: 0.85,
       taskCount: 12,
       completedCount: 8,
+      parentId: null,
       children: [
         {
-          id: 'work-meetings',
-          name: 'Meetings',
-          emoji: '📅',
+          id: 'work-quarterly-report',
+          name: 'Quarterly Report',
+          emoji: '📊',
           color: PROJECT_COLORS.work,
-          activityLevel: 0.6,
+          type: 'task',
+          activityLevel: 0.9,
           taskCount: 4,
-          completedCount: 2,
+          completedCount: 3,
           parentId: 'work',
+          children: [
+            { id: 'work-qr-data', name: 'Gather data', emoji: '📈', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'work-quarterly-report', children: [] },
+            { id: 'work-qr-draft', name: 'Draft report', emoji: '✍️', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'work-quarterly-report', children: [] },
+            { id: 'work-qr-review', name: 'Review with team', emoji: '👥', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 0.8, taskCount: 1, completedCount: 1, parentId: 'work-quarterly-report', children: [] },
+            { id: 'work-qr-email', name: 'Email Janice', emoji: '📧', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 0.5, taskCount: 1, completedCount: 0, parentId: 'work-quarterly-report', children: [] },
+          ],
         },
         {
-          id: 'work-development',
-          name: 'Development',
+          id: 'work-code-review',
+          name: 'Code Reviews',
           emoji: '💻',
           color: PROJECT_COLORS.work,
-          activityLevel: 0.95,
-          taskCount: 6,
-          completedCount: 5,
+          type: 'task',
+          activityLevel: 0.7,
+          taskCount: 3,
+          completedCount: 2,
           parentId: 'work',
+          children: [
+            { id: 'work-cr-pr234', name: 'Review PR #234', emoji: '🔍', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'work-code-review', children: [] },
+            { id: 'work-cr-pr235', name: 'Review PR #235', emoji: '🔍', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 0.8, taskCount: 1, completedCount: 1, parentId: 'work-code-review', children: [] },
+            { id: 'work-cr-pr236', name: 'Review PR #236', emoji: '🔍', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 0.3, taskCount: 1, completedCount: 0, parentId: 'work-code-review', children: [] },
+          ],
         },
         {
-          id: 'work-admin',
-          name: 'Admin',
-          emoji: '📋',
+          id: 'work-meetings',
+          name: 'Team Meetings',
+          emoji: '📅',
           color: PROJECT_COLORS.work,
-          activityLevel: 0.3,
+          type: 'task',
+          activityLevel: 0.6,
           taskCount: 2,
           completedCount: 1,
           parentId: 'work',
+          children: [
+            { id: 'work-m-standup', name: 'Daily standup', emoji: '🗣️', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'work-meetings', children: [] },
+            { id: 'work-m-sprint', name: 'Sprint planning', emoji: '📋', color: PROJECT_COLORS.work, type: 'subtask', activityLevel: 0.4, taskCount: 1, completedCount: 0, parentId: 'work-meetings', children: [] },
+          ],
         },
       ],
     },
@@ -60,29 +78,42 @@ export function generateMockAtlasNodes(): AtlasNode[] {
       name: 'Wellness',
       emoji: '🧘',
       color: PROJECT_COLORS.wellness,
+      type: 'project',
       activityLevel: 0.7,
-      taskCount: 8,
-      completedCount: 5,
+      taskCount: 6,
+      completedCount: 4,
+      parentId: null,
       children: [
         {
           id: 'wellness-exercise',
           name: 'Exercise',
           emoji: '🏃',
           color: PROJECT_COLORS.wellness,
+          type: 'task',
           activityLevel: 0.8,
-          taskCount: 4,
-          completedCount: 3,
-          parentId: 'wellness',
-        },
-        {
-          id: 'wellness-meditation',
-          name: 'Meditation',
-          emoji: '🧘',
-          color: PROJECT_COLORS.wellness,
-          activityLevel: 0.5,
-          taskCount: 4,
+          taskCount: 3,
           completedCount: 2,
           parentId: 'wellness',
+          children: [
+            { id: 'well-ex-run', name: 'Morning run', emoji: '🏃', color: PROJECT_COLORS.wellness, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'wellness-exercise', children: [] },
+            { id: 'well-ex-yoga', name: 'Yoga session', emoji: '🧘', color: PROJECT_COLORS.wellness, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'wellness-exercise', children: [] },
+            { id: 'well-ex-gym', name: 'Gym workout', emoji: '💪', color: PROJECT_COLORS.wellness, type: 'subtask', activityLevel: 0.4, taskCount: 1, completedCount: 0, parentId: 'wellness-exercise', children: [] },
+          ],
+        },
+        {
+          id: 'wellness-nutrition',
+          name: 'Nutrition',
+          emoji: '🥗',
+          color: PROJECT_COLORS.wellness,
+          type: 'task',
+          activityLevel: 0.6,
+          taskCount: 2,
+          completedCount: 1,
+          parentId: 'wellness',
+          children: [
+            { id: 'well-nut-meal', name: 'Meal prep', emoji: '🍱', color: PROJECT_COLORS.wellness, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'wellness-nutrition', children: [] },
+            { id: 'well-nut-water', name: 'Drink water', emoji: '💧', color: PROJECT_COLORS.wellness, type: 'subtask', activityLevel: 0.5, taskCount: 1, completedCount: 0, parentId: 'wellness-nutrition', children: [] },
+          ],
         },
       ],
     },
@@ -91,32 +122,134 @@ export function generateMockAtlasNodes(): AtlasNode[] {
       name: 'Personal',
       emoji: '🏠',
       color: PROJECT_COLORS.personal,
-      activityLevel: 0.45,
-      taskCount: 6,
+      type: 'project',
+      activityLevel: 0.5,
+      taskCount: 5,
       completedCount: 2,
+      parentId: null,
+      children: [
+        {
+          id: 'personal-errands',
+          name: 'Errands',
+          emoji: '🛒',
+          color: PROJECT_COLORS.personal,
+          type: 'task',
+          activityLevel: 0.6,
+          taskCount: 3,
+          completedCount: 1,
+          parentId: 'personal',
+          children: [
+            { id: 'pers-err-grocery', name: 'Grocery shopping', emoji: '🛒', color: PROJECT_COLORS.personal, type: 'subtask', activityLevel: 0.8, taskCount: 1, completedCount: 1, parentId: 'personal-errands', children: [] },
+            { id: 'pers-err-bank', name: 'Visit bank', emoji: '🏦', color: PROJECT_COLORS.personal, type: 'subtask', activityLevel: 0.3, taskCount: 1, completedCount: 0, parentId: 'personal-errands', children: [] },
+            { id: 'pers-err-post', name: 'Post office', emoji: '📮', color: PROJECT_COLORS.personal, type: 'subtask', activityLevel: 0.2, taskCount: 1, completedCount: 0, parentId: 'personal-errands', children: [] },
+          ],
+        },
+        {
+          id: 'personal-family',
+          name: 'Family',
+          emoji: '👨‍👩‍👧',
+          color: PROJECT_COLORS.personal,
+          type: 'task',
+          activityLevel: 0.4,
+          taskCount: 2,
+          completedCount: 1,
+          parentId: 'personal',
+          children: [
+            { id: 'pers-fam-call', name: 'Call mom', emoji: '📞', color: PROJECT_COLORS.personal, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'personal-family', children: [] },
+            { id: 'pers-fam-gift', name: 'Buy birthday gift', emoji: '🎁', color: PROJECT_COLORS.personal, type: 'subtask', activityLevel: 0.2, taskCount: 1, completedCount: 0, parentId: 'personal-family', children: [] },
+          ],
+        },
+      ],
     },
     {
       id: 'learning',
       name: 'Learning',
       emoji: '📚',
       color: PROJECT_COLORS.learning,
-      activityLevel: 0.6,
-      taskCount: 5,
-      completedCount: 3,
+      type: 'project',
+      activityLevel: 0.65,
+      taskCount: 4,
+      completedCount: 2,
+      parentId: null,
+      children: [
+        {
+          id: 'learning-course',
+          name: 'Online Course',
+          emoji: '💻',
+          color: PROJECT_COLORS.learning,
+          type: 'task',
+          activityLevel: 0.7,
+          taskCount: 2,
+          completedCount: 1,
+          parentId: 'learning',
+          children: [
+            { id: 'learn-c-vid', name: 'Watch module 5', emoji: '🎬', color: PROJECT_COLORS.learning, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'learning-course', children: [] },
+            { id: 'learn-c-quiz', name: 'Complete quiz', emoji: '✅', color: PROJECT_COLORS.learning, type: 'subtask', activityLevel: 0.4, taskCount: 1, completedCount: 0, parentId: 'learning-course', children: [] },
+          ],
+        },
+        {
+          id: 'learning-reading',
+          name: 'Reading',
+          emoji: '📖',
+          color: PROJECT_COLORS.learning,
+          type: 'task',
+          activityLevel: 0.5,
+          taskCount: 2,
+          completedCount: 1,
+          parentId: 'learning',
+          children: [
+            { id: 'learn-r-book', name: 'Finish chapter 8', emoji: '📕', color: PROJECT_COLORS.learning, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'learning-reading', children: [] },
+            { id: 'learn-r-notes', name: 'Take notes', emoji: '📝', color: PROJECT_COLORS.learning, type: 'subtask', activityLevel: 0.3, taskCount: 1, completedCount: 0, parentId: 'learning-reading', children: [] },
+          ],
+        },
+      ],
     },
     {
       id: 'creative',
       name: 'Creative',
       emoji: '🎨',
       color: PROJECT_COLORS.creative,
-      activityLevel: 0.25,
+      type: 'project',
+      activityLevel: 0.35,
       taskCount: 3,
-      completedCount: 0,
+      completedCount: 1,
+      parentId: null,
+      children: [
+        {
+          id: 'creative-art',
+          name: 'Art Project',
+          emoji: '🖼️',
+          color: PROJECT_COLORS.creative,
+          type: 'task',
+          activityLevel: 0.4,
+          taskCount: 2,
+          completedCount: 1,
+          parentId: 'creative',
+          children: [
+            { id: 'crea-a-sketch', name: 'Sketch ideas', emoji: '✏️', color: PROJECT_COLORS.creative, type: 'subtask', activityLevel: 1, taskCount: 1, completedCount: 1, parentId: 'creative-art', children: [] },
+            { id: 'crea-a-paint', name: 'Start painting', emoji: '🎨', color: PROJECT_COLORS.creative, type: 'subtask', activityLevel: 0.2, taskCount: 1, completedCount: 0, parentId: 'creative-art', children: [] },
+          ],
+        },
+        {
+          id: 'creative-music',
+          name: 'Music Practice',
+          emoji: '🎸',
+          color: PROJECT_COLORS.creative,
+          type: 'task',
+          activityLevel: 0.3,
+          taskCount: 1,
+          completedCount: 0,
+          parentId: 'creative',
+          children: [
+            { id: 'crea-m-practice', name: 'Practice scales', emoji: '🎵', color: PROJECT_COLORS.creative, type: 'subtask', activityLevel: 0.2, taskCount: 1, completedCount: 0, parentId: 'creative-music', children: [] },
+          ],
+        },
+      ],
     },
   ];
 }
 
-// Mock tasks for selected project
+// Get tasks for display in bottom panel
 export interface MockTask {
   id: string;
   title: string;
@@ -125,34 +258,34 @@ export interface MockTask {
   dueTime?: string;
 }
 
-export function getMockTasksForProject(projectId: string): MockTask[] {
-  const tasksByProject: Record<string, MockTask[]> = {
-    'work': [
-      { id: 't1', title: 'Review quarterly report', completed: true, priority: 'high' },
-      { id: 't2', title: 'Team standup meeting', completed: true, priority: 'medium', dueTime: '10:00 AM' },
-      { id: 't3', title: 'Code review for PR #234', completed: false, priority: 'high' },
-      { id: 't4', title: 'Update project documentation', completed: false, priority: 'low' },
-    ],
-    'work-meetings': [
-      { id: 't5', title: '1:1 with manager', completed: true, priority: 'medium', dueTime: '2:00 PM' },
-      { id: 't6', title: 'Sprint planning', completed: false, priority: 'high', dueTime: '3:00 PM' },
-    ],
-    'work-development': [
-      { id: 't7', title: 'Implement Atlas view', completed: true, priority: 'high' },
-      { id: 't8', title: 'Fix navigation bug', completed: true, priority: 'high' },
-      { id: 't9', title: 'Add unit tests', completed: false, priority: 'medium' },
-    ],
-    'wellness': [
-      { id: 't10', title: 'Morning yoga', completed: true, priority: 'medium', dueTime: '7:00 AM' },
-      { id: 't11', title: 'Evening walk', completed: false, priority: 'low', dueTime: '6:00 PM' },
-    ],
-    'personal': [
-      { id: 't12', title: 'Grocery shopping', completed: false, priority: 'medium' },
-      { id: 't13', title: 'Call mom', completed: false, priority: 'high' },
-    ],
-  };
+export function getMockTasksForItem(item: AtlasItem | null): MockTask[] {
+  if (!item) return [];
   
-  return tasksByProject[projectId] || [
-    { id: 'default1', title: 'No tasks yet', completed: false, priority: 'low' },
-  ];
+  // For projects, show their direct children (tasks)
+  if (item.type === 'project') {
+    return item.children.map(child => ({
+      id: child.id,
+      title: child.name,
+      completed: child.completedCount === child.taskCount,
+      priority: child.activityLevel > 0.7 ? 'high' : child.activityLevel > 0.4 ? 'medium' : 'low',
+    }));
+  }
+  
+  // For tasks, show their subtasks
+  if (item.type === 'task') {
+    return item.children.map(child => ({
+      id: child.id,
+      title: child.name,
+      completed: child.completedCount === child.taskCount,
+      priority: child.activityLevel > 0.7 ? 'high' : child.activityLevel > 0.4 ? 'medium' : 'low',
+    }));
+  }
+  
+  // For subtasks, just return the item itself
+  return [{
+    id: item.id,
+    title: item.name,
+    completed: item.completedCount === item.taskCount,
+    priority: item.activityLevel > 0.7 ? 'high' : item.activityLevel > 0.4 ? 'medium' : 'low',
+  }];
 }

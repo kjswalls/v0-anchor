@@ -1,14 +1,15 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import type { AtlasNode } from '@/lib/atlas-store';
+import type { AtlasItem } from '@/lib/atlas-store';
 
 interface AtlasNodeProps {
-  node: AtlasNode;
+  node: AtlasItem;
   x: number;
   y: number;
   isSelected: boolean;
   hasChildren: boolean;
+  isFaded?: boolean; // For zoom hint rings
   onClick: () => void;
   onDoubleClick: () => void;
 }
@@ -19,10 +20,11 @@ export function AtlasNodeComponent({
   y,
   isSelected,
   hasChildren,
+  isFaded = false,
   onClick,
   onDoubleClick,
 }: AtlasNodeProps) {
-  const nodeSize = 56;
+  const nodeSize = isFaded ? 40 : 56;
   const glowIntensity = node.activityLevel;
   const progressPercent = node.taskCount > 0 
     ? (node.completedCount / node.taskCount) * 100 
@@ -42,19 +44,22 @@ export function AtlasNodeComponent({
       className="cursor-pointer atlas-node-hover"
       role="button"
       aria-label={`${node.name}: ${node.completedCount} of ${node.taskCount} tasks completed`}
+      style={{ opacity: isFaded ? 0.4 : 1 }}
     >
       {/* Glow effect based on activity level */}
-      <circle
-        cx={0}
-        cy={0}
-        r={nodeSize / 2 + 8}
-        fill={node.color}
-        opacity={glowIntensity * 0.4}
-        className="atlas-node-glow"
-        style={{
-          filter: `blur(${4 + glowIntensity * 8}px)`,
-        }}
-      />
+      {!isFaded && (
+        <circle
+          cx={0}
+          cy={0}
+          r={nodeSize / 2 + 8}
+          fill={node.color}
+          opacity={glowIntensity * 0.4}
+          className="atlas-node-glow"
+          style={{
+            filter: `blur(${4 + glowIntensity * 8}px)`,
+          }}
+        />
+      )}
       
       {/* Progress ring background */}
       <circle
@@ -63,23 +68,25 @@ export function AtlasNodeComponent({
         r={nodeSize / 2 + 2}
         fill="none"
         stroke="var(--border)"
-        strokeWidth={3}
+        strokeWidth={isFaded ? 2 : 3}
         opacity={0.5}
       />
       
       {/* Progress ring */}
-      <circle
-        cx={0}
-        cy={0}
-        r={nodeSize / 2 + 2}
-        fill="none"
-        stroke={node.color}
-        strokeWidth={3}
-        strokeDasharray={`${(progressPercent / 100) * Math.PI * (nodeSize + 4)} ${Math.PI * (nodeSize + 4)}`}
-        strokeLinecap="round"
-        transform="rotate(-90)"
-        className="transition-all duration-300"
-      />
+      {!isFaded && (
+        <circle
+          cx={0}
+          cy={0}
+          r={nodeSize / 2 + 2}
+          fill="none"
+          stroke={node.color}
+          strokeWidth={3}
+          strokeDasharray={`${(progressPercent / 100) * Math.PI * (nodeSize + 4)} ${Math.PI * (nodeSize + 4)}`}
+          strokeLinecap="round"
+          transform="rotate(-90)"
+          className="transition-all duration-300"
+        />
+      )}
       
       {/* Node background */}
       <circle
@@ -96,7 +103,7 @@ export function AtlasNodeComponent({
       />
       
       {/* Selection ring */}
-      {isSelected && (
+      {isSelected && !isFaded && (
         <circle
           cx={0}
           cy={0}
@@ -116,48 +123,50 @@ export function AtlasNodeComponent({
         y={2}
         textAnchor="middle"
         dominantBaseline="middle"
-        className="text-xl select-none pointer-events-none"
-        style={{ fontSize: '24px' }}
+        className="select-none pointer-events-none"
+        style={{ fontSize: isFaded ? '16px' : '24px' }}
       >
         {node.emoji}
       </text>
       
       {/* Drill-down indicator */}
-      {hasChildren && (
+      {hasChildren && !isFaded && (
         <circle
           cx={nodeSize / 2 - 4}
           cy={-nodeSize / 2 + 4}
           r={6}
           className="fill-primary"
         >
-          <title>Contains sub-projects</title>
+          <title>Contains children</title>
         </circle>
       )}
       
       {/* Label below node */}
       <text
         x={0}
-        y={nodeSize / 2 + 16}
+        y={nodeSize / 2 + 14}
         textAnchor="middle"
         className={cn(
           'text-xs font-medium select-none pointer-events-none',
           isSelected ? 'fill-foreground' : 'fill-muted-foreground'
         )}
-        style={{ fontSize: '11px' }}
+        style={{ fontSize: isFaded ? '9px' : '11px' }}
       >
-        {node.name}
+        {node.name.length > 12 ? node.name.slice(0, 10) + '...' : node.name}
       </text>
       
       {/* Task count badge */}
-      <text
-        x={0}
-        y={nodeSize / 2 + 28}
-        textAnchor="middle"
-        className="fill-muted-foreground select-none pointer-events-none"
-        style={{ fontSize: '9px' }}
-      >
-        {node.completedCount}/{node.taskCount}
-      </text>
+      {!isFaded && (
+        <text
+          x={0}
+          y={nodeSize / 2 + 26}
+          textAnchor="middle"
+          className="fill-muted-foreground select-none pointer-events-none"
+          style={{ fontSize: '9px' }}
+        >
+          {node.completedCount}/{node.taskCount}
+        </text>
+      )}
     </g>
   );
 }

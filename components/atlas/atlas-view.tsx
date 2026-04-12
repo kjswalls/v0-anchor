@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useCallback, useState } from 'react';
-import { useAtlasStore, type AtlasNode } from '@/lib/atlas-store';
-import { generateMockAtlasNodes, getMockTasksForProject } from '@/lib/atlas-mock-data';
+import { useAtlasStore } from '@/lib/atlas-store';
+import { generateMockAtlasItems, getMockTasksForItem } from '@/lib/atlas-mock-data';
 import { AtlasRings } from './atlas-rings';
 import { TodayPortal } from './today-portal';
 import { AtlasBreadcrumbs } from './atlas-breadcrumbs';
@@ -19,38 +19,37 @@ interface AtlasViewProps {
 export function AtlasView({ onExitAtlas }: AtlasViewProps) {
   const { tasks, selectedDate } = usePlannerStore();
   const {
-    currentPath,
-    selectedNodeId,
-    drillDown,
-    drillUp,
-    drillToRoot,
-    selectNode,
-    getCurrentNodes,
+    focusPath,
+    selectedItemId,
+    setRootItems,
+    selectItem,
+    zoomIn,
+    zoomOut,
+    zoomToRoot,
+    getVisibleRings,
     getBreadcrumbs,
-    getSelectedNode,
+    getSelectedItem,
   } = useAtlasStore();
   
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   
-  // Initialize nodes from mock data (in production, derive from planner store)
+  // Initialize data from mock (in production, derive from planner store)
   useEffect(() => {
-    const mockNodes = generateMockAtlasNodes();
-    useAtlasStore.setState({ nodes: mockNodes });
-  }, []);
+    const mockItems = generateMockAtlasItems();
+    setRootItems(mockItems);
+  }, [setRootItems]);
   
-  // Measure container size for fullscreen experience
+  // Measure container size
   useEffect(() => {
     const updateSize = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
       const isMobile = width < 768;
-      // Full width since sidebars are hidden in Atlas mode
-      // Height minus header (56px), breadcrumbs (~40px), and bottom panel (~200px on desktop)
       const availableWidth = width;
       const availableHeight = isMobile 
-        ? height - 56 - 40 - 60 // Mobile: header + breadcrumbs + drawer trigger
-        : height - 56 - 40 - 200; // Desktop: header + breadcrumbs + bottom panel
+        ? height - 56 - 48 - 60
+        : height - 56 - 48 - 200;
       setContainerSize({
         width: availableWidth,
         height: availableHeight,
@@ -66,97 +65,94 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (selectedNodeId) {
-          selectNode(null);
-        } else if (currentPath.length > 0) {
-          drillUp();
+        if (selectedItemId) {
+          selectItem(null);
+        } else if (focusPath.length > 0) {
+          zoomOut();
         } else {
           onExitAtlas();
         }
       }
       if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey) {
-        // Prevent if focused on input
         if (document.activeElement?.tagName === 'INPUT') return;
         e.preventDefault();
-        if (currentPath.length > 0) {
-          drillUp();
+        if (focusPath.length > 0) {
+          zoomOut();
         }
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId, currentPath, selectNode, drillUp, onExitAtlas]);
+  }, [selectedItemId, focusPath, selectItem, zoomOut, onExitAtlas]);
   
-  const currentNodes = getCurrentNodes();
+  const visibleRings = getVisibleRings();
   const breadcrumbs = getBreadcrumbs();
-  const selectedNode = getSelectedNode();
+  const selectedItem = getSelectedItem();
   
   // Calculate total progress for today portal
   const todayTasks = useMemo(() => {
     return tasks.filter(t => t.startDate === selectedDate.toISOString().split('T')[0]);
   }, [tasks, selectedDate]);
   
-  const totalTasks = todayTasks.length || currentNodes.reduce((sum, n) => sum + n.taskCount, 0);
+  // Get all items from first visible ring for total count
+  const mainRingItems = visibleRings.find(r => !r.isFaded)?.items || [];
+  const totalTasks = todayTasks.length || mainRingItems.reduce((sum, n) => sum + n.taskCount, 0);
   const completedTasks = todayTasks.filter(t => t.status === 'completed').length || 
-    currentNodes.reduce((sum, n) => sum + n.completedCount, 0);
+    mainRingItems.reduce((sum, n) => sum + n.completedCount, 0);
   
-  // Get mock tasks for selected project
+  // Get tasks for selected item
   const selectedTasks = useMemo(() => {
-    if (!selectedNodeId) return [];
-    return getMockTasksForProject(selectedNodeId);
-  }, [selectedNodeId]);
+    return getMockTasksForItem(selectedItem);
+  }, [selectedItem]);
   
   // Handle breadcrumb navigation
   const handleBreadcrumbNavigate = useCallback((index: number) => {
     if (index === 0) {
-      drillToRoot();
+      zoomToRoot();
     } else {
       // Navigate to specific level
       const targetPath = breadcrumbs.slice(1, index + 1).map(b => b.id);
-      useAtlasStore.setState({ currentPath: targetPath, selectedNodeId: null });
+      useAtlasStore.setState({ focusPath: targetPath, selectedItemId: null });
     }
-  }, [breadcrumbs, drillToRoot]);
+  }, [breadcrumbs, zoomToRoot]);
   
-  // Ring size - make it bigger to fill most of the container
+  // Ring size
   const ringSize = Math.min(
     containerSize.width * 0.95, 
     containerSize.height * 0.95, 
-    900 // Max size
+    900
   );
   
-  // Determine ring count based on viewport
-  const ringCount = containerSize.width < 768 ? 2 : 3;
-
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
-      {/* Breadcrumbs */}
+      {/* Breadcrumbs - shows lineage path */}
       <AtlasBreadcrumbs
         breadcrumbs={breadcrumbs}
         onNavigate={handleBreadcrumbNavigate}
-        onBack={drillUp}
-        canGoBack={currentPath.length > 0}
+        onBack={zoomOut}
+        canGoBack={focusPath.length > 0}
       />
       
-      {/* Main content - vertical layout with rings on top, panel below */}
+      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Atlas visualization - takes most of the space */}
+        {/* Atlas visualization */}
         <div
           className="flex-1 flex items-start justify-center pt-4 relative overflow-hidden"
-          onClick={() => selectNode(null)}
+          onClick={() => selectItem(null)}
         >
           {ringSize > 0 && (
             <div className="relative" style={{ width: ringSize, height: ringSize }}>
               <AtlasRings
-                nodes={currentNodes}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={selectNode}
-                onDrillDown={drillDown}
-                ringCount={ringCount}
+                rings={visibleRings}
+                selectedItemId={selectedItemId}
+                onSelectItem={selectItem}
+                onZoomIn={zoomIn}
+                onZoomOut={zoomOut}
                 size={ringSize}
               />
               
-              {/* Today portal - positioned at bottom center of the rings */}
+              {/* Today portal at bottom center */}
               <TodayPortal
                 totalTasks={totalTasks}
                 completedTasks={completedTasks}
@@ -171,15 +167,15 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
         {/* Desktop: Bottom task panel */}
         <div className="hidden md:block h-48 border-t border-border bg-card shrink-0">
           <AtlasTaskPanel
-            selectedNode={selectedNode}
+            selectedNode={selectedItem}
             tasks={selectedTasks}
-            onClose={() => selectNode(null)}
+            onClose={() => selectItem(null)}
             layout="horizontal"
           />
         </div>
       </div>
       
-      {/* Mobile: Bottom drawer for tasks */}
+      {/* Mobile: Bottom drawer */}
       <div className="md:hidden shrink-0">
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DrawerTrigger asChild>
@@ -195,17 +191,17 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 'h-4 w-4 transition-transform',
                 drawerOpen && 'rotate-180'
               )} />
-              {selectedNode ? (
+              {selectedItem ? (
                 <span className="flex items-center gap-1">
-                  <span>{selectedNode.emoji}</span>
-                  {selectedNode.name}
+                  <span>{selectedItem.emoji}</span>
+                  {selectedItem.name}
                   <span className="text-muted-foreground ml-1">
-                    ({selectedNode.completedCount}/{selectedNode.taskCount})
+                    ({selectedItem.completedCount}/{selectedItem.taskCount})
                   </span>
                 </span>
               ) : (
                 <span className="text-muted-foreground">
-                  Select a project to view tasks
+                  Select an item to view details
                 </span>
               )}
             </button>
@@ -213,10 +209,10 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
           <DrawerContent className="max-h-[70vh]">
             <div className="h-[50vh]">
               <AtlasTaskPanel
-                selectedNode={selectedNode}
+                selectedNode={selectedItem}
                 tasks={selectedTasks}
                 onClose={() => {
-                  selectNode(null);
+                  selectItem(null);
                   setDrawerOpen(false);
                 }}
               />
