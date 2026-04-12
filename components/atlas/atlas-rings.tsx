@@ -16,10 +16,16 @@ interface AtlasRingsProps {
 }
 
 // Arc configuration - rainbow orientation
+// 270 degrees = top center of the arc
 const ARC_START_ANGLE = 200; // degrees (lower-left)
 const ARC_END_ANGLE = 340; // degrees (lower-right)
-const ARC_SPAN = ARC_END_ANGLE - ARC_START_ANGLE;
-const ARC_CENTER_ANGLE = (ARC_START_ANGLE + ARC_END_ANGLE) / 2; // 270 = top
+const ARC_SPAN = ARC_END_ANGLE - ARC_START_ANGLE; // 140 degrees
+const ARC_CENTER_ANGLE = 270; // Top center
+
+// Max visible items per ring to avoid crowding
+const MAX_VISIBLE_ITEMS = 7;
+// Angle buffer from edges where items start fading
+const FADE_BUFFER_ANGLE = 20;
 
 function polarToCartesian(
   centerX: number,
@@ -51,15 +57,16 @@ function describeArc(
   ].join(' ');
 }
 
-// Calculate angle to rotate ring so a specific item index is at center
-function calculateRotationToCenter(
-  itemIndex: number,
-  totalItems: number
-): number {
-  if (totalItems <= 1) return 0;
-  const angleStep = ARC_SPAN / (totalItems + 1);
-  const itemAngle = ARC_START_ANGLE + angleStep * (itemIndex + 1);
-  return ARC_CENTER_ANGLE - itemAngle;
+// Calculate opacity based on how close an angle is to the arc edges
+function calculateEdgeFade(angle: number): number {
+  const distFromStart = Math.abs(angle - ARC_START_ANGLE);
+  const distFromEnd = Math.abs(angle - ARC_END_ANGLE);
+  const minDist = Math.min(distFromStart, distFromEnd);
+  
+  if (minDist < FADE_BUFFER_ANGLE) {
+    return minDist / FADE_BUFFER_ANGLE;
+  }
+  return 1;
 }
 
 export function AtlasRings({
@@ -76,109 +83,152 @@ export function AtlasRings({
   const centerX = size / 2;
   const centerY = size * 1.1;
   
-  // Ring radii - distribute from largest (top) to smallest (bottom)
+  // Ring radii
   const maxRadius = size * 1.0;
   const minRadius = size * 0.35;
-  const visibleRingCount = rings.filter(r => !r.isFaded).length;
   const totalRings = rings.length;
-  const ringSpacing = totalRings > 1 ? (maxRadius - minRadius) / (totalRings) : 0;
+  const ringSpacing = totalRings > 1 ? (maxRadius - minRadius) / totalRings : 0;
   
-  // Calculate radius for each ring
   const getRingRadius = (ringIndex: number, isFaded: boolean) => {
-    // Faded rings (zoom out/in hints) are at the extremes
-    if (isFaded && ringIndex === 0) return maxRadius + ringSpacing * 0.5; // Parent ring above
-    if (isFaded && ringIndex === rings.length - 1) return minRadius - ringSpacing * 0.3; // Child hint below
+    if (isFaded && ringIndex === 0) return maxRadius + ringSpacing * 0.5;
+    if (isFaded && ringIndex === rings.length - 1) return minRadius - ringSpacing * 0.3;
     return maxRadius - ringIndex * ringSpacing;
   };
   
-  // Get lineage for selected item to determine which items to highlight
+  // Get lineage for selected item
   const selectedLineage = useMemo(() => {
     if (!selectedItemId) return new Set<string>();
     const lineage = getLineage(selectedItemId);
     return new Set(lineage.map(item => item.id));
   }, [selectedItemId, getLineage]);
   
-  // Calculate node positions for each ring
-  const ringData = useMemo(() => {
-    return rings.map((ring, ringIdx) => {
-      const radius = getRingRadius(ringIdx, ring.isFaded);
-      const rotation = ring.rotationAngle || 0;
-      
-      const nodePositions = ring.items.map((item, itemIdx) => {
-        const totalItems = ring.items.length;
-        const angleStep = ARC_SPAN / Math.max(totalItems + 1, 2);
-        const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
-        const angle = baseAngle + rotation;
-        
-        const { x, y } = polarToCartesian(centerX, centerY, radius, angle);
-        
-        // Determine if this item is in the selected lineage
-        const isInLineage = selectedLineage.has(item.id) || 
-          (selectedItemId && item.parentId === selectedItemId) ||
-          selectedLineage.has(item.parentId || '');
-        
-        return { item, x, y, angle, isInLineage };
-      });
-      
-      return {
-        ring,
-        radius,
-        path: describeArc(centerX, centerY, radius, ARC_START_ANGLE, ARC_END_ANGLE),
-        nodePositions,
-      };
-    });
-  }, [rings, centerX, centerY, selectedLineage, selectedItemId]);
-  
-  // Track the last processed selection to avoid redundant updates
+  // Track the last processed selection
   const lastProcessedSelectionRef = useRef<string | null>(null);
   
-  // Update ring rotations when an item is selected
+  // Calculate ring rotations based on selection
+  const ringRotations = useMemo(() => {
+    const rotations: number[] = rings.map(() => 0);
+    
+    if (!selectedItemId) return rotations;
+    
+    rings.forEach((ring, ringIdx) => {
+      // Check if this ring contains the selected item
+      const selectedIndex = ring.items.findIndex(item => item.id === selectedItemId);
+      if (selectedIndex >= 0) {
+        // Calculate rotation to center this item
+        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = ARC_SPAN / (visibleCount + 1);
+        const itemAngle = ARC_START_ANGLE + angleStep * (selectedIndex + 1);
+        rotations[ringIdx] = ARC_CENTER_ANGLE - itemAngle;
+        return;
+      }
+      
+      // Check if this ring has children of the selected item
+      const childIndices = ring.items
+        .map((item, idx) => item.parentId === selectedItemId ? idx : -1)
+        .filter(idx => idx >= 0);
+      
+      if (childIndices.length > 0) {
+        // Center the middle child
+        const middleChildIdx = childIndices[Math.floor(childIndices.length / 2)];
+        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = ARC_SPAN / (visibleCount + 1);
+        const itemAngle = ARC_START_ANGLE + angleStep * (middleChildIdx + 1);
+        rotations[ringIdx] = ARC_CENTER_ANGLE - itemAngle;
+      }
+    });
+    
+    return rotations;
+  }, [selectedItemId, rings]);
+  
+  // Update store with rotations
   useEffect(() => {
-    // Avoid re-processing the same selection
     if (lastProcessedSelectionRef.current === selectedItemId) {
       return;
     }
     lastProcessedSelectionRef.current = selectedItemId;
     
-    // Get the store action directly to avoid dependency issues
     const store = useAtlasStore.getState();
-    
-    if (!selectedItemId) {
-      // Reset all rotations
-      rings.forEach((_, idx) => store.setRingRotation(idx, 0));
-      return;
-    }
-    
-    // Find which ring contains the selected item and rotate it
-    rings.forEach((ring, ringIdx) => {
-      const itemIndex = ring.items.findIndex(item => item.id === selectedItemId);
-      if (itemIndex >= 0) {
-        const rotation = calculateRotationToCenter(itemIndex, ring.items.length);
-        store.setRingRotation(ringIdx, rotation);
-        return; // This ring is handled
+    ringRotations.forEach((rotation, idx) => {
+      store.setRingRotation(idx, rotation);
+    });
+  }, [selectedItemId, ringRotations]);
+  
+  // Calculate node positions with rotation applied
+  const ringData = useMemo(() => {
+    return rings.map((ring, ringIdx) => {
+      const radius = getRingRadius(ringIdx, ring.isFaded);
+      const rotation = ringRotations[ringIdx] || 0;
+      
+      // Limit visible items and space them evenly
+      const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
+      const angleStep = ARC_SPAN / (visibleCount + 1);
+      
+      // Get items to show - prioritize selected item and its siblings
+      let itemsToShow = ring.items;
+      if (ring.items.length > MAX_VISIBLE_ITEMS) {
+        // If there's a selected item in this ring, center around it
+        const selectedIdx = ring.items.findIndex(item => item.id === selectedItemId);
+        const childOfSelectedIdx = ring.items.findIndex(item => item.parentId === selectedItemId);
+        
+        let centerIdx = selectedIdx >= 0 ? selectedIdx : childOfSelectedIdx >= 0 ? childOfSelectedIdx : Math.floor(ring.items.length / 2);
+        
+        const half = Math.floor(MAX_VISIBLE_ITEMS / 2);
+        let startIdx = Math.max(0, centerIdx - half);
+        let endIdx = startIdx + MAX_VISIBLE_ITEMS;
+        
+        if (endIdx > ring.items.length) {
+          endIdx = ring.items.length;
+          startIdx = Math.max(0, endIdx - MAX_VISIBLE_ITEMS);
+        }
+        
+        itemsToShow = ring.items.slice(startIdx, endIdx);
       }
       
-      // Also rotate child rings to center children of selected item
-      const childrenOfSelected = ring.items.filter(item => item.parentId === selectedItemId);
-      if (childrenOfSelected.length > 0) {
-        // Center the middle child
-        const firstChildIdx = ring.items.findIndex(item => item.parentId === selectedItemId);
-        if (firstChildIdx >= 0) {
-          const midChildIdx = firstChildIdx + Math.floor(childrenOfSelected.length / 2);
-          const rotation = calculateRotationToCenter(midChildIdx, ring.items.length);
-          store.setRingRotation(ringIdx, rotation);
-        }
-      }
+      const nodePositions = itemsToShow.map((item, itemIdx) => {
+        // Calculate base angle (before rotation)
+        const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
+        // Apply rotation
+        const finalAngle = baseAngle + rotation;
+        
+        // Calculate position using final angle
+        const { x, y } = polarToCartesian(centerX, centerY, radius, finalAngle);
+        
+        // Calculate edge fade
+        const edgeFade = calculateEdgeFade(finalAngle);
+        
+        // Is this item in the selection lineage?
+        const isInLineage = selectedLineage.has(item.id) || 
+          (selectedItemId && item.parentId === selectedItemId) ||
+          selectedLineage.has(item.parentId || '');
+        
+        return { 
+          item, 
+          x, 
+          y, 
+          angle: finalAngle,
+          edgeFade,
+          isInLineage,
+        };
+      });
+      
+      return {
+        ring,
+        radius,
+        rotation,
+        path: describeArc(centerX, centerY, radius, ARC_START_ANGLE, ARC_END_ANGLE),
+        nodePositions,
+      };
     });
-  }, [selectedItemId, rings]);
+  }, [rings, ringRotations, centerX, centerY, selectedLineage, selectedItemId]);
   
-  // Find connection lines from selected item to its children across rings
+  // Connection lines from selected item to children (using rotated positions)
   const connectionLines = useMemo(() => {
     if (!selectedItemId) return [];
     
     const lines: { fromX: number; fromY: number; toX: number; toY: number; color: string }[] = [];
     
-    // Find the selected item position
+    // Find the selected item position (already rotated)
     let selectedPos: { x: number; y: number; color: string } | null = null;
     for (const { nodePositions } of ringData) {
       const found = nodePositions.find(np => np.item.id === selectedItemId);
@@ -190,10 +240,10 @@ export function AtlasRings({
     
     if (!selectedPos) return [];
     
-    // Find all children of selected item in subsequent rings
+    // Find children on subsequent rings
     for (const { nodePositions } of ringData) {
       for (const np of nodePositions) {
-        if (np.item.parentId === selectedItemId) {
+        if (np.item.parentId === selectedItemId && np.edgeFade > 0.3) {
           lines.push({
             fromX: selectedPos.x,
             fromY: selectedPos.y,
@@ -215,14 +265,13 @@ export function AtlasRings({
       viewBox={`0 0 ${size} ${size}`}
       className="overflow-visible"
     >
-      {/* Definitions for gradients and filters */}
       <defs>
         <radialGradient id="centerGlow" cx="50%" cy="100%" r="50%">
           <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.08" />
           <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
         </radialGradient>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3" result="blur" />
+        <filter id="connectionGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -247,16 +296,9 @@ export function AtlasRings({
         ringRadii={ringData.map(r => r.radius)}
       />
       
-      {/* Ring arcs with labels */}
+      {/* Ring arcs (static, don't rotate) */}
       {ringData.map(({ ring, radius, path }, ringIdx) => (
-        <g 
-          key={`ring-${ringIdx}`}
-          style={{
-            transition: 'transform 0.5s ease-out',
-            transformOrigin: `${centerX}px ${centerY}px`,
-            transform: `rotate(${ring.rotationAngle || 0}deg)`,
-          }}
-        >
+        <g key={`ring-${ringIdx}`}>
           {/* Ring arc */}
           <path
             d={path}
@@ -269,7 +311,7 @@ export function AtlasRings({
             style={{ animationDelay: `${ringIdx * 0.5}s` }}
           />
           
-          {/* Active ring highlight */}
+          {/* Ring highlight */}
           {!ring.isFaded && (
             <path
               d={path}
@@ -281,47 +323,45 @@ export function AtlasRings({
             />
           )}
           
-          {/* Ring label - curved along the left side of the arc */}
+          {/* Ring label */}
           {ring.label && !ring.isFaded && (
-            <g style={{ transform: `rotate(${-(ring.rotationAngle || 0)}deg)`, transformOrigin: `${centerX}px ${centerY}px` }}>
+            <>
               <defs>
                 <path
                   id={`labelPath-${ringIdx}`}
-                  d={describeArc(centerX, centerY, radius + 12, ARC_START_ANGLE, ARC_START_ANGLE + 30)}
+                  d={describeArc(centerX, centerY, radius + 14, ARC_START_ANGLE, ARC_START_ANGLE + 35)}
                 />
               </defs>
               <text
                 fill="var(--muted-foreground)"
-                fontSize="10"
+                fontSize="9"
                 fontWeight="300"
-                letterSpacing="0.1em"
-                opacity={0.6}
+                letterSpacing="0.15em"
+                opacity={0.5}
               >
-                <textPath href={`#labelPath-${ringIdx}`} startOffset="5%">
+                <textPath href={`#labelPath-${ringIdx}`} startOffset="2%">
                   {ring.label}
                 </textPath>
               </text>
-            </g>
+            </>
           )}
         </g>
       ))}
       
-      {/* Connection lines from selected item to children */}
+      {/* Connection lines */}
       {connectionLines.map((line, idx) => (
         <g key={`connection-${idx}`}>
-          {/* Glow effect */}
           <line
             x1={line.fromX}
             y1={line.fromY}
             x2={line.toX}
             y2={line.toY}
             stroke={line.color}
-            strokeWidth={4}
-            strokeDasharray="6 4"
-            opacity={0.3}
-            style={{ filter: 'blur(4px)' }}
+            strokeWidth={6}
+            strokeDasharray="8 6"
+            opacity={0.2}
+            style={{ filter: 'blur(6px)' }}
           />
-          {/* Main line */}
           <line
             x1={line.fromX}
             y1={line.fromY}
@@ -329,35 +369,29 @@ export function AtlasRings({
             y2={line.toY}
             stroke={line.color}
             strokeWidth={2}
-            strokeDasharray="6 4"
-            opacity={0.6}
+            strokeDasharray="8 6"
+            opacity={0.7}
           />
         </g>
       ))}
       
-      {/* Nodes - render in separate pass so they're on top */}
+      {/* Nodes - rendered with rotated positions */}
       {ringData.map(({ ring, nodePositions }, ringIdx) => (
-        <g 
-          key={`nodes-${ringIdx}`}
-          style={{
-            transition: 'transform 0.5s ease-out',
-            transformOrigin: `${centerX}px ${centerY}px`,
-            transform: `rotate(${ring.rotationAngle || 0}deg)`,
-          }}
-        >
-          {nodePositions.map(({ item, x, y, isInLineage }) => {
+        <g key={`nodes-${ringIdx}`}>
+          {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
             const isSelected = selectedItemId === item.id;
             const shouldFade = selectedItemId && !isInLineage && !isSelected;
+            const finalOpacity = edgeFade * (shouldFade ? 0.25 : 1) * (ring.isFaded ? 0.4 : 1);
+            
+            // Don't render if too faded
+            if (finalOpacity < 0.1) return null;
             
             return (
               <g
                 key={item.id}
                 style={{
-                  // Counter-rotate node content so labels stay upright
-                  transform: `rotate(${-(ring.rotationAngle || 0)}deg)`,
-                  transformOrigin: `${x}px ${y}px`,
+                  opacity: finalOpacity,
                   transition: 'opacity 0.3s ease-out',
-                  opacity: shouldFade ? 0.3 : 1,
                 }}
               >
                 <AtlasNodeComponent
@@ -366,10 +400,9 @@ export function AtlasRings({
                   y={y}
                   isSelected={isSelected}
                   hasChildren={item.children.length > 0}
-                  isFaded={ring.isFaded}
+                  isFaded={ring.isFaded || finalOpacity < 0.5}
                   onClick={() => {
                     if (ring.isFaded && ring.index === 0) {
-                      // Clicking parent ring zooms out
                       onZoomOut();
                     } else {
                       onSelectItem(isSelected ? null : item.id);
