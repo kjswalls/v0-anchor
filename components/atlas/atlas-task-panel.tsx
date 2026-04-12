@@ -10,6 +10,7 @@ interface AtlasTaskPanelProps {
   selectedNode: AtlasNode | null;
   tasks: MockTask[];
   onClose: () => void;
+  layout?: 'vertical' | 'horizontal';
 }
 
 const priorityColors = {
@@ -22,10 +23,14 @@ export function AtlasTaskPanel({
   selectedNode,
   tasks,
   onClose,
+  layout = 'vertical',
 }: AtlasTaskPanelProps) {
   if (!selectedNode) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+      <div className={cn(
+        'flex items-center justify-center text-muted-foreground text-sm',
+        layout === 'horizontal' ? 'h-full' : 'h-full'
+      )}>
         Select a project to view tasks
       </div>
     );
@@ -34,6 +39,91 @@ export function AtlasTaskPanel({
   const completedCount = tasks.filter(t => t.completed).length;
   const progressPercent = tasks.length > 0 ? (completedCount / tasks.length) * 100 : 0;
 
+  // Horizontal layout for bottom panel on desktop
+  if (layout === 'horizontal') {
+    return (
+      <div className="flex h-full">
+        {/* Project info - left side */}
+        <div className="flex items-center gap-4 px-6 border-r border-border shrink-0">
+          <span className="text-2xl">{selectedNode.emoji}</span>
+          <div>
+            <h3 className="font-semibold text-foreground">{selectedNode.name}</h3>
+            <p className="text-xs text-muted-foreground">
+              {completedCount} of {tasks.length} tasks
+            </p>
+            {/* Progress bar */}
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-20 h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground">
+                {Math.round(progressPercent)}%
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        {/* Task list - horizontal scrolling */}
+        <ScrollArea className="flex-1" orientation="horizontal">
+          <div className="flex gap-3 p-4 h-full">
+            {tasks.slice(0, 5).map((task) => (
+              <div
+                key={task.id}
+                className={cn(
+                  'flex flex-col gap-2 p-3 rounded-lg border border-border bg-card/50',
+                  'hover:bg-secondary/50 cursor-pointer transition-colors',
+                  'min-w-[200px] max-w-[240px]',
+                  task.completed && 'opacity-60'
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  {/* Completion status */}
+                  {task.completed ? (
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <Circle className={cn('h-4 w-4 mt-0.5 flex-shrink-0', priorityColors[task.priority])} />
+                  )}
+                  
+                  <p className={cn(
+                    'text-sm flex-1',
+                    task.completed && 'line-through text-muted-foreground'
+                  )}>
+                    {task.title}
+                  </p>
+                </div>
+                
+                {/* Time badge */}
+                {task.dueTime && (
+                  <div className="flex items-center gap-1 pl-6">
+                    <Clock className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">{task.dueTime}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {tasks.length === 0 && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span className="text-xl">📭</span>
+                <p className="text-sm">No tasks in this project</p>
+              </div>
+            )}
+            
+            {tasks.length > 5 && (
+              <div className="flex items-center justify-center min-w-[100px] text-muted-foreground text-sm">
+                +{tasks.length - 5} more
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Vertical layout for mobile drawer
   return (
     <div className="flex flex-col h-full">
       {/* Header */}

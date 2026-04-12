@@ -18,11 +18,12 @@ export function TodayPortal({
   size,
   onExitAtlas,
 }: TodayPortalProps) {
-  const portalSize = size * 0.22;
+  // Smaller portal size since projects are the focus
+  const portalSize = Math.min(size * 0.12, 80);
   const progressPercent = totalTasks > 0 
     ? (completedTasks / totalTasks) * 100 
     : 0;
-  const circumference = 2 * Math.PI * (portalSize / 2 - 8);
+  const circumference = 2 * Math.PI * (portalSize / 2 - 4);
   const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
 
   return (
@@ -32,17 +33,20 @@ export function TodayPortal({
         width: portalSize,
         height: portalSize,
         left: '50%',
-        top: '50%',
-        transform: 'translate(-50%, -50%)',
+        bottom: `${size * 0.15 - portalSize / 2}px`, // Position at bottom center where arcs emanate
+        transform: 'translateX(-50%)',
       }}
-      onClick={onExitAtlas}
+      onClick={(e) => {
+        e.stopPropagation();
+        onExitAtlas();
+      }}
       role="button"
       aria-label={`Today: ${completedTasks} of ${totalTasks} tasks completed. Click to exit Atlas view.`}
     >
       {/* Outer glow ring */}
       <div
-        className="absolute inset-0 rounded-full bg-primary/20 blur-xl group-hover:bg-primary/30 transition-colors"
-        style={{ transform: 'scale(1.2)' }}
+        className="absolute inset-0 rounded-full bg-primary/15 blur-lg group-hover:bg-primary/25 transition-colors"
+        style={{ transform: 'scale(1.3)' }}
       />
       
       {/* Progress ring */}
@@ -55,19 +59,19 @@ export function TodayPortal({
         <circle
           cx={portalSize / 2}
           cy={portalSize / 2}
-          r={portalSize / 2 - 8}
+          r={portalSize / 2 - 4}
           fill="none"
           stroke="var(--border)"
-          strokeWidth={4}
+          strokeWidth={2}
         />
         {/* Progress arc */}
         <circle
           cx={portalSize / 2}
           cy={portalSize / 2}
-          r={portalSize / 2 - 8}
+          r={portalSize / 2 - 4}
           fill="none"
           stroke="var(--primary)"
-          strokeWidth={4}
+          strokeWidth={2}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
@@ -79,33 +83,27 @@ export function TodayPortal({
       <div
         className={cn(
           'relative flex flex-col items-center justify-center rounded-full',
-          'bg-card border border-border shadow-lg',
-          'group-hover:border-primary/50 group-hover:shadow-primary/20 group-hover:shadow-xl',
+          'bg-card border border-border shadow-md',
+          'group-hover:border-primary/50 group-hover:shadow-primary/20 group-hover:shadow-lg',
           'transition-all duration-200'
         )}
         style={{
-          width: portalSize - 16,
-          height: portalSize - 16,
+          width: portalSize - 8,
+          height: portalSize - 8,
         }}
       >
-        <span className="text-2xl mb-1">
-          {progressPercent === 100 ? '✨' : '📍'}
-        </span>
         <span className="text-xs font-semibold text-foreground">
-          Today
-        </span>
-        <span className="text-[10px] text-muted-foreground">
           {format(selectedDate, 'MMM d')}
         </span>
-        <span className="text-xs font-medium text-primary mt-1">
+        <span className="text-[10px] font-medium text-primary">
           {completedTasks}/{totalTasks}
         </span>
       </div>
       
       {/* Tooltip on hover */}
-      <div className="absolute -bottom-8 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+      <div className="absolute -bottom-7 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
         <span className="text-[10px] text-muted-foreground bg-card px-2 py-1 rounded border border-border shadow-sm">
-          Click to return to Day view
+          Click to exit
         </span>
       </div>
     </div>

@@ -39,16 +39,18 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
     useAtlasStore.setState({ nodes: mockNodes });
   }, []);
   
-  // Measure container size
+  // Measure container size for fullscreen experience
   useEffect(() => {
     const updateSize = () => {
-      // Get viewport dimensions minus nav and panel space
       const width = window.innerWidth;
       const height = window.innerHeight;
-      // Adjust for desktop panel (right side) and mobile drawer
       const isMobile = width < 768;
-      const availableWidth = isMobile ? width : width - 320; // Panel width on desktop
-      const availableHeight = isMobile ? height - 200 : height - 160; // Header + breadcrumbs + panel
+      // Full width since sidebars are hidden in Atlas mode
+      // Height minus header (56px), breadcrumbs (~40px), and bottom panel (~200px on desktop)
+      const availableWidth = width;
+      const availableHeight = isMobile 
+        ? height - 56 - 40 - 60 // Mobile: header + breadcrumbs + drawer trigger
+        : height - 56 - 40 - 200; // Desktop: header + breadcrumbs + bottom panel
       setContainerSize({
         width: availableWidth,
         height: availableHeight,
@@ -116,8 +118,12 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
     }
   }, [breadcrumbs, drillToRoot]);
   
-  // Determine ring size based on container
-  const ringSize = Math.min(containerSize.width * 0.9, containerSize.height * 0.85, 600);
+  // Ring size - make it bigger to fill most of the container
+  const ringSize = Math.min(
+    containerSize.width * 0.95, 
+    containerSize.height * 0.95, 
+    900 // Max size
+  );
   
   // Determine ring count based on viewport
   const ringCount = containerSize.width < 768 ? 2 : 3;
@@ -132,11 +138,11 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
         canGoBack={currentPath.length > 0}
       />
       
-      {/* Main content area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Atlas visualization */}
+      {/* Main content - vertical layout with rings on top, panel below */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Atlas visualization - takes most of the space */}
         <div
-          className="flex-1 flex items-center justify-center relative"
+          className="flex-1 flex items-start justify-center pt-4 relative overflow-hidden"
           onClick={() => selectNode(null)}
         >
           {ringSize > 0 && (
@@ -150,7 +156,7 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 size={ringSize}
               />
               
-              {/* Center portal */}
+              {/* Today portal - positioned at bottom center of the rings */}
               <TodayPortal
                 totalTasks={totalTasks}
                 completedTasks={completedTasks}
@@ -162,18 +168,19 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
           )}
         </div>
         
-        {/* Desktop: Fixed right panel */}
-        <div className="hidden md:flex w-80 border-l border-border bg-card flex-col">
+        {/* Desktop: Bottom task panel */}
+        <div className="hidden md:block h-48 border-t border-border bg-card shrink-0">
           <AtlasTaskPanel
             selectedNode={selectedNode}
             tasks={selectedTasks}
             onClose={() => selectNode(null)}
+            layout="horizontal"
           />
         </div>
       </div>
       
       {/* Mobile: Bottom drawer for tasks */}
-      <div className="md:hidden">
+      <div className="md:hidden shrink-0">
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DrawerTrigger asChild>
             <button

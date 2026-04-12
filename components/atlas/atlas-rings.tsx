@@ -13,10 +13,11 @@ interface AtlasRingsProps {
   size: number;
 }
 
-// Arc configuration
-const ARC_START_ANGLE = -200; // degrees from top (opening faces down-left)
-const ARC_END_ANGLE = 20; // degrees from top
-const ARC_SPAN = ARC_END_ANGLE - ARC_START_ANGLE; // 220 degrees
+// Arc configuration - top-down orientation like Calendary
+// Arcs curve downward from top, nodes positioned on upper portion
+const ARC_START_ANGLE = -160; // degrees (left side, curving down)
+const ARC_END_ANGLE = -20; // degrees (right side, curving down)
+const ARC_SPAN = ARC_END_ANGLE - ARC_START_ANGLE; // 140 degrees
 
 function polarToCartesian(
   centerX: number,
@@ -56,15 +57,21 @@ export function AtlasRings({
   ringCount = 3,
   size,
 }: AtlasRingsProps) {
+  // Center positioned at the bottom center of the SVG area
+  // so arcs emanate upward/outward from the bottom
   const centerX = size / 2;
-  const centerY = size / 2;
+  const centerY = size * 0.85; // Center near bottom so arcs curve upward
   
-  // Calculate ring radii - distribute rings evenly
-  const minRadius = size * 0.18;
-  const maxRadius = size * 0.42;
+  // Calculate ring radii - larger rings that fill more space
+  // Outermost ring (top-tier projects) is smallest radius and appears at the top
+  // Innermost ring (sub-projects) is largest radius and appears lower
+  const minRadius = size * 0.30; // Smallest ring (top-tier) 
+  const maxRadius = size * 0.75; // Largest ring (deeper levels)
   const ringSpacing = (maxRadius - minRadius) / Math.max(ringCount - 1, 1);
   
   // Distribute nodes across rings
+  // Ring 0 = innermost (smallest radius, highest in visual hierarchy - top tier projects)
+  // Ring 1, 2, ... = progressively outer rings (sub-projects)
   const nodePositions = useMemo(() => {
     const positions: Array<{
       node: AtlasNode;
@@ -74,7 +81,7 @@ export function AtlasRings({
     }> = [];
     
     // Simple distribution: spread nodes evenly across available rings
-    // Primary ring (innermost) gets the most important nodes
+    // Primary ring (smallest/topmost) gets the most important nodes
     const nodesPerRing = Math.ceil(nodes.length / ringCount);
     
     nodes.forEach((node, index) => {
@@ -88,6 +95,7 @@ export function AtlasRings({
       const angleStep = ARC_SPAN / Math.max(nodesInThisRing + 1, 2);
       const angle = ARC_START_ANGLE + angleStep * (indexInRing + 1);
       
+      // Rings go from small (top) to large (bottom)
       const radius = minRadius + ringIndex * ringSpacing;
       const { x, y } = polarToCartesian(centerX, centerY, radius, angle);
       
@@ -115,10 +123,10 @@ export function AtlasRings({
       viewBox={`0 0 ${size} ${size}`}
       className="overflow-visible"
     >
-      {/* Background glow for selected area */}
+      {/* Background glow for center area (at bottom) */}
       <defs>
-        <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+        <radialGradient id="centerGlow" cx="50%" cy="85%" r="40%">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.1" />
           <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
         </radialGradient>
       </defs>
@@ -127,11 +135,11 @@ export function AtlasRings({
       <circle
         cx={centerX}
         cy={centerY}
-        r={minRadius * 0.8}
+        r={minRadius * 0.6}
         fill="url(#centerGlow)"
       />
       
-      {/* Ring arcs */}
+      {/* Ring arcs - drawn from innermost (top) to outermost */}
       {ringPaths.map((ring, index) => (
         <g key={`ring-${index}`}>
           {/* Ring background arc */}
@@ -139,19 +147,19 @@ export function AtlasRings({
             d={ring.path}
             fill="none"
             stroke="var(--border)"
-            strokeWidth={1.5}
+            strokeWidth={2}
             strokeLinecap="round"
-            opacity={0.5}
+            opacity={0.6}
           />
           
-          {/* Ring highlight arc (subtle) */}
+          {/* Active ring segment highlight */}
           <path
             d={ring.path}
             fill="none"
-            stroke="var(--muted-foreground)"
-            strokeWidth={0.5}
+            stroke="var(--primary)"
+            strokeWidth={2.5}
             strokeLinecap="round"
-            opacity={0.2}
+            opacity={0.15}
           />
         </g>
       ))}

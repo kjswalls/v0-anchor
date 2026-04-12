@@ -490,10 +490,13 @@ const handleAddFromTopNav = () => {
           onSearchOpenChange={setSearchOpen}
         />
         <div className="flex-1 flex overflow-hidden">
-          <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
+          {/* Hide left sidebar in Atlas view for fullscreen experience */}
+          {viewMode !== 'atlas' && (
+            <TaskSidebar onTaskClick={handleTaskClick} onHabitClick={handleHabitClick} onAddClick={handleAddFromSidebar} onAddHabitClick={handleAddHabitFromSidebar} onManageCategories={handleManageCategories} />
+          )}
           <main className="flex-1 flex flex-col overflow-hidden relative">
             {/* Left hover zone - shows task sidebar when collapsed (if enabled) */}
-            {!leftSidebarOpen && leftSidebarHoverEnabled && (
+            {!leftSidebarOpen && leftSidebarHoverEnabled && viewMode !== 'atlas' && (
               <div
                 className="absolute left-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
                 onMouseEnter={() => setLeftSidebarHovered(true)}
@@ -581,14 +584,15 @@ const handleAddFromTopNav = () => {
             </div>
             
             {/* Right hover zone - shows chat sidebar when collapsed (if enabled) */}
-            {!rightSidebarOpen && rightSidebarHoverEnabled && (
+            {!rightSidebarOpen && rightSidebarHoverEnabled && viewMode !== 'atlas' && (
               <div
                 className="absolute right-0 top-0 bottom-0 w-3 z-40 cursor-pointer hover:bg-primary/10 transition-colors"
                 onMouseEnter={() => setRightSidebarHovered(true)}
               />
             )}
             
-            <ChatSidebar onOpenSettings={() => setSettingsOpen(true)} />
+            {/* Hide chat sidebar in Atlas view for fullscreen experience */}
+            {viewMode !== 'atlas' && <ChatSidebar onOpenSettings={() => setSettingsOpen(true)} />}
           </main>
         </div>
       </div>
