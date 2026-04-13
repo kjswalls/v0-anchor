@@ -41,7 +41,7 @@ export function AtlasNodeComponent({
         e.stopPropagation();
         onDoubleClick();
       }}
-      className="cursor-pointer atlas-node-hover"
+      className="cursor-pointer atlas-node-hover atlas-node-transform"
       role="button"
       aria-label={`${node.name}: ${node.completedCount} of ${node.taskCount} tasks completed`}
       style={{ opacity: isFaded ? 0.4 : 1 }}
