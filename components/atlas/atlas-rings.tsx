@@ -233,6 +233,8 @@ export function AtlasRings({
       const prevRealItems = prevRealItemsRef.current.get(idx) || [];
       const currentRealItems = ring.items.filter(i => !isPlaceholder(i));
       
+      console.log('[v0] Ring', idx, '- wasPopulated:', wasPopulated, 'nowPopulated:', nowPopulated, 'prevRealItems:', prevRealItems.length, 'currentRealItems:', currentRealItems.length);
+      
       // If this ring just got populated (was false, now true), mark it for fade-in
       if (wasPopulated === false && nowPopulated === true) {
         newFadingInRings.add(idx);
@@ -240,6 +242,7 @@ export function AtlasRings({
       
       // If this ring just got depopulated and had real items, trigger fade-out
       if (wasPopulated === true && nowPopulated === false && prevRealItems.length > 0) {
+        console.log('[v0] Ring', idx, 'is depopulating, triggering fade-out for', prevRealItems.length, 'items');
         const radius = getRingRadius(idx, ring.isFaded);
         const rotation = ringRotations[idx] || 0;
         newExitingItems.set(idx, { items: prevRealItems, radius, rotation });
@@ -255,6 +258,8 @@ export function AtlasRings({
     
     // Update previous state
     prevPopulatedRef.current = rings.map(r => r.isPopulated);
+    
+    console.log('[v0] newFadingInRings:', Array.from(newFadingInRings), 'newExitingItems:', Array.from(newExitingItems.keys()));
     
     if (newFadingInRings.size > 0) {
       setFadingInRings(newFadingInRings);
