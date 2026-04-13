@@ -348,8 +348,24 @@ export function AtlasRings({
     data: null 
   });
   
-  // Track which selection has already been animated
-  const animatedSelectionRef = useRef<string | null>(null);
+  // Track whether connection lines should animate (true only on selection change)
+  const [shouldAnimateConnection, setShouldAnimateConnection] = useState(false);
+  const prevSelectedIdRef = useRef<string | null>(null);
+  
+  // Trigger animation only when selection actually changes
+  useEffect(() => {
+    if (selectedItemId !== prevSelectedIdRef.current) {
+      prevSelectedIdRef.current = selectedItemId;
+      if (selectedItemId && connectionData) {
+        setShouldAnimateConnection(true);
+        // Turn off animation flag after animation completes
+        const timer = setTimeout(() => {
+          setShouldAnimateConnection(false);
+        }, 600); // Slightly longer than animation duration
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [selectedItemId, connectionData]);
   
   // Calculate connection data only when selection changes, using final rotation positions
   const connectionData = useMemo(() => {
@@ -543,19 +559,7 @@ export function AtlasRings({
       ))}
       
       {/* Connection lines - straight line to center child + arc along children */}
-      {connectionData && (() => {
-        // Check if this is a new selection that needs animation
-        const shouldAnimate = animatedSelectionRef.current !== selectedItemId;
-        console.log('[v0] Connection render - selectedItemId:', selectedItemId, 'animatedRef:', animatedSelectionRef.current, 'shouldAnimate:', shouldAnimate);
-        if (shouldAnimate) {
-          // Mark as animated after this render
-          setTimeout(() => {
-            console.log('[v0] Setting animatedSelectionRef to', selectedItemId);
-            animatedSelectionRef.current = selectedItemId;
-          }, 0);
-        }
-        
-        return (
+      {connectionData && (
         <g key={`connection-${selectedItemId}`} className="atlas-connection-lines">
           {/* Straight line from parent to center child - draws downward */}
           <g>
@@ -569,9 +573,9 @@ export function AtlasRings({
               opacity={0.2}
               style={{ 
                 filter: 'blur(6px)',
-                strokeDasharray: shouldAnimate ? connectionData.lineLength : 'none',
-                strokeDashoffset: shouldAnimate ? connectionData.lineLength : 0,
-                animation: shouldAnimate ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
+                strokeDasharray: shouldAnimateConnection ? connectionData.lineLength : 'none',
+                strokeDashoffset: shouldAnimateConnection ? connectionData.lineLength : 0,
+                animation: shouldAnimateConnection ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
               }}
             />
             <line
@@ -583,9 +587,9 @@ export function AtlasRings({
               strokeWidth={2}
               opacity={0.7}
               style={{ 
-                strokeDasharray: shouldAnimate ? connectionData.lineLength : 'none',
-                strokeDashoffset: shouldAnimate ? connectionData.lineLength : 0,
-                animation: shouldAnimate ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
+                strokeDasharray: shouldAnimateConnection ? connectionData.lineLength : 'none',
+                strokeDashoffset: shouldAnimateConnection ? connectionData.lineLength : 0,
+                animation: shouldAnimateConnection ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
               }}
             />
           </g>
@@ -608,9 +612,9 @@ export function AtlasRings({
                 opacity={0.2}
                 style={{ 
                   filter: 'blur(6px)',
-                  strokeDasharray: shouldAnimate ? connectionData.arcLength : 'none',
-                  strokeDashoffset: shouldAnimate ? connectionData.arcLength : 0,
-                  animation: shouldAnimate ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
+                  strokeDasharray: shouldAnimateConnection ? connectionData.arcLength : 'none',
+                  strokeDashoffset: shouldAnimateConnection ? connectionData.arcLength : 0,
+                  animation: shouldAnimateConnection ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
                 }}
               />
               <path
@@ -627,16 +631,16 @@ export function AtlasRings({
                 strokeLinecap="round"
                 opacity={0.7}
                 style={{ 
-                  strokeDasharray: shouldAnimate ? connectionData.arcLength : 'none',
-                  strokeDashoffset: shouldAnimate ? connectionData.arcLength : 0,
-                  animation: shouldAnimate ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
+                  strokeDasharray: shouldAnimateConnection ? connectionData.arcLength : 'none',
+                  strokeDashoffset: shouldAnimateConnection ? connectionData.arcLength : 0,
+                  animation: shouldAnimateConnection ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
                 }}
               />
             </g>
           )}
         </g>
         );
-      })()}
+      )}
       
       
       
