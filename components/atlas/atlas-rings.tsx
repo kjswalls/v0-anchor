@@ -341,15 +341,14 @@ export function AtlasRings({
             />
           )}
           
-          {/* Ring label - curved text below the arc, left side */}
+          {/* Ring label - curved text below the arc, aligned with left edge */}
           {ring.label && (
             <>
               <defs>
-                {/* Path runs BELOW the ring (smaller radius), reversed direction so text reads right-side up */}
-                {/* Start from lower angle and go to higher angle for correct text direction */}
+                {/* Path starts exactly at ARC_START_ANGLE, below the ring */}
                 <path
                   id={`labelPath-${ringIdx}`}
-                  d={describeLabelArc(centerX, centerY, radius - 16, ARC_START_ANGLE - 8, ARC_START_ANGLE + 30)}
+                  d={describeLabelArc(centerX, centerY, radius - 14, ARC_START_ANGLE, ARC_START_ANGLE + 45)}
                 />
               </defs>
               <text
