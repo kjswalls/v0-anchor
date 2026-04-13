@@ -151,10 +151,12 @@ export function AtlasRings({
   const [fadingInRings, setFadingInRings] = useState<Set<number>>(new Set());
   
   // Track items that are exiting (for fade-out animation) - stores pre-computed positions
-  const [exitingNodes, setExitingNodes] = useState<Array<{ id: string; item: RingItem; x: number; y: number }>>([]);
+  type ExitingNode = { id: string; item: RingItem; x: number; y: number };
+  type StoredNodePosition = { item: RingItem; x: number; y: number; ringIdx: number; rotation: number };
+  const [exitingNodes, setExitingNodes] = useState<ExitingNode[]>([]);
   
   // Store real item positions for exit animation (captures positions when visible)
-  const prevNodePositionsRef = useRef<Map<string, { item: RingItem; x: number; y: number; ringIdx: number; rotation: number }>>>(new Map());
+  const prevNodePositionsRef = useRef<Map<string, StoredNodePosition>>(new Map());
   
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
