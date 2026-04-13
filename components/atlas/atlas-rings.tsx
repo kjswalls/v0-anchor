@@ -148,6 +148,12 @@ export function AtlasRings({
   // Track which rings just got populated (for bloom animation)
   const [bloomingRings, setBloomingRings] = useState<Set<number>>(new Set());
   
+  // Track which rings are shrinking (items leaving)
+  const [shrinkingRings, setShrinkingRings] = useState<Set<number>>(new Set());
+  
+  // Store previous items for rings that are shrinking so we can animate them out
+  const prevItemsRef = useRef<Map<number, RingItem[]>>(new Map());
+  
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
     const rotations: number[] = rings.map(() => 0);
@@ -200,9 +206,10 @@ export function AtlasRings({
     return rotations;
   }, [selectedItemId, rings]);
   
-  // Update population tracking after render and trigger bloom animation
+  // Update population tracking after render and trigger bloom/shrink animations
   useEffect(() => {
     const newBloomingRings = new Set<number>();
+    const newShrinkingRings = new Set<number>();
     
     rings.forEach((ring, idx) => {
       const wasPopulated = prevPopulatedRef.current[idx];
@@ -212,16 +219,38 @@ export function AtlasRings({
       if (!wasPopulated && nowPopulated) {
         newBloomingRings.add(idx);
       }
+      
+      // If this ring just got depopulated, mark it for shrinking
+      // and store the previous items so we can animate them out
+      if (wasPopulated && !nowPopulated) {
+        newShrinkingRings.add(idx);
+        // Store previous items from the prevItemsRef if we have them
+        // We need to capture items before they change
+      }
+    });
+    
+    // Store current populated items for future shrink animations
+    rings.forEach((ring, idx) => {
+      if (ring.isPopulated && ring.items.some(i => !isPlaceholder(i))) {
+        prevItemsRef.current.set(idx, [...ring.items]);
+      }
     });
     
     if (newBloomingRings.size > 0) {
       setBloomingRings(newBloomingRings);
-      
-      // Clear bloom state after animation completes
       const timer = setTimeout(() => {
         setBloomingRings(new Set());
-      }, 600);
-      
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+    
+    if (newShrinkingRings.size > 0) {
+      setShrinkingRings(newShrinkingRings);
+      const timer = setTimeout(() => {
+        setShrinkingRings(new Set());
+        // Clear stored items after animation
+        newShrinkingRings.forEach(idx => prevItemsRef.current.delete(idx));
+      }, 400);
       return () => clearTimeout(timer);
     }
     
@@ -475,13 +504,19 @@ export function AtlasRings({
             const baseOpacity = ring.isFaded ? 0.4 : 1;
             const finalOpacity = edgeFade * baseOpacity;
             const isBlooming = bloomingRings.has(ringIdx);
+            const isShrinking = shrinkingRings.has(ringIdx);
             
             if (finalOpacity < 0.1) return null;
+            
+            // Determine animation class
+            let animationClass = '';
+            if (isBlooming) animationClass = 'atlas-node-bloom';
+            else if (isShrinking) animationClass = 'atlas-node-shrink';
             
             return (
               <g
                 key={item.id}
-                className={isBlooming ? 'atlas-node-bloom' : ''}
+                className={animationClass}
                 style={{
                   opacity: finalOpacity,
                   filter: isInactive ? 'saturate(0.3) brightness(0.8)' : 'none',
