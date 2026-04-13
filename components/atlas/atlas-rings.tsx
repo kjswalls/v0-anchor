@@ -464,15 +464,18 @@ export function AtlasRings({
       // Child position (centered at 270 degrees)
       const childPos = polarToCartesian(centerX, centerY, childrenInfo.radius, ARC_CENTER_ANGLE);
       
-      // Only show arc for ancestor items (not the selected item itself)
-      // When the selected item has children, the connection goes straight down - no arc needed
-      const isSelectedItem = itemId === selectedItemId;
+      // Check if any child in this ring is part of the ancestry chain
+      // If so, we only show a straight line to that child (no arc)
+      // If not, show the arc connecting all children
+      const hasChildInAncestry = childrenInfo.children.some(np => 
+        !isPlaceholder(np.item) && ancestryChain.includes(np.item.id)
+      );
       
-      // Calculate arc angles if multiple children AND this is an ancestor (not selected item)
+      // Calculate arc angles if multiple children AND no child is in the ancestry chain
       let arcStartAngle: number | undefined;
       let arcEndAngle: number | undefined;
       
-      if (childrenInfo.children.length > 1 && !isSelectedItem) {
+      if (childrenInfo.children.length > 1 && !hasChildInAncestry) {
         // Calculate the rotation that will be applied to center the children
         const visibleCount = Math.min(childrenInfo.ring.items.length, MAX_VISIBLE_ITEMS);
         const angleStep = ARC_SPAN / (visibleCount + 1);
@@ -493,7 +496,7 @@ export function AtlasRings({
         arcRadius: childrenInfo.radius,
         arcStartAngle,
         arcEndAngle,
-        hasArc: childrenInfo.children.length > 1 && !isSelectedItem,
+        hasArc: childrenInfo.children.length > 1 && !hasChildInAncestry,
       });
     }
     
