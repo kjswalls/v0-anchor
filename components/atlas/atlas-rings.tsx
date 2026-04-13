@@ -480,7 +480,7 @@ export function AtlasRings({
       
       {/* Connection lines - straight line to center child + arc along children */}
       {connectionData && (
-        <g className="atlas-connection-lines" style={{ transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+        <g className="atlas-connection-lines atlas-connection-fade-in">
           {/* Straight line from parent to center child */}
           <g>
             <line
