@@ -212,16 +212,19 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     });
     
     // Ring 2: Children level (Tasks ring)
-    // Populated with real items only when a project is selected
+    // Shows real items when a project is selected, with placeholders filling remaining slots
     const isProjectSelected = selectedItem && selectedItem.type === 'project';
+    const RING_SLOT_COUNT = 6;
     
     let childRingItems: RingItem[];
     if (isProjectSelected && selectedItem && selectedItem.children.length > 0) {
-      // Show actual children of the selected project
-      childRingItems = selectedItem.children.slice(0, 5);
+      // Show actual children of the selected project, with placeholders for remaining slots
+      const realItems = selectedItem.children.slice(0, 5);
+      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
+      childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
     } else {
-      // Show placeholders when no project is selected
-      childRingItems = createPlaceholders(6, 'tasks');
+      // Show only placeholders when no project is selected
+      childRingItems = createPlaceholders(RING_SLOT_COUNT, 'tasks');
     }
     
     rings.push({
@@ -234,16 +237,18 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     });
     
     // Ring 3: Grandchildren level (Subtasks ring)
-    // Populated with real items only when a task is selected
+    // Shows real items when a task is selected, with placeholders filling remaining slots
     const isTaskSelected = selectedItem && selectedItem.type === 'task';
     
     let grandchildRingItems: RingItem[];
     if (isTaskSelected && selectedItem && selectedItem.children.length > 0) {
-      // Show actual subtasks of the selected task
-      grandchildRingItems = selectedItem.children.slice(0, 5);
+      // Show actual subtasks of the selected task, with placeholders for remaining slots
+      const realItems = selectedItem.children.slice(0, 5);
+      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
+      grandchildRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'subtasks')];
     } else {
-      // Show placeholders when no task is selected
-      grandchildRingItems = createPlaceholders(6, 'subtasks');
+      // Show only placeholders when no task is selected
+      grandchildRingItems = createPlaceholders(RING_SLOT_COUNT, 'subtasks');
     }
     
     rings.push({

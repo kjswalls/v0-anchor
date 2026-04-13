@@ -147,11 +147,8 @@ export function AtlasRings({
   const prevPopulatedRef = useRef<boolean[] | null>(null);
   const isFirstRenderRef = useRef(true);
   
-  // Track which rings just got populated (for bloom animation)
-  const [bloomingRings, setBloomingRings] = useState<Set<number>>(new Set());
-  
-  // Track item IDs that are exiting (for shrink animation)
-  const [exitingItems, setExitingItems] = useState<Map<number, RingItem[]>>(new Map());
+  // Track which rings just got populated (for fade-in animation)
+  const [fadingInRings, setFadingInRings] = useState<Set<number>>(new Set());
   
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
@@ -205,66 +202,34 @@ export function AtlasRings({
     return rotations;
   }, [selectedItemId, rings]);
   
-  // Track populated items to detect when they leave
-  const prevPopulatedItemsRef = useRef<Map<number, RingItem[]>>(new Map());
-  
-  // Update population tracking after render and trigger bloom/shrink animations
+  // Update population tracking after render and trigger fade-in animations
   useEffect(() => {
-    // Skip bloom/shrink on first render - just initialize tracking
+    // Skip on first render - just initialize tracking
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
       prevPopulatedRef.current = rings.map(r => r.isPopulated);
-      rings.forEach((ring, idx) => {
-        const currentItems = ring.items.filter(i => !isPlaceholder(i));
-        if (ring.isPopulated && currentItems.length > 0) {
-          prevPopulatedItemsRef.current.set(idx, currentItems);
-        }
-      });
       return;
     }
     
-    const newBloomingRings = new Set<number>();
-    const newExitingItems = new Map<number, RingItem[]>();
+    const newFadingInRings = new Set<number>();
     
     rings.forEach((ring, idx) => {
       const wasPopulated = prevPopulatedRef.current?.[idx] ?? false;
       const nowPopulated = ring.isPopulated;
-      const prevItems = prevPopulatedItemsRef.current.get(idx) || [];
-      const currentItems = ring.items.filter(i => !isPlaceholder(i));
       
-      // If this ring just got populated (was false, now true), mark it for blooming
+      // If this ring just got populated (was false, now true), mark it for fade-in
       if (wasPopulated === false && nowPopulated === true) {
-        newBloomingRings.add(idx);
-      }
-      
-      // If this ring just got depopulated, store the previous items for exit animation
-      if (wasPopulated === true && nowPopulated === false && prevItems.length > 0) {
-        newExitingItems.set(idx, prevItems);
-      }
-      
-      // Store current populated items for future reference
-      if (nowPopulated && currentItems.length > 0) {
-        prevPopulatedItemsRef.current.set(idx, currentItems);
-      } else {
-        prevPopulatedItemsRef.current.delete(idx);
+        newFadingInRings.add(idx);
       }
     });
     
     // Update previous state
     prevPopulatedRef.current = rings.map(r => r.isPopulated);
     
-    if (newBloomingRings.size > 0) {
-      setBloomingRings(newBloomingRings);
+    if (newFadingInRings.size > 0) {
+      setFadingInRings(newFadingInRings);
       const timer = setTimeout(() => {
-        setBloomingRings(new Set());
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-    
-    if (newExitingItems.size > 0) {
-      setExitingItems(newExitingItems);
-      const timer = setTimeout(() => {
-        setExitingItems(new Map());
+        setFadingInRings(new Set());
       }, 400);
       return () => clearTimeout(timer);
     }
@@ -483,12 +448,7 @@ export function AtlasRings({
       </g>
       
       {/* Nodes - grouped by ring with rotation */}
-      {ringData.map(({ ring, rotation, nodePositions, radius }, ringIdx) => {
-        // Get exiting items for this ring if any
-        const ringExitingItems = exitingItems.get(ringIdx) || [];
-        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
-        const angleStep = visibleCount > 0 ? ARC_SPAN / (visibleCount + 1) : ARC_SPAN / 7;
-        
+      {ringData.map(({ ring, rotation, nodePositions }, ringIdx) => {
         return (
         <g 
           key={`nodes-${ringIdx}`}
@@ -499,34 +459,6 @@ export function AtlasRings({
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
-          {/* Render exiting items with shrink animation */}
-          {ringExitingItems.map((item, itemIdx) => {
-            if (isPlaceholder(item)) return null;
-            const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
-            const { x, y } = polarToCartesian(centerX, centerY, radius, baseAngle);
-            
-            return (
-              <g
-                key={`exiting-${item.id}`}
-                className="atlas-node-shrink"
-                style={{
-                  transformOrigin: `${x}px ${y}px`,
-                  transform: `rotate(${-rotation}deg)`,
-                }}
-              >
-                <AtlasNodeComponent
-                  node={item}
-                  x={x}
-                  y={y}
-                  isSelected={false}
-                  hasChildren={item.children.length > 0}
-                  isFaded={false}
-                  onClick={() => {}}
-                  onDoubleClick={() => {}}
-                />
-              </g>
-            );
-          })}
           {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
             // Render placeholder
             if (isPlaceholder(item)) {
@@ -550,22 +482,18 @@ export function AtlasRings({
             const isInactive = selectedItemId !== null && !isInLineage && !isSelected;
             const baseOpacity = ring.isFaded ? 0.4 : 1;
             const finalOpacity = edgeFade * baseOpacity;
-            const isBlooming = bloomingRings.has(ringIdx);
+            const isFadingIn = fadingInRings.has(ringIdx);
             
             if (finalOpacity < 0.1) return null;
-            
-            // Determine animation class
-            let animationClass = '';
-            if (isBlooming) animationClass = 'atlas-node-bloom';
             
             return (
               <g
                 key={item.id}
-                className={animationClass}
+                className={isFadingIn ? 'atlas-node-fade-in' : ''}
                 style={{
                   opacity: finalOpacity,
                   filter: isInactive ? 'saturate(0.3) brightness(0.8)' : 'none',
-                  transition: 'opacity 0.3s ease-out, filter 0.3s ease-out, transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transition: 'opacity 0.4s ease-out, filter 0.3s ease-out, transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                   transformOrigin: `${x}px ${y}px`,
                   transform: `rotate(${-rotation}deg)`,
                 }}

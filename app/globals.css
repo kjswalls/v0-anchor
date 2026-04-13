@@ -309,39 +309,16 @@
   transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Atlas node bloom animation - nodes scale up when ring populates */
-/* Uses a child element approach to avoid conflicting with parent rotation */
-@keyframes atlas-node-bloom-scale {
+/* Atlas node fade-in animation - simple opacity fade when items populate */
+@keyframes atlas-node-fade-in {
   0% {
-    scale: 0.3;
     opacity: 0;
   }
-  60% {
-    scale: 1.1;
-    opacity: 1;
-  }
   100% {
-    scale: 1;
     opacity: 1;
   }
 }
 
-.atlas-node-bloom > * {
-  animation: atlas-node-bloom-scale 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-/* Atlas node shrink animation - nodes scale down when ring depopulates */
-@keyframes atlas-node-shrink-scale {
-  0% {
-    scale: 1;
-    opacity: 1;
-  }
-  100% {
-    scale: 0.2;
-    opacity: 0;
-  }
-}
-
-.atlas-node-shrink > * {
-  animation: atlas-node-shrink-scale 0.35s cubic-bezier(0.4, 0, 1, 1) forwards;
+.atlas-node-fade-in {
+  animation: atlas-node-fade-in 0.4s ease-out forwards;
 }
