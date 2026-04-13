@@ -331,62 +331,123 @@ export function AtlasRings({
     });
   }, [rings, ringRotations, centerX, centerY, selectedLineage, selectedItemId]);
   
-  // Connection lines - straight line to center child + arc connecting children
+  // Connection data ref - stores stable positions once calculated for a selection
+  type ConnectionDataType = {
+    parentPos: { x: number; y: number; color: string };
+    centerChild: { x: number; y: number };
+    childRingRadius: number;
+    arcStartAngle: number;
+    arcEndAngle: number;
+    hasMultipleChildren: boolean;
+    lineLength: number;
+    arcLength: number;
+  } | null;
+  
+  const connectionDataRef = useRef<{ selectionId: string | null; data: ConnectionDataType }>({ 
+    selectionId: null, 
+    data: null 
+  });
+  
+  // Calculate connection data only when selection changes, using final rotation positions
   const connectionData = useMemo(() => {
-    if (!selectedItemId) return null;
+    // If selection hasn't changed and we have data, return cached version
+    if (connectionDataRef.current.selectionId === selectedItemId && connectionDataRef.current.data !== null) {
+      return connectionDataRef.current.data;
+    }
     
-    // Find selected item position and color
+    if (!selectedItemId) {
+      connectionDataRef.current = { selectionId: null, data: null };
+      return null;
+    }
+    
+    // Find selected item - use CENTER position (270 degrees) since that's where it will rotate to
     let selectedPos: { x: number; y: number; color: string } | null = null;
-    for (const { nodePositions, rotation, radius } of ringData) {
+    let selectedRingRadius = 0;
+    
+    for (const { nodePositions, radius } of ringData) {
       for (const np of nodePositions) {
         if (!isPlaceholder(np.item) && np.item.id === selectedItemId) {
-          const finalAngle = np.baseAngle + rotation;
-          const pos = polarToCartesian(centerX, centerY, radius, finalAngle);
+          // Selected item will be at center (270 degrees)
+          const pos = polarToCartesian(centerX, centerY, radius, ARC_CENTER_ANGLE);
           selectedPos = { x: pos.x, y: pos.y, color: np.item.color };
+          selectedRingRadius = radius;
           break;
         }
       }
       if (selectedPos) break;
     }
     
-    if (!selectedPos) return null;
+    if (!selectedPos) {
+      connectionDataRef.current = { selectionId: selectedItemId, data: null };
+      return null;
+    }
     
-    // Find all children and their positions
-    const children: { x: number; y: number; finalAngle: number; idx: number }[] = [];
+    // Find all children - calculate their FINAL positions after rotation
+    const children: { finalAngle: number; idx: number }[] = [];
     let childRingRadius = 0;
-    let childRingRotation = 0;
+    let childRingIdx = -1;
     
-    for (const { nodePositions, rotation, radius } of ringData) {
-      for (const np of nodePositions) {
-        if (!isPlaceholder(np.item) && np.item.parentId === selectedItemId && np.edgeFade > 0.3) {
+    for (const { ring, nodePositions, radius, ringIdx } of ringData) {
+      if (!ring.isPopulated) continue;
+      
+      const realChildren = nodePositions.filter(np => 
+        !isPlaceholder(np.item) && np.item.parentId === selectedItemId
+      );
+      
+      if (realChildren.length > 0) {
+        childRingRadius = radius;
+        childRingIdx = ringIdx;
+        
+        // Calculate the rotation that will be applied to center the children
+        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = ARC_SPAN / (visibleCount + 1);
+        const middleChildIdx = Math.floor(realChildren.length / 2);
+        const middleChildBaseAngle = realChildren[middleChildIdx].baseAngle;
+        const rotation = ARC_CENTER_ANGLE - middleChildBaseAngle;
+        
+        realChildren.forEach((np, idx) => {
           const finalAngle = np.baseAngle + rotation;
-          const childPos = polarToCartesian(centerX, centerY, radius, finalAngle);
-          children.push({ x: childPos.x, y: childPos.y, finalAngle, idx: children.length });
-          childRingRadius = radius;
-          childRingRotation = rotation;
-        }
+          children.push({ finalAngle, idx });
+        });
+        break;
       }
     }
     
-    if (children.length === 0) return null;
+    if (children.length === 0) {
+      connectionDataRef.current = { selectionId: selectedItemId, data: null };
+      return null;
+    }
     
     // Sort children by angle to find the range
     const sortedByAngle = [...children].sort((a, b) => a.finalAngle - b.finalAngle);
     const minAngle = sortedByAngle[0].finalAngle;
     const maxAngle = sortedByAngle[sortedByAngle.length - 1].finalAngle;
     
-    // Find the center child (middle index)
-    const centerChild = children[Math.floor(children.length / 2)];
+    // Center child will be at 270 degrees
+    const centerChildPos = polarToCartesian(centerX, centerY, childRingRadius, ARC_CENTER_ANGLE);
     
-    return {
+    // Calculate line length
+    const dx = centerChildPos.x - selectedPos.x;
+    const dy = centerChildPos.y - selectedPos.y;
+    const lineLength = Math.sqrt(dx * dx + dy * dy);
+    
+    // Calculate arc length
+    const arcAngleSpan = Math.abs(maxAngle - minAngle);
+    const arcLength = (arcAngleSpan * Math.PI / 180) * childRingRadius;
+    
+    const data: ConnectionDataType = {
       parentPos: selectedPos,
-      centerChild,
+      centerChild: centerChildPos,
       childRingRadius,
-      childRingRotation,
       arcStartAngle: minAngle,
       arcEndAngle: maxAngle,
       hasMultipleChildren: children.length > 1,
+      lineLength,
+      arcLength,
     };
+    
+    connectionDataRef.current = { selectionId: selectedItemId, data };
+    return data;
   }, [selectedItemId, ringData, centerX, centerY]);
 
   return (
@@ -479,17 +540,7 @@ export function AtlasRings({
       ))}
       
       {/* Connection lines - straight line to center child + arc along children */}
-      {connectionData && (() => {
-        // Calculate line length for animation
-        const dx = connectionData.centerChild.x - connectionData.parentPos.x;
-        const dy = connectionData.centerChild.y - connectionData.parentPos.y;
-        const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
-        // Calculate arc length for animation
-        const arcAngleSpan = Math.abs(connectionData.arcEndAngle - connectionData.arcStartAngle);
-        const arcLength = (arcAngleSpan * Math.PI / 180) * connectionData.childRingRadius;
-        
-        return (
+      {connectionData && (
         <g key={`connection-${selectedItemId}`} className="atlas-connection-lines">
           {/* Straight line from parent to center child - draws downward */}
           <g>
@@ -503,8 +554,8 @@ export function AtlasRings({
               opacity={0.2}
               style={{ 
                 filter: 'blur(6px)',
-                strokeDasharray: lineLength,
-                strokeDashoffset: lineLength,
+                strokeDasharray: connectionData.lineLength,
+                strokeDashoffset: connectionData.lineLength,
                 animation: 'atlas-line-draw 0.5s ease-out forwards',
               }}
             />
@@ -517,8 +568,8 @@ export function AtlasRings({
               strokeWidth={2}
               opacity={0.7}
               style={{ 
-                strokeDasharray: lineLength,
-                strokeDashoffset: lineLength,
+                strokeDasharray: connectionData.lineLength,
+                strokeDashoffset: connectionData.lineLength,
                 animation: 'atlas-line-draw 0.5s ease-out forwards',
               }}
             />
@@ -542,8 +593,8 @@ export function AtlasRings({
                 opacity={0.2}
                 style={{ 
                   filter: 'blur(6px)',
-                  strokeDasharray: arcLength,
-                  strokeDashoffset: arcLength,
+                  strokeDasharray: connectionData.arcLength,
+                  strokeDashoffset: connectionData.arcLength,
                   animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
                 }}
               />
@@ -561,16 +612,15 @@ export function AtlasRings({
                 strokeLinecap="round"
                 opacity={0.7}
                 style={{ 
-                  strokeDasharray: arcLength,
-                  strokeDashoffset: arcLength,
+                  strokeDasharray: connectionData.arcLength,
+                  strokeDashoffset: connectionData.arcLength,
                   animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
                 }}
               />
             </g>
           )}
         </g>
-        );
-      })()}
+      )}
       
       
       
