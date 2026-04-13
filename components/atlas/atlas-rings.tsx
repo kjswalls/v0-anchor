@@ -148,11 +148,8 @@ export function AtlasRings({
   // Track which rings just got populated (for bloom animation)
   const [bloomingRings, setBloomingRings] = useState<Set<number>>(new Set());
   
-  // Track which rings are shrinking (items leaving)
-  const [shrinkingRings, setShrinkingRings] = useState<Set<number>>(new Set());
-  
-  // Store previous items for rings that are shrinking so we can animate them out
-  const prevItemsRef = useRef<Map<number, RingItem[]>>(new Map());
+  // Track item IDs that are exiting (for shrink animation)
+  const [exitingItems, setExitingItems] = useState<Map<number, RingItem[]>>(new Map());
   
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
@@ -206,33 +203,35 @@ export function AtlasRings({
     return rotations;
   }, [selectedItemId, rings]);
   
+  // Track populated items to detect when they leave
+  const prevPopulatedItemsRef = useRef<Map<number, RingItem[]>>(new Map());
+  
   // Update population tracking after render and trigger bloom/shrink animations
   useEffect(() => {
     const newBloomingRings = new Set<number>();
-    const newShrinkingRings = new Set<number>();
+    const newExitingItems = new Map<number, RingItem[]>();
     
     rings.forEach((ring, idx) => {
       const wasPopulated = prevPopulatedRef.current[idx];
       const nowPopulated = ring.isPopulated;
+      const prevItems = prevPopulatedItemsRef.current.get(idx) || [];
+      const currentItems = ring.items.filter(i => !isPlaceholder(i));
       
       // If this ring just got populated, mark it for blooming
       if (!wasPopulated && nowPopulated) {
         newBloomingRings.add(idx);
       }
       
-      // If this ring just got depopulated, mark it for shrinking
-      // and store the previous items so we can animate them out
-      if (wasPopulated && !nowPopulated) {
-        newShrinkingRings.add(idx);
-        // Store previous items from the prevItemsRef if we have them
-        // We need to capture items before they change
+      // If this ring just got depopulated, store the previous items for exit animation
+      if (wasPopulated && !nowPopulated && prevItems.length > 0) {
+        newExitingItems.set(idx, prevItems);
       }
-    });
-    
-    // Store current populated items for future shrink animations
-    rings.forEach((ring, idx) => {
-      if (ring.isPopulated && ring.items.some(i => !isPlaceholder(i))) {
-        prevItemsRef.current.set(idx, [...ring.items]);
+      
+      // Store current populated items for future reference
+      if (nowPopulated && currentItems.length > 0) {
+        prevPopulatedItemsRef.current.set(idx, currentItems);
+      } else {
+        prevPopulatedItemsRef.current.delete(idx);
       }
     });
     
@@ -244,12 +243,10 @@ export function AtlasRings({
       return () => clearTimeout(timer);
     }
     
-    if (newShrinkingRings.size > 0) {
-      setShrinkingRings(newShrinkingRings);
+    if (newExitingItems.size > 0) {
+      setExitingItems(newExitingItems);
       const timer = setTimeout(() => {
-        setShrinkingRings(new Set());
-        // Clear stored items after animation
-        newShrinkingRings.forEach(idx => prevItemsRef.current.delete(idx));
+        setExitingItems(new Map());
       }, 400);
       return () => clearTimeout(timer);
     }
@@ -470,7 +467,13 @@ export function AtlasRings({
       </g>
       
       {/* Nodes - grouped by ring with rotation */}
-      {ringData.map(({ ring, rotation, nodePositions, radius }, ringIdx) => (
+      {ringData.map(({ ring, rotation, nodePositions, radius }, ringIdx) => {
+        // Get exiting items for this ring if any
+        const ringExitingItems = exitingItems.get(ringIdx) || [];
+        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = visibleCount > 0 ? ARC_SPAN / (visibleCount + 1) : ARC_SPAN / 7;
+        
+        return (
         <g 
           key={`nodes-${ringIdx}`}
           className="atlas-ring-nodes"
@@ -480,6 +483,34 @@ export function AtlasRings({
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
+          {/* Render exiting items with shrink animation */}
+          {ringExitingItems.map((item, itemIdx) => {
+            if (isPlaceholder(item)) return null;
+            const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
+            const { x, y } = polarToCartesian(centerX, centerY, radius, baseAngle);
+            
+            return (
+              <g
+                key={`exiting-${item.id}`}
+                className="atlas-node-shrink"
+                style={{
+                  transformOrigin: `${x}px ${y}px`,
+                  transform: `rotate(${-rotation}deg)`,
+                }}
+              >
+                <AtlasNodeComponent
+                  node={item}
+                  x={x}
+                  y={y}
+                  isSelected={false}
+                  hasChildren={item.children.length > 0}
+                  isFaded={false}
+                  onClick={() => {}}
+                  onDoubleClick={() => {}}
+                />
+              </g>
+            );
+          })}
           {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
             // Render placeholder
             if (isPlaceholder(item)) {
@@ -487,8 +518,8 @@ export function AtlasRings({
                 <g
                   key={item.id}
                   style={{
-                    opacity: Math.max(edgeFade * 0.6, 0.2), // Ensure minimum visibility
-                    transition: 'opacity 0.3s ease-out',
+                    opacity: Math.max(edgeFade * 0.6, 0.2),
+                    transition: 'opacity 0.3s ease-out, transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                     transformOrigin: `${x}px ${y}px`,
                     transform: `rotate(${-rotation}deg)`,
                   }}
@@ -504,14 +535,12 @@ export function AtlasRings({
             const baseOpacity = ring.isFaded ? 0.4 : 1;
             const finalOpacity = edgeFade * baseOpacity;
             const isBlooming = bloomingRings.has(ringIdx);
-            const isShrinking = shrinkingRings.has(ringIdx);
             
             if (finalOpacity < 0.1) return null;
             
             // Determine animation class
             let animationClass = '';
             if (isBlooming) animationClass = 'atlas-node-bloom';
-            else if (isShrinking) animationClass = 'atlas-node-shrink';
             
             return (
               <g
@@ -520,7 +549,7 @@ export function AtlasRings({
                 style={{
                   opacity: finalOpacity,
                   filter: isInactive ? 'saturate(0.3) brightness(0.8)' : 'none',
-                  transition: 'opacity 0.3s ease-out, filter 0.3s ease-out',
+                  transition: 'opacity 0.3s ease-out, filter 0.3s ease-out, transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                   transformOrigin: `${x}px ${y}px`,
                   transform: `rotate(${-rotation}deg)`,
                 }}
@@ -549,7 +578,8 @@ export function AtlasRings({
             );
           })}
         </g>
-      ))}
+      );
+      })}
     </svg>
   );
 }
