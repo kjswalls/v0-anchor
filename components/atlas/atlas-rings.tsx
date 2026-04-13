@@ -179,6 +179,9 @@ export function AtlasRings({
       
       if (!selectedItemId) return;
       
+      // Find selected item to get its ancestry
+      const selectedItem = ring.items.find(item => !isPlaceholder(item) && item.id === selectedItemId);
+      
       // Check if this ring contains the selected item
       for (let i = 0; i < ring.items.length && i < visibleCount; i++) {
         const item = ring.items[i];
@@ -186,6 +189,35 @@ export function AtlasRings({
           const baseAngle = ARC_START_ANGLE + angleStep * (i + 1);
           rotations[ringIdx] = ARC_CENTER_ANGLE - baseAngle;
           return;
+        }
+      }
+      
+      // Check if this ring contains the parent of the selected item (keep parent centered)
+      const selectedItemInAnyRing = rings.flatMap(r => r.items).find(item => !isPlaceholder(item) && item.id === selectedItemId);
+      if (selectedItemInAnyRing && !isPlaceholder(selectedItemInAnyRing)) {
+        const parentId = selectedItemInAnyRing.parentId;
+        if (parentId) {
+          for (let i = 0; i < ring.items.length && i < visibleCount; i++) {
+            const item = ring.items[i];
+            if (!isPlaceholder(item) && item.id === parentId) {
+              const baseAngle = ARC_START_ANGLE + angleStep * (i + 1);
+              rotations[ringIdx] = ARC_CENTER_ANGLE - baseAngle;
+              return;
+            }
+          }
+          
+          // Check if this ring contains the grandparent of the selected item
+          const parentItem = rings.flatMap(r => r.items).find(item => !isPlaceholder(item) && item.id === parentId);
+          if (parentItem && !isPlaceholder(parentItem) && parentItem.parentId) {
+            for (let i = 0; i < ring.items.length && i < visibleCount; i++) {
+              const item = ring.items[i];
+              if (!isPlaceholder(item) && item.id === parentItem.parentId) {
+                const baseAngle = ARC_START_ANGLE + angleStep * (i + 1);
+                rotations[ringIdx] = ARC_CENTER_ANGLE - baseAngle;
+                return;
+              }
+            }
+          }
         }
       }
       
@@ -332,15 +364,18 @@ export function AtlasRings({
   }, [rings, ringRotations, centerX, centerY, selectedLineage, selectedItemId]);
   
   // Connection data ref - stores stable positions once calculated for a selection
+  type ConnectionSegment = {
+    fromPos: { x: number; y: number };
+    toPos: { x: number; y: number };
+    color: string;
+    arcRadius?: number;
+    arcStartAngle?: number;
+    arcEndAngle?: number;
+    hasArc: boolean;
+  };
+  
   type ConnectionDataType = {
-    parentPos: { x: number; y: number; color: string };
-    centerChild: { x: number; y: number };
-    childRingRadius: number;
-    arcStartAngle: number;
-    arcEndAngle: number;
-    hasMultipleChildren: boolean;
-    lineLength: number;
-    arcLength: number;
+    segments: ConnectionSegment[];
   } | null;
   
   const connectionDataRef = useRef<{ selectionId: string | null; data: ConnectionDataType }>({ 
@@ -350,7 +385,7 @@ export function AtlasRings({
   
   
   
-  // Calculate connection data only when selection changes, using final rotation positions
+  // Calculate connection data - builds segments from selected item up through ancestry
   const connectionData = useMemo(() => {
     // If selection hasn't changed and we have data, return cached version
     if (connectionDataRef.current.selectionId === selectedItemId && connectionDataRef.current.data !== null) {
@@ -362,91 +397,108 @@ export function AtlasRings({
       return null;
     }
     
-    // Find selected item - use CENTER position (270 degrees) since that's where it will rotate to
-    let selectedPos: { x: number; y: number; color: string } | null = null;
-    let selectedRingRadius = 0;
+    const segments: ConnectionSegment[] = [];
     
-    for (const { nodePositions, radius } of ringData) {
-      for (const np of nodePositions) {
-        if (!isPlaceholder(np.item) && np.item.id === selectedItemId) {
-          // Selected item will be at center (270 degrees)
-          const pos = polarToCartesian(centerX, centerY, radius, ARC_CENTER_ANGLE);
-          selectedPos = { x: pos.x, y: pos.y, color: np.item.color };
-          selectedRingRadius = radius;
-          break;
+    // Helper to find item info by ID
+    const findItemInfo = (itemId: string) => {
+      for (const { nodePositions, radius, ring } of ringData) {
+        for (const np of nodePositions) {
+          if (!isPlaceholder(np.item) && np.item.id === itemId) {
+            return { np, radius, ring };
+          }
         }
       }
-      if (selectedPos) break;
-    }
+      return null;
+    };
     
-    if (!selectedPos) {
+    // Helper to find children info for an item
+    const findChildrenInfo = (parentId: string) => {
+      for (const { nodePositions, radius, ring } of ringData) {
+        if (!ring.isPopulated) continue;
+        
+        const children = nodePositions.filter(np => 
+          !isPlaceholder(np.item) && np.item.parentId === parentId
+        );
+        
+        if (children.length > 0) {
+          return { children, radius, ring };
+        }
+      }
+      return null;
+    };
+    
+    // Find the selected item
+    const selectedInfo = findItemInfo(selectedItemId);
+    if (!selectedInfo) {
       connectionDataRef.current = { selectionId: selectedItemId, data: null };
       return null;
     }
     
-    // Find all children - calculate their FINAL positions after rotation
-    const children: { finalAngle: number; idx: number }[] = [];
-    let childRingRadius = 0;
-    let childRingIdx = -1;
-    
-    for (const { ring, nodePositions, radius, ringIdx } of ringData) {
-      if (!ring.isPopulated) continue;
-      
-      const realChildren = nodePositions.filter(np => 
-        !isPlaceholder(np.item) && np.item.parentId === selectedItemId
-      );
-      
-      if (realChildren.length > 0) {
-        childRingRadius = radius;
-        childRingIdx = ringIdx;
-        
-        // Calculate the rotation that will be applied to center the children
-        const visibleCount = Math.min(ring.items.length, MAX_VISIBLE_ITEMS);
-        const angleStep = ARC_SPAN / (visibleCount + 1);
-        const middleChildIdx = Math.floor(realChildren.length / 2);
-        const middleChildBaseAngle = realChildren[middleChildIdx].baseAngle;
-        const rotation = ARC_CENTER_ANGLE - middleChildBaseAngle;
-        
-        realChildren.forEach((np, idx) => {
-          const finalAngle = np.baseAngle + rotation;
-          children.push({ finalAngle, idx });
-        });
+    // Build ancestry chain: selected -> parent -> grandparent
+    const ancestryChain: string[] = [selectedItemId];
+    let currentItem = selectedInfo.np.item;
+    while (!isPlaceholder(currentItem) && currentItem.parentId) {
+      const parentInfo = findItemInfo(currentItem.parentId);
+      if (parentInfo && !isPlaceholder(parentInfo.np.item)) {
+        ancestryChain.push(currentItem.parentId);
+        currentItem = parentInfo.np.item;
+      } else {
         break;
       }
     }
     
-    if (children.length === 0) {
+    // Reverse so we go from grandparent -> parent -> selected
+    ancestryChain.reverse();
+    
+    // For each item in the chain that has children in the visible rings, create a segment
+    for (const itemId of ancestryChain) {
+      const itemInfo = findItemInfo(itemId);
+      if (!itemInfo) continue;
+      
+      const childrenInfo = findChildrenInfo(itemId);
+      if (!childrenInfo || childrenInfo.children.length === 0) continue;
+      
+      // Parent position (centered at 270 degrees)
+      const parentPos = polarToCartesian(centerX, centerY, itemInfo.radius, ARC_CENTER_ANGLE);
+      
+      // Child position (centered at 270 degrees)
+      const childPos = polarToCartesian(centerX, centerY, childrenInfo.radius, ARC_CENTER_ANGLE);
+      
+      // Calculate arc angles if multiple children
+      let arcStartAngle: number | undefined;
+      let arcEndAngle: number | undefined;
+      
+      if (childrenInfo.children.length > 1) {
+        // Calculate the rotation that will be applied to center the children
+        const visibleCount = Math.min(childrenInfo.ring.items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = ARC_SPAN / (visibleCount + 1);
+        const middleChildIdx = Math.floor(childrenInfo.children.length / 2);
+        const middleChildBaseAngle = childrenInfo.children[middleChildIdx].baseAngle;
+        const rotation = ARC_CENTER_ANGLE - middleChildBaseAngle;
+        
+        const finalAngles = childrenInfo.children.map(np => np.baseAngle + rotation);
+        finalAngles.sort((a, b) => a - b);
+        arcStartAngle = finalAngles[0];
+        arcEndAngle = finalAngles[finalAngles.length - 1];
+      }
+      
+      segments.push({
+        fromPos: parentPos,
+        toPos: childPos,
+        color: isPlaceholder(itemInfo.np.item) ? '#888' : itemInfo.np.item.color,
+        arcRadius: childrenInfo.radius,
+        arcStartAngle,
+        arcEndAngle,
+        hasArc: childrenInfo.children.length > 1,
+      });
+    }
+    
+    if (segments.length === 0) {
       connectionDataRef.current = { selectionId: selectedItemId, data: null };
       return null;
     }
     
-    // Sort children by angle to find the range
-    const sortedByAngle = [...children].sort((a, b) => a.finalAngle - b.finalAngle);
-    const minAngle = sortedByAngle[0].finalAngle;
-    const maxAngle = sortedByAngle[sortedByAngle.length - 1].finalAngle;
-    
-    // Center child will be at 270 degrees
-    const centerChildPos = polarToCartesian(centerX, centerY, childRingRadius, ARC_CENTER_ANGLE);
-    
-    // Calculate line length
-    const dx = centerChildPos.x - selectedPos.x;
-    const dy = centerChildPos.y - selectedPos.y;
-    const lineLength = Math.sqrt(dx * dx + dy * dy);
-    
-    // Calculate arc length
-    const arcAngleSpan = Math.abs(maxAngle - minAngle);
-    const arcLength = (arcAngleSpan * Math.PI / 180) * childRingRadius;
-    
-    const data: ConnectionDataType = {
-      parentPos: selectedPos,
-      centerChild: centerChildPos,
-      childRingRadius,
-      arcStartAngle: minAngle,
-      arcEndAngle: maxAngle,
-      hasMultipleChildren: children.length > 1,
-      lineLength,
-      arcLength,
-    };
+    const data: ConnectionDataType = { segments };
     
     connectionDataRef.current = { selectionId: selectedItemId, data };
     return data;
@@ -543,66 +595,68 @@ export function AtlasRings({
         </g>
       ))}
       
-      {/* Connection lines - straight line to center child + arc along children */}
+      {/* Connection lines - segments from grandparent -> parent -> child with arcs */}
       {connectionData && (
         <g key={`connection-${selectedItemId}`} className="atlas-connection-lines atlas-connection-fade-in">
-          {/* Straight line from parent to center child */}
-          <g>
-            <line
-              x1={connectionData.parentPos.x}
-              y1={connectionData.parentPos.y}
-              x2={connectionData.centerChild.x}
-              y2={connectionData.centerChild.y}
-              stroke={connectionData.parentPos.color}
-              strokeWidth={6}
-              opacity={0.2}
-              style={{ filter: 'blur(6px)' }}
-            />
-            <line
-              x1={connectionData.parentPos.x}
-              y1={connectionData.parentPos.y}
-              x2={connectionData.centerChild.x}
-              y2={connectionData.centerChild.y}
-              stroke={connectionData.parentPos.color}
-              strokeWidth={2}
-              opacity={0.7}
-            />
-          </g>
-          
-          {/* Arc line connecting children along the ring */}
-          {connectionData.hasMultipleChildren && (
-            <g>
-              <path
-                d={describeArc(
-                  centerX,
-                  centerY,
-                  connectionData.childRingRadius,
-                  connectionData.arcStartAngle,
-                  connectionData.arcEndAngle
-                )}
-                fill="none"
-                stroke={connectionData.parentPos.color}
+          {connectionData.segments.map((segment, idx) => (
+            <g key={`segment-${idx}`}>
+              {/* Straight line from parent to center child */}
+              <line
+                x1={segment.fromPos.x}
+                y1={segment.fromPos.y}
+                x2={segment.toPos.x}
+                y2={segment.toPos.y}
+                stroke={segment.color}
                 strokeWidth={6}
-                strokeLinecap="round"
                 opacity={0.2}
                 style={{ filter: 'blur(6px)' }}
               />
-              <path
-                d={describeArc(
-                  centerX,
-                  centerY,
-                  connectionData.childRingRadius,
-                  connectionData.arcStartAngle,
-                  connectionData.arcEndAngle
-                )}
-                fill="none"
-                stroke={connectionData.parentPos.color}
+              <line
+                x1={segment.fromPos.x}
+                y1={segment.fromPos.y}
+                x2={segment.toPos.x}
+                y2={segment.toPos.y}
+                stroke={segment.color}
                 strokeWidth={2}
-                strokeLinecap="round"
                 opacity={0.7}
               />
+              
+              {/* Arc line connecting children along the ring */}
+              {segment.hasArc && segment.arcRadius && segment.arcStartAngle !== undefined && segment.arcEndAngle !== undefined && (
+                <g>
+                  <path
+                    d={describeArc(
+                      centerX,
+                      centerY,
+                      segment.arcRadius,
+                      segment.arcStartAngle,
+                      segment.arcEndAngle
+                    )}
+                    fill="none"
+                    stroke={segment.color}
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                    opacity={0.2}
+                    style={{ filter: 'blur(6px)' }}
+                  />
+                  <path
+                    d={describeArc(
+                      centerX,
+                      centerY,
+                      segment.arcRadius,
+                      segment.arcStartAngle,
+                      segment.arcEndAngle
+                    )}
+                    fill="none"
+                    stroke={segment.color}
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    opacity={0.7}
+                  />
+                </g>
+              )}
             </g>
-          )}
+          ))}
         </g>
       )}
       
@@ -696,7 +750,6 @@ export function AtlasRings({
                   hasChildren={item.children.length > 0}
                   isFaded={ring.isFaded}
                   onClick={() => {
-                    console.log('[v0] Node clicked:', item.name, 'type:', item.type, 'isSelected:', isSelected);
                     if (ring.isFaded && ring.index === 0) {
                       onZoomOut();
                     } else {

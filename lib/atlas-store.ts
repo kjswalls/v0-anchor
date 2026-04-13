@@ -116,7 +116,6 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setRootItems: (items) => set({ rootItems: items }),
   
   selectItem: (itemId) => {
-    console.log('[v0] selectItem called with:', itemId);
     set({ selectedItemId: itemId });
   },
   
@@ -269,7 +268,6 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       rotationAngle: ringRotations[2] || 0,
       isPopulated: childRingPopulated,
     });
-    console.log('[v0] Ring 2 (tasks):', { isProjectSelected, isTaskSelected, taskParent: taskParent?.name, childRingPopulated, itemCount: childRingItems.filter(i => i.type !== 'placeholder').length });
     
     // Ring 3: Grandchildren level (Subtasks ring)
     // Shows real items when:
@@ -305,7 +303,6 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       rotationAngle: ringRotations[3] || 0,
       isPopulated: grandchildRingPopulated,
     });
-    console.log('[v0] Ring 3 (subtasks):', { isTaskSelected, isSubtaskSelected, subtaskParentTask: subtaskParentTask?.name, grandchildRingPopulated, itemCount: grandchildRingItems.filter(i => i.type !== 'placeholder').length });
     
     return rings;
   },
