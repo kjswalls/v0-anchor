@@ -308,35 +308,34 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   },
   
   getBreadcrumbs: () => {
-    const { rootItems, focusPath, selectedItemId } = get();
+    const { rootItems, selectedItemId } = get();
     const breadcrumbs: { id: string; name: string; emoji: string; type: AtlasItemType }[] = [
       { id: 'root', name: 'All', emoji: '🏠', type: 'project' }
     ];
     
-    let currentItems = rootItems;
-    for (const itemId of focusPath) {
-      const item = findItemById(currentItems, itemId);
-      if (item) {
-        breadcrumbs.push({
-          id: item.id,
-          name: item.name,
-          emoji: item.emoji,
-          type: item.type,
+    // Build the full ancestry chain by walking up through parentId
+    if (selectedItemId) {
+      const ancestry: { id: string; name: string; emoji: string; type: AtlasItemType }[] = [];
+      let currentItem = findItemById(rootItems, selectedItemId);
+      
+      // Walk up the tree collecting ancestors
+      while (currentItem) {
+        ancestry.unshift({
+          id: currentItem.id,
+          name: currentItem.name,
+          emoji: currentItem.emoji,
+          type: currentItem.type,
         });
-        currentItems = item.children;
+        
+        if (currentItem.parentId) {
+          currentItem = findItemById(rootItems, currentItem.parentId);
+        } else {
+          break;
+        }
       }
-    }
-    
-    if (selectedItemId && selectedItemId !== focusPath[focusPath.length - 1]) {
-      const selected = findItemById(rootItems, selectedItemId);
-      if (selected) {
-        breadcrumbs.push({
-          id: selected.id,
-          name: selected.name,
-          emoji: selected.emoji,
-          type: selected.type,
-        });
-      }
+      
+      // Add ancestry to breadcrumbs
+      breadcrumbs.push(...ancestry);
     }
     
     return breadcrumbs;
