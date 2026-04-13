@@ -490,7 +490,7 @@ export function AtlasRings({
         const arcLength = (arcAngleSpan * Math.PI / 180) * connectionData.childRingRadius;
         
         return (
-        <g className="atlas-connection-lines">
+        <g key={`connection-${selectedItemId}`} className="atlas-connection-lines">
           {/* Straight line from parent to center child - draws downward */}
           <g>
             <line
@@ -505,7 +505,7 @@ export function AtlasRings({
                 filter: 'blur(6px)',
                 strokeDasharray: lineLength,
                 strokeDashoffset: lineLength,
-                animation: 'atlas-line-draw 0.4s ease-out forwards',
+                animation: 'atlas-line-draw 0.5s ease-out forwards',
               }}
             />
             <line
@@ -519,7 +519,7 @@ export function AtlasRings({
               style={{ 
                 strokeDasharray: lineLength,
                 strokeDashoffset: lineLength,
-                animation: 'atlas-line-draw 0.4s ease-out forwards',
+                animation: 'atlas-line-draw 0.5s ease-out forwards',
               }}
             />
           </g>
@@ -544,7 +544,7 @@ export function AtlasRings({
                   filter: 'blur(6px)',
                   strokeDasharray: arcLength,
                   strokeDashoffset: arcLength,
-                  animation: 'atlas-line-draw 0.35s ease-out 0.25s forwards',
+                  animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
                 }}
               />
               <path
@@ -563,7 +563,7 @@ export function AtlasRings({
                 style={{ 
                   strokeDasharray: arcLength,
                   strokeDashoffset: arcLength,
-                  animation: 'atlas-line-draw 0.35s ease-out 0.25s forwards',
+                  animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
                 }}
               />
             </g>
