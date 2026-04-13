@@ -546,9 +546,11 @@ export function AtlasRings({
       {connectionData && (() => {
         // Check if this is a new selection that needs animation
         const shouldAnimate = animatedSelectionRef.current !== selectedItemId;
+        console.log('[v0] Connection render - selectedItemId:', selectedItemId, 'animatedRef:', animatedSelectionRef.current, 'shouldAnimate:', shouldAnimate);
         if (shouldAnimate) {
           // Mark as animated after this render
           setTimeout(() => {
+            console.log('[v0] Setting animatedSelectionRef to', selectedItemId);
             animatedSelectionRef.current = selectedItemId;
           }, 0);
         }
