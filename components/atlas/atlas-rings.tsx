@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { AtlasNodeComponent } from './atlas-node';
 import { AtlasAnimations } from './atlas-animations';
 import type { AtlasItem, RingConfig, RingItem } from '@/lib/atlas-store';
@@ -85,7 +85,6 @@ function calculateEdgeFadeForAngle(baseAngle: number, rotation: number): number 
 
 // Placeholder circle component
 function PlaceholderNode({ x, y, size = 16 }: { x: number; y: number; size?: number }) {
-  console.log('[v0] Rendering PlaceholderNode at', x, y);
   return (
     <g>
       {/* Outer glow for visibility */}
@@ -121,15 +120,6 @@ export function AtlasRings({
 }: AtlasRingsProps) {
   const { getLineage } = useAtlasStore();
   
-  // Debug: log ring data
-  console.log('[v0] AtlasRings received rings:', rings.map(r => ({
-    index: r.index,
-    label: r.label,
-    itemCount: r.items.length,
-    isPopulated: r.isPopulated,
-    hasPlaceholders: r.items.some(i => isPlaceholder(i)),
-  })));
-  
   const centerX = size / 2;
   const centerY = size * 1.1;
   
@@ -154,6 +144,9 @@ export function AtlasRings({
   
   // Track previous population state to trigger rotation animation
   const prevPopulatedRef = useRef<boolean[]>([]);
+  
+  // Track which rings just got populated (for bloom animation)
+  const [bloomingRings, setBloomingRings] = useState<Set<number>>(new Set());
   
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
@@ -207,8 +200,31 @@ export function AtlasRings({
     return rotations;
   }, [selectedItemId, rings]);
   
-  // Update population tracking after render
+  // Update population tracking after render and trigger bloom animation
   useEffect(() => {
+    const newBloomingRings = new Set<number>();
+    
+    rings.forEach((ring, idx) => {
+      const wasPopulated = prevPopulatedRef.current[idx];
+      const nowPopulated = ring.isPopulated;
+      
+      // If this ring just got populated, mark it for blooming
+      if (!wasPopulated && nowPopulated) {
+        newBloomingRings.add(idx);
+      }
+    });
+    
+    if (newBloomingRings.size > 0) {
+      setBloomingRings(newBloomingRings);
+      
+      // Clear bloom state after animation completes
+      const timer = setTimeout(() => {
+        setBloomingRings(new Set());
+      }, 600);
+      
+      return () => clearTimeout(timer);
+    }
+    
     prevPopulatedRef.current = rings.map(r => r.isPopulated);
   }, [rings]);
   
@@ -435,12 +451,9 @@ export function AtlasRings({
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
-          {nodePositions.map(({ item, x, y, edgeFade, isInLineage }, itemIdx) => {
-            console.log('[v0] Processing node:', { itemIdx, isPlaceholder: isPlaceholder(item), id: item.id, x, y, edgeFade });
-            
+          {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
             // Render placeholder
             if (isPlaceholder(item)) {
-              console.log('[v0] Rendering placeholder:', item.id, 'at', x, y, 'fade:', edgeFade);
               return (
                 <g
                   key={item.id}
@@ -461,12 +474,14 @@ export function AtlasRings({
             const isInactive = selectedItemId !== null && !isInLineage && !isSelected;
             const baseOpacity = ring.isFaded ? 0.4 : 1;
             const finalOpacity = edgeFade * baseOpacity;
+            const isBlooming = bloomingRings.has(ringIdx);
             
             if (finalOpacity < 0.1) return null;
             
             return (
               <g
                 key={item.id}
+                className={isBlooming ? 'atlas-node-bloom' : ''}
                 style={{
                   opacity: finalOpacity,
                   filter: isInactive ? 'saturate(0.3) brightness(0.8)' : 'none',
