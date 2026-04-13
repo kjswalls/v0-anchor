@@ -164,7 +164,7 @@ export function AtlasRings({
       const angleStep = ARC_SPAN / (visibleCount + 1);
       
       // When a ring just got populated, add a small rotation animation for style
-      const wasPopulated = prevPopulatedRef.current[ringIdx];
+      const wasPopulated = prevPopulatedRef.current?.[ringIdx] ?? false;
       const nowPopulated = ring.isPopulated;
       
       if (!wasPopulated && nowPopulated) {
