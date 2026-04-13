@@ -150,12 +150,12 @@ export function AtlasRings({
   // Track which rings just got populated (for fade-in animation)
   const [fadingInRings, setFadingInRings] = useState<Set<number>>(new Set());
   
-  // Track items that are exiting (for fade-out animation) - stores pre-computed positions
+  // Track items that are exiting per ring (for fade-out animation) - stores base positions
   type ExitingNode = { id: string; item: RingItem; x: number; y: number };
-  type StoredNodePosition = { item: RingItem; x: number; y: number; ringIdx: number; rotation: number };
-  const [exitingNodes, setExitingNodes] = useState<ExitingNode[]>([]);
+  type StoredNodePosition = { item: RingItem; x: number; y: number; ringIdx: number };
+  const [exitingNodesByRing, setExitingNodesByRing] = useState<Map<number, ExitingNode[]>>(new Map());
   
-  // Store real item positions for exit animation (captures positions when visible)
+  // Store real item base positions for exit animation (before rotation applied)
   const prevNodePositionsRef = useRef<Map<string, StoredNodePosition>>(new Map());
   
   // Calculate ring rotations based on selection
@@ -232,17 +232,27 @@ export function AtlasRings({
       
       // If this ring just got depopulated, collect exiting nodes from our stored positions
       if (wasPopulated && !nowPopulated) {
-        const exitingFromRing: Array<{ id: string; item: RingItem; x: number; y: number }> = [];
+        const exitingFromRing: ExitingNode[] = [];
         prevNodePositionsRef.current.forEach((pos, id) => {
           if (pos.ringIdx === idx) {
-            // x,y already contain the final screen position (rotation applied when stored)
+            // x,y are base positions (before rotation) so they can follow ring rotation
             exitingFromRing.push({ id, item: pos.item, x: pos.x, y: pos.y });
           }
         });
         
         if (exitingFromRing.length > 0) {
-          setExitingNodes(exitingFromRing);
-          setTimeout(() => setExitingNodes([]), 400);
+          setExitingNodesByRing(prev => {
+            const newMap = new Map(prev);
+            newMap.set(idx, exitingFromRing);
+            return newMap;
+          });
+          setTimeout(() => {
+            setExitingNodesByRing(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(idx);
+              return newMap;
+            });
+          }, 400);
         }
         
         // Clear stored positions for this ring
@@ -479,27 +489,12 @@ export function AtlasRings({
         ))}
       </g>
       
-      {/* Exiting items - render at their captured positions with fade-out */}
-      {exitingNodes.map(({ id, item, x, y }) => (
-        <g
-          key={`exiting-${id}`}
-          className="atlas-node-fade-out"
-        >
-          <AtlasNodeComponent
-            node={item}
-            x={x}
-            y={y}
-            isSelected={false}
-            hasChildren={item.children.length > 0}
-            isFaded={false}
-            onClick={() => {}}
-            onDoubleClick={() => {}}
-          />
-        </g>
-      ))}
+      
       
       {/* Nodes - grouped by ring with rotation */}
       {ringData.map(({ ring, rotation, nodePositions }, ringIdx) => {
+        const ringExitingNodes = exitingNodesByRing.get(ringIdx) || [];
+        
         return (
         <g 
           key={`nodes-${ringIdx}`}
@@ -510,6 +505,28 @@ export function AtlasRings({
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
+          {/* Exiting items - rendered inside ring group so they follow rotation */}
+          {ringExitingNodes.map(({ id, item, x, y }) => (
+            <g
+              key={`exiting-${id}`}
+              className="atlas-node-fade-out"
+              style={{
+                transformOrigin: `${x}px ${y}px`,
+                transform: `rotate(${-rotation}deg)`,
+              }}
+            >
+              <AtlasNodeComponent
+                node={item}
+                x={x}
+                y={y}
+                isSelected={false}
+                hasChildren={item.children.length > 0}
+                isFaded={false}
+                onClick={() => {}}
+                onDoubleClick={() => {}}
+              />
+            </g>
+          ))}
           {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
             // Render placeholder
             if (isPlaceholder(item)) {
@@ -535,15 +552,9 @@ export function AtlasRings({
             const finalOpacity = edgeFade * baseOpacity;
             const isFadingIn = fadingInRings.has(ringIdx);
             
-            // Store position for exit animation - compute final screen position
+            // Store base position for exit animation (before rotation, so exiting nodes follow ring rotation)
             if (finalOpacity > 0.1) {
-              // Apply rotation transform to get actual screen coordinates
-              const rotationRad = (rotation * Math.PI) / 180;
-              const dx = x - centerX;
-              const dy = y - centerY;
-              const finalX = centerX + dx * Math.cos(rotationRad) - dy * Math.sin(rotationRad);
-              const finalY = centerY + dx * Math.sin(rotationRad) + dy * Math.cos(rotationRad);
-              prevNodePositionsRef.current.set(item.id, { item, x: finalX, y: finalY, ringIdx, rotation });
+              prevNodePositionsRef.current.set(item.id, { item, x, y, ringIdx });
             }
             
             if (finalOpacity < 0.1) return null;
