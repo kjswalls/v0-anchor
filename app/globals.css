@@ -292,7 +292,8 @@
     stroke-dashoffset: 0;
   }
   100% {
-    stroke-dashoffset: -36;
+    /* Must be a multiple of the dash pattern (4+4=8) for seamless loop */
+    stroke-dashoffset: -32;
   }
 }
 
