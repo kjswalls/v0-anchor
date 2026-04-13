@@ -350,22 +350,7 @@ export function AtlasRings({
   
   // Track whether connection lines should animate (true only on selection change)
   const [shouldAnimateConnection, setShouldAnimateConnection] = useState(false);
-  const prevSelectedIdRef = useRef<string | null>(null);
-  
-  // Trigger animation only when selection actually changes
-  useEffect(() => {
-    if (selectedItemId !== prevSelectedIdRef.current) {
-      prevSelectedIdRef.current = selectedItemId;
-      if (selectedItemId && connectionData) {
-        setShouldAnimateConnection(true);
-        // Turn off animation flag after animation completes
-        const timer = setTimeout(() => {
-          setShouldAnimateConnection(false);
-        }, 600); // Slightly longer than animation duration
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [selectedItemId, connectionData]);
+  const prevSelectedIdForAnimRef = useRef<string | null>(null);
   
   // Calculate connection data only when selection changes, using final rotation positions
   const connectionData = useMemo(() => {
@@ -468,6 +453,23 @@ export function AtlasRings({
     connectionDataRef.current = { selectionId: selectedItemId, data };
     return data;
   }, [selectedItemId, ringData, centerX, centerY]);
+
+  // Trigger animation only when selection actually changes
+  useEffect(() => {
+    if (selectedItemId !== prevSelectedIdForAnimRef.current) {
+      prevSelectedIdForAnimRef.current = selectedItemId;
+      if (selectedItemId && connectionData) {
+        setShouldAnimateConnection(true);
+        // Turn off animation flag after animation completes
+        const timer = setTimeout(() => {
+          setShouldAnimateConnection(false);
+        }, 600);
+        return () => clearTimeout(timer);
+      } else {
+        setShouldAnimateConnection(false);
+      }
+    }
+  }, [selectedItemId, connectionData]);
 
   return (
     <svg
