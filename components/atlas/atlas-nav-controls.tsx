@@ -38,14 +38,12 @@ export function AtlasNavControls({
             ? 'bg-card/80 text-foreground hover:bg-card hover:border-border cursor-pointer'
             : 'bg-card/30 text-muted-foreground/50 cursor-not-allowed'
         )}
+        title={canNavigateUp ? `Show ${upLabel}` : 'Already at top level'}
       >
         <ChevronUp className="h-4 w-4" />
-        {upLabel && canNavigateUp && (
-          <span className="text-muted-foreground">{upLabel}</span>
-        )}
-        {!canNavigateUp && (
-          <span className="text-muted-foreground/50">Top level</span>
-        )}
+        <span className={canNavigateUp ? 'text-muted-foreground' : 'text-muted-foreground/50'}>
+          {canNavigateUp && upLabel ? upLabel : 'Top level'}
+        </span>
       </button>
       
       {/* Navigate Down Button */}
@@ -63,14 +61,12 @@ export function AtlasNavControls({
             ? 'bg-card/80 text-foreground hover:bg-card hover:border-border cursor-pointer'
             : 'bg-card/30 text-muted-foreground/50 cursor-not-allowed'
         )}
+        title={canNavigateDown ? `Show ${downLabel}` : 'Already at bottom level'}
       >
         <ChevronDown className="h-4 w-4" />
-        {downLabel && canNavigateDown && (
-          <span className="text-muted-foreground">{downLabel}</span>
-        )}
-        {!canNavigateDown && (
-          <span className="text-muted-foreground/50">Select item</span>
-        )}
+        <span className={canNavigateDown ? 'text-muted-foreground' : 'text-muted-foreground/50'}>
+          {canNavigateDown && downLabel ? downLabel : 'Bottom level'}
+        </span>
       </button>
     </div>
   );

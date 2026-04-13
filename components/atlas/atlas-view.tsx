@@ -20,12 +20,10 @@ interface AtlasViewProps {
 export function AtlasView({ onExitAtlas }: AtlasViewProps) {
   const { tasks, selectedDate } = usePlannerStore();
   const {
-    focusPath,
+    viewLevel,
     selectedItemId,
     setRootItems,
     selectItem,
-    zoomOut,
-    zoomToRoot,
     navigateUp,
     navigateDown,
     getVisibleRings,
@@ -72,24 +70,24 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
       if (e.key === 'Escape') {
         if (selectedItemId) {
           selectItem(null);
-        } else if (focusPath.length > 0) {
-          zoomOut();
         } else {
           onExitAtlas();
         }
       }
-      if (e.key === 'Backspace' && !e.metaKey && !e.ctrlKey) {
-        if (document.activeElement?.tagName === 'INPUT') return;
+      // Arrow up/down to navigate levels
+      if (e.key === 'ArrowUp' && e.shiftKey) {
         e.preventDefault();
-        if (focusPath.length > 0) {
-          zoomOut();
-        }
+        navigateUp();
+      }
+      if (e.key === 'ArrowDown' && e.shiftKey) {
+        e.preventDefault();
+        navigateDown();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedItemId, focusPath, selectItem, zoomOut, onExitAtlas]);
+  }, [selectedItemId, selectItem, navigateUp, navigateDown, onExitAtlas]);
   
   const visibleRings = getVisibleRings();
   const breadcrumbs = getBreadcrumbs();
@@ -104,26 +102,32 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
   }, [tasks, selectedDate]);
   
   // Get all items from first visible ring for total count
-  const mainRingItems = visibleRings.find(r => !r.isFaded)?.items || [];
-  const totalTasks = todayTasks.length || mainRingItems.reduce((sum, n) => sum + n.taskCount, 0);
+  const mainRingItems = visibleRings[0]?.items || [];
+  const realItems = mainRingItems.filter((n): n is import('@/lib/atlas-store').AtlasItem => 
+    !('isPlaceholder' in n)
+  );
+  const totalTasks = todayTasks.length || realItems.reduce((sum, n) => sum + n.taskCount, 0);
   const completedTasks = todayTasks.filter(t => t.status === 'completed').length || 
-    mainRingItems.reduce((sum, n) => sum + n.completedCount, 0);
+    realItems.reduce((sum, n) => sum + n.completedCount, 0);
   
   // Get tasks for selected item
   const selectedTasks = useMemo(() => {
     return getMockTasksForItem(selectedItem);
   }, [selectedItem]);
   
-  // Handle breadcrumb navigation
+  // Handle breadcrumb navigation - select the item at that level
   const handleBreadcrumbNavigate = useCallback((index: number) => {
     if (index === 0) {
-      zoomToRoot();
+      // Clicking "All" deselects everything
+      selectItem(null);
     } else {
-      // Navigate to specific level
-      const targetPath = breadcrumbs.slice(1, index + 1).map(b => b.id);
-      useAtlasStore.setState({ focusPath: targetPath, selectedItemId: null });
+      // Select the item at this breadcrumb level
+      const targetItem = breadcrumbs[index];
+      if (targetItem) {
+        selectItem(targetItem.id);
+      }
     }
-  }, [breadcrumbs, zoomToRoot]);
+  }, [breadcrumbs, selectItem]);
   
   // Ring size
   const ringSize = Math.min(
@@ -138,8 +142,8 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
       <AtlasBreadcrumbs
         breadcrumbs={breadcrumbs}
         onNavigate={handleBreadcrumbNavigate}
-        onBack={zoomOut}
-        canGoBack={focusPath.length > 0}
+        onBack={navigateUp}
+        canGoBack={canGoUp}
       />
       
       {/* Main content */}

@@ -3,7 +3,8 @@
 import { create } from 'zustand';
 
 // Hierarchy types for atlas view
-export type AtlasItemType = 'project' | 'task' | 'subtask';
+// Levels: meta_project (0) -> project (1) -> task (2) -> subtask (3)
+export type AtlasItemType = 'meta_project' | 'project' | 'task' | 'subtask';
 
 export interface AtlasItem {
   id: string;
@@ -41,11 +42,15 @@ export interface RingConfig {
 }
 
 export interface AtlasState {
-  // Data - hierarchical items
+  // Data - hierarchical items (rootItems are meta_projects containing projects)
   rootItems: AtlasItem[];
   
   // Navigation state
-  focusPath: string[];
+  // viewLevel determines which 3 levels are shown:
+  // viewLevel 0: meta_projects (ring1), projects (ring2), tasks (ring3)
+  // viewLevel 1: projects (ring1), tasks (ring2), subtasks (ring3)
+  viewLevel: number;
+  maxViewLevel: number; // Calculated based on data depth
   selectedItemId: string | null;
   
   // Computed ring rotation angles (animated)
@@ -54,15 +59,11 @@ export interface AtlasState {
   // Actions
   setRootItems: (items: AtlasItem[]) => void;
   selectItem: (itemId: string | null) => void;
-  zoomIn: (itemId: string) => void;
-  zoomOut: () => void;
-  zoomToRoot: () => void;
   setRingRotation: (ringIndex: number, angle: number) => void;
   navigateUp: () => void;
   navigateDown: () => void;
   
   // Getters
-  getFocusedItem: () => AtlasItem | null;
   getVisibleRings: () => RingConfig[];
   getBreadcrumbs: () => { id: string; name: string; emoji: string; type: AtlasItemType }[];
   getSelectedItem: () => AtlasItem | null;
@@ -71,6 +72,7 @@ export interface AtlasState {
   canNavigateUp: () => boolean;
   canNavigateDown: () => boolean;
   getNavigationLabels: () => { upLabel: string | null; downLabel: string | null };
+  getLevelLabel: (level: number) => string;
 }
 
 // Helper to find item by ID in tree
@@ -85,21 +87,23 @@ function findItemById(items: AtlasItem[], id: string): AtlasItem | null {
   return null;
 }
 
-// Helper to get label for item type
-function getLabelForType(type: AtlasItemType): string {
-  switch (type) {
-    case 'project': return 'PROJECTS';
-    case 'task': return 'TASKS';
-    case 'subtask': return 'SUBTASKS';
+// Helper to get label for hierarchy level
+function getLabelForLevel(level: number): string {
+  switch (level) {
+    case 0: return 'META PROJECTS';
+    case 1: return 'PROJECTS';
+    case 2: return 'TASKS';
+    case 3: return 'SUBTASKS';
     default: return 'ITEMS';
   }
 }
 
-// Helper to determine item type by depth
-function getTypeForDepth(depth: number): AtlasItemType {
-  switch (depth) {
-    case 0: return 'project';
-    case 1: return 'task';
+// Helper to determine item type by level
+function getTypeForLevel(level: number): AtlasItemType {
+  switch (level) {
+    case 0: return 'meta_project';
+    case 1: return 'project';
+    case 2: return 'task';
     default: return 'subtask';
   }
 }
@@ -114,7 +118,8 @@ function createPlaceholders(count: number, ringType: string): PlaceholderItem[] 
 
 export const useAtlasStore = create<AtlasState>((set, get) => ({
   rootItems: [],
-  focusPath: [],
+  viewLevel: 0, // Start showing meta_projects, projects, tasks
+  maxViewLevel: 1, // Can shift down to show projects, tasks, subtasks
   selectedItemId: null,
   ringRotations: [0, 0, 0, 0, 0],
   
@@ -124,39 +129,12 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     set({ selectedItemId: itemId });
   },
   
-  zoomIn: (itemId) => {
-    const item = get().getItemById(itemId);
-    if (item && item.children.length > 0) {
-      set(state => ({
-        focusPath: [...state.focusPath, itemId],
-        selectedItemId: null,
-        ringRotations: [0, 0, 0, 0, 0],
-      }));
-    }
-  },
-  
-  zoomOut: () => {
-    set(state => ({
-      focusPath: state.focusPath.slice(0, -1),
-      selectedItemId: null,
-      ringRotations: [0, 0, 0, 0, 0],
-    }));
-  },
-  
-  zoomToRoot: () => {
-    set({
-      focusPath: [],
-      selectedItemId: null,
-      ringRotations: [0, 0, 0, 0, 0],
-    });
-  },
-  
   navigateUp: () => {
-    // Move the view window up one level (show parent levels)
-    const { focusPath } = get();
-    if (focusPath.length > 0) {
+    // Shift view window up one level
+    const { viewLevel } = get();
+    if (viewLevel > 0) {
       set({
-        focusPath: focusPath.slice(0, -1),
+        viewLevel: viewLevel - 1,
         selectedItemId: null,
         ringRotations: [0, 0, 0, 0, 0],
       });
@@ -164,18 +142,14 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   },
   
   navigateDown: () => {
-    // Move the view window down one level (show child levels)
-    // This requires a selected item with children to navigate into
-    const { selectedItemId, rootItems, focusPath } = get();
-    if (selectedItemId) {
-      const item = findItemById(rootItems, selectedItemId);
-      if (item && item.children.length > 0) {
-        set({
-          focusPath: [...focusPath, selectedItemId],
-          selectedItemId: null,
-          ringRotations: [0, 0, 0, 0, 0],
-        });
-      }
+    // Shift view window down one level
+    const { viewLevel, maxViewLevel } = get();
+    if (viewLevel < maxViewLevel) {
+      set({
+        viewLevel: viewLevel + 1,
+        selectedItemId: null,
+        ringRotations: [0, 0, 0, 0, 0],
+      });
     }
   },
   
@@ -187,154 +161,110 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     });
   },
   
-  getFocusedItem: () => {
-    const { rootItems, focusPath } = get();
-    if (focusPath.length === 0) return null;
-    return findItemById(rootItems, focusPath[focusPath.length - 1]);
-  },
-  
   getVisibleRings: () => {
-    const { rootItems, focusPath, selectedItemId, ringRotations } = get();
+    const { rootItems, viewLevel, selectedItemId, ringRotations } = get();
     const rings: RingConfig[] = [];
-    
-    // Determine base items for current view
-    let baseItems = rootItems;
-    let baseDepth = 0;
-    
-    // Navigate down to focused level
-    for (const focusId of focusPath) {
-      const item = findItemById(baseItems, focusId);
-      if (item) {
-        baseItems = item.children;
-        baseDepth++;
-      }
-    }
-    
-    // Find selected item to determine what children to show
-    const selectedItem = selectedItemId ? findItemById(rootItems, selectedItemId) : null;
-    
-    // Ring 0: Parent level (faded, for zoom out)
-    if (focusPath.length > 0) {
-      const parentId = focusPath[focusPath.length - 1];
-      const parent = findItemById(rootItems, parentId);
-      if (parent) {
-        let parentLevel = rootItems;
-        for (let i = 0; i < focusPath.length - 1; i++) {
-          const item = findItemById(parentLevel, focusPath[i]);
-          if (item) parentLevel = item.children;
-        }
-        rings.push({
-          index: 0,
-          label: getLabelForType(getTypeForDepth(baseDepth - 1)),
-          items: parentLevel,
-          isFaded: true,
-          rotationAngle: ringRotations[0] || 0,
-          isPopulated: true,
-        });
-      }
-    }
-    
-    // Ring 1: Current focus level (main ring) - always populated
-    rings.push({
-      index: rings.length,
-      label: getLabelForType(getTypeForDepth(baseDepth)),
-      items: baseItems,
-      isFaded: false,
-      rotationAngle: ringRotations[1] || 0,
-      isPopulated: true,
-    });
-    
-    // Ring 2: Children level (Tasks ring)
-    // Shows real items when:
-    // - A project is selected (showing project's children)
-    // - A task is selected (keep showing siblings - the task's parent's children)
-    // - A subtask is selected (keep showing task level - the subtask's grandparent's children)
-    const isProjectSelected = selectedItem && selectedItem.type === 'project';
-    const isTaskSelected = selectedItem && selectedItem.type === 'task';
-    const isSubtaskSelected = selectedItem && selectedItem.type === 'subtask';
     const RING_SLOT_COUNT = 6;
     
-    // Find the parent of the selected task to show its siblings
-    const taskParent = isTaskSelected && selectedItem?.parentId 
-      ? findItemById(rootItems, selectedItem.parentId) 
-      : null;
+    // Helper to get items at a specific hierarchy level
+    // Level 0 = rootItems (meta_projects), Level 1 = their children (projects), etc.
+    const getItemsAtLevel = (level: number): AtlasItem[] => {
+      if (level === 0) return rootItems;
+      
+      // Collect all items at the target level by traversing the tree
+      const collectAtLevel = (items: AtlasItem[], currentLevel: number): AtlasItem[] => {
+        if (currentLevel === level) return items;
+        return items.flatMap(item => collectAtLevel(item.children, currentLevel + 1));
+      };
+      
+      return collectAtLevel(rootItems, 0);
+    };
     
-    // Find the grandparent (project) when a subtask is selected
-    const subtaskParentTask = isSubtaskSelected && selectedItem?.parentId
-      ? findItemById(rootItems, selectedItem.parentId)
-      : null;
-    const subtaskGrandparent = subtaskParentTask?.parentId
-      ? findItemById(rootItems, subtaskParentTask.parentId)
-      : null;
+    // Helper to get children of a specific item type from selected ancestry
+    const getChildrenForRing = (ringLevel: number): { items: RingItem[]; populated: boolean } => {
+      const selectedItem = selectedItemId ? findItemById(rootItems, selectedItemId) : null;
+      
+      if (!selectedItem) {
+        return { items: createPlaceholders(RING_SLOT_COUNT, `level-${ringLevel}`), populated: false };
+      }
+      
+      // Build ancestry chain
+      const ancestry: AtlasItem[] = [];
+      let current: AtlasItem | null = selectedItem;
+      while (current) {
+        ancestry.unshift(current);
+        current = current.parentId ? findItemById(rootItems, current.parentId) : null;
+      }
+      
+      // Determine which item in the ancestry is at the ring's parent level
+      const parentLevel = ringLevel - 1;
+      const parentLevelIndex = parentLevel - viewLevel;
+      
+      // Find the relevant parent from the ancestry
+      if (parentLevelIndex >= 0 && parentLevelIndex < ancestry.length) {
+        const parentItem = ancestry[parentLevelIndex];
+        if (parentItem.children.length > 0) {
+          const realItems = parentItem.children.slice(0, 5);
+          const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
+          return {
+            items: [...realItems, ...createPlaceholders(placeholderCount, `level-${ringLevel}`)],
+            populated: true,
+          };
+        }
+      }
+      
+      // If selected item is at this ring's level, show siblings
+      const selectedLevelIndex = ancestry.length - 1;
+      const thisRingLevelIndex = ringLevel - viewLevel;
+      if (selectedLevelIndex === thisRingLevelIndex && ancestry.length > 1) {
+        const parent = ancestry[ancestry.length - 2];
+        if (parent.children.length > 0) {
+          const realItems = parent.children.slice(0, 5);
+          const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
+          return {
+            items: [...realItems, ...createPlaceholders(placeholderCount, `level-${ringLevel}`)],
+            populated: true,
+          };
+        }
+      }
+      
+      return { items: createPlaceholders(RING_SLOT_COUNT, `level-${ringLevel}`), populated: false };
+    };
     
-    let childRingItems: RingItem[];
-    let childRingPopulated = false;
-    
-    if (isProjectSelected && selectedItem && selectedItem.children.length > 0) {
-      // Project selected: show project's children (tasks)
-      const realItems = selectedItem.children.slice(0, 5);
-      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
-      childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
-      childRingPopulated = true;
-    } else if (isTaskSelected && taskParent && taskParent.children.length > 0) {
-      // Task selected: keep showing the task's siblings (parent's children)
-      const realItems = taskParent.children.slice(0, 5);
-      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
-      childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
-      childRingPopulated = true;
-    } else if (isSubtaskSelected && subtaskGrandparent && subtaskGrandparent.children.length > 0) {
-      // Subtask selected: keep showing the tasks (grandparent's children)
-      const realItems = subtaskGrandparent.children.slice(0, 5);
-      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
-      childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
-      childRingPopulated = true;
-    } else {
-      // Show only placeholders when nothing relevant is selected
-      childRingItems = createPlaceholders(RING_SLOT_COUNT, 'tasks');
-    }
-    
+    // Ring 1: Top visible level (viewLevel)
+    const ring1Level = viewLevel;
+    const ring1Items = getItemsAtLevel(ring1Level);
     rings.push({
-      index: rings.length,
-      label: getLabelForType(getTypeForDepth(baseDepth + 1)),
-      items: childRingItems,
+      index: 0,
+      label: getLabelForLevel(ring1Level),
+      items: ring1Items.length > 0 ? ring1Items : createPlaceholders(RING_SLOT_COUNT, `level-${ring1Level}`),
       isFaded: false,
-      rotationAngle: ringRotations[2] || 0,
-      isPopulated: childRingPopulated,
+      rotationAngle: ringRotations[0] || 0,
+      isPopulated: ring1Items.length > 0,
     });
     
-    // Ring 3: Grandchildren level (Subtasks ring)
-    // Shows real items when:
-    // - A task is selected (showing task's children)
-    // - A subtask is selected (keep showing siblings - the subtask's parent's children)
-    // Note: subtaskParentTask was already computed above for Ring 2
-    
-    let grandchildRingItems: RingItem[];
-    let grandchildRingPopulated = false;
-    
-    if (isTaskSelected && selectedItem && selectedItem.children.length > 0) {
-      // Task selected: show task's children (subtasks)
-      const realItems = selectedItem.children.slice(0, 5);
-      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
-      grandchildRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'subtasks')];
-      grandchildRingPopulated = true;
-    } else if (isSubtaskSelected && subtaskParentTask && subtaskParentTask.children.length > 0) {
-      // Subtask selected: keep showing the subtask's siblings (parent's children)
-      const realItems = subtaskParentTask.children.slice(0, 5);
-      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
-      grandchildRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'subtasks')];
-      grandchildRingPopulated = true;
-    } else {
-      // Show only placeholders when nothing relevant is selected
-      grandchildRingItems = createPlaceholders(RING_SLOT_COUNT, 'subtasks');
-    }
-    
+    // Ring 2: Middle level (viewLevel + 1)
+    const ring2Level = viewLevel + 1;
+    const ring2Data = getChildrenForRing(ring2Level);
     rings.push({
-      index: rings.length,
-      label: getLabelForType(getTypeForDepth(baseDepth + 2)),
-      items: grandchildRingItems,
+      index: 1,
+      label: getLabelForLevel(ring2Level),
+      items: ring2Data.items,
       isFaded: false,
-      rotationAngle: ringRotations[3] || 0,
-      isPopulated: grandchildRingPopulated,
+      rotationAngle: ringRotations[1] || 0,
+      isPopulated: ring2Data.populated,
+    });
+    
+    // Ring 3: Bottom level (viewLevel + 2)
+    const ring3Level = viewLevel + 2;
+    const ring3Data = getChildrenForRing(ring3Level);
+    rings.push({
+      index: 2,
+      label: getLabelForLevel(ring3Level),
+      items: ring3Data.items,
+      isFaded: false,
+      rotationAngle: ringRotations[2] || 0,
+      isPopulated: ring3Data.populated,
     });
     
     return rings;
@@ -408,39 +338,28 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   },
   
   canNavigateUp: () => {
-    const { focusPath } = get();
-    return focusPath.length > 0;
+    const { viewLevel } = get();
+    return viewLevel > 0;
   },
   
   canNavigateDown: () => {
-    // Can navigate down if a selected item has children
-    const { selectedItemId, rootItems } = get();
-    if (!selectedItemId) return false;
-    const item = findItemById(rootItems, selectedItemId);
-    return item ? item.children.length > 0 : false;
+    const { viewLevel, maxViewLevel } = get();
+    return viewLevel < maxViewLevel;
   },
   
   getNavigationLabels: () => {
-    const { focusPath, selectedItemId, rootItems } = get();
+    const { viewLevel, maxViewLevel } = get();
     
-    // Up label: the type of the level we'd go to
-    let upLabel: string | null = null;
-    if (focusPath.length > 0) {
-      const depth = focusPath.length - 1;
-      upLabel = getLabelForType(getTypeForDepth(depth));
-    }
+    // Up label: the level that would become visible at the top
+    const upLabel = viewLevel > 0 ? getLabelForLevel(viewLevel - 1) : null;
     
-    // Down label: based on the selected item's children type
-    let downLabel: string | null = null;
-    if (selectedItemId) {
-      const item = findItemById(rootItems, selectedItemId);
-      if (item && item.children.length > 0) {
-        // Children are one level deeper than the current item
-        const childDepth = item.type === 'project' ? 1 : item.type === 'task' ? 2 : 3;
-        downLabel = getLabelForType(getTypeForDepth(childDepth));
-      }
-    }
+    // Down label: the level that would become visible at the bottom
+    const downLabel = viewLevel < maxViewLevel ? getLabelForLevel(viewLevel + 3) : null;
     
     return { upLabel, downLabel };
+  },
+  
+  getLevelLabel: (level: number) => {
+    return getLabelForLevel(level);
   },
 }));
