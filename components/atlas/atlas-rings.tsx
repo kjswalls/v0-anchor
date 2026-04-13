@@ -150,11 +150,11 @@ export function AtlasRings({
   // Track which rings just got populated (for fade-in animation)
   const [fadingInRings, setFadingInRings] = useState<Set<number>>(new Set());
   
-  // Track items that are exiting (for fade-out animation)
-  const [exitingItems, setExitingItems] = useState<Map<number, { items: RingItem[], radius: number, rotation: number }>>(new Map());
+  // Track items that are exiting (for fade-out animation) - stores pre-computed positions
+  const [exitingNodes, setExitingNodes] = useState<Array<{ id: string; item: RingItem; x: number; y: number }>>([]);
   
-  // Store real items from each ring for exit animation
-  const prevRealItemsRef = useRef<Map<number, RingItem[]>>(new Map());
+  // Store real item positions for exit animation (captures positions when visible)
+  const prevNodePositionsRef = useRef<Map<string, { item: RingItem; x: number; y: number; ringIdx: number; rotation: number }>>>(new Map());
   
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
@@ -214,53 +214,47 @@ export function AtlasRings({
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
       prevPopulatedRef.current = rings.map(r => r.isPopulated);
-      // Store initial real items
-      rings.forEach((ring, idx) => {
-        const realItems = ring.items.filter(i => !isPlaceholder(i));
-        if (realItems.length > 0) {
-          prevRealItemsRef.current.set(idx, realItems);
-        }
-      });
       return;
     }
     
     const newFadingInRings = new Set<number>();
-    const newExitingItems = new Map<number, { items: RingItem[], radius: number, rotation: number }>();
     
     rings.forEach((ring, idx) => {
       const wasPopulated = prevPopulatedRef.current?.[idx] ?? false;
       const nowPopulated = ring.isPopulated;
-      const prevRealItems = prevRealItemsRef.current.get(idx) || [];
-      const currentRealItems = ring.items.filter(i => !isPlaceholder(i));
-      
-      console.log('[v0] Ring', idx, '- wasPopulated:', wasPopulated, 'nowPopulated:', nowPopulated, 'prevRealItems:', prevRealItems.length, 'currentRealItems:', currentRealItems.length);
       
       // If this ring just got populated (was falsy, now truthy), mark it for fade-in
       if (!wasPopulated && nowPopulated) {
         newFadingInRings.add(idx);
       }
       
-      // If this ring just got depopulated and had real items, trigger fade-out
-      // Note: nowPopulated can be null or false when depopulated, so use !nowPopulated
-      if (wasPopulated && !nowPopulated && prevRealItems.length > 0) {
-        console.log('[v0] Ring', idx, 'is depopulating, triggering fade-out for', prevRealItems.length, 'items');
-        const radius = getRingRadius(idx, ring.isFaded);
-        const rotation = ringRotations[idx] || 0;
-        newExitingItems.set(idx, { items: prevRealItems, radius, rotation });
-      }
-      
-      // Update stored real items
-      if (currentRealItems.length > 0) {
-        prevRealItemsRef.current.set(idx, currentRealItems);
-      } else if (!nowPopulated) {
-        prevRealItemsRef.current.delete(idx);
+      // If this ring just got depopulated, collect exiting nodes from our stored positions
+      if (wasPopulated && !nowPopulated) {
+        const exitingFromRing: Array<{ id: string; item: RingItem; x: number; y: number }> = [];
+        prevNodePositionsRef.current.forEach((pos, id) => {
+          if (pos.ringIdx === idx) {
+            // x,y already contain the final screen position (rotation applied when stored)
+            exitingFromRing.push({ id, item: pos.item, x: pos.x, y: pos.y });
+          }
+        });
+        
+        if (exitingFromRing.length > 0) {
+          setExitingNodes(exitingFromRing);
+          setTimeout(() => setExitingNodes([]), 400);
+        }
+        
+        // Clear stored positions for this ring
+        prevNodePositionsRef.current.forEach((_, id) => {
+          const pos = prevNodePositionsRef.current.get(id);
+          if (pos?.ringIdx === idx) {
+            prevNodePositionsRef.current.delete(id);
+          }
+        });
       }
     });
     
     // Update previous state
     prevPopulatedRef.current = rings.map(r => r.isPopulated);
-    
-    console.log('[v0] newFadingInRings:', Array.from(newFadingInRings), 'newExitingItems:', Array.from(newExitingItems.keys()));
     
     if (newFadingInRings.size > 0) {
       setFadingInRings(newFadingInRings);
@@ -269,15 +263,7 @@ export function AtlasRings({
       }, 400);
       return () => clearTimeout(timer);
     }
-    
-    if (newExitingItems.size > 0) {
-      setExitingItems(newExitingItems);
-      const timer = setTimeout(() => {
-        setExitingItems(new Map());
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-  }, [rings, ringRotations]);
+  }, [rings, centerX, centerY]);
   
   // Update store with rotations
   useEffect(() => {
@@ -491,49 +477,24 @@ export function AtlasRings({
         ))}
       </g>
       
-      {/* Exiting items - render separately with fade-out */}
-      {Array.from(exitingItems.entries()).map(([ringIdx, { items, radius, rotation }]) => {
-        const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS);
-        const angleStep = visibleCount > 0 ? ARC_SPAN / (visibleCount + 1) : 0;
-        
-        return (
-          <g
-            key={`exiting-ring-${ringIdx}`}
-            style={{
-              transformOrigin: `${centerX}px ${centerY}px`,
-              transform: `rotate(${rotation}deg)`,
-            }}
-          >
-            {items.slice(0, visibleCount).map((item, itemIdx) => {
-              if (isPlaceholder(item)) return null;
-              const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
-              const { x, y } = polarToCartesian(centerX, centerY, radius, baseAngle);
-              
-              return (
-                <g
-                  key={`exiting-${item.id}`}
-                  className="atlas-node-fade-out"
-                  style={{
-                    transformOrigin: `${x}px ${y}px`,
-                    transform: `rotate(${-rotation}deg)`,
-                  }}
-                >
-                  <AtlasNodeComponent
-                    node={item}
-                    x={x}
-                    y={y}
-                    isSelected={false}
-                    hasChildren={item.children.length > 0}
-                    isFaded={false}
-                    onClick={() => {}}
-                    onDoubleClick={() => {}}
-                  />
-                </g>
-              );
-            })}
-          </g>
-        );
-      })}
+      {/* Exiting items - render at their captured positions with fade-out */}
+      {exitingNodes.map(({ id, item, x, y }) => (
+        <g
+          key={`exiting-${id}`}
+          className="atlas-node-fade-out"
+        >
+          <AtlasNodeComponent
+            node={item}
+            x={x}
+            y={y}
+            isSelected={false}
+            hasChildren={item.children.length > 0}
+            isFaded={false}
+            onClick={() => {}}
+            onDoubleClick={() => {}}
+          />
+        </g>
+      ))}
       
       {/* Nodes - grouped by ring with rotation */}
       {ringData.map(({ ring, rotation, nodePositions }, ringIdx) => {
@@ -571,6 +532,17 @@ export function AtlasRings({
             const baseOpacity = ring.isFaded ? 0.4 : 1;
             const finalOpacity = edgeFade * baseOpacity;
             const isFadingIn = fadingInRings.has(ringIdx);
+            
+            // Store position for exit animation - compute final screen position
+            if (finalOpacity > 0.1) {
+              // Apply rotation transform to get actual screen coordinates
+              const rotationRad = (rotation * Math.PI) / 180;
+              const dx = x - centerX;
+              const dy = y - centerY;
+              const finalX = centerX + dx * Math.cos(rotationRad) - dy * Math.sin(rotationRad);
+              const finalY = centerY + dx * Math.sin(rotationRad) + dy * Math.cos(rotationRad);
+              prevNodePositionsRef.current.set(item.id, { item, x: finalX, y: finalY, ringIdx, rotation });
+            }
             
             if (finalOpacity < 0.1) return null;
             
