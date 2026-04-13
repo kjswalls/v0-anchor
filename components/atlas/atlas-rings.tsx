@@ -150,6 +150,12 @@ export function AtlasRings({
   // Track which rings just got populated (for fade-in animation)
   const [fadingInRings, setFadingInRings] = useState<Set<number>>(new Set());
   
+  // Track items that are exiting (for fade-out animation)
+  const [exitingItems, setExitingItems] = useState<Map<number, { items: RingItem[], radius: number, rotation: number }>>(new Map());
+  
+  // Store real items from each ring for exit animation
+  const prevRealItemsRef = useRef<Map<number, RingItem[]>>(new Map());
+  
   // Calculate ring rotations based on selection
   const ringRotations = useMemo(() => {
     const rotations: number[] = rings.map(() => 0);
@@ -202,24 +208,48 @@ export function AtlasRings({
     return rotations;
   }, [selectedItemId, rings]);
   
-  // Update population tracking after render and trigger fade-in animations
+  // Update population tracking after render and trigger fade-in/fade-out animations
   useEffect(() => {
     // Skip on first render - just initialize tracking
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
       prevPopulatedRef.current = rings.map(r => r.isPopulated);
+      // Store initial real items
+      rings.forEach((ring, idx) => {
+        const realItems = ring.items.filter(i => !isPlaceholder(i));
+        if (realItems.length > 0) {
+          prevRealItemsRef.current.set(idx, realItems);
+        }
+      });
       return;
     }
     
     const newFadingInRings = new Set<number>();
+    const newExitingItems = new Map<number, { items: RingItem[], radius: number, rotation: number }>();
     
     rings.forEach((ring, idx) => {
       const wasPopulated = prevPopulatedRef.current?.[idx] ?? false;
       const nowPopulated = ring.isPopulated;
+      const prevRealItems = prevRealItemsRef.current.get(idx) || [];
+      const currentRealItems = ring.items.filter(i => !isPlaceholder(i));
       
       // If this ring just got populated (was false, now true), mark it for fade-in
       if (wasPopulated === false && nowPopulated === true) {
         newFadingInRings.add(idx);
+      }
+      
+      // If this ring just got depopulated and had real items, trigger fade-out
+      if (wasPopulated === true && nowPopulated === false && prevRealItems.length > 0) {
+        const radius = getRingRadius(idx, ring.isFaded);
+        const rotation = ringRotations[idx] || 0;
+        newExitingItems.set(idx, { items: prevRealItems, radius, rotation });
+      }
+      
+      // Update stored real items
+      if (currentRealItems.length > 0) {
+        prevRealItemsRef.current.set(idx, currentRealItems);
+      } else if (!nowPopulated) {
+        prevRealItemsRef.current.delete(idx);
       }
     });
     
@@ -233,7 +263,15 @@ export function AtlasRings({
       }, 400);
       return () => clearTimeout(timer);
     }
-  }, [rings]);
+    
+    if (newExitingItems.size > 0) {
+      setExitingItems(newExitingItems);
+      const timer = setTimeout(() => {
+        setExitingItems(new Map());
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [rings, ringRotations]);
   
   // Update store with rotations
   useEffect(() => {
@@ -446,6 +484,50 @@ export function AtlasRings({
           </g>
         ))}
       </g>
+      
+      {/* Exiting items - render separately with fade-out */}
+      {Array.from(exitingItems.entries()).map(([ringIdx, { items, radius, rotation }]) => {
+        const visibleCount = Math.min(items.length, MAX_VISIBLE_ITEMS);
+        const angleStep = visibleCount > 0 ? ARC_SPAN / (visibleCount + 1) : 0;
+        
+        return (
+          <g
+            key={`exiting-ring-${ringIdx}`}
+            style={{
+              transformOrigin: `${centerX}px ${centerY}px`,
+              transform: `rotate(${rotation}deg)`,
+            }}
+          >
+            {items.slice(0, visibleCount).map((item, itemIdx) => {
+              if (isPlaceholder(item)) return null;
+              const baseAngle = ARC_START_ANGLE + angleStep * (itemIdx + 1);
+              const { x, y } = polarToCartesian(centerX, centerY, radius, baseAngle);
+              
+              return (
+                <g
+                  key={`exiting-${item.id}`}
+                  className="atlas-node-fade-out"
+                  style={{
+                    transformOrigin: `${x}px ${y}px`,
+                    transform: `rotate(${-rotation}deg)`,
+                  }}
+                >
+                  <AtlasNodeComponent
+                    node={item}
+                    x={x}
+                    y={y}
+                    isSelected={false}
+                    hasChildren={item.children.length > 0}
+                    isFaded={false}
+                    onClick={() => {}}
+                    onDoubleClick={() => {}}
+                  />
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
       
       {/* Nodes - grouped by ring with rotation */}
       {ringData.map(({ ring, rotation, nodePositions }, ringIdx) => {

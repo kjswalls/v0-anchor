@@ -322,3 +322,17 @@
 .atlas-node-fade-in {
   animation: atlas-node-fade-in 0.4s ease-out forwards;
 }
+
+/* Atlas node fade-out animation - opacity fade when items depopulate */
+@keyframes atlas-node-fade-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.atlas-node-fade-out {
+  animation: atlas-node-fade-out 0.4s ease-out forwards;
+}
