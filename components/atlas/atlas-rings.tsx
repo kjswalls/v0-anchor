@@ -348,14 +348,15 @@ export function AtlasRings({
     data: null 
   });
   
+  // Track which selection has already been animated
+  const animatedSelectionRef = useRef<string | null>(null);
+  
   // Calculate connection data only when selection changes, using final rotation positions
   const connectionData = useMemo(() => {
     // If selection hasn't changed and we have data, return cached version
     if (connectionDataRef.current.selectionId === selectedItemId && connectionDataRef.current.data !== null) {
-      console.log('[v0] connectionData: returning cached data for', selectedItemId);
       return connectionDataRef.current.data;
     }
-    console.log('[v0] connectionData: recalculating for', selectedItemId, 'prev was', connectionDataRef.current.selectionId);
     
     if (!selectedItemId) {
       connectionDataRef.current = { selectionId: null, data: null };
@@ -543,7 +544,15 @@ export function AtlasRings({
       
       {/* Connection lines - straight line to center child + arc along children */}
       {connectionData && (() => {
-        console.log('[v0] Rendering connection lines for', selectedItemId);
+        // Check if this is a new selection that needs animation
+        const shouldAnimate = animatedSelectionRef.current !== selectedItemId;
+        if (shouldAnimate) {
+          // Mark as animated after this render
+          setTimeout(() => {
+            animatedSelectionRef.current = selectedItemId;
+          }, 0);
+        }
+        
         return (
         <g key={`connection-${selectedItemId}`} className="atlas-connection-lines">
           {/* Straight line from parent to center child - draws downward */}
@@ -558,9 +567,9 @@ export function AtlasRings({
               opacity={0.2}
               style={{ 
                 filter: 'blur(6px)',
-                strokeDasharray: connectionData.lineLength,
-                strokeDashoffset: connectionData.lineLength,
-                animation: 'atlas-line-draw 0.5s ease-out forwards',
+                strokeDasharray: shouldAnimate ? connectionData.lineLength : 'none',
+                strokeDashoffset: shouldAnimate ? connectionData.lineLength : 0,
+                animation: shouldAnimate ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
               }}
             />
             <line
@@ -572,9 +581,9 @@ export function AtlasRings({
               strokeWidth={2}
               opacity={0.7}
               style={{ 
-                strokeDasharray: connectionData.lineLength,
-                strokeDashoffset: connectionData.lineLength,
-                animation: 'atlas-line-draw 0.5s ease-out forwards',
+                strokeDasharray: shouldAnimate ? connectionData.lineLength : 'none',
+                strokeDashoffset: shouldAnimate ? connectionData.lineLength : 0,
+                animation: shouldAnimate ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
               }}
             />
           </g>
@@ -597,9 +606,9 @@ export function AtlasRings({
                 opacity={0.2}
                 style={{ 
                   filter: 'blur(6px)',
-                  strokeDasharray: connectionData.arcLength,
-                  strokeDashoffset: connectionData.arcLength,
-                  animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
+                  strokeDasharray: shouldAnimate ? connectionData.arcLength : 'none',
+                  strokeDashoffset: shouldAnimate ? connectionData.arcLength : 0,
+                  animation: shouldAnimate ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
                 }}
               />
               <path
@@ -616,9 +625,9 @@ export function AtlasRings({
                 strokeLinecap="round"
                 opacity={0.7}
                 style={{ 
-                  strokeDasharray: connectionData.arcLength,
-                  strokeDashoffset: connectionData.arcLength,
-                  animation: 'atlas-line-draw 0.4s ease-out 0.35s forwards',
+                  strokeDasharray: shouldAnimate ? connectionData.arcLength : 'none',
+                  strokeDashoffset: shouldAnimate ? connectionData.arcLength : 0,
+                  animation: shouldAnimate ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
                 }}
               />
             </g>
