@@ -216,13 +216,23 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     // Shows real items when:
     // - A project is selected (showing project's children)
     // - A task is selected (keep showing siblings - the task's parent's children)
+    // - A subtask is selected (keep showing task level - the subtask's grandparent's children)
     const isProjectSelected = selectedItem && selectedItem.type === 'project';
     const isTaskSelected = selectedItem && selectedItem.type === 'task';
+    const isSubtaskSelected = selectedItem && selectedItem.type === 'subtask';
     const RING_SLOT_COUNT = 6;
     
     // Find the parent of the selected task to show its siblings
     const taskParent = isTaskSelected && selectedItem?.parentId 
       ? findItemById(rootItems, selectedItem.parentId) 
+      : null;
+    
+    // Find the grandparent (project) when a subtask is selected
+    const subtaskParentTask = isSubtaskSelected && selectedItem?.parentId
+      ? findItemById(rootItems, selectedItem.parentId)
+      : null;
+    const subtaskGrandparent = subtaskParentTask?.parentId
+      ? findItemById(rootItems, subtaskParentTask.parentId)
       : null;
     
     let childRingItems: RingItem[];
@@ -237,6 +247,12 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     } else if (isTaskSelected && taskParent && taskParent.children.length > 0) {
       // Task selected: keep showing the task's siblings (parent's children)
       const realItems = taskParent.children.slice(0, 5);
+      const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
+      childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
+      childRingPopulated = true;
+    } else if (isSubtaskSelected && subtaskGrandparent && subtaskGrandparent.children.length > 0) {
+      // Subtask selected: keep showing the tasks (grandparent's children)
+      const realItems = subtaskGrandparent.children.slice(0, 5);
       const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
       childRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'tasks')];
       childRingPopulated = true;
@@ -259,12 +275,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     // Shows real items when:
     // - A task is selected (showing task's children)
     // - A subtask is selected (keep showing siblings - the subtask's parent's children)
-    const isSubtaskSelected = selectedItem && selectedItem.type === 'subtask';
-    
-    // Find the parent of the selected subtask to show its siblings
-    const subtaskParent = isSubtaskSelected && selectedItem?.parentId 
-      ? findItemById(rootItems, selectedItem.parentId) 
-      : null;
+    // Note: subtaskParentTask was already computed above for Ring 2
     
     let grandchildRingItems: RingItem[];
     let grandchildRingPopulated = false;
@@ -275,9 +286,9 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
       grandchildRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'subtasks')];
       grandchildRingPopulated = true;
-    } else if (isSubtaskSelected && subtaskParent && subtaskParent.children.length > 0) {
+    } else if (isSubtaskSelected && subtaskParentTask && subtaskParentTask.children.length > 0) {
       // Subtask selected: keep showing the subtask's siblings (parent's children)
-      const realItems = subtaskParent.children.slice(0, 5);
+      const realItems = subtaskParentTask.children.slice(0, 5);
       const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
       grandchildRingItems = [...realItems, ...createPlaceholders(placeholderCount, 'subtasks')];
       grandchildRingPopulated = true;
@@ -294,7 +305,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       rotationAngle: ringRotations[3] || 0,
       isPopulated: grandchildRingPopulated,
     });
-    console.log('[v0] Ring 3 (subtasks):', { isTaskSelected, isSubtaskSelected, subtaskParent: subtaskParent?.name, grandchildRingPopulated, itemCount: grandchildRingItems.filter(i => i.type !== 'placeholder').length });
+    console.log('[v0] Ring 3 (subtasks):', { isTaskSelected, isSubtaskSelected, subtaskParentTask: subtaskParentTask?.name, grandchildRingPopulated, itemCount: grandchildRingItems.filter(i => i.type !== 'placeholder').length });
     
     return rings;
   },
