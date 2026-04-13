@@ -348,9 +348,7 @@ export function AtlasRings({
     data: null 
   });
   
-  // Track whether connection lines should animate (true only on selection change)
-  const [shouldAnimateConnection, setShouldAnimateConnection] = useState(false);
-  const prevSelectedIdForAnimRef = useRef<string | null>(null);
+  
   
   // Calculate connection data only when selection changes, using final rotation positions
   const connectionData = useMemo(() => {
@@ -454,22 +452,7 @@ export function AtlasRings({
     return data;
   }, [selectedItemId, ringData, centerX, centerY]);
 
-  // Trigger animation only when selection actually changes
-  useEffect(() => {
-    if (selectedItemId !== prevSelectedIdForAnimRef.current) {
-      prevSelectedIdForAnimRef.current = selectedItemId;
-      if (selectedItemId && connectionData) {
-        setShouldAnimateConnection(true);
-        // Turn off animation flag after animation completes
-        const timer = setTimeout(() => {
-          setShouldAnimateConnection(false);
-        }, 600);
-        return () => clearTimeout(timer);
-      } else {
-        setShouldAnimateConnection(false);
-      }
-    }
-  }, [selectedItemId, connectionData]);
+  
 
   return (
     <svg
@@ -562,8 +545,8 @@ export function AtlasRings({
       
       {/* Connection lines - straight line to center child + arc along children */}
       {connectionData && (
-        <g key={`connection-${selectedItemId}`} className="atlas-connection-lines">
-          {/* Straight line from parent to center child - draws downward */}
+        <g key={`connection-${selectedItemId}`} className="atlas-connection-lines atlas-connection-fade-in">
+          {/* Straight line from parent to center child */}
           <g>
             <line
               x1={connectionData.parentPos.x}
@@ -573,12 +556,7 @@ export function AtlasRings({
               stroke={connectionData.parentPos.color}
               strokeWidth={6}
               opacity={0.2}
-              style={{ 
-                filter: 'blur(6px)',
-                strokeDasharray: shouldAnimateConnection ? connectionData.lineLength : 'none',
-                strokeDashoffset: shouldAnimateConnection ? connectionData.lineLength : 0,
-                animation: shouldAnimateConnection ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
-              }}
+              style={{ filter: 'blur(6px)' }}
             />
             <line
               x1={connectionData.parentPos.x}
@@ -588,15 +566,10 @@ export function AtlasRings({
               stroke={connectionData.parentPos.color}
               strokeWidth={2}
               opacity={0.7}
-              style={{ 
-                strokeDasharray: shouldAnimateConnection ? connectionData.lineLength : 'none',
-                strokeDashoffset: shouldAnimateConnection ? connectionData.lineLength : 0,
-                animation: shouldAnimateConnection ? 'atlas-line-draw 0.5s ease-out forwards' : 'none',
-              }}
             />
           </g>
           
-          {/* Arc line connecting children along the ring - spreads from center */}
+          {/* Arc line connecting children along the ring */}
           {connectionData.hasMultipleChildren && (
             <g>
               <path
@@ -612,12 +585,7 @@ export function AtlasRings({
                 strokeWidth={6}
                 strokeLinecap="round"
                 opacity={0.2}
-                style={{ 
-                  filter: 'blur(6px)',
-                  strokeDasharray: shouldAnimateConnection ? connectionData.arcLength : 'none',
-                  strokeDashoffset: shouldAnimateConnection ? connectionData.arcLength : 0,
-                  animation: shouldAnimateConnection ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
-                }}
+                style={{ filter: 'blur(6px)' }}
               />
               <path
                 d={describeArc(
@@ -632,11 +600,6 @@ export function AtlasRings({
                 strokeWidth={2}
                 strokeLinecap="round"
                 opacity={0.7}
-                style={{ 
-                  strokeDasharray: shouldAnimateConnection ? connectionData.arcLength : 'none',
-                  strokeDashoffset: shouldAnimateConnection ? connectionData.arcLength : 0,
-                  animation: shouldAnimateConnection ? 'atlas-line-draw 0.4s ease-out 0.35s forwards' : 'none',
-                }}
               />
             </g>
           )}

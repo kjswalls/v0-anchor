@@ -337,12 +337,7 @@
   animation: atlas-node-fade-out 0.4s ease-out forwards;
 }
 
-/* Atlas connection lines draw animation - line draws from start to end */
-@keyframes atlas-line-draw {
-  0% {
-    stroke-dashoffset: var(--line-length, 1000);
-  }
-  100% {
-    stroke-dashoffset: 0;
-  }
+/* Atlas connection lines fade-in animation */
+.atlas-connection-fade-in {
+  animation: atlas-node-fade-in 0.5s ease-out forwards;
 }
