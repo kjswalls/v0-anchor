@@ -289,14 +289,13 @@
 /* Dashed orbit stroke animation - flowing dashes 
    Uses stroke-dashoffset to create smooth flowing effect.
    Offset must be exact multiple of dash pattern (4+4=8) for seamless loop.
-   Using 1600px (200 cycles) over 200s for extremely long duration.
-   This minimizes visible jump at loop restart to once every ~3 minutes. */
+   60s duration - subtle jump once per minute is rarely noticed. */
 @keyframes atlas-dash-flow-cw {
   from {
     stroke-dashoffset: 0;
   }
   to {
-    stroke-dashoffset: -1600;
+    stroke-dashoffset: -480;
   }
 }
 
@@ -305,16 +304,16 @@
     stroke-dashoffset: 0;
   }
   to {
-    stroke-dashoffset: 1600;
+    stroke-dashoffset: 480;
   }
 }
 
 .atlas-dash-rotate-cw {
-  animation: atlas-dash-flow-cw 200s linear infinite;
+  animation: atlas-dash-flow-cw 60s linear infinite;
 }
 
 .atlas-dash-rotate-ccw {
-  animation: atlas-dash-flow-ccw 200s linear infinite;
+  animation: atlas-dash-flow-ccw 60s linear infinite;
 }
 
 /* Atlas node transform animation - smooth position transitions */
