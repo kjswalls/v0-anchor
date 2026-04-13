@@ -479,9 +479,19 @@ export function AtlasRings({
       ))}
       
       {/* Connection lines - straight line to center child + arc along children */}
-      {connectionData && (
-        <g className="atlas-connection-lines atlas-connection-fade-in">
-          {/* Straight line from parent to center child */}
+      {connectionData && (() => {
+        // Calculate line length for animation
+        const dx = connectionData.centerChild.x - connectionData.parentPos.x;
+        const dy = connectionData.centerChild.y - connectionData.parentPos.y;
+        const lineLength = Math.sqrt(dx * dx + dy * dy);
+        
+        // Calculate arc length for animation
+        const arcAngleSpan = Math.abs(connectionData.arcEndAngle - connectionData.arcStartAngle);
+        const arcLength = (arcAngleSpan * Math.PI / 180) * connectionData.childRingRadius;
+        
+        return (
+        <g className="atlas-connection-lines">
+          {/* Straight line from parent to center child - draws downward */}
           <g>
             <line
               x1={connectionData.parentPos.x}
@@ -490,9 +500,13 @@ export function AtlasRings({
               y2={connectionData.centerChild.y}
               stroke={connectionData.parentPos.color}
               strokeWidth={6}
-              strokeDasharray="8 6"
               opacity={0.2}
-              style={{ filter: 'blur(6px)' }}
+              style={{ 
+                filter: 'blur(6px)',
+                strokeDasharray: lineLength,
+                strokeDashoffset: lineLength,
+                animation: 'atlas-line-draw 0.4s ease-out forwards',
+              }}
             />
             <line
               x1={connectionData.parentPos.x}
@@ -501,12 +515,16 @@ export function AtlasRings({
               y2={connectionData.centerChild.y}
               stroke={connectionData.parentPos.color}
               strokeWidth={2}
-              strokeDasharray="8 6"
               opacity={0.7}
+              style={{ 
+                strokeDasharray: lineLength,
+                strokeDashoffset: lineLength,
+                animation: 'atlas-line-draw 0.4s ease-out forwards',
+              }}
             />
           </g>
           
-          {/* Arc line connecting children along the ring */}
+          {/* Arc line connecting children along the ring - spreads from center */}
           {connectionData.hasMultipleChildren && (
             <g>
               <path
@@ -520,10 +538,14 @@ export function AtlasRings({
                 fill="none"
                 stroke={connectionData.parentPos.color}
                 strokeWidth={6}
-                strokeDasharray="8 6"
                 strokeLinecap="round"
                 opacity={0.2}
-                style={{ filter: 'blur(6px)' }}
+                style={{ 
+                  filter: 'blur(6px)',
+                  strokeDasharray: arcLength,
+                  strokeDashoffset: arcLength,
+                  animation: 'atlas-line-draw 0.35s ease-out 0.25s forwards',
+                }}
               />
               <path
                 d={describeArc(
@@ -536,14 +558,19 @@ export function AtlasRings({
                 fill="none"
                 stroke={connectionData.parentPos.color}
                 strokeWidth={2}
-                strokeDasharray="8 6"
                 strokeLinecap="round"
                 opacity={0.7}
+                style={{ 
+                  strokeDasharray: arcLength,
+                  strokeDashoffset: arcLength,
+                  animation: 'atlas-line-draw 0.35s ease-out 0.25s forwards',
+                }}
               />
             </g>
           )}
         </g>
-      )}
+        );
+      })()}
       
       
       
