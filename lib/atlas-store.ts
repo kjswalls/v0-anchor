@@ -18,41 +18,54 @@ export interface AtlasItem {
   children: AtlasItem[];
 }
 
+// Placeholder item for unpopulated rings
+export interface PlaceholderItem {
+  id: string;
+  isPlaceholder: true;
+}
+
+export type RingItem = AtlasItem | PlaceholderItem;
+
+export function isPlaceholder(item: RingItem): item is PlaceholderItem {
+  return 'isPlaceholder' in item && item.isPlaceholder === true;
+}
+
 // Ring configuration for displaying hierarchy
 export interface RingConfig {
-  index: number; // 0 = parent (faded), 1 = current level, 2 = children, 3 = grandchildren, 4 = great-grandchildren (faded)
-  label: string; // e.g., "PROJECTS", "TASKS", "SUBTASKS"
-  items: AtlasItem[];
-  isFaded: boolean; // True for zoom-out (ring 0) and zoom-in (ring 4)
-  rotationAngle: number; // Angle to rotate ring to center selected item
+  index: number;
+  label: string;
+  items: RingItem[];
+  isFaded: boolean;
+  rotationAngle: number;
+  isPopulated: boolean; // Whether this ring shows real items or placeholders
 }
 
 export interface AtlasState {
   // Data - hierarchical items
-  rootItems: AtlasItem[]; // Top-level projects
+  rootItems: AtlasItem[];
   
   // Navigation state
-  focusPath: string[]; // Stack of selected item IDs showing current "zoom" level
-  selectedItemId: string | null; // Currently highlighted item (for showing children connections)
+  focusPath: string[];
+  selectedItemId: string | null;
   
   // Computed ring rotation angles (animated)
-  ringRotations: number[]; // Rotation angle per ring to center selected items
+  ringRotations: number[];
   
   // Actions
   setRootItems: (items: AtlasItem[]) => void;
   selectItem: (itemId: string | null) => void;
-  zoomIn: (itemId: string) => void; // Drill down into item's children
-  zoomOut: () => void; // Go back up one level
+  zoomIn: (itemId: string) => void;
+  zoomOut: () => void;
   zoomToRoot: () => void;
   setRingRotation: (ringIndex: number, angle: number) => void;
   
   // Getters
-  getFocusedItem: () => AtlasItem | null; // The item we're "zoomed into"
-  getVisibleRings: () => RingConfig[]; // Get configured rings for current view
+  getFocusedItem: () => AtlasItem | null;
+  getVisibleRings: () => RingConfig[];
   getBreadcrumbs: () => { id: string; name: string; emoji: string; type: AtlasItemType }[];
   getSelectedItem: () => AtlasItem | null;
   getItemById: (id: string) => AtlasItem | null;
-  getLineage: (itemId: string) => AtlasItem[]; // Get full parent chain
+  getLineage: (itemId: string) => AtlasItem[];
 }
 
 // Helper to find item by ID in tree
@@ -65,16 +78,6 @@ function findItemById(items: AtlasItem[], id: string): AtlasItem | null {
     }
   }
   return null;
-}
-
-// Helper to get all items at a specific depth
-function getItemsAtDepth(items: AtlasItem[], depth: number): AtlasItem[] {
-  if (depth === 0) return items;
-  const result: AtlasItem[] = [];
-  for (const item of items) {
-    result.push(...getItemsAtDepth(item.children, depth - 1));
-  }
-  return result;
 }
 
 // Helper to get label for item type
@@ -96,6 +99,14 @@ function getTypeForDepth(depth: number): AtlasItemType {
   }
 }
 
+// Create placeholder items
+function createPlaceholders(count: number, ringType: string): PlaceholderItem[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `placeholder-${ringType}-${i}`,
+    isPlaceholder: true as const,
+  }));
+}
+
 export const useAtlasStore = create<AtlasState>((set, get) => ({
   rootItems: [],
   focusPath: [],
@@ -114,7 +125,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       set(state => ({
         focusPath: [...state.focusPath, itemId],
         selectedItemId: null,
-        ringRotations: [0, 0, 0, 0, 0], // Reset rotations
+        ringRotations: [0, 0, 0, 0, 0],
       }));
     }
   },
@@ -166,12 +177,14 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       }
     }
     
+    // Find selected item to determine what children to show
+    const selectedItem = selectedItemId ? findItemById(rootItems, selectedItemId) : null;
+    
     // Ring 0: Parent level (faded, for zoom out)
     if (focusPath.length > 0) {
       const parentId = focusPath[focusPath.length - 1];
       const parent = findItemById(rootItems, parentId);
       if (parent) {
-        // Get siblings of parent (items at same level as parent)
         let parentLevel = rootItems;
         for (let i = 0; i < focusPath.length - 1; i++) {
           const item = findItemById(parentLevel, focusPath[i]);
@@ -183,67 +196,70 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
           items: parentLevel,
           isFaded: true,
           rotationAngle: ringRotations[0] || 0,
+          isPopulated: true,
         });
       }
     }
     
-    // Ring 1: Current focus level (main ring)
+    // Ring 1: Current focus level (main ring) - always populated
     rings.push({
       index: rings.length,
       label: getLabelForType(getTypeForDepth(baseDepth)),
       items: baseItems,
       isFaded: false,
       rotationAngle: ringRotations[1] || 0,
+      isPopulated: true,
     });
     
     // Ring 2: Children of current level
+    // Only populated if an item on the main ring is selected
     const childItems = baseItems.flatMap(item => item.children);
-    if (childItems.length > 0) {
-      // If an item is selected, filter to show only that item's children prominently
-      const filteredChildren = selectedItemId
-        ? childItems.filter(c => c.parentId === selectedItemId || 
-            baseItems.some(b => b.id === c.parentId))
-        : childItems;
+    const isChildRingPopulated = selectedItem && selectedItem.type === getTypeForDepth(baseDepth);
+    
+    if (childItems.length > 0 || !isChildRingPopulated) {
+      let childRingItems: RingItem[];
+      
+      if (isChildRingPopulated && selectedItem) {
+        // Show actual children of the selected item
+        childRingItems = selectedItem.children.slice(0, 5);
+      } else {
+        // Show placeholders
+        childRingItems = createPlaceholders(6, 'tasks');
+      }
       
       rings.push({
         index: rings.length,
         label: getLabelForType(getTypeForDepth(baseDepth + 1)),
-        items: filteredChildren,
+        items: childRingItems,
         isFaded: false,
         rotationAngle: ringRotations[2] || 0,
+        isPopulated: isChildRingPopulated || false,
       });
     }
     
-    // Ring 3: Grandchildren
+    // Ring 3: Grandchildren (subtasks of the selected task)
+    // Only populated if a task (child) is selected
+    const selectedIsTask = selectedItem && selectedItem.type === 'task';
     const grandchildItems = childItems.flatMap(item => item.children);
-    if (grandchildItems.length > 0) {
-      const filteredGrandchildren = selectedItemId
-        ? grandchildItems.filter(g => {
-            const parent = findItemById(childItems, g.parentId || '');
-            return parent && parent.parentId === selectedItemId;
-          })
-        : grandchildItems;
-      
-      if (filteredGrandchildren.length > 0) {
-        rings.push({
-          index: rings.length,
-          label: getLabelForType(getTypeForDepth(baseDepth + 2)),
-          items: filteredGrandchildren,
-          isFaded: false,
-          rotationAngle: ringRotations[3] || 0,
-        });
-      }
-    }
     
-    // Ring 4: Great-grandchildren (faded, for zoom in hint)
-    const greatGrandchildItems = grandchildItems.flatMap(item => item.children);
-    if (greatGrandchildItems.length > 0) {
+    if (grandchildItems.length > 0 || selectedIsTask) {
+      let grandchildRingItems: RingItem[];
+      
+      if (selectedIsTask && selectedItem) {
+        // Show actual subtasks of the selected task
+        grandchildRingItems = selectedItem.children.slice(0, 5);
+      } else {
+        // Show placeholders
+        grandchildRingItems = createPlaceholders(6, 'subtasks');
+      }
+      
       rings.push({
         index: rings.length,
-        label: '',
-        items: greatGrandchildItems.slice(0, 5), // Limit for visual clarity
-        isFaded: true,
-        rotationAngle: ringRotations[4] || 0,
+        label: getLabelForType(getTypeForDepth(baseDepth + 2)),
+        items: grandchildRingItems,
+        isFaded: false,
+        rotationAngle: ringRotations[3] || 0,
+        isPopulated: selectedIsTask || false,
       });
     }
     
@@ -270,7 +286,6 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       }
     }
     
-    // Add selected item if different from last focus
     if (selectedItemId && selectedItemId !== focusPath[focusPath.length - 1]) {
       const selected = findItemById(rootItems, selectedItemId);
       if (selected) {
