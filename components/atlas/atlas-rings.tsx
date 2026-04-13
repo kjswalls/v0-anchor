@@ -464,11 +464,15 @@ export function AtlasRings({
       // Child position (centered at 270 degrees)
       const childPos = polarToCartesian(centerX, centerY, childrenInfo.radius, ARC_CENTER_ANGLE);
       
-      // Calculate arc angles if multiple children
+      // Only show arc for ancestor items (not the selected item itself)
+      // When the selected item has children, the connection goes straight down - no arc needed
+      const isSelectedItem = itemId === selectedItemId;
+      
+      // Calculate arc angles if multiple children AND this is an ancestor (not selected item)
       let arcStartAngle: number | undefined;
       let arcEndAngle: number | undefined;
       
-      if (childrenInfo.children.length > 1) {
+      if (childrenInfo.children.length > 1 && !isSelectedItem) {
         // Calculate the rotation that will be applied to center the children
         const visibleCount = Math.min(childrenInfo.ring.items.length, MAX_VISIBLE_ITEMS);
         const angleStep = ARC_SPAN / (visibleCount + 1);
@@ -489,7 +493,7 @@ export function AtlasRings({
         arcRadius: childrenInfo.radius,
         arcStartAngle,
         arcEndAngle,
-        hasArc: childrenInfo.children.length > 1,
+        hasArc: childrenInfo.children.length > 1 && !isSelectedItem,
       });
     }
     
