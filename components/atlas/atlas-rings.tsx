@@ -57,6 +57,24 @@ function describeArc(
   ].join(' ');
 }
 
+// Label arc - draws in opposite direction so text appears right-side up
+function describeLabelArc(
+  x: number,
+  y: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number
+): string {
+  const start = polarToCartesian(x, y, radius, startAngle);
+  const end = polarToCartesian(x, y, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+  // Sweep flag 1 = clockwise, which makes text read left-to-right on bottom half
+  return [
+    'M', start.x, start.y,
+    'A', radius, radius, 0, largeArcFlag, 1, end.x, end.y,
+  ].join(' ');
+}
+
 // Calculate opacity based on how close an angle is to the arc edges
 function calculateEdgeFade(angle: number): number {
   const distFromStart = Math.abs(angle - ARC_START_ANGLE);
@@ -323,27 +341,27 @@ export function AtlasRings({
             />
           )}
           
-          {/* Ring label - curved text on left side of arc */}
+          {/* Ring label - curved text below the arc, left side */}
           {ring.label && (
             <>
               <defs>
-                {/* Path runs along the outer edge of the ring, positioned on the left side */}
+                {/* Path runs BELOW the ring (smaller radius), reversed direction so text reads right-side up */}
+                {/* Start from lower angle and go to higher angle for correct text direction */}
                 <path
                   id={`labelPath-${ringIdx}`}
-                  d={describeArc(centerX, centerY, radius + 18, ARC_START_ANGLE - 5, ARC_START_ANGLE + 40)}
+                  d={describeLabelArc(centerX, centerY, radius - 16, ARC_START_ANGLE - 8, ARC_START_ANGLE + 30)}
                 />
               </defs>
               <text
                 fill="var(--muted-foreground)"
-                fontSize="10"
-                fontWeight="200"
+                fontSize="9"
+                fontWeight="300"
                 fontFamily="system-ui, sans-serif"
-                letterSpacing="0.2em"
-                opacity={ring.isFaded ? 0.25 : 0.6}
-                style={{ textTransform: 'uppercase' }}
+                letterSpacing="0.15em"
+                opacity={ring.isFaded ? 0.2 : 0.5}
               >
-                <textPath href={`#labelPath-${ringIdx}`} startOffset="5%">
-                  {ring.label}
+                <textPath href={`#labelPath-${ringIdx}`} startOffset="0%">
+                  {ring.label.toUpperCase()}
                 </textPath>
               </text>
             </>
