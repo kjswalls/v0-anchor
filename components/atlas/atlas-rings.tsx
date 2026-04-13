@@ -143,7 +143,9 @@ export function AtlasRings({
   const lastProcessedSelectionRef = useRef<string | null>(null);
   
   // Track previous population state to trigger rotation animation
-  const prevPopulatedRef = useRef<boolean[]>([]);
+  // Initialize with null to detect first render vs actual state changes
+  const prevPopulatedRef = useRef<boolean[] | null>(null);
+  const isFirstRenderRef = useRef(true);
   
   // Track which rings just got populated (for bloom animation)
   const [bloomingRings, setBloomingRings] = useState<Set<number>>(new Set());
@@ -208,22 +210,35 @@ export function AtlasRings({
   
   // Update population tracking after render and trigger bloom/shrink animations
   useEffect(() => {
+    // Skip bloom/shrink on first render - just initialize tracking
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      prevPopulatedRef.current = rings.map(r => r.isPopulated);
+      rings.forEach((ring, idx) => {
+        const currentItems = ring.items.filter(i => !isPlaceholder(i));
+        if (ring.isPopulated && currentItems.length > 0) {
+          prevPopulatedItemsRef.current.set(idx, currentItems);
+        }
+      });
+      return;
+    }
+    
     const newBloomingRings = new Set<number>();
     const newExitingItems = new Map<number, RingItem[]>();
     
     rings.forEach((ring, idx) => {
-      const wasPopulated = prevPopulatedRef.current[idx];
+      const wasPopulated = prevPopulatedRef.current?.[idx] ?? false;
       const nowPopulated = ring.isPopulated;
       const prevItems = prevPopulatedItemsRef.current.get(idx) || [];
       const currentItems = ring.items.filter(i => !isPlaceholder(i));
       
-      // If this ring just got populated, mark it for blooming
-      if (!wasPopulated && nowPopulated) {
+      // If this ring just got populated (was false, now true), mark it for blooming
+      if (wasPopulated === false && nowPopulated === true) {
         newBloomingRings.add(idx);
       }
       
       // If this ring just got depopulated, store the previous items for exit animation
-      if (wasPopulated && !nowPopulated && prevItems.length > 0) {
+      if (wasPopulated === true && nowPopulated === false && prevItems.length > 0) {
         newExitingItems.set(idx, prevItems);
       }
       
@@ -234,6 +249,9 @@ export function AtlasRings({
         prevPopulatedItemsRef.current.delete(idx);
       }
     });
+    
+    // Update previous state
+    prevPopulatedRef.current = rings.map(r => r.isPopulated);
     
     if (newBloomingRings.size > 0) {
       setBloomingRings(newBloomingRings);
@@ -250,8 +268,6 @@ export function AtlasRings({
       }, 400);
       return () => clearTimeout(timer);
     }
-    
-    prevPopulatedRef.current = rings.map(r => r.isPopulated);
   }, [rings]);
   
   // Update store with rotations
