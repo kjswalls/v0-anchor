@@ -331,12 +331,11 @@ export function AtlasRings({
     });
   }, [rings, ringRotations, centerX, centerY, selectedLineage, selectedItemId]);
   
-  // Connection lines
-  const connectionLines = useMemo(() => {
-    if (!selectedItemId) return [];
+  // Connection lines - straight line to center child + arc connecting children
+  const connectionData = useMemo(() => {
+    if (!selectedItemId) return null;
     
-    const lines: { fromX: number; fromY: number; toX: number; toY: number; color: string }[] = [];
-    
+    // Find selected item position and color
     let selectedPos: { x: number; y: number; color: string } | null = null;
     for (const { nodePositions, rotation, radius } of ringData) {
       for (const np of nodePositions) {
@@ -350,25 +349,44 @@ export function AtlasRings({
       if (selectedPos) break;
     }
     
-    if (!selectedPos) return [];
+    if (!selectedPos) return null;
+    
+    // Find all children and their positions
+    const children: { x: number; y: number; finalAngle: number; idx: number }[] = [];
+    let childRingRadius = 0;
+    let childRingRotation = 0;
     
     for (const { nodePositions, rotation, radius } of ringData) {
       for (const np of nodePositions) {
         if (!isPlaceholder(np.item) && np.item.parentId === selectedItemId && np.edgeFade > 0.3) {
           const finalAngle = np.baseAngle + rotation;
           const childPos = polarToCartesian(centerX, centerY, radius, finalAngle);
-          lines.push({
-            fromX: selectedPos.x,
-            fromY: selectedPos.y,
-            toX: childPos.x,
-            toY: childPos.y,
-            color: selectedPos.color,
-          });
+          children.push({ x: childPos.x, y: childPos.y, finalAngle, idx: children.length });
+          childRingRadius = radius;
+          childRingRotation = rotation;
         }
       }
     }
     
-    return lines;
+    if (children.length === 0) return null;
+    
+    // Sort children by angle to find the range
+    const sortedByAngle = [...children].sort((a, b) => a.finalAngle - b.finalAngle);
+    const minAngle = sortedByAngle[0].finalAngle;
+    const maxAngle = sortedByAngle[sortedByAngle.length - 1].finalAngle;
+    
+    // Find the center child (middle index)
+    const centerChild = children[Math.floor(children.length / 2)];
+    
+    return {
+      parentPos: selectedPos,
+      centerChild,
+      childRingRadius,
+      childRingRotation,
+      arcStartAngle: minAngle,
+      arcEndAngle: maxAngle,
+      hasMultipleChildren: children.length > 1,
+    };
   }, [selectedItemId, ringData, centerX, centerY]);
 
   return (
@@ -460,34 +478,72 @@ export function AtlasRings({
         </g>
       ))}
       
-      {/* Connection lines */}
-      <g className="atlas-connection-lines" style={{ transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-        {connectionLines.map((line, idx) => (
-          <g key={`connection-${idx}`}>
+      {/* Connection lines - straight line to center child + arc along children */}
+      {connectionData && (
+        <g className="atlas-connection-lines" style={{ transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          {/* Straight line from parent to center child */}
+          <g>
             <line
-              x1={line.fromX}
-              y1={line.fromY}
-              x2={line.toX}
-              y2={line.toY}
-              stroke={line.color}
+              x1={connectionData.parentPos.x}
+              y1={connectionData.parentPos.y}
+              x2={connectionData.centerChild.x}
+              y2={connectionData.centerChild.y}
+              stroke={connectionData.parentPos.color}
               strokeWidth={6}
               strokeDasharray="8 6"
               opacity={0.2}
               style={{ filter: 'blur(6px)' }}
             />
             <line
-              x1={line.fromX}
-              y1={line.fromY}
-              x2={line.toX}
-              y2={line.toY}
-              stroke={line.color}
+              x1={connectionData.parentPos.x}
+              y1={connectionData.parentPos.y}
+              x2={connectionData.centerChild.x}
+              y2={connectionData.centerChild.y}
+              stroke={connectionData.parentPos.color}
               strokeWidth={2}
               strokeDasharray="8 6"
               opacity={0.7}
             />
           </g>
-        ))}
-      </g>
+          
+          {/* Arc line connecting children along the ring */}
+          {connectionData.hasMultipleChildren && (
+            <g>
+              <path
+                d={describeArc(
+                  centerX,
+                  centerY,
+                  connectionData.childRingRadius,
+                  connectionData.arcStartAngle,
+                  connectionData.arcEndAngle
+                )}
+                fill="none"
+                stroke={connectionData.parentPos.color}
+                strokeWidth={6}
+                strokeDasharray="8 6"
+                strokeLinecap="round"
+                opacity={0.2}
+                style={{ filter: 'blur(6px)' }}
+              />
+              <path
+                d={describeArc(
+                  centerX,
+                  centerY,
+                  connectionData.childRingRadius,
+                  connectionData.arcStartAngle,
+                  connectionData.arcEndAngle
+                )}
+                fill="none"
+                stroke={connectionData.parentPos.color}
+                strokeWidth={2}
+                strokeDasharray="8 6"
+                strokeLinecap="round"
+                opacity={0.7}
+              />
+            </g>
+          )}
+        </g>
+      )}
       
       
       
