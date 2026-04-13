@@ -84,18 +84,30 @@ function calculateEdgeFadeForAngle(baseAngle: number, rotation: number): number 
 }
 
 // Placeholder circle component
-function PlaceholderNode({ x, y, size = 12 }: { x: number; y: number; size?: number }) {
+function PlaceholderNode({ x, y, size = 16 }: { x: number; y: number; size?: number }) {
+  console.log('[v0] Rendering PlaceholderNode at', x, y);
   return (
-    <circle
-      cx={x}
-      cy={y}
-      r={size}
-      fill="var(--muted)"
-      opacity={0.15}
-      stroke="var(--border)"
-      strokeWidth={1}
-      strokeDasharray="3 3"
-    />
+    <g>
+      {/* Outer glow for visibility */}
+      <circle
+        cx={x}
+        cy={y}
+        r={size + 4}
+        fill="var(--muted-foreground)"
+        opacity={0.08}
+      />
+      {/* Main placeholder circle */}
+      <circle
+        cx={x}
+        cy={y}
+        r={size}
+        fill="none"
+        stroke="var(--muted-foreground)"
+        strokeWidth={1.5}
+        strokeDasharray="4 4"
+        opacity={0.35}
+      />
+    </g>
   );
 }
 
@@ -108,6 +120,15 @@ export function AtlasRings({
   size,
 }: AtlasRingsProps) {
   const { getLineage } = useAtlasStore();
+  
+  // Debug: log ring data
+  console.log('[v0] AtlasRings received rings:', rings.map(r => ({
+    index: r.index,
+    label: r.label,
+    itemCount: r.items.length,
+    isPopulated: r.isPopulated,
+    hasPlaceholders: r.items.some(i => isPlaceholder(i)),
+  })));
   
   const centerX = size / 2;
   const centerY = size * 1.1;
@@ -414,14 +435,17 @@ export function AtlasRings({
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
-          {nodePositions.map(({ item, x, y, edgeFade, isInLineage }) => {
+          {nodePositions.map(({ item, x, y, edgeFade, isInLineage }, itemIdx) => {
+            console.log('[v0] Processing node:', { itemIdx, isPlaceholder: isPlaceholder(item), id: item.id, x, y, edgeFade });
+            
             // Render placeholder
             if (isPlaceholder(item)) {
+              console.log('[v0] Rendering placeholder:', item.id, 'at', x, y, 'fade:', edgeFade);
               return (
                 <g
                   key={item.id}
                   style={{
-                    opacity: edgeFade * 0.4,
+                    opacity: Math.max(edgeFade * 0.6, 0.2), // Ensure minimum visibility
                     transition: 'opacity 0.3s ease-out',
                     transformOrigin: `${x}px ${y}px`,
                     transform: `rotate(${-rotation}deg)`,
