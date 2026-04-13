@@ -10,7 +10,6 @@ interface AtlasRingsProps {
   rings: RingConfig[];
   selectedItemId: string | null;
   onSelectItem: (itemId: string | null) => void;
-  onZoomIn: (itemId: string) => void;
   onZoomOut: () => void;
   size: number;
 }
@@ -114,7 +113,6 @@ export function AtlasRings({
   rings,
   selectedItemId,
   onSelectItem,
-  onZoomIn,
   onZoomOut,
   size,
 }: AtlasRingsProps) {
@@ -758,14 +756,10 @@ export function AtlasRings({
                   isFaded={ring.isFaded}
                   onClick={() => {
                     if (ring.isFaded && ring.index === 0) {
+                      // Clicking faded parent ring navigates up
                       onZoomOut();
                     } else {
                       onSelectItem(isSelected ? null : item.id);
-                    }
-                  }}
-                  onDoubleClick={() => {
-                    if (item.children.length > 0) {
-                      onZoomIn(item.id);
                     }
                   }}
                 />

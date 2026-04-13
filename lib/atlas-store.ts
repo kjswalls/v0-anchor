@@ -58,6 +58,8 @@ export interface AtlasState {
   zoomOut: () => void;
   zoomToRoot: () => void;
   setRingRotation: (ringIndex: number, angle: number) => void;
+  navigateUp: () => void;
+  navigateDown: () => void;
   
   // Getters
   getFocusedItem: () => AtlasItem | null;
@@ -66,6 +68,9 @@ export interface AtlasState {
   getSelectedItem: () => AtlasItem | null;
   getItemById: (id: string) => AtlasItem | null;
   getLineage: (itemId: string) => AtlasItem[];
+  canNavigateUp: () => boolean;
+  canNavigateDown: () => boolean;
+  getNavigationLabels: () => { upLabel: string | null; downLabel: string | null };
 }
 
 // Helper to find item by ID in tree
@@ -144,6 +149,34 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       selectedItemId: null,
       ringRotations: [0, 0, 0, 0, 0],
     });
+  },
+  
+  navigateUp: () => {
+    // Move the view window up one level (show parent levels)
+    const { focusPath } = get();
+    if (focusPath.length > 0) {
+      set({
+        focusPath: focusPath.slice(0, -1),
+        selectedItemId: null,
+        ringRotations: [0, 0, 0, 0, 0],
+      });
+    }
+  },
+  
+  navigateDown: () => {
+    // Move the view window down one level (show child levels)
+    // This requires a selected item with children to navigate into
+    const { selectedItemId, rootItems, focusPath } = get();
+    if (selectedItemId) {
+      const item = findItemById(rootItems, selectedItemId);
+      if (item && item.children.length > 0) {
+        set({
+          focusPath: [...focusPath, selectedItemId],
+          selectedItemId: null,
+          ringRotations: [0, 0, 0, 0, 0],
+        });
+      }
+    }
   },
   
   setRingRotation: (ringIndex, angle) => {
@@ -372,5 +405,42 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
     
     findPath(rootItems, itemId, []);
     return lineage;
+  },
+  
+  canNavigateUp: () => {
+    const { focusPath } = get();
+    return focusPath.length > 0;
+  },
+  
+  canNavigateDown: () => {
+    // Can navigate down if a selected item has children
+    const { selectedItemId, rootItems } = get();
+    if (!selectedItemId) return false;
+    const item = findItemById(rootItems, selectedItemId);
+    return item ? item.children.length > 0 : false;
+  },
+  
+  getNavigationLabels: () => {
+    const { focusPath, selectedItemId, rootItems } = get();
+    
+    // Up label: the type of the level we'd go to
+    let upLabel: string | null = null;
+    if (focusPath.length > 0) {
+      const depth = focusPath.length - 1;
+      upLabel = getLabelForType(getTypeForDepth(depth));
+    }
+    
+    // Down label: based on the selected item's children type
+    let downLabel: string | null = null;
+    if (selectedItemId) {
+      const item = findItemById(rootItems, selectedItemId);
+      if (item && item.children.length > 0) {
+        // Children are one level deeper than the current item
+        const childDepth = item.type === 'project' ? 1 : item.type === 'task' ? 2 : 3;
+        downLabel = getLabelForType(getTypeForDepth(childDepth));
+      }
+    }
+    
+    return { upLabel, downLabel };
   },
 }));

@@ -11,7 +11,6 @@ interface AtlasNodeProps {
   hasChildren: boolean;
   isFaded?: boolean; // For zoom hint rings
   onClick: () => void;
-  onDoubleClick: () => void;
 }
 
 export function AtlasNodeComponent({
@@ -22,7 +21,6 @@ export function AtlasNodeComponent({
   hasChildren,
   isFaded = false,
   onClick,
-  onDoubleClick,
 }: AtlasNodeProps) {
   const nodeSize = isFaded ? 40 : 56;
   const glowIntensity = node.activityLevel;
@@ -36,10 +34,6 @@ export function AtlasNodeComponent({
       onClick={(e) => {
         e.stopPropagation();
         onClick();
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onDoubleClick();
       }}
       className="cursor-pointer atlas-node-hover"
       role="button"

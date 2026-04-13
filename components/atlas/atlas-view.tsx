@@ -7,6 +7,7 @@ import { AtlasRings } from './atlas-rings';
 import { TodayPortal } from './today-portal';
 import { AtlasBreadcrumbs } from './atlas-breadcrumbs';
 import { AtlasTaskPanel } from './atlas-task-panel';
+import { AtlasNavControls } from './atlas-nav-controls';
 import { usePlannerStore } from '@/lib/planner-store';
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
 import { ChevronUp } from 'lucide-react';
@@ -23,12 +24,16 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
     selectedItemId,
     setRootItems,
     selectItem,
-    zoomIn,
     zoomOut,
     zoomToRoot,
+    navigateUp,
+    navigateDown,
     getVisibleRings,
     getBreadcrumbs,
     getSelectedItem,
+    canNavigateUp,
+    canNavigateDown,
+    getNavigationLabels,
   } = useAtlasStore();
   
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -89,6 +94,9 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
   const visibleRings = getVisibleRings();
   const breadcrumbs = getBreadcrumbs();
   const selectedItem = getSelectedItem();
+  const canGoUp = canNavigateUp();
+  const canGoDown = canNavigateDown();
+  const navLabels = getNavigationLabels();
   
   // Calculate total progress for today portal
   const todayTasks = useMemo(() => {
@@ -147,8 +155,7 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 rings={visibleRings}
                 selectedItemId={selectedItemId}
                 onSelectItem={selectItem}
-                onZoomIn={zoomIn}
-                onZoomOut={zoomOut}
+                onZoomOut={navigateUp}
                 size={ringSize}
               />
               
@@ -159,6 +166,16 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 selectedDate={selectedDate}
                 size={ringSize}
                 onExitAtlas={onExitAtlas}
+              />
+              
+              {/* Navigation controls */}
+              <AtlasNavControls
+                canNavigateUp={canGoUp}
+                canNavigateDown={canGoDown}
+                upLabel={navLabels.upLabel}
+                downLabel={navLabels.downLabel}
+                onNavigateUp={navigateUp}
+                onNavigateDown={navigateDown}
               />
             </div>
           )}
