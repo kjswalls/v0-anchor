@@ -20,8 +20,7 @@ export function AtlasNavControls({
   onNavigateUp,
   onNavigateDown,
 }: AtlasNavControlsProps) {
-  if (!canNavigateUp && !canNavigateDown) return null;
-  
+  // Always show controls so users know navigation exists
   return (
     <div className="absolute bottom-4 left-4 flex flex-col gap-2 z-10">
       {/* Navigate Up Button */}

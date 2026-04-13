@@ -156,7 +156,12 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 selectedItemId={selectedItemId}
                 onSelectItem={selectItem}
                 onZoomOut={navigateUp}
+                onZoomIn={navigateDown}
                 size={ringSize}
+                canNavigateUp={canGoUp}
+                canNavigateDown={canGoDown}
+                upLabel={navLabels.upLabel}
+                downLabel={navLabels.downLabel}
               />
               
               {/* Today portal at bottom center */}

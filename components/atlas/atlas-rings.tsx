@@ -11,7 +11,12 @@ interface AtlasRingsProps {
   selectedItemId: string | null;
   onSelectItem: (itemId: string | null) => void;
   onZoomOut: () => void;
+  onZoomIn: () => void;
   size: number;
+  canNavigateUp: boolean;
+  canNavigateDown: boolean;
+  upLabel: string | null;
+  downLabel: string | null;
 }
 
 // Arc configuration - rainbow orientation
@@ -114,7 +119,12 @@ export function AtlasRings({
   selectedItemId,
   onSelectItem,
   onZoomOut,
+  onZoomIn,
   size,
+  canNavigateUp,
+  canNavigateDown,
+  upLabel,
+  downLabel,
 }: AtlasRingsProps) {
   const { getLineage } = useAtlasStore();
   
@@ -599,6 +609,98 @@ export function AtlasRings({
           )}
         </g>
       ))}
+      
+      {/* Ghost ring above - indicates more levels above */}
+      {canNavigateUp && (() => {
+        const ghostRadius = maxRadius + ringSpacing * 1.2;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 15, ARC_END_ANGLE - 15);
+        return (
+          <g 
+            className="cursor-pointer transition-opacity hover:opacity-60"
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomOut();
+            }}
+          >
+            <path
+              d={ghostPath}
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              opacity={0.2}
+            />
+            {upLabel && (
+              <>
+                <defs>
+                  <path
+                    id="ghostLabelPathUp"
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 12, ARC_START_ANGLE + 15, ARC_START_ANGLE + 60)}
+                  />
+                </defs>
+                <text
+                  fill="var(--muted-foreground)"
+                  fontSize="8"
+                  fontWeight="300"
+                  fontFamily="system-ui, sans-serif"
+                  letterSpacing="0.15em"
+                  opacity={0.25}
+                >
+                  <textPath href="#ghostLabelPathUp" startOffset="0%">
+                    {upLabel.toUpperCase()}
+                  </textPath>
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })()}
+      
+      {/* Ghost ring below - indicates more levels below */}
+      {canNavigateDown && (() => {
+        const ghostRadius = minRadius - ringSpacing * 0.8;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 25, ARC_END_ANGLE - 25);
+        return (
+          <g 
+            className="cursor-pointer transition-opacity hover:opacity-60"
+            onClick={(e) => {
+              e.stopPropagation();
+              onZoomIn();
+            }}
+          >
+            <path
+              d={ghostPath}
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
+              opacity={0.2}
+            />
+            {downLabel && (
+              <>
+                <defs>
+                  <path
+                    id="ghostLabelPathDown"
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 10, ARC_START_ANGLE + 25, ARC_START_ANGLE + 70)}
+                  />
+                </defs>
+                <text
+                  fill="var(--muted-foreground)"
+                  fontSize="8"
+                  fontWeight="300"
+                  fontFamily="system-ui, sans-serif"
+                  letterSpacing="0.15em"
+                  opacity={0.25}
+                >
+                  <textPath href="#ghostLabelPathDown" startOffset="0%">
+                    {downLabel.toUpperCase()}
+                  </textPath>
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })()}
       
       {/* Connection lines - segments from grandparent -> parent -> child with arcs */}
       {connectionData && (
