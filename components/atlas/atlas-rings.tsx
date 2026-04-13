@@ -639,7 +639,6 @@ export function AtlasRings({
             </g>
           )}
         </g>
-        );
       )}
       
       
