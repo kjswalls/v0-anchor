@@ -116,6 +116,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   setRootItems: (items) => set({ rootItems: items }),
   
   selectItem: (itemId) => {
+    console.log('[v0] selectItem called with:', itemId);
     set({ selectedItemId: itemId });
   },
   

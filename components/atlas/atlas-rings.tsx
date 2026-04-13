@@ -696,6 +696,7 @@ export function AtlasRings({
                   hasChildren={item.children.length > 0}
                   isFaded={ring.isFaded}
                   onClick={() => {
+                    console.log('[v0] Node clicked:', item.name, 'type:', item.type, 'isSelected:', isSelected);
                     if (ring.isFaded && ring.index === 0) {
                       onZoomOut();
                     } else {
