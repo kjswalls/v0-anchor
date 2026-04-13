@@ -211,57 +211,49 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
       isPopulated: true,
     });
     
-    // Ring 2: Children of current level
-    // Only populated if an item on the main ring is selected
-    const childItems = baseItems.flatMap(item => item.children);
-    const isChildRingPopulated = selectedItem && selectedItem.type === getTypeForDepth(baseDepth);
+    // Ring 2: Children level (Tasks ring)
+    // Populated with real items only when a project is selected
+    const isProjectSelected = selectedItem && selectedItem.type === 'project';
     
-    if (childItems.length > 0 || !isChildRingPopulated) {
-      let childRingItems: RingItem[];
-      
-      if (isChildRingPopulated && selectedItem) {
-        // Show actual children of the selected item
-        childRingItems = selectedItem.children.slice(0, 5);
-      } else {
-        // Show placeholders
-        childRingItems = createPlaceholders(6, 'tasks');
-      }
-      
-      rings.push({
-        index: rings.length,
-        label: getLabelForType(getTypeForDepth(baseDepth + 1)),
-        items: childRingItems,
-        isFaded: false,
-        rotationAngle: ringRotations[2] || 0,
-        isPopulated: isChildRingPopulated || false,
-      });
+    let childRingItems: RingItem[];
+    if (isProjectSelected && selectedItem && selectedItem.children.length > 0) {
+      // Show actual children of the selected project
+      childRingItems = selectedItem.children.slice(0, 5);
+    } else {
+      // Show placeholders when no project is selected
+      childRingItems = createPlaceholders(6, 'tasks');
     }
     
-    // Ring 3: Grandchildren (subtasks of the selected task)
-    // Only populated if a task (child) is selected
-    const selectedIsTask = selectedItem && selectedItem.type === 'task';
-    const grandchildItems = childItems.flatMap(item => item.children);
+    rings.push({
+      index: rings.length,
+      label: getLabelForType(getTypeForDepth(baseDepth + 1)),
+      items: childRingItems,
+      isFaded: false,
+      rotationAngle: ringRotations[2] || 0,
+      isPopulated: isProjectSelected && selectedItem?.children.length > 0,
+    });
     
-    if (grandchildItems.length > 0 || selectedIsTask) {
-      let grandchildRingItems: RingItem[];
-      
-      if (selectedIsTask && selectedItem) {
-        // Show actual subtasks of the selected task
-        grandchildRingItems = selectedItem.children.slice(0, 5);
-      } else {
-        // Show placeholders
-        grandchildRingItems = createPlaceholders(6, 'subtasks');
-      }
-      
-      rings.push({
-        index: rings.length,
-        label: getLabelForType(getTypeForDepth(baseDepth + 2)),
-        items: grandchildRingItems,
-        isFaded: false,
-        rotationAngle: ringRotations[3] || 0,
-        isPopulated: selectedIsTask || false,
-      });
+    // Ring 3: Grandchildren level (Subtasks ring)
+    // Populated with real items only when a task is selected
+    const isTaskSelected = selectedItem && selectedItem.type === 'task';
+    
+    let grandchildRingItems: RingItem[];
+    if (isTaskSelected && selectedItem && selectedItem.children.length > 0) {
+      // Show actual subtasks of the selected task
+      grandchildRingItems = selectedItem.children.slice(0, 5);
+    } else {
+      // Show placeholders when no task is selected
+      grandchildRingItems = createPlaceholders(6, 'subtasks');
     }
+    
+    rings.push({
+      index: rings.length,
+      label: getLabelForType(getTypeForDepth(baseDepth + 2)),
+      items: grandchildRingItems,
+      isFaded: false,
+      rotationAngle: ringRotations[3] || 0,
+      isPopulated: isTaskSelected && selectedItem?.children.length > 0,
+    });
     
     return rings;
   },

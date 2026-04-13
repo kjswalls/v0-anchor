@@ -434,8 +434,9 @@ export function AtlasRings({
             
             // Render actual item
             const isSelected = selectedItemId === item.id;
-            const shouldFade = selectedItemId && !isInLineage && !isSelected;
-            const finalOpacity = edgeFade * (shouldFade ? 0.25 : 1) * (ring.isFaded ? 0.4 : 1);
+            const isInactive = selectedItemId !== null && !isInLineage && !isSelected;
+            const baseOpacity = ring.isFaded ? 0.4 : 1;
+            const finalOpacity = edgeFade * baseOpacity;
             
             if (finalOpacity < 0.1) return null;
             
@@ -444,7 +445,8 @@ export function AtlasRings({
                 key={item.id}
                 style={{
                   opacity: finalOpacity,
-                  transition: 'opacity 0.3s ease-out',
+                  filter: isInactive ? 'saturate(0.3) brightness(0.8)' : 'none',
+                  transition: 'opacity 0.3s ease-out, filter 0.3s ease-out',
                   transformOrigin: `${x}px ${y}px`,
                   transform: `rotate(${-rotation}deg)`,
                 }}
@@ -455,7 +457,7 @@ export function AtlasRings({
                   y={y}
                   isSelected={isSelected}
                   hasChildren={item.children.length > 0}
-                  isFaded={ring.isFaded || finalOpacity < 0.5}
+                  isFaded={ring.isFaded}
                   onClick={() => {
                     if (ring.isFaded && ring.index === 0) {
                       onZoomOut();
