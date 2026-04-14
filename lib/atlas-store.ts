@@ -198,7 +198,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
         return { items: createPlaceholders(RING_SLOT_COUNT, `level-${ringLevel}`), populated: false };
       }
       
-      // Build ancestry chain
+      // Build ancestry chain with levels
+      // ancestry[0] is always at level 0 (meta_project), ancestry[1] at level 1 (project), etc.
       const ancestry: AtlasItem[] = [];
       let current: AtlasItem | null = selectedItem;
       while (current) {
@@ -206,13 +207,15 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
         current = current.parentId ? findItemById(rootItems, current.parentId) : null;
       }
       
-      // Determine which item in the ancestry is at the ring's parent level
-      const parentLevel = ringLevel - 1;
-      const parentLevelIndex = parentLevel - viewLevel;
+      // The selected item's level in the hierarchy
+      const selectedLevel = ancestry.length - 1;
       
-      // Find the relevant parent from the ancestry
-      if (parentLevelIndex >= 0 && parentLevelIndex < ancestry.length) {
-        const parentItem = ancestry[parentLevelIndex];
+      // For this ring (at ringLevel), we need items that are children of items at (ringLevel - 1)
+      const parentLevel = ringLevel - 1;
+      
+      // Check if we have an ancestor at the parent level whose children we should show
+      if (parentLevel >= 0 && parentLevel < ancestry.length) {
+        const parentItem = ancestry[parentLevel];
         if (parentItem.children.length > 0) {
           const realItems = parentItem.children.slice(0, 5);
           const placeholderCount = Math.max(0, RING_SLOT_COUNT - realItems.length);
@@ -223,10 +226,8 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
         }
       }
       
-      // If selected item is at this ring's level, show siblings
-      const selectedLevelIndex = ancestry.length - 1;
-      const thisRingLevelIndex = ringLevel - viewLevel;
-      if (selectedLevelIndex === thisRingLevelIndex && ancestry.length > 1) {
+      // If selected item is at this ring's level, show its siblings
+      if (selectedLevel === ringLevel && ancestry.length > 1) {
         const parent = ancestry[ancestry.length - 2];
         if (parent.children.length > 0) {
           const realItems = parent.children.slice(0, 5);
