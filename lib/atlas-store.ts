@@ -56,6 +56,9 @@ export interface AtlasState {
   // Computed ring rotation angles (animated)
   ringRotations: number[];
   
+  // Animation state
+  navigationDirection: 'up' | 'down' | null;
+  
   // Actions
   setRootItems: (items: AtlasItem[]) => void;
   selectItem: (itemId: string | null) => void;
@@ -122,6 +125,7 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
   maxViewLevel: 1, // Can shift down to show projects, tasks, subtasks
   selectedItemId: null,
   ringRotations: [0, 0, 0, 0, 0],
+  navigationDirection: null as 'up' | 'down' | null,
   
   setRootItems: (items) => set({ rootItems: items }),
   
@@ -137,7 +141,10 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
         viewLevel: viewLevel - 1,
         selectedItemId: null,
         ringRotations: [0, 0, 0, 0, 0],
+        navigationDirection: 'up',
       });
+      // Clear direction after animation completes
+      setTimeout(() => set({ navigationDirection: null }), 400);
     }
   },
   
@@ -149,7 +156,10 @@ export const useAtlasStore = create<AtlasState>((set, get) => ({
         viewLevel: viewLevel + 1,
         selectedItemId: null,
         ringRotations: [0, 0, 0, 0, 0],
+        navigationDirection: 'down',
       });
+      // Clear direction after animation completes
+      setTimeout(() => set({ navigationDirection: null }), 400);
     }
   },
   

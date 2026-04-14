@@ -353,3 +353,34 @@
 .atlas-connection-fade-in {
   animation: atlas-node-fade-in 0.5s ease-out forwards;
 }
+
+/* Level shift animations - rings slide when navigating hierarchy levels */
+@keyframes atlas-level-shift-down-animation {
+  0% {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes atlas-level-shift-up-animation {
+  0% {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.atlas-level-shift-up {
+  animation: atlas-level-shift-up-animation 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.atlas-level-shift-down {
+  animation: atlas-level-shift-down-animation 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

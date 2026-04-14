@@ -32,6 +32,7 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
     canNavigateUp,
     canNavigateDown,
     getNavigationLabels,
+    navigationDirection,
   } = useAtlasStore();
   
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -166,6 +167,7 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 canNavigateDown={canGoDown}
                 upLabel={navLabels.upLabel}
                 downLabel={navLabels.downLabel}
+                navigationDirection={navigationDirection}
               />
               
               {/* Today portal at bottom center */}

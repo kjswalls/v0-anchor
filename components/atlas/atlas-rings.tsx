@@ -17,6 +17,7 @@ interface AtlasRingsProps {
   canNavigateDown: boolean;
   upLabel: string | null;
   downLabel: string | null;
+  navigationDirection: 'up' | 'down' | null;
 }
 
 // Arc configuration - rainbow orientation
@@ -125,6 +126,7 @@ export function AtlasRings({
   canNavigateDown,
   upLabel,
   downLabel,
+  navigationDirection,
 }: AtlasRingsProps) {
   const { getLineage } = useAtlasStore();
   
@@ -561,7 +563,11 @@ export function AtlasRings({
       
       {/* Ring arcs */}
       {ringData.map(({ ring, radius, path }, ringIdx) => (
-        <g key={`ring-arc-${ringIdx}`}>
+        <g 
+          key={`ring-arc-${ringIdx}`}
+          className={navigationDirection ? `atlas-level-shift-${navigationDirection}` : undefined}
+          style={{ '--ring-index': ringIdx } as React.CSSProperties}
+        >
           <path
             d={path}
             fill="none"
@@ -612,11 +618,11 @@ export function AtlasRings({
       
       {/* Ghost ring above - indicates more levels above */}
       {canNavigateUp && (() => {
-        const ghostRadius = maxRadius + ringSpacing * 1.2;
-        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 15, ARC_END_ANGLE - 15);
+        const ghostRadius = maxRadius + ringSpacing;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 5, ARC_END_ANGLE - 5);
         return (
           <g 
-            className="cursor-pointer transition-opacity hover:opacity-60"
+            className="cursor-pointer transition-opacity hover:opacity-80"
             onClick={(e) => {
               e.stopPropagation();
               onZoomOut();
@@ -628,23 +634,24 @@ export function AtlasRings({
               stroke="var(--border)"
               strokeWidth={1.5}
               strokeDasharray="4 4"
-              opacity={0.2}
+              opacity={0.4}
+              className="atlas-dash-rotate-cw"
             />
             {upLabel && (
               <>
                 <defs>
                   <path
                     id="ghostLabelPathUp"
-                    d={describeLabelArc(centerX, centerY, ghostRadius - 12, ARC_START_ANGLE + 15, ARC_START_ANGLE + 60)}
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 12, ARC_START_ANGLE + 5, ARC_START_ANGLE + 55)}
                   />
                 </defs>
                 <text
                   fill="var(--muted-foreground)"
-                  fontSize="8"
-                  fontWeight="300"
+                  fontSize="9"
+                  fontWeight="400"
                   fontFamily="system-ui, sans-serif"
-                  letterSpacing="0.15em"
-                  opacity={0.25}
+                  letterSpacing="0.12em"
+                  opacity={0.5}
                 >
                   <textPath href="#ghostLabelPathUp" startOffset="0%">
                     {upLabel.toUpperCase()}
@@ -658,11 +665,11 @@ export function AtlasRings({
       
       {/* Ghost ring below - indicates more levels below */}
       {canNavigateDown && (() => {
-        const ghostRadius = minRadius - ringSpacing * 0.8;
-        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 25, ARC_END_ANGLE - 25);
+        const ghostRadius = minRadius - ringSpacing;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 15, ARC_END_ANGLE - 15);
         return (
           <g 
-            className="cursor-pointer transition-opacity hover:opacity-60"
+            className="cursor-pointer transition-opacity hover:opacity-80"
             onClick={(e) => {
               e.stopPropagation();
               onZoomIn();
@@ -674,23 +681,24 @@ export function AtlasRings({
               stroke="var(--border)"
               strokeWidth={1.5}
               strokeDasharray="4 4"
-              opacity={0.2}
+              opacity={0.4}
+              className="atlas-dash-rotate-ccw"
             />
             {downLabel && (
               <>
                 <defs>
                   <path
                     id="ghostLabelPathDown"
-                    d={describeLabelArc(centerX, centerY, ghostRadius - 10, ARC_START_ANGLE + 25, ARC_START_ANGLE + 70)}
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 10, ARC_START_ANGLE + 15, ARC_START_ANGLE + 65)}
                   />
                 </defs>
                 <text
                   fill="var(--muted-foreground)"
-                  fontSize="8"
-                  fontWeight="300"
+                  fontSize="9"
+                  fontWeight="400"
                   fontFamily="system-ui, sans-serif"
-                  letterSpacing="0.15em"
-                  opacity={0.25}
+                  letterSpacing="0.12em"
+                  opacity={0.5}
                 >
                   <textPath href="#ghostLabelPathDown" startOffset="0%">
                     {downLabel.toUpperCase()}
@@ -776,12 +784,13 @@ export function AtlasRings({
         return (
         <g 
           key={`nodes-${ringIdx}`}
-          className="atlas-ring-nodes"
+          className={`atlas-ring-nodes ${navigationDirection ? `atlas-level-shift-${navigationDirection}` : ''}`}
           style={{
             transformOrigin: `${centerX}px ${centerY}px`,
             transform: `rotate(${rotation}deg)`,
             transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
+            '--ring-index': ringIdx,
+          } as React.CSSProperties}
         >
           {/* Exiting items - rendered inside ring group so they follow rotation */}
           {ringExitingNodes.map(({ id, item, x, y }) => (
@@ -801,7 +810,6 @@ export function AtlasRings({
                 hasChildren={item.children.length > 0}
                 isFaded={false}
                 onClick={() => {}}
-                onDoubleClick={() => {}}
               />
             </g>
           ))}
