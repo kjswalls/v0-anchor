@@ -413,11 +413,11 @@
 }
 
 .atlas-ghost-merge-down {
-  animation: atlas-ghost-merge-down 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: atlas-ghost-merge-down 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
   pointer-events: none;
 }
 
 .atlas-ghost-merge-up {
-  animation: atlas-ghost-merge-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: atlas-ghost-merge-up 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
   pointer-events: none;
 }
