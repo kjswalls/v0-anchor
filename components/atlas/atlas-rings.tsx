@@ -622,7 +622,7 @@ export function AtlasRings({
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE, ARC_END_ANGLE);
         return (
           <g 
-            className="cursor-pointer transition-all hover:opacity-90"
+            className={`cursor-pointer transition-all hover:opacity-90 ${navigationDirection ? `atlas-level-shift-${navigationDirection}` : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               onZoomOut();
@@ -668,7 +668,7 @@ export function AtlasRings({
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
         return (
           <g 
-            className="cursor-pointer transition-all hover:opacity-90"
+            className={`cursor-pointer transition-all hover:opacity-90 ${navigationDirection ? `atlas-level-shift-${navigationDirection}` : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               onZoomIn();
