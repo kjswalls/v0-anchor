@@ -355,9 +355,10 @@
 }
 
 /* Level shift animations - rings slide when navigating hierarchy levels */
-@keyframes atlas-level-shift-down-animation {
+/* Navigating UP means showing higher levels, so new content slides in from above */
+@keyframes atlas-level-shift-up-animation {
   0% {
-    transform: translateY(-30px);
+    transform: translateY(-40px);
     opacity: 0;
   }
   100% {
@@ -366,9 +367,10 @@
   }
 }
 
-@keyframes atlas-level-shift-up-animation {
+/* Navigating DOWN means showing lower levels, so new content slides in from below */
+@keyframes atlas-level-shift-down-animation {
   0% {
-    transform: translateY(30px);
+    transform: translateY(40px);
     opacity: 0;
   }
   100% {

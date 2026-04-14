@@ -622,7 +622,7 @@ export function AtlasRings({
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE, ARC_END_ANGLE);
         return (
           <g 
-            className="cursor-pointer transition-all hover:opacity-100"
+            className="cursor-pointer transition-all hover:opacity-90"
             onClick={(e) => {
               e.stopPropagation();
               onZoomOut();
@@ -632,10 +632,9 @@ export function AtlasRings({
               d={ghostPath}
               fill="none"
               stroke="var(--border)"
-              strokeWidth={2.5}
-              strokeDasharray="6 6"
-              opacity={0.5}
-              className="atlas-dash-rotate-cw"
+              strokeWidth={3}
+              strokeLinecap="round"
+              opacity={0.4}
             />
             {upLabel && (
               <>
@@ -651,7 +650,7 @@ export function AtlasRings({
                   fontWeight="500"
                   fontFamily="system-ui, sans-serif"
                   letterSpacing="0.12em"
-                  opacity={0.7}
+                  opacity={0.6}
                 >
                   <textPath href="#ghostLabelPathUp" startOffset="0%">
                     {upLabel.toUpperCase()}
@@ -665,11 +664,11 @@ export function AtlasRings({
       
       {/* Ghost ring below - indicates more levels below */}
       {canNavigateDown && (() => {
-        const ghostRadius = minRadius - ringSpacing * 0.5;
+        const ghostRadius = minRadius - ringSpacing * 0.35;
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
         return (
           <g 
-            className="cursor-pointer transition-all hover:opacity-100"
+            className="cursor-pointer transition-all hover:opacity-90"
             onClick={(e) => {
               e.stopPropagation();
               onZoomIn();
@@ -679,10 +678,9 @@ export function AtlasRings({
               d={ghostPath}
               fill="none"
               stroke="var(--border)"
-              strokeWidth={2.5}
-              strokeDasharray="6 6"
-              opacity={0.5}
-              className="atlas-dash-rotate-ccw"
+              strokeWidth={3}
+              strokeLinecap="round"
+              opacity={0.4}
             />
             {downLabel && (
               <>
@@ -698,7 +696,7 @@ export function AtlasRings({
                   fontWeight="500"
                   fontFamily="system-ui, sans-serif"
                   letterSpacing="0.12em"
-                  opacity={0.7}
+                  opacity={0.6}
                 >
                   <textPath href="#ghostLabelPathDown" startOffset="0%">
                     {downLabel.toUpperCase()}
