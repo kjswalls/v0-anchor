@@ -386,3 +386,38 @@
 .atlas-level-shift-down {
   animation: atlas-level-shift-down-animation 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
+
+/* Ghost ring merge animations - ghost rings merge into active rings during navigation */
+/* When navigating UP, the top ghost slides DOWN into the 1st active ring */
+@keyframes atlas-ghost-merge-down {
+  0% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+/* When navigating DOWN, the bottom ghost slides UP into the 3rd active ring */
+@keyframes atlas-ghost-merge-up {
+  0% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-40px);
+    opacity: 0;
+  }
+}
+
+.atlas-ghost-merge-down {
+  animation: atlas-ghost-merge-down 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+.atlas-ghost-merge-up {
+  animation: atlas-ghost-merge-up 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}

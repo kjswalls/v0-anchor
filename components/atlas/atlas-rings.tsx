@@ -616,6 +616,42 @@ export function AtlasRings({
         </g>
       ))}
       
+      {/* Merging ghost ring - top ghost merging down when navigating UP */}
+      {navigationDirection === 'up' && (() => {
+        const ghostRadius = maxRadius + ringSpacing * 0.7;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE, ARC_END_ANGLE);
+        return (
+          <g className="atlas-ghost-merge-down">
+            <path
+              d={ghostPath}
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth={3}
+              strokeLinecap="round"
+              opacity={0.4}
+            />
+          </g>
+        );
+      })()}
+      
+      {/* Merging ghost ring - bottom ghost merging up when navigating DOWN */}
+      {navigationDirection === 'down' && (() => {
+        const ghostRadius = minRadius - ringSpacing * 0.35;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
+        return (
+          <g className="atlas-ghost-merge-up">
+            <path
+              d={ghostPath}
+              fill="none"
+              stroke="var(--border)"
+              strokeWidth={3}
+              strokeLinecap="round"
+              opacity={0.4}
+            />
+          </g>
+        );
+      })()}
+      
       {/* Ghost ring above - indicates more levels above */}
       {canNavigateUp && (() => {
         const ghostRadius = maxRadius + ringSpacing * 0.7;
