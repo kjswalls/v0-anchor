@@ -22,7 +22,7 @@ export function AtlasNavControls({
 }: AtlasNavControlsProps) {
   // Always show controls so users know navigation exists
   return (
-    <div className="absolute bottom-6 left-6 flex flex-col gap-2 z-10">
+    <div className="absolute bottom-6 left-4 flex flex-col gap-2 z-10">
       {/* Navigate Up Button */}
       <div className="flex items-center gap-3">
         <button

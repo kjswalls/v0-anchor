@@ -178,18 +178,18 @@ export function AtlasView({ onExitAtlas }: AtlasViewProps) {
                 size={ringSize}
                 onExitAtlas={onExitAtlas}
               />
-              
-              {/* Navigation controls */}
-              <AtlasNavControls
-                canNavigateUp={canGoUp}
-                canNavigateDown={canGoDown}
-                upLabel={navLabels.upLabel}
-                downLabel={navLabels.downLabel}
-                onNavigateUp={navigateUp}
-                onNavigateDown={navigateDown}
-              />
             </div>
           )}
+          
+          {/* Navigation controls - positioned relative to outer container */}
+          <AtlasNavControls
+            canNavigateUp={canGoUp}
+            canNavigateDown={canGoDown}
+            upLabel={navLabels.upLabel}
+            downLabel={navLabels.downLabel}
+            onNavigateUp={navigateUp}
+            onNavigateDown={navigateDown}
+          />
         </div>
         
         {/* Desktop: Bottom task panel */}
