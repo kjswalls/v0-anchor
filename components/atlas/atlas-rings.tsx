@@ -618,11 +618,11 @@ export function AtlasRings({
       
       {/* Ghost ring above - indicates more levels above */}
       {canNavigateUp && (() => {
-        const ghostRadius = maxRadius + ringSpacing;
-        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 5, ARC_END_ANGLE - 5);
+        const ghostRadius = maxRadius + ringSpacing * 0.7;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE, ARC_END_ANGLE);
         return (
           <g 
-            className="cursor-pointer transition-opacity hover:opacity-80"
+            className="cursor-pointer transition-all hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               onZoomOut();
@@ -632,9 +632,9 @@ export function AtlasRings({
               d={ghostPath}
               fill="none"
               stroke="var(--border)"
-              strokeWidth={1.5}
-              strokeDasharray="4 4"
-              opacity={0.4}
+              strokeWidth={2.5}
+              strokeDasharray="6 6"
+              opacity={0.5}
               className="atlas-dash-rotate-cw"
             />
             {upLabel && (
@@ -642,16 +642,16 @@ export function AtlasRings({
                 <defs>
                   <path
                     id="ghostLabelPathUp"
-                    d={describeLabelArc(centerX, centerY, ghostRadius - 12, ARC_START_ANGLE + 5, ARC_START_ANGLE + 55)}
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 12, ARC_START_ANGLE, ARC_START_ANGLE + 50)}
                   />
                 </defs>
                 <text
                   fill="var(--muted-foreground)"
-                  fontSize="9"
-                  fontWeight="400"
+                  fontSize="10"
+                  fontWeight="500"
                   fontFamily="system-ui, sans-serif"
                   letterSpacing="0.12em"
-                  opacity={0.5}
+                  opacity={0.7}
                 >
                   <textPath href="#ghostLabelPathUp" startOffset="0%">
                     {upLabel.toUpperCase()}
@@ -665,11 +665,11 @@ export function AtlasRings({
       
       {/* Ghost ring below - indicates more levels below */}
       {canNavigateDown && (() => {
-        const ghostRadius = minRadius - ringSpacing;
-        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 15, ARC_END_ANGLE - 15);
+        const ghostRadius = minRadius - ringSpacing * 0.5;
+        const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
         return (
           <g 
-            className="cursor-pointer transition-opacity hover:opacity-80"
+            className="cursor-pointer transition-all hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation();
               onZoomIn();
@@ -679,9 +679,9 @@ export function AtlasRings({
               d={ghostPath}
               fill="none"
               stroke="var(--border)"
-              strokeWidth={1.5}
-              strokeDasharray="4 4"
-              opacity={0.4}
+              strokeWidth={2.5}
+              strokeDasharray="6 6"
+              opacity={0.5}
               className="atlas-dash-rotate-ccw"
             />
             {downLabel && (
@@ -689,16 +689,16 @@ export function AtlasRings({
                 <defs>
                   <path
                     id="ghostLabelPathDown"
-                    d={describeLabelArc(centerX, centerY, ghostRadius - 10, ARC_START_ANGLE + 15, ARC_START_ANGLE + 65)}
+                    d={describeLabelArc(centerX, centerY, ghostRadius - 10, ARC_START_ANGLE + 10, ARC_START_ANGLE + 60)}
                   />
                 </defs>
                 <text
                   fill="var(--muted-foreground)"
-                  fontSize="9"
-                  fontWeight="400"
+                  fontSize="10"
+                  fontWeight="500"
                   fontFamily="system-ui, sans-serif"
                   letterSpacing="0.12em"
-                  opacity={0.5}
+                  opacity={0.7}
                 >
                   <textPath href="#ghostLabelPathDown" startOffset="0%">
                     {downLabel.toUpperCase()}
