@@ -636,7 +636,7 @@ export function AtlasRings({
       
       {/* Merging ghost ring - bottom ghost merging up when navigating DOWN */}
       {navigationDirection === 'down' && (() => {
-        const ghostRadius = minRadius - ringSpacing * 0.35;
+        const ghostRadius = minRadius - ringSpacing * 0.7;
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
         return (
           <g className="atlas-ghost-merge-up">
@@ -700,7 +700,7 @@ export function AtlasRings({
       
       {/* Ghost ring below - indicates more levels below */}
       {canNavigateDown && (() => {
-        const ghostRadius = minRadius - ringSpacing * 0.35;
+        const ghostRadius = minRadius - ringSpacing * 0.7;
         const ghostPath = describeArc(centerX, centerY, ghostRadius, ARC_START_ANGLE + 10, ARC_END_ANGLE - 10);
         return (
           <g 
