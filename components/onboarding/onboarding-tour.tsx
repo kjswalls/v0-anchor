@@ -253,6 +253,18 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }, 280);
   }, []);
 
+  const handleComplete = useCallback(async () => {
+    onCollapseChatRef.current?.();
+    onSetActiveTabRef.current?.('tasks');
+    setIsVisible(false);
+    toast.success("You're all set ✨ One thing at a time — you've got this.", {
+      description: 'Tip: replay this tour anytime from Settings.',
+      duration: 5000,
+    });
+    await setOnboardingComplete(userId);
+    onComplete();
+  }, [userId, onComplete]);
+
   const handleNext = useCallback(() => {
     if (step === 3 && !isMobile) {
       if (desktopSubStep === 'A') { setDesktopSubStep('B'); return; }
@@ -266,7 +278,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     } else if (step === 4) {
       handleComplete();
     }
-  }, [step, isMobile, desktopSubStep, mobileSubStep]);
+  }, [step, isMobile, desktopSubStep, mobileSubStep, handleComplete]);
 
   const handleBack = useCallback(() => {
     if (step === 2) {
@@ -334,18 +346,6 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
       setIsCreatingTask(false);
       setStep(3);
     }
-  };
-
-  const handleComplete = async () => {
-    onCollapseChatRef.current?.();
-    onSetActiveTabRef.current?.('tasks');
-    setIsVisible(false);
-    toast.success("You're all set ✨ One thing at a time — you've got this.", {
-      description: 'Tip: replay this tour anytime from Settings.',
-      duration: 5000,
-    });
-    await setOnboardingComplete(userId);
-    onComplete();
   };
 
   if (!isVisible) return null;

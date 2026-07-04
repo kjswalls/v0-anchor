@@ -170,7 +170,7 @@ function TaskItem({ task, onClick }: TaskItemProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{task.title}". This action cannot be undone.
+              This will permanently delete &quot;{task.title}&quot;. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -269,7 +269,7 @@ function HabitItem({ habit, onClick }: HabitItemProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{habit.title}" and all its history. This action cannot be undone.
+              This will permanently delete &quot;{habit.title}&quot; and all its history. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -566,8 +566,9 @@ export function TaskSidebar({ onTaskClick, onHabitClick, onAddClick, onAddHabitC
       className="relative flex h-full"
       onMouseLeave={() => leftSidebarHovered && setLeftSidebarHovered(false)}
     >
-      <aside 
+      <aside
         ref={setDroppableRef}
+        data-dnd-id="sidebar"
         className={cn(
           'border-r border-border bg-sidebar flex flex-col h-full overflow-hidden transition-all duration-300',
           isVisible ? 'w-80' : 'w-0 border-r-0',

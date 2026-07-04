@@ -470,7 +470,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Task?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently delete "{task?.title}". This action cannot be undone.
+            This will permanently delete &quot;{task?.title}&quot;. This action cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

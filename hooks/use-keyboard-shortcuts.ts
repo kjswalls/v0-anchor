@@ -105,6 +105,5 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       window.removeEventListener('keyup', handleKeyUp);
     };
     // Re-register whenever shortcuts config or handlers change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortcuts, handlers]);
 }

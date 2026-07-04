@@ -426,7 +426,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{habit?.title}" and all its history. This action cannot be undone.
+              This will permanently delete &quot;{habit?.title}&quot; and all its history. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

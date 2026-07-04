@@ -19,3 +19,6 @@ node_modules/
 supabase/.temp/
 test-results/
 docs/test-implementation-plan.md
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
+import type { TimeBucket } from '@/lib/planner-types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ export function EODReview() {
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
-      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any, startTime: prev.startTime ?? undefined });
+      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as TimeBucket, startTime: prev.startTime ?? undefined });
     } else {
       updateTask(id, { startDate: prev.startDate ?? undefined, startTime: prev.startTime ?? undefined });
     }
@@ -241,7 +242,7 @@ export function EODReview() {
             End of day
           </DialogTitle>
           <DialogDescription className="sr-only">
-            End-of-day review: celebrate wins and carry forward what's unfinished.
+            End-of-day review: celebrate wins and carry forward what&apos;s unfinished.
           </DialogDescription>
         </DialogHeader>
 

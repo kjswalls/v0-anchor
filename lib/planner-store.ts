@@ -435,7 +435,7 @@ export const usePlannerStore = create<PlannerStore>()(
           tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
 
-            let newUpdates = { ...updates };
+            const newUpdates = { ...updates };
 
             // Auto-correct bucket if start time changes
             if (updates.startTime && (t.timeBucket || updates.timeBucket)) {
@@ -612,7 +612,7 @@ export const usePlannerStore = create<PlannerStore>()(
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
 
-            let newUpdates = { ...updates };
+            const newUpdates = { ...updates };
 
             // Auto-correct bucket if start time changes
             if (updates.startTime && (h.timeBucket || updates.timeBucket)) {
@@ -658,7 +658,7 @@ export const usePlannerStore = create<PlannerStore>()(
             const wasSkipped = (h.skippedDates ?? []).includes(dateStr);
             let newCompletedDates = [...h.completedDates];
             let newSkippedDates = [...(h.skippedDates ?? [])];
-            let newDailyCounts = { ...(h.dailyCounts ?? {}) };
+            const newDailyCounts = { ...(h.dailyCounts ?? {}) };
             let newStreak = h.streak;
 
             // Update completedDates

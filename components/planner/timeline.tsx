@@ -297,7 +297,7 @@ function TaskCard({ task, onClick }: TaskCardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Task?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete "{task.title}". This action cannot be undone.
+              This will permanently delete &quot;{task.title}&quot;. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1014,6 +1014,8 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     }
   }
 
+  const timeFormatStr = useTimeFormat();
+
   // If no items but dragging is active, show empty drop zone
   if (hoursWithItems.length === 0) {
     if (isDragging && bucket !== 'anytime') {
@@ -1022,7 +1024,6 @@ function HourlyGrid({ bucket, scheduledTasks, scheduledHabits, onTaskClick, onHa
     return null;
   }
 
-  const timeFormatStr = useTimeFormat();
   const formatHour = (hour: number) => {
     if (timeFormatStr === 'HH:mm') {
       return `${String(hour).padStart(2, '0')}:00`;
@@ -1142,7 +1143,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
     }
     const update = () => {
       const now = new Date();
-      let hour = now.getHours();
+      const hour = now.getHours();
       const minute = now.getMinutes();
       
       // Calculate progress based on bucket
@@ -1189,6 +1190,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
 
   return (
     <div
+      data-dnd-bucket={bucket}
       className={cn(
         'relative rounded-xl border-2 border-dashed transition-all overflow-visible min-h-[80px]',
         config.borderClass,
@@ -1280,6 +1282,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
         {(hasUntimed || activeId) && (
           <div
             ref={setUnscheduledRef}
+            data-dnd-id={`unscheduled:${bucket}`}
             className={cn(compactMode ? 'px-2 pt-2 space-y-1' : 'px-3 pt-3 space-y-3', !hasScheduled && (compactMode ? 'pb-2' : 'pb-3'))}
           >
             {/* Untimed Habits */}
@@ -1689,7 +1692,7 @@ export function Timeline({ onTaskClick, onHabitClick, onAddClick, activeId }: Ti
         {/* Search results indicator */}
         {searchQuery && (
           <div className="text-sm text-muted-foreground mb-2">
-            Showing results for "{searchQuery}"
+            Showing results for &quot;{searchQuery}&quot;
           </div>
         )}
 

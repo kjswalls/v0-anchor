@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import type { TimeBucket } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
@@ -262,7 +263,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       try {
                         if (checked) await subscribePush();
                         else await unsubscribePush();
-                      } catch (err: any) {
+                      } catch (err) {
                         console.error("Push toggle error:", err);
                       }
                     }}
@@ -464,7 +465,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-foreground">Beacon <span className="text-muted-foreground font-normal">(OpenAI fallback)</span></p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Use when OpenClaw isn't connected.</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Use when OpenClaw isn&apos;t connected.</p>
                     </div>
                     <Switch
                       checked={provider === 'openai'}
@@ -551,7 +552,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               )}
 
               <SettingRow label="Default time bucket" description="Where new tasks are placed">
-                <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as any)}>
+                <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as TimeBucket)}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
