@@ -19,7 +19,7 @@ import { useSwipeable } from 'react-swipeable';
 
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
-import { inferDropTime } from '@/components/planner/timeline';
+import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
 import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
 import { AddTaskDialog } from '@/components/planner/add-task-dialog';
