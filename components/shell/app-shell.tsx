@@ -101,7 +101,6 @@ export function AppShell() {
 
   const [mounted, setMounted] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
 
@@ -203,7 +202,7 @@ export function AppShell() {
       }
       if (key === 'k') {
         e.preventDefault();
-        setSearchOpen(true);
+        useUIStore.getState().focusOmnibar();
       }
       // Undo/redo (moved from top-nav)
       if (key === 'z') {
@@ -379,7 +378,7 @@ export function AppShell() {
         },
       }}
     >
-      <DesktopShell activeId={activeId} searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} />
+      <DesktopShell activeId={activeId} />
 
       {/* Mobile Layout */}
       <div className="flex h-[100dvh] flex-col bg-background md:hidden">

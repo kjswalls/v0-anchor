@@ -23,7 +23,7 @@ test.describe('Smoke: core daily loop', () => {
   test('add a task through the UI and complete it', async ({ page }) => {
     const title = `Smoke task ${Date.now()}`;
 
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add task' }).first().click();
     await expect(page.getByText('Add New')).toBeVisible();
     await page.getByPlaceholder('What needs to be done?').fill(title);
     await page.getByRole('button', { name: 'Add Task' }).click();

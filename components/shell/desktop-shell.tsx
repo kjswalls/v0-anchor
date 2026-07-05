@@ -1,16 +1,12 @@
 'use client';
 
-import { TaskSidebar } from '@/components/planner/task-sidebar';
+import { Sidebar } from '@/components/sidebar/sidebar';
 import { Timeline } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
 import { ChatSidebar } from '@/components/ai/chat-sidebar';
 import { MorningCheck } from '@/components/ai/morning-check';
-import { ActionFeed } from '@/components/planner/action-feed';
-import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
-import { SearchButton } from '@/components/canvas/search-button';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore } from '@/lib/view-store';
@@ -19,17 +15,11 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 
-interface DesktopShellProps {
-  activeId: string | null;
-  searchOpen: boolean;
-  onSearchOpenChange: (open: boolean) => void;
-}
-
 /**
- * Desktop layout: legacy sidebar + canvas panel on the warm backdrop.
- * The sidebar/chat are replaced in P3/P4; the views in P5.
+ * Desktop layout: sidebar v2 + canvas panel on the warm backdrop.
+ * Chat migrates into the sidebar in P4; the views are rewritten in P5.
  */
-export function DesktopShell({ activeId, searchOpen, onSearchOpenChange }: DesktopShellProps) {
+export function DesktopShell({ activeId }: { activeId: string | null }) {
   const { scope } = useViewStore();
   const { openDialog } = useUIStore();
   const eodStore = useEODStore();
@@ -49,16 +39,10 @@ export function DesktopShell({ activeId, searchOpen, onSearchOpenChange }: Deskt
 
   return (
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
-      <TaskSidebar
-        onTaskClick={handleTaskClick}
-        onHabitClick={handleHabitClick}
-        onAddClick={() => openAddDialog('task')}
-        onAddHabitClick={() => openAddDialog('habit')}
-        onManageCategories={() => openDialog({ type: 'manage-categories' })}
-      />
+      <Sidebar />
 
       <main className="relative flex flex-1 flex-col overflow-hidden rounded-panel bg-canvas shadow-soft-md">
-        {/* Left hover zone - shows task sidebar when collapsed (if enabled) */}
+        {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div
             className="absolute left-0 top-0 bottom-0 z-40 w-3 cursor-pointer transition-colors hover:bg-primary/10"
@@ -66,7 +50,7 @@ export function DesktopShell({ activeId, searchOpen, onSearchOpenChange }: Deskt
           />
         )}
 
-        {/* Canvas header — capsule left, transitional cluster right (P3 moves it into the sidebar) */}
+        {/* Canvas header — capsule left, dev triggers right */}
         <div className="flex flex-shrink-0 items-start justify-between px-6 pt-5 pb-2">
           <HeaderCapsule />
           <div className="flex items-center gap-2">
@@ -88,17 +72,6 @@ export function DesktopShell({ activeId, searchOpen, onSearchOpenChange }: Deskt
               title="[DEV] Trigger EOD review"
             >
               🌙
-            </Button>
-            <ActionFeed />
-            <SearchButton open={searchOpen} onOpenChange={onSearchOpenChange} />
-            <UserProfileDropdown onOpenSettings={() => openDialog({ type: 'settings' })} />
-            <Button
-              size="sm"
-              onClick={() => openAddDialog('task')}
-              className="h-8 bg-primary px-3 text-primary-foreground hover:bg-primary/90"
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Add
             </Button>
           </div>
         </div>

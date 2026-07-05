@@ -21,9 +21,14 @@ export type BraindumpGroupBy = 'none' | 'type' | 'project';
 export interface BraindumpFilters {
   projects: string[];
   priorities: string[];
+  hideCompleted: boolean;
 }
 
-const EMPTY_BRAINDUMP_FILTERS: BraindumpFilters = { projects: [], priorities: [] };
+const EMPTY_BRAINDUMP_FILTERS: BraindumpFilters = {
+  projects: [],
+  priorities: [],
+  hideCompleted: false,
+};
 
 interface ViewStore {
   scope: ViewScope;
