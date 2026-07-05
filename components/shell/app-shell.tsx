@@ -93,7 +93,7 @@ export function AppShell() {
     redo,
   } = usePlannerStore();
   const { activeTab } = useMobileNavStore();
-  const { toggleLeftSidebar, toggleRightSidebar, setRightSidebarOpen } = useSidebarStore();
+  const { toggleLeftSidebar, toggleChat, setChatExpanded } = useSidebarStore();
   const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
 
   useUndoToast();
@@ -190,7 +190,7 @@ export function AppShell() {
       }
       if (e.key === ']') {
         e.preventDefault();
-        toggleRightSidebar();
+        toggleChat();
       }
       if (e.key === '/') {
         e.preventDefault();
@@ -218,7 +218,7 @@ export function AppShell() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleLeftSidebar, toggleRightSidebar, openDialog, undo, redo]);
+  }, [toggleLeftSidebar, toggleChat, openDialog, undo, redo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -466,8 +466,8 @@ export function AppShell() {
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
           onOpenSettings={() => openDialog({ type: 'settings' })}
-          onExpandChat={() => setRightSidebarOpen(true)}
-          onCollapseChat={() => setRightSidebarOpen(false)}
+          onExpandChat={() => setChatExpanded(true)}
+          onCollapseChat={() => setChatExpanded(false)}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}

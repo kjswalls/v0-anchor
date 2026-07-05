@@ -198,12 +198,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     };
   }, [open, provider]);
 
-  const {
-    leftSidebarHoverEnabled,
-    rightSidebarHoverEnabled,
-    setLeftSidebarHoverEnabled,
-    setRightSidebarHoverEnabled,
-  } = useSidebarStore();
+  const { leftSidebarHoverEnabled, setLeftSidebarHoverEnabled } = useSidebarStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -346,14 +341,6 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </SettingRow>
               )}
 
-              {!isMobile && (
-                <SettingRow label="Show chat sidebar on hover" description="Reveal the right sidebar when hovering the right edge (when collapsed)">
-                  <Switch
-                    checked={rightSidebarHoverEnabled}
-                    onCheckedChange={setRightSidebarHoverEnabled}
-                  />
-                </SettingRow>
-              )}
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}

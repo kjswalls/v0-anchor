@@ -2,6 +2,7 @@
 
 import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import { Braindump } from '@/components/sidebar/braindump';
+import { ChatPanel } from '@/components/sidebar/chat-panel';
 import { UserCard } from '@/components/sidebar/user-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -19,6 +20,7 @@ export function Sidebar() {
     leftSidebarHoverEnabled,
     toggleLeftSidebar,
     setLeftSidebarHovered,
+    chatExpanded,
   } = useSidebarStore();
   const isVisible = leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
 
@@ -36,6 +38,7 @@ export function Sidebar() {
         )}
       >
         <Braindump />
+        <ChatPanel focusSignal={chatExpanded ? 1 : 0} />
         <div className="flex flex-col gap-1.5">
           <UserCard />
           <Omnibar />

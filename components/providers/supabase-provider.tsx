@@ -54,7 +54,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       useSidebarStore.setState({
         leftSidebarHoverEnabled: settings.left_sidebar_hover ?? false,
-        rightSidebarHoverEnabled: settings.right_sidebar_hover ?? false,
       });
 
       useMorningStore.setState({

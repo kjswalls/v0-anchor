@@ -16,6 +16,8 @@ import { Command as CommandPrimitive } from 'cmdk';
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
+import { useChatStore } from '@/lib/chat-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
 import { searchItems } from '@/lib/search';
 import { cn } from '@/lib/utils';
 
@@ -117,6 +119,7 @@ export function Omnibar() {
   const isChatMode = trimmed.startsWith('?');
   const commandQuery = isCommandMode ? trimmed.slice(1).trim().toLowerCase() : '';
   const addTitle = isAddMode ? trimmed.slice(1).trim() : trimmed;
+  const chatText = isChatMode ? trimmed.slice(1).trim() : trimmed;
 
   const results = useMemo(() => {
     if (isCommandMode || isAddMode || isChatMode || !trimmed) return { tasks: [], habits: [] };
@@ -153,6 +156,13 @@ export function Omnibar() {
     inputRef.current?.focus();
   };
 
+  const askBeacon = () => {
+    useSidebarStore.getState().setChatExpanded(true);
+    if (chatText) useChatStore.getState().send(chatText);
+    closeAndClear();
+    inputRef.current?.blur();
+  };
+
   return (
     <div ref={containerRef} className="relative" data-tour="omnibar">
       <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
@@ -160,10 +170,21 @@ export function Omnibar() {
         {open && (
           <CommandList className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg">
             {isChatMode && (
-              <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                <Sparkles className="mx-auto mb-1 h-4 w-4 text-ai" />
-                Beacon chat moves in here soon.
-              </div>
+              <CommandGroup heading="Chat">
+                <CommandItem value="action-chat" onSelect={askBeacon}>
+                  <Sparkles className="h-4 w-4 text-ai" />
+                  <span className="truncate">
+                    Ask Beacon{chatText ? (
+                      <>
+                        {' '}
+                        <span className="font-serif font-semibold">“{chatText}”</span>
+                      </>
+                    ) : (
+                      '…'
+                    )}
+                  </span>
+                </CommandItem>
+              </CommandGroup>
             )}
 
             {results.tasks.length > 0 && (
@@ -233,6 +254,21 @@ export function Omnibar() {
                     </span>
                   </CommandItem>
                 )}
+                {!isCommandMode && !isAddMode && (
+                  <CommandItem value="action-chat" onSelect={askBeacon}>
+                    <Sparkles className="h-4 w-4 text-ai" />
+                    <span className="truncate">
+                      Ask Beacon{chatText ? (
+                        <>
+                          {' '}
+                          <span className="font-serif font-semibold">“{chatText}”</span>
+                        </>
+                      ) : (
+                        '…'
+                      )}
+                    </span>
+                  </CommandItem>
+                )}
                 {matchedCommands.map((command) => (
                   <CommandItem
                     key={command.id}
@@ -281,6 +317,11 @@ export function Omnibar() {
               e.preventDefault();
               closeAndClear();
               inputRef.current?.blur();
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              askBeacon();
+              return;
             }
             if (e.key === 'Enter' && isAddMode) {
               e.preventDefault();

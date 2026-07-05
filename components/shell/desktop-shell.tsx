@@ -3,7 +3,6 @@
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { Timeline } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
-import { ChatSidebar } from '@/components/ai/chat-sidebar';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { Button } from '@/components/ui/button';
@@ -16,21 +15,13 @@ import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 
 /**
- * Desktop layout: sidebar v2 + canvas panel on the warm backdrop.
- * Chat migrates into the sidebar in P4; the views are rewritten in P5.
+ * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
+ * the warm backdrop. The views are rewritten in P5.
  */
 export function DesktopShell({ activeId }: { activeId: string | null }) {
   const { scope } = useViewStore();
-  const { openDialog } = useUIStore();
   const eodStore = useEODStore();
-  const {
-    leftSidebarOpen,
-    rightSidebarOpen,
-    leftSidebarHoverEnabled,
-    rightSidebarHoverEnabled,
-    setLeftSidebarHovered,
-    setRightSidebarHovered,
-  } = useSidebarStore();
+  const { leftSidebarOpen, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
 
   const handleTaskClick = (task: Task) => openEditFor(task, 'task');
   const handleHabitClick = (habit: Habit) => openEditFor(habit, 'habit');
@@ -95,15 +86,6 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
           )}
         </div>
 
-        {/* Right hover zone - shows chat sidebar when collapsed (if enabled) */}
-        {!rightSidebarOpen && rightSidebarHoverEnabled && (
-          <div
-            className="absolute right-0 top-0 bottom-0 z-40 w-3 cursor-pointer transition-colors hover:bg-primary/10"
-            onMouseEnter={() => setRightSidebarHovered(true)}
-          />
-        )}
-
-        <ChatSidebar onOpenSettings={() => openDialog({ type: 'settings' })} />
       </main>
     </div>
   );
