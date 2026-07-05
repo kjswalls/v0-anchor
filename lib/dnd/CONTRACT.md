@@ -50,3 +50,9 @@ not encoded in the id.
 
 useDraggable/useDroppable: `timeline.tsx` (8), `task-sidebar.tsx` (3),
 `week-view.tsx` (3), `mobile-tasks-panel.tsx` (2), `mobile-schedule-panel.tsx` (2).
+
+## P5d addition
+
+| ID | Meaning | Handler result |
+|---|---|---|
+| `hour:{H}` | Day-schedule grid slot (0–23) | schedule at `HH:00`; bucket = morning <12, afternoon <17, else evening |

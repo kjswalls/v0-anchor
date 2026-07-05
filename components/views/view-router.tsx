@@ -7,6 +7,7 @@ import { DayBuckets } from '@/components/views/day-buckets';
 import { WeekBuckets } from '@/components/views/week-buckets';
 import { DayList } from '@/components/views/day-list';
 import { WeekList } from '@/components/views/week-list';
+import { DaySchedule } from '@/components/views/day-schedule';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
@@ -36,6 +37,7 @@ export function ViewRouter({ activeId }: { activeId: string | null }) {
   if (scope === 'week') {
     if (useLegacyViews) return <WeekView {...legacyProps} />;
     if (layout === 'list') return <WeekList />;
+    // week × schedule ships after the design proposal — buckets meanwhile
     return <WeekBuckets activeId={activeId} />;
   }
 
@@ -44,5 +46,6 @@ export function ViewRouter({ activeId }: { activeId: string | null }) {
   }
 
   if (layout === 'list') return <DayList />;
+  if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
   return <DayBuckets activeId={activeId} />;
 }

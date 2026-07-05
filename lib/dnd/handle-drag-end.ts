@@ -89,6 +89,18 @@ export function resolveDrop(
     return null;
   }
 
+  // hour:{H} — day-schedule grid slot; drop lands at the top of that hour
+  // in the bucket that owns it (P5d "drop-on-hour" v1)
+  if (targetId.startsWith('hour:')) {
+    const hour = Number(targetId.slice(5));
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+    const bucket: TimeBucket = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    const time = `${String(hour).padStart(2, '0')}:00`;
+    return itemType === 'task'
+      ? { kind: 'schedule-task', taskId: itemId, bucket, time, dateStr: selectedDateStr }
+      : { kind: 'schedule-habit', habitId: itemId, bucket, time };
+  }
+
   // week:{yyyy-MM-dd}:{bucket}
   if (targetId.startsWith('week:')) {
     const parts = targetId.split(':');

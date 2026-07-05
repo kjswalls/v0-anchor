@@ -108,6 +108,35 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
     });
   });
 
+
+  describe('hour:{H} (day-schedule drop-on-hour)', () => {
+    it('schedules a task at the top of the hour in the owning bucket', () => {
+      expect(resolveDrop('t1', 'hour:9', ctx())).toEqual({
+        kind: 'schedule-task',
+        taskId: 't1',
+        bucket: 'morning',
+        time: '09:00',
+        dateStr: '2026-07-04',
+      });
+      expect(resolveDrop('t1', 'hour:14', ctx())).toMatchObject({ bucket: 'afternoon', time: '14:00' });
+      expect(resolveDrop('t1', 'hour:21', ctx())).toMatchObject({ bucket: 'evening', time: '21:00' });
+    });
+
+    it('schedules habits with the hour time', () => {
+      expect(resolveDrop('h1', 'hour:7', ctx({ itemType: 'habit' }))).toEqual({
+        kind: 'schedule-habit',
+        habitId: 'h1',
+        bucket: 'morning',
+        time: '07:00',
+      });
+    });
+
+    it('rejects out-of-range hours', () => {
+      expect(resolveDrop('t1', 'hour:24', ctx())).toBeNull();
+      expect(resolveDrop('t1', 'hour:x', ctx())).toBeNull();
+    });
+  });
+
   describe('week:{date}:{bucket}', () => {
     it('schedules a task onto the cell date, not the selected date', () => {
       expect(resolveDrop('t1', 'week:2026-07-09:morning', ctx())).toEqual({
