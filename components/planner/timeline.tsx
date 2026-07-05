@@ -654,7 +654,7 @@ interface ProjectBlockProps {
   activeId?: string | null;
 }
 
-function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
+export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
   const { compactMode, toggleTaskStatus, getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock, selectedDate, userTimezone } = usePlannerStore();
   const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const selectedDateStr = toDateStr(selectedDate, resolvedTimezone);

@@ -1,32 +1,21 @@
 'use client';
 
 import { Sidebar } from '@/components/sidebar/sidebar';
-import { Timeline } from '@/components/planner/timeline';
-import { WeekView } from '@/components/planner/week-view';
+import { ViewRouter } from '@/components/views/view-router';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { Button } from '@/components/ui/button';
-import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useViewStore } from '@/lib/view-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 
 /**
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
- * the warm backdrop. The views are rewritten in P5.
+ * the warm backdrop. The views live behind ViewRouter (P5).
  */
 export function DesktopShell({ activeId }: { activeId: string | null }) {
-  const { scope } = useViewStore();
   const eodStore = useEODStore();
   const { leftSidebarOpen, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
-
-  const handleTaskClick = (task: Task) => openEditFor(task, 'task');
-  const handleHabitClick = (habit: Habit) => openEditFor(habit, 'habit');
-  const handleAddFromTimeline = (bucket: TimeBucket, type: 'task' | 'habit') =>
-    openAddDialog(type, bucket, usePlannerStore.getState().selectedDate);
 
   return (
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
@@ -70,20 +59,7 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
         <MorningCheck />
 
         <div data-tour="timeline" className="flex flex-1 flex-col overflow-hidden">
-          {scope === 'day' ? (
-            <Timeline
-              onTaskClick={handleTaskClick}
-              onHabitClick={handleHabitClick}
-              onAddClick={handleAddFromTimeline}
-              activeId={activeId}
-            />
-          ) : (
-            <WeekView
-              onTaskClick={handleTaskClick}
-              onHabitClick={handleHabitClick}
-              onAddClick={handleAddFromTimeline}
-            />
-          )}
+          <ViewRouter activeId={activeId} />
         </div>
 
       </main>
