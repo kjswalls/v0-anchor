@@ -5,6 +5,8 @@ import { Timeline } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
 import { DayBuckets } from '@/components/views/day-buckets';
 import { WeekBuckets } from '@/components/views/week-buckets';
+import { DayList } from '@/components/views/day-list';
+import { WeekList } from '@/components/views/week-list';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
@@ -19,7 +21,7 @@ import type { TimeBucket } from '@/lib/planner-types';
  * localStorage 'anchor-legacy-views' = '1' renders the old Timeline/WeekView.
  */
 export function ViewRouter({ activeId }: { activeId: string | null }) {
-  const { scope } = useViewStore();
+  const { scope, layout } = useViewStore();
   const [useLegacyViews] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('anchor-legacy-views') === '1'
   );
@@ -33,6 +35,7 @@ export function ViewRouter({ activeId }: { activeId: string | null }) {
 
   if (scope === 'week') {
     if (useLegacyViews) return <WeekView {...legacyProps} />;
+    if (layout === 'list') return <WeekList />;
     return <WeekBuckets activeId={activeId} />;
   }
 
@@ -40,5 +43,6 @@ export function ViewRouter({ activeId }: { activeId: string | null }) {
     return <Timeline {...legacyProps} activeId={activeId} />;
   }
 
+  if (layout === 'list') return <DayList />;
   return <DayBuckets activeId={activeId} />;
 }

@@ -166,8 +166,6 @@ export function HeaderCapsule() {
           </ToggleGroupItem>
           <ToggleGroupItem
             value="list"
-            disabled
-            title="Coming with the redesign"
             className="h-7 gap-1 px-2.5 text-xs data-[state=on]:bg-surface-3"
           >
             <List className="h-3.5 w-3.5" />
