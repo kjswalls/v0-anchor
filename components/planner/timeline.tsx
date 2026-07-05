@@ -535,9 +535,9 @@ function HabitCard({ habit, onClick }: HabitCardProps) {
         
         {/* Streak badge */}
         {habit.streak > 0 && (
-          <div className="flex items-center gap-0.5 bg-orange-500/15 px-2 py-1 rounded-md flex-shrink-0">
-            <Flame className="h-3.5 w-3.5 text-orange-500" />
-            <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">{habit.streak}</span>
+          <div className="flex items-center gap-0.5 bg-warning/15 px-2 py-1 rounded-md flex-shrink-0">
+            <Flame className="h-3.5 w-3.5 text-warning" />
+            <span className="text-xs font-semibold text-warning-text">{habit.streak}</span>
           </div>
         )}
 
@@ -1215,7 +1215,7 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             {/* Invisible hover area */}
             <div className="absolute -left-4 right-1 -top-2 -bottom-2 cursor-default pointer-events-auto" />
             {/* Clock icon */}
-            <Clock className="absolute -left-4 w-3 h-3 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={2.5} />
+            <Clock className="absolute -left-4 w-3 h-3 text-muted-foreground top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={2.5} />
           </div>
           {/* Dashed line and dot - z-10 to render in front of task/habit cards with gradient opacity */}
           <div
@@ -1228,9 +1228,9 @@ function TimelineBucket({ bucket, tasks, habits, onTaskClick, onHabitClick, onAd
             }}
           >
             {/* Glowing dot */}
-            <div className="w-2 h-2 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_6px_2px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-muted-foreground shadow-[0_0_6px_2px] shadow-muted-foreground/50 shrink-0" />
             {/* Dashed line */}
-            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 mr-1" />
+            <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-muted-foreground/50 mr-1" />
           </div>
         </>
       )}

@@ -4,8 +4,8 @@
   "description": "A calm, minimal daily planner designed for neurodivergent minds.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f0e8",
-  "theme_color": "#1a2f4e",
+  "background_color": "#eeede9",
+  "theme_color": "#eeede9",
   "orientation": "portrait-primary",
   "icons": [
     {

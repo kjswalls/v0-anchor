@@ -488,7 +488,7 @@ export function ChatSidebar({ onOpenSettings }: ChatSidebarProps) {
                             // User message - right aligned with avatar
                             <div className="flex items-start gap-3 justify-end">
                               <div className="flex flex-col items-end gap-1 max-w-[85%]">
-                                <div className="bg-zinc-200 dark:bg-zinc-800 text-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+                                <div className="bg-muted text-foreground rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
                                   {msg.content}
                                 </div>
                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -502,7 +502,7 @@ export function ChatSidebar({ onOpenSettings }: ChatSidebarProps) {
                                     className="text-muted-foreground hover:text-foreground transition-colors"
                                   >
                                     {copiedIndex === i ? (
-                                      <Check className="h-3 w-3 text-green-500" />
+                                      <Check className="h-3 w-3 text-success" />
                                     ) : (
                                       <Copy className="h-3 w-3" />
                                     )}
@@ -516,7 +516,7 @@ export function ChatSidebar({ onOpenSettings }: ChatSidebarProps) {
                           ) : (
 // Assistant message - left aligned, no bubble, with markdown
                           <div className="flex flex-col gap-1">
-                            <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-zinc-800 prose-code:text-cyan-400 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-zinc-900 prose-pre:p-3 prose-pre:rounded-lg prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
+                            <div className="text-sm leading-relaxed text-foreground break-words prose prose-sm dark:prose-invert prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:bg-muted prose-code:text-primary prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-lg prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground max-w-none">
                               {msg.content ? (
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripReasoningTags(msg.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}</ReactMarkdown>
                               ) : (isTyping && i === messages.length - 1 ? <TypingIndicator /> : (isLoading && i === messages.length - 1 ? <LoadingDots /> : null))}
@@ -533,7 +533,7 @@ export function ChatSidebar({ onOpenSettings }: ChatSidebarProps) {
                                     className="text-muted-foreground hover:text-foreground transition-colors"
                                   >
                                     {copiedIndex === i ? (
-                                      <Check className="h-3 w-3 text-green-500" />
+                                      <Check className="h-3 w-3 text-success" />
                                     ) : (
                                       <Copy className="h-3 w-3" />
                                     )}

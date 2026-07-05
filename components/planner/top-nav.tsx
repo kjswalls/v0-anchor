@@ -289,9 +289,9 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
               const sunriseMins = sunriseTime ? toMinutes(sunriseTime) : 6 * 60;
               const isAfterSunset = currentMinutes >= sunsetMins;
               return isAfterSunset ? (
-                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-indigo-400 animate-pulse" />
+                <Moon className="absolute -top-1 -right-1 h-4 w-4 text-evening animate-pulse" />
               ) : (
-                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-yellow-500 animate-pulse" />
+                <Sun className="absolute -top-1 -right-1 h-4 w-4 text-afternoon animate-pulse" />
               );
             })()}
             Today
@@ -393,7 +393,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
                                 onClick={() => handleHabitResultClick(habit)}
                                 className="w-full px-3 py-2 text-left hover:bg-accent transition-colors flex items-start gap-2"
                               >
-                                <Flame className="h-4 w-4 mt-0.5 flex-shrink-0 text-orange-500" />
+                                <Flame className="h-4 w-4 mt-0.5 flex-shrink-0 text-warning" />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-sm">{getHabitGroupEmoji(habit.group)}</span>
@@ -401,7 +401,7 @@ export function TopNav({ onAddClick, onManageCategories, onOpenSettings, onTaskC
                                       {habit.title}
                                     </span>
                                     {habit.streak > 0 && (
-                                      <span className="text-xs text-orange-500 font-medium">
+                                      <span className="text-xs text-warning-foreground font-medium">
                                         {habit.streak} day streak
                                       </span>
                                     )}

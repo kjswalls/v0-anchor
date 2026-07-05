@@ -432,7 +432,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       <p className="text-xs text-muted-foreground">Checking connection…</p>
                     ) : openclawConn.chatUrl ? (
                       <div className="space-y-1">
-                        <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
+                        <Badge className="bg-success/15 text-success-text hover:bg-success/20 border-success/30">
                           Connected
                         </Badge>
                         <p className="text-[11px] text-muted-foreground">
@@ -490,7 +490,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                             <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
                           )}
                           {keyValidation === 'valid' && (
-                            <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                            <Check className="h-3.5 w-3.5 text-success shrink-0" />
                           )}
                           {keyValidation === 'invalid' && (
                             <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />

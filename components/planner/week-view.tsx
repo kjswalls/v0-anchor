@@ -598,7 +598,7 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                           {/* Invisible hover area */}
                           <div className="absolute left-0 right-0 -top-1.5 -bottom-1.5 cursor-default pointer-events-auto" />
                           {/* Clock icon */}
-                          <Clock className="absolute left-0 w-2.5 h-2.5 text-gray-500 dark:text-white/70 top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={3} />
+                          <Clock className="absolute left-0 w-2.5 h-2.5 text-muted-foreground top-1/2 -translate-y-[calc(50%-1px)] opacity-0 group-hover/indicator:opacity-100 transition-opacity" strokeWidth={3} />
                         </div>
                         {/* Dashed line and dot - z-10 with gradient opacity */}
                         <div
@@ -613,9 +613,9 @@ export function WeekView({ onTaskClick, onHabitClick, onAddClick }: WeekViewProp
                           {/* Spacer for clock icon area */}
                           <div className="w-3.5 shrink-0" />
                           {/* Glowing dot */}
-                          <div className="w-1.5 h-1.5 rounded-full bg-gray-500 dark:bg-white/70 shadow-[0_0_4px_1px] shadow-gray-400/50 dark:shadow-white/50 shrink-0" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground shadow-[0_0_4px_1px] shadow-muted-foreground/50 shrink-0" />
                           {/* Dashed line */}
-                          <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-gray-400 dark:border-white/50 ml-0.5" />
+                          <div className="flex-1 h-0 border-t-[1.5px] border-dashed border-muted-foreground/50 ml-0.5" />
                         </div>
                       </>
                     )}

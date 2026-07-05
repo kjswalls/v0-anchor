@@ -161,12 +161,12 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
           <div className="py-4">
             {/* Streak Display */}
             {habit && (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/20 mb-5">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-warning/10 to-warning/10 border border-warning/20 mb-5">
                 <div className="flex items-center gap-2">
-                  <Flame className="h-5 w-5 text-orange-500" />
+                  <Flame className="h-5 w-5 text-warning" />
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Current Streak</p>
-                    <p className="text-xl font-bold text-orange-500">{habit.streak} days</p>
+                    <p className="text-xl font-bold text-warning-text">{habit.streak} days</p>
                   </div>
                 </div>
                 <Button
