@@ -1,0 +1,497 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { format } from 'date-fns';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+  MeasuringStrategy,
+} from '@dnd-kit/core';
+import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
+import { useSwipeable } from 'react-swipeable';
+
+import { DesktopShell } from '@/components/shell/desktop-shell';
+import { ConfirmDialog } from '@/components/shell/confirm-dialog';
+import { inferDropTime } from '@/components/planner/timeline';
+import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
+import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
+import { AddTaskDialog } from '@/components/planner/add-task-dialog';
+import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
+import { SettingsDialog } from '@/components/planner/settings-dialog';
+import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
+import { EODReview } from '@/components/ai/eod-review';
+import { MobileHeader } from '@/components/mobile/mobile-header';
+import { MobileTabBar } from '@/components/mobile/mobile-tab-bar';
+import { MobileTasksPanel } from '@/components/mobile/mobile-tasks-panel';
+import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
+import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
+import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+
+import { usePlannerStore } from '@/lib/planner-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useEODStore } from '@/lib/eod-store';
+import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
+import { adoptLegacyViewPrefs } from '@/lib/view-store';
+import { resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useUndoToast } from '@/hooks/use-undo-toast';
+import { useTimezoneSync } from '@/hooks/use-timezone-sync';
+import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
+import { createClient } from '@/lib/supabase';
+import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { MobileTab } from '@/lib/mobile-nav-store';
+
+function KbdHint() {
+  const [isMac, setIsMac] = useState(false);
+  useEffect(() => {
+    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
+  }, []);
+  return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
+}
+
+function DraggableTaskOverlay({ title }: { title: string }) {
+  return (
+    <div className="flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
+      <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
+      <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
+      <div className="min-w-0 flex-1">
+        <p className="font-serif text-sm leading-tight text-foreground">{title}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * App shell: owns the DndContext, global keyboard shortcuts, auto-triggers
+ * (EOD/morning), the dialog mount point, and the desktop/mobile split.
+ * Extracted from app/page.tsx (P2 of the redesign plan).
+ */
+export function AppShell() {
+  const {
+    tasks,
+    habits,
+    scheduleTask,
+    assignHabitToBucket,
+    unscheduleTask,
+    scheduleHabit,
+    deleteTask,
+    deleteHabit,
+    hoveredItemId,
+    hoveredItemType,
+    moveTaskToProjectBlock,
+    selectedDate,
+    undo,
+    redo,
+  } = usePlannerStore();
+  const { activeTab } = useMobileNavStore();
+  const { toggleLeftSidebar, toggleRightSidebar, setRightSidebarOpen } = useSidebarStore();
+  const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
+
+  useUndoToast();
+  useTimezoneSync();
+
+  const [mounted, setMounted] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [tourUserId, setTourUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+    adoptLegacyViewPrefs();
+  }, []);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      const done = await isOnboardingComplete(uid);
+      if (!done) {
+        setTourUserId(uid);
+        setShowTour(true);
+      }
+    });
+  }, []);
+
+  // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('eod') !== '1') return;
+
+    const openAndClear = () => {
+      useEODStore.getState().open();
+      window.history.replaceState({}, '', '/');
+    };
+
+    if (!usePlannerStore.getState().isLoading) {
+      openAndClear();
+    } else {
+      const unsub = usePlannerStore.subscribe((state) => {
+        if (!state.isLoading) {
+          openAndClear();
+          unsub();
+        }
+      });
+      return unsub;
+    }
+  }, []);
+
+  // EOD auto-trigger: open the EOD review modal when the review time has passed today
+  const eodStore = useEODStore();
+  useEffect(() => {
+    if (!eodStore.eodReviewEnabled) return;
+
+    const userTz =
+      usePlannerStore.getState().userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const now = new Date();
+
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: userTz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+
+    if (eodStore.lastEodReviewDate === todayStr) return;
+
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: userTz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now);
+
+    if (currentTime >= eodStore.eodReviewTime) {
+      eodStore.open();
+    }
+  }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
+
+  // Global keyboard shortcuts (chrome-level; item shortcuts via useKeyboardShortcuts below)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+
+      if (e.key === '[') {
+        e.preventDefault();
+        toggleLeftSidebar();
+      }
+      if (e.key === ']') {
+        e.preventDefault();
+        toggleRightSidebar();
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        openDialog({ type: 'keyboard-shortcuts' });
+      }
+      if (e.key === ',') {
+        e.preventDefault();
+        openDialog({ type: 'settings' });
+      }
+      if (key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+      // Undo/redo (moved from top-nav)
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+      if (key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleLeftSidebar, toggleRightSidebar, openDialog, undo, redo]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
+  );
+
+  const activeTask = activeId ? tasks.find((t) => t.id === activeId) : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+
+    const itemId = active.id as string;
+    const draggedTask = tasks.find((t) => t.id === itemId);
+    const draggedHabit = habits.find((h) => h.id === itemId);
+
+    const command = resolveDrop(itemId, over.id as string, {
+      itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
+      draggedTaskProject: draggedTask?.project,
+      selectedDateStr: format(selectedDate, 'yyyy-MM-dd'),
+      getRefTime: (refType, refId) =>
+        refType === 'task'
+          ? tasks.find((t) => t.id === refId)?.startTime
+          : habits.find((h) => h.id === refId)?.startTime,
+      inferDropTime,
+    });
+    if (!command) return;
+
+    switch (command.kind) {
+      case 'schedule-task':
+        scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
+        break;
+      case 'schedule-habit':
+        scheduleHabit(command.habitId, command.bucket, command.time);
+        break;
+      case 'assign-habit-bucket':
+        assignHabitToBucket(command.habitId, command.bucket);
+        break;
+      case 'unschedule':
+        unscheduleTask(command.itemId);
+        break;
+      case 'move-task-to-project-block':
+        moveTaskToProjectBlock(command.taskId);
+        break;
+    }
+  };
+
+  // Mobile swipe to switch tabs
+  const MOBILE_TABS: MobileTab[] = ['tasks', 'schedule', 'chat'];
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: () => {
+      const idx = MOBILE_TABS.indexOf(activeTab);
+      if (idx < MOBILE_TABS.length - 1) {
+        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx + 1]);
+      }
+    },
+    onSwipedRight: () => {
+      const idx = MOBILE_TABS.indexOf(activeTab);
+      if (idx > 0) {
+        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx - 1]);
+      }
+    },
+    trackMouse: false,
+    delta: 50,
+    preventScrollOnSwipe: false,
+  });
+
+  // Keyboard shortcut handlers
+  const handleShortcutEdit = useCallback(() => {
+    if (!hoveredItemId || !hoveredItemType) return;
+    if (hoveredItemType === 'task') {
+      const task = tasks.find((t) => t.id === hoveredItemId);
+      if (task) openEditFor(task, 'task');
+    } else {
+      const habit = habits.find((h) => h.id === hoveredItemId);
+      if (habit) openEditFor(habit, 'habit');
+    }
+  }, [hoveredItemId, hoveredItemType, tasks, habits]);
+
+  const handleShortcutDelete = useCallback(() => {
+    if (!hoveredItemId || !hoveredItemType) return;
+    const item =
+      hoveredItemType === 'task'
+        ? tasks.find((t) => t.id === hoveredItemId)
+        : habits.find((h) => h.id === hoveredItemId);
+    if (!item) return;
+    const type = hoveredItemType;
+    confirm({
+      title: `Delete ${type === 'habit' ? 'Habit' : 'Task'}?`,
+      description: `This will permanently delete "${item.title}". This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
+    });
+  }, [hoveredItemId, hoveredItemType, tasks, habits, confirm, deleteTask, deleteHabit]);
+
+  useKeyboardShortcuts({
+    new_task: useCallback(() => openAddDialog('task'), []),
+    edit_hovered: handleShortcutEdit,
+    delete_hovered: handleShortcutDelete,
+    report_bug: useCallback(() => useUIStore.getState().openDialog({ type: 'bug-report' }), []),
+  });
+
+  // Dialog state — keep the last add payload so close animations don't flicker
+  const addState = activeDialog?.type === 'add' ? activeDialog : null;
+  const [lastAdd, setLastAdd] = useState(addState);
+  if (addState && addState !== lastAdd) setLastAdd(addState);
+  const editingTask = activeDialog?.type === 'edit-task' ? activeDialog.task : null;
+  const editingHabit = activeDialog?.type === 'edit-habit' ? activeDialog.habit : null;
+
+  const handleTaskClick = (task: Task) => openEditFor(task, 'task');
+  const handleHabitClick = (habit: Habit) => openEditFor(habit, 'habit');
+
+  // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
+  if (!mounted) {
+    return (
+      <>
+        {/* Desktop skeleton */}
+        <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
+          <div className="w-80 rounded-panel bg-sidebar" />
+          <main className="flex-1 rounded-panel bg-canvas" />
+        </div>
+        {/* Mobile skeleton */}
+        <div className="flex h-[100dvh] flex-col bg-background md:hidden">
+          <div className="h-14 border-b border-border bg-card" />
+          <div className="flex-1 bg-background" />
+          <div className="h-14 border-t border-border bg-card" />
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <DndContext
+      id="planner-dnd"
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      measuring={{
+        droppable: {
+          strategy: MeasuringStrategy.Always,
+        },
+      }}
+    >
+      <DesktopShell activeId={activeId} searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} />
+
+      {/* Mobile Layout */}
+      <div className="flex h-[100dvh] flex-col bg-background md:hidden">
+        <MobileHeader
+          onAddClick={() => openAddDialog('task')}
+          onOpenSettings={() => openDialog({ type: 'settings' })}
+        />
+        <div className="flex-1 overflow-hidden" {...swipeHandlers}>
+          {activeTab === 'tasks' && (
+            <MobileTasksPanel
+              onTaskClick={handleTaskClick}
+              onHabitClick={handleHabitClick}
+              onAddClick={() => openAddDialog('task')}
+              onAddHabitClick={() => openAddDialog('habit')}
+              onManageCategories={() => openDialog({ type: 'manage-categories' })}
+            />
+          )}
+          {activeTab === 'schedule' && (
+            <MobileSchedulePanel
+              onTaskClick={handleTaskClick}
+              onHabitClick={handleHabitClick}
+              onAddClick={(bucket, type) =>
+                openAddDialog(type, bucket, usePlannerStore.getState().selectedDate)
+              }
+              activeId={activeId}
+            />
+          )}
+          {activeTab === 'chat' && (
+            <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
+          )}
+        </div>
+        <MobileTabBar />
+      </div>
+
+      <DragOverlay>{activeTask && <DraggableTaskOverlay title={activeTask.title} />}</DragOverlay>
+
+      <AddTaskDialog
+        open={!!addState}
+        onOpenChange={(open) => !open && closeDialog()}
+        defaultTab={lastAdd?.tab ?? 'task'}
+        defaultBucket={lastAdd?.bucket}
+        defaultDate={lastAdd?.date}
+      />
+
+      <EditTaskDialog
+        task={editingTask}
+        open={!!editingTask}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <EditHabitDialog
+        habit={editingHabit}
+        open={!!editingHabit}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <ManageCategoriesDialog
+        open={activeDialog?.type === 'manage-categories'}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <SettingsDialog
+        open={activeDialog?.type === 'settings'}
+        onOpenChange={(open) => !open && closeDialog()}
+        onOpenKeyboardShortcuts={() => openDialog({ type: 'keyboard-shortcuts' })}
+        onReportBug={() => openDialog({ type: 'bug-report' })}
+        onReplayTour={async () => {
+          const supabase = createClient();
+          const { data } = await supabase.auth.getUser();
+          const uid = data.user?.id;
+          if (!uid) return;
+          await resetOnboardingComplete(uid);
+          setTourUserId(uid);
+          setShowTour(true);
+        }}
+      />
+
+      <KeyboardShortcutsModal
+        open={activeDialog?.type === 'keyboard-shortcuts'}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      {showTour && tourUserId && (
+        <OnboardingTour
+          userId={tourUserId}
+          onComplete={() => setShowTour(false)}
+          onOpenSettings={() => openDialog({ type: 'settings' })}
+          onExpandChat={() => setRightSidebarOpen(true)}
+          onCollapseChat={() => setRightSidebarOpen(false)}
+          onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
+        />
+      )}
+
+      <EODReview />
+
+      <BugReportDialog
+        open={activeDialog?.type === 'bug-report'}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <ConfirmDialog />
+
+      {/* Persistent keyboard shortcuts hint — desktop only */}
+      <div className="fixed bottom-4 right-4 z-30 hidden md:flex">
+        <button
+          onClick={() => openDialog({ type: 'keyboard-shortcuts' })}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-soft-sm transition-colors hover:border-primary/50 hover:text-foreground"
+        >
+          <KeyboardIcon className="h-3.5 w-3.5" />
+          <KbdHint />
+        </button>
+      </div>
+    </DndContext>
+  );
+}
