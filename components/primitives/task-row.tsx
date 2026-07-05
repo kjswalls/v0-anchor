@@ -33,9 +33,11 @@ interface TaskRowProps {
   row: RowItem;
   context?: 'braindump' | 'bucket';
   density?: 'default' | 'compact';
+  /** The day this row is rendered for (week columns); defaults to the selected day. */
+  date?: Date;
 }
 
-export function TaskRow({ row, context = 'bucket', density = 'default' }: TaskRowProps) {
+export function TaskRow({ row, context = 'bucket', density = 'default', date }: TaskRowProps) {
   const {
     toggleTaskStatus,
     toggleHabitStatus,
@@ -59,7 +61,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default' }: TaskRo
   const compact = density === 'compact';
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const dateStr = toDateStr(selectedDate, timezone);
+  const rowDate = date ?? selectedDate;
+  const dateStr = toDateStr(rowDate, timezone);
 
   // Effective per-date status
   const taskRecurring = task ? isRecurring(task) : false;

@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { BucketCard } from '@/components/primitives/bucket-card';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
-import { ProjectBlock } from '@/components/planner/timeline';
+import { ProjectBlock } from '@/components/views/project-block';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';

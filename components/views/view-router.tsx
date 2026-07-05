@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Timeline } from '@/components/planner/timeline';
 import { WeekView } from '@/components/planner/week-view';
 import { DayBuckets } from '@/components/views/day-buckets';
+import { WeekBuckets } from '@/components/views/week-buckets';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
@@ -14,13 +15,13 @@ import type { TimeBucket } from '@/lib/planner-types';
  *   day-buckets   → NEW (P5a)
  *   week-buckets  → legacy WeekView until P5b
  *   list/schedule → land in P5c/P5d (toggles disabled in the capsule)
- * Escape hatch while the rewrite bakes: localStorage
- * 'anchor-legacy-timeline' = '1' renders the old Timeline for day-buckets.
+ * Escape hatch while the rewrites bake (removed at the P6 checkpoint):
+ * localStorage 'anchor-legacy-views' = '1' renders the old Timeline/WeekView.
  */
 export function ViewRouter({ activeId }: { activeId: string | null }) {
   const { scope } = useViewStore();
-  const [useLegacyTimeline] = useState(
-    () => typeof window !== 'undefined' && localStorage.getItem('anchor-legacy-timeline') === '1'
+  const [useLegacyViews] = useState(
+    () => typeof window !== 'undefined' && localStorage.getItem('anchor-legacy-views') === '1'
   );
 
   const legacyProps = {
@@ -31,10 +32,11 @@ export function ViewRouter({ activeId }: { activeId: string | null }) {
   };
 
   if (scope === 'week') {
-    return <WeekView {...legacyProps} />;
+    if (useLegacyViews) return <WeekView {...legacyProps} />;
+    return <WeekBuckets activeId={activeId} />;
   }
 
-  if (useLegacyTimeline) {
+  if (useLegacyViews) {
     return <Timeline {...legacyProps} activeId={activeId} />;
   }
 
