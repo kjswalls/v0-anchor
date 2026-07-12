@@ -29,7 +29,7 @@ interface BucketCardProps {
 }
 
 /**
- * Floating bucket card (day-buckets / week-buckets): tinted icon + serif
+ * Floating bucket card (day-buckets / week-buckets): tinted icon + sans
  * name + count, add button, children as the row area.
  */
 export function BucketCard({
@@ -57,8 +57,8 @@ export function BucketCard({
     >
       <header className={cn('flex items-center gap-2', mini ? 'px-2.5 pt-2 pb-1' : 'px-4 pt-3.5 pb-1.5')}>
         <Icon className={cn(meta.tint, mini ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-        {/* Understated bucket label — Inter Regular 14 cool (Figma 61:26), lets titles dominate */}
-        <h3 className={cn('flex-1 font-sans font-normal text-muted-foreground', mini ? 'text-xs' : 'text-[14px]')}>
+        {/* Understated bucket label — Inter Medium 13 muted (Linear section-header style) */}
+        <h3 className={cn('flex-1 font-sans font-medium text-muted-foreground', mini ? 'text-xs' : 'text-sm')}>
           {meta.label}
         </h3>
         <CountBadge count={count} />

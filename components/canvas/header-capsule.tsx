@@ -63,7 +63,7 @@ function SelectMenu<T extends string>({
       <DropdownMenuTrigger asChild>
         <button
           aria-label={ariaLabel}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-foreground transition-colors hover:bg-surface-3"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-3"
         >
           <Icon className="h-4 w-4" />
           {current.label}
@@ -77,7 +77,7 @@ function SelectMenu<T extends string>({
             <DropdownMenuItem
               key={o.value}
               onClick={() => onChange(o.value)}
-              className="gap-2 text-[13px]"
+              className="gap-2 text-sm"
             >
               <OptIcon className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1">{o.label}</span>
@@ -178,7 +178,7 @@ export function HeaderCapsule() {
           disabled={!showToday}
           title={showToday ? 'Jump to today' : undefined}
           className={cn(
-            'px-1 font-sans text-[16px] font-semibold text-foreground',
+            'px-1 font-sans text-base font-semibold text-foreground',
             showToday && 'cursor-pointer hover:text-primary-foreground/80'
           )}
         >

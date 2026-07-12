@@ -87,7 +87,7 @@ export function UserCard() {
                 {email ? initials : <User className="h-3 w-3" />}
               </AvatarFallback>
             </Avatar>
-            <span className="truncate text-[16px] font-medium text-foreground">{firstName}</span>
+            <span className="truncate text-sm font-medium text-foreground">{firstName}</span>
             {bestStreak > 0 && (
               <span className="flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
                 <Flame className="h-3 w-3" />
@@ -126,7 +126,7 @@ export function UserCard() {
       <div className="ml-auto flex items-center gap-5">
         <Popover>
           <PopoverTrigger asChild>
-            <button className="max-w-[110px] truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+            <button className="max-w-[110px] truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-xs text-muted-foreground transition-colors hover:text-foreground">
               {displayActions[0]?.label ?? 'Session start'}
             </button>
           </PopoverTrigger>
