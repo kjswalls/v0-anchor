@@ -3,8 +3,8 @@
 import { cn } from '@/lib/utils';
 
 /**
- * "/ HABITS"-style slash-label section used to group rows inside buckets
- * and lists (see design/redesign mockups).
+ * "/ Habits"-style sentence-case slash-label section used to group rows
+ * inside buckets and lists (Linear-style exploration).
  */
 export function GroupSection({
   label,
@@ -17,11 +17,11 @@ export function GroupSection({
 }) {
   return (
     <div className={className}>
-      <div className="px-1 pb-1 text-[13px] font-medium uppercase tracking-widest text-muted-foreground/70">
+      <div className="px-1 pb-1 text-sm font-medium text-muted-foreground">
         <span className="mr-1 text-muted-foreground/40">/</span>
         {label}
       </div>
-      <div className="space-y-0.5">{children}</div>
+      <div className="space-y-0">{children}</div>
     </div>
   );
 }

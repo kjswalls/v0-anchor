@@ -24,7 +24,7 @@ const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
 
 function SlashLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="px-2 pb-1 pt-3 text-xs font-medium uppercase tracking-widest text-muted-foreground/70 first:pt-1">
+    <div className="px-2 pb-1 pt-3 text-sm font-medium text-muted-foreground first:pt-1">
       <span className="mr-1 text-muted-foreground/40">/</span>
       {children}
     </div>
@@ -232,12 +232,13 @@ export function Braindump() {
       className="flex min-h-0 flex-1 flex-col gap-3"
     >
       {/* Header — gray capsule (flat) framing a shadowed white row-pill.
-          Exact dims from Figma: gray 406×50 r10; pill 385×37 r10, inset
-          (10,6), shadow 0 4 4 rgba(0,0,0,.15); title Inter Medium 16 #222. */}
+          Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
+          shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
+          for the Linear-style exploration. */}
       <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px]">
         <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.15)]">
           <AlignLeft className="h-4 w-4 text-muted-foreground" />
-          <h2 className="flex-1 font-sans text-[16px] font-medium leading-none text-foreground">
+          <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
             Braindump
           </h2>
           <FilterPopover />
@@ -273,7 +274,7 @@ export function Braindump() {
           {grouped.map(([label, groupRows]) => (
             <div key={label || 'all'}>
               {label && <SlashLabel>{label}</SlashLabel>}
-              <div className="space-y-0.5">
+              <div className="space-y-0">
                 {groupRows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}

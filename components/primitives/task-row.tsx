@@ -19,7 +19,7 @@ import type { Task, Habit, HabitStatus } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
- * Canonical item row (components/primitives): checkbox + serif title +
+ * Canonical item row (components/primitives): checkbox + Inter Medium title +
  * trailing pills + hover controls. Contexts:
  *   braindump — minimal metadata, tasks draggable
  *   bucket    — full pills + unschedule/skip controls, date-aware completion
@@ -134,7 +134,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 transition-colors hover:bg-surface-3"
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
-        <span className="flex-1 truncate font-serif text-sm text-muted-foreground/70">{habit.title}</span>
+        <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
         <Button
           variant="ghost"
           size="sm"
@@ -160,8 +160,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       style={style}
       data-testid={isTask ? 'task-card' : 'habit-card'}
       className={cn(
-        'group relative flex w-full cursor-pointer items-center gap-[15px] rounded-lg px-2 transition-colors hover:bg-accent',
-        compact ? 'py-1' : 'py-1.5',
+        'group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors hover:bg-accent',
+        compact ? 'py-1' : 'py-2',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'
       )}
@@ -229,9 +229,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       {/* Title */}
       <p
         className={cn(
-          // Source Serif SemiBold 15 (Figma "Task font") — thick standout look
-          'min-w-0 flex-1 font-serif font-semibold leading-tight text-foreground',
-          compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-base',
+          // Inter Medium 13 (Linear-style exploration) — quiet, dense, uniform
+          'min-w-0 flex-1 text-sm font-medium text-foreground',
+          compact ? 'line-clamp-1' : 'line-clamp-2',
           completed && 'text-muted-foreground line-through'
         )}
       >

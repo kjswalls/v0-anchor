@@ -64,7 +64,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
       <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
       <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
       <div className="min-w-0 flex-1">
-        <p className="font-serif text-sm leading-tight text-foreground">{title}</p>
+        <p className="text-sm font-medium text-foreground">{title}</p>
       </div>
     </div>
   );
