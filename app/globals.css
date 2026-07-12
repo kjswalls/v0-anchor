@@ -368,14 +368,18 @@
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
    look of item/content titles only — density, labels, and chrome stay
    identical in both modes. `data-type-mode` is stamped on <html> by
-   AppShell from view-store. Default (no attribute) = sans / Linear look. */
-:root {
+   AppShell from view-store. Default (no attribute) = sans / Linear look.
+   MUST be scoped to body: the next/font variables (--font-inter,
+   --font-source-serif) are defined by classNames on <body>, so an inner
+   var() chain only resolves at body or below — defined on :root it
+   computes to guaranteed-invalid and font-family silently falls back. */
+body {
   --font-content: var(--font-inter), 'Inter', system-ui, sans-serif;
   --font-content-weight: 500;
   --text-content: 13px;
   --text-content--line-height: 18px;
 }
-:root[data-type-mode='serif'] {
+:root[data-type-mode='serif'] body {
   --font-content: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
   --font-content-weight: 600;
   --text-content: 15px;
