@@ -21,7 +21,7 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
       <Sidebar />
 
-      <main className="relative flex flex-1 flex-col overflow-hidden rounded-panel bg-canvas shadow-soft-md">
+      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] bg-canvas shadow-[-2px_2px_4.8px_0px_rgba(0,0,0,0.1)]">
         {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div
@@ -31,7 +31,7 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
         )}
 
         {/* Canvas header — capsule left, dev triggers right */}
-        <div className="flex flex-shrink-0 items-start justify-between px-6 pt-5 pb-2">
+        <div className="flex flex-shrink-0 items-start justify-between px-6 pt-[31px] pb-2">
           <HeaderCapsule />
           <div className="flex items-center gap-2">
             {/* DEV: manual trigger buttons for testing — remove before launch */}

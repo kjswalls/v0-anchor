@@ -328,9 +328,9 @@ export function Omnibar() {
               quickAdd();
             }
           }}
-          placeholder="Search, add a task, run a command..."
+          placeholder="Search, add a task, start a chat, run a command..."
           aria-label="Omnibar"
-          className="w-full rounded-card border border-border/60 bg-surface-2 px-4 py-2.5 text-sm text-foreground shadow-soft-sm outline-none transition-shadow placeholder:text-muted-foreground/70 focus:shadow-soft-md focus:ring-2 focus:ring-ring/40"
+          className="h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-[12px] text-foreground shadow-[1px_4px_5.3px_2px_rgba(0,0,0,0.1)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
         />
       </Command>
     </div>

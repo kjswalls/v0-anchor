@@ -56,10 +56,10 @@ function FilterPopover() {
         <Button
           variant="ghost"
           size="icon"
-          className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', activeCount > 0 && 'text-primary-foreground')}
+          className={cn('h-6 w-6 text-muted-foreground hover:text-foreground', activeCount > 0 && 'text-primary-foreground')}
           aria-label="Filter and group"
         >
-          <Filter className="h-3.5 w-3.5" />
+          <Filter className="h-4 w-4" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-2">
@@ -229,39 +229,47 @@ export function Braindump() {
     <section
       ref={setNodeRef}
       data-dnd-id="sidebar"
-      className={cn(
-        'flex min-h-0 flex-1 flex-col rounded-card bg-surface-2 shadow-soft-md transition-colors',
-        isOver && 'ring-2 ring-ring/60'
-      )}
+      className="flex min-h-0 flex-1 flex-col gap-3"
     >
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
-        <AlignLeft className="h-4 w-4 text-muted-foreground" />
-        <h2 className="flex-1 font-serif text-lg font-semibold text-foreground">Braindump</h2>
-        <FilterPopover />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          onClick={() => openDialog({ type: 'manage-categories' })}
-          aria-label="Manage projects & groups"
-        >
-          <FolderOpen className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-          onClick={() => openAddDialog('task')}
-          aria-label="Add task"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+      {/* Header — gray capsule (flat) framing a shadowed white row-pill.
+          Exact dims from Figma: gray 406×50 r10; pill 385×37 r10, inset
+          (10,6), shadow 0 4 4 rgba(0,0,0,.15); title Inter Medium 16 #222. */}
+      <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px]">
+        <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.15)]">
+          <AlignLeft className="h-4 w-4 text-muted-foreground" />
+          <h2 className="flex-1 font-sans text-[16px] font-medium leading-none text-foreground">
+            Braindump
+          </h2>
+          <FilterPopover />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={() => openDialog({ type: 'manage-categories' })}
+            aria-label="Manage projects & groups"
+          >
+            <FolderOpen className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={() => openAddDialog('task')}
+            aria-label="Add task"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      {/* List */}
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="px-3 py-2 pl-6">
+      {/* List — sits directly on the paper backdrop, no card */}
+      <ScrollArea
+        className={cn(
+          'min-h-0 flex-1 rounded-card transition-colors',
+          isOver && 'ring-2 ring-ring/60'
+        )}
+      >
+        <div className="px-[14px] py-3">
           {grouped.map(([label, groupRows]) => (
             <div key={label || 'all'}>
               {label && <SlashLabel>{label}</SlashLabel>}

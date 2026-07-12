@@ -87,8 +87,8 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
             }}
             aria-label={done ? 'Mark incomplete' : 'Mark complete'}
             className={cn(
-              'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-              done ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary'
+              'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors',
+              done ? 'border-primary bg-primary' : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
             )}
           />
         )}

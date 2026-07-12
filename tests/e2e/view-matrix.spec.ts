@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
@@ -7,6 +7,14 @@ import { getTodayStr } from './helpers/dates';
  * The scope × layout view matrix behind the header capsule (P5).
  * Buckets/List × Day/Week; Schedule lands in P5d.
  */
+
+// The header controls are dropdown selectors: open the trigger by its
+// aria-label, then click the option in the menu.
+async function pick(page: Page, control: 'Filter by type' | 'Layout' | 'Scope', option: string) {
+  await page.getByRole('button', { name: control, exact: true }).click();
+  await page.getByRole('menuitem', { name: option }).click();
+}
+
 test.describe('View matrix', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
@@ -17,15 +25,15 @@ test.describe('View matrix', () => {
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 10_000 });
 
     // Day × List: bucket droppables gone
-    await page.getByText('List', { exact: true }).click();
+    await pick(page, 'Layout', 'List');
     await expect(page.locator('[data-dnd-bucket="morning"]')).toHaveCount(0, { timeout: 5_000 });
 
     // Week × List: seven day headings (one per weekday)
-    await page.getByText('Week', { exact: true }).click();
+    await pick(page, 'Scope', 'Week');
     await expect(page.getByText('today', { exact: true })).toBeVisible({ timeout: 5_000 });
 
     // Week × Buckets: week drop cells appear
-    await page.getByText('Buckets', { exact: true }).click();
+    await pick(page, 'Layout', 'Buckets');
     await expect(page.locator('[data-dnd-id^="week:"]').first()).toBeVisible({ timeout: 5_000 });
 
     // Prefs persist across reload (view-store localStorage)
@@ -34,7 +42,7 @@ test.describe('View matrix', () => {
     await expect(page.locator('[data-dnd-id^="week:"]').first()).toBeVisible({ timeout: 10_000 });
 
     // Back to defaults for other tests
-    await page.getByText('Day', { exact: true }).click();
+    await pick(page, 'Scope', 'Day');
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 5_000 });
   });
 
@@ -54,10 +62,10 @@ test.describe('View matrix', () => {
       const canvas = page.locator('[data-tour="timeline"]');
       await expect(canvas.getByText(title)).toBeVisible({ timeout: 10_000 });
 
-      await page.getByText('Habits', { exact: true }).first().click();
+      await pick(page, 'Filter by type', 'Habits');
       await expect(canvas.getByText(title)).toHaveCount(0, { timeout: 5_000 });
 
-      await page.getByText('All', { exact: true }).first().click();
+      await pick(page, 'Filter by type', 'All');
       await expect(canvas.getByText(title)).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
@@ -65,14 +73,14 @@ test.describe('View matrix', () => {
   });
 
   test('week-buckets highlights and selects days', async ({ page }) => {
-    await page.getByText('Week', { exact: true }).click();
-    await page.getByText('Buckets', { exact: true }).click();
+    await pick(page, 'Scope', 'Week');
+    await pick(page, 'Layout', 'Buckets');
     await expect(page.getByText('today', { exact: true })).toBeVisible({ timeout: 5_000 });
 
     // Clicking another day header moves the selection (capsule date changes)
     const headers = page.locator('button[title^="Select "]');
     await headers.first().click();
-    await page.getByText('Day', { exact: true }).click();
+    await pick(page, 'Scope', 'Day');
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 5_000 });
   });
 });

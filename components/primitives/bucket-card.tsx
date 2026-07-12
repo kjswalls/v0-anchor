@@ -1,7 +1,6 @@
 'use client';
 
 import { Plus, Timer, Sunrise, Sun, Moon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { CountBadge } from '@/components/primitives/pills';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -56,22 +55,21 @@ export function BucketCard({
         className
       )}
     >
-      <header className={cn('flex items-center gap-2', mini ? 'px-2.5 pt-2 pb-1' : 'px-4 pt-3 pb-1.5')}>
+      <header className={cn('flex items-center gap-2', mini ? 'px-2.5 pt-2 pb-1' : 'px-4 pt-3.5 pb-1.5')}>
         <Icon className={cn(meta.tint, mini ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-        <h3 className={cn('flex-1 font-serif font-semibold text-muted-foreground', mini ? 'text-sm' : 'text-lg')}>
+        {/* Understated bucket label — Inter Regular 14 cool (Figma 61:26), lets titles dominate */}
+        <h3 className={cn('flex-1 font-sans font-normal text-muted-foreground', mini ? 'text-xs' : 'text-[14px]')}>
           {meta.label}
         </h3>
         <CountBadge count={count} />
         {onAdd && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/bucket:opacity-100"
+          <button
+            className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border border-muted-foreground/50 text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
             onClick={() => onAdd(bucket, 'task')}
             aria-label={`Add to ${meta.label}`}
           >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+            <Plus className="h-3 w-3" />
+          </button>
         )}
       </header>
       <div className={cn(mini ? 'px-2 pb-2' : 'px-4 pb-3')}>{children}</div>

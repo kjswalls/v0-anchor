@@ -17,14 +17,15 @@
 
 :root {
   /* ── 1. Raw ramps (do not use in components) ─────────────────────────── */
-  --paper-0: oklch(0.945 0.005 85);   /* warm backdrop */
-  --paper-1: oklch(0.975 0.003 85);   /* sidebar card */
-  --paper-2: oklch(0.995 0.002 90);   /* canvas panel */
-  --paper-3: oklch(1 0 0);            /* floating cards / popovers */
-  --paper-well: oklch(0.962 0.004 85);/* nested wells */
-  --ink-0: oklch(0.22 0.015 75);      /* primary text */
-  --ink-1: oklch(0.45 0.012 75);      /* secondary text */
-  --ink-2: oklch(0.58 0.01 75);       /* muted text */
+  /* Values sampled from the Figma file (6ZFClj80tMQOCYUhzyuWFL) */
+  --paper-0: oklch(0.986 0.0012 90);  /* #FBFBFB backdrop (window + sidebar field) */
+  --paper-1: oklch(0.99 0.001 90);    /* surface-1 */
+  --paper-2: oklch(0.996 0 0);        /* #FEFEFE canvas / body panel (whitest) */
+  --paper-3: oklch(0.986 0.0012 90);  /* #FBFBFB white pills / cards / popovers */
+  --paper-well: oklch(0.945 0.0015 90);/* #EEEDED gray capsules (header, date, dock) */
+  --ink-0: oklch(0.24 0.01 272);      /* primary text (~#1E1E1E, faint cool) */
+  --ink-1: oklch(0.5 0.02 272);       /* secondary text — cool gray */
+  --ink-2: oklch(0.66 0.03 272);      /* muted text / hints — cool blue-gray (~#A9ADBE) */
   --lime-solid: oklch(0.86 0.17 125); /* pill fill */
   --lime-ink: oklch(0.32 0.07 130);   /* text on lime / lime-as-text */
   --lime-tint: oklch(0.95 0.05 125);  /* subtle lime wash */
@@ -59,8 +60,8 @@
   --accent-foreground: var(--ink-0);
   --destructive: oklch(0.6 0.15 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.905 0.006 85);
-  --input: oklch(0.925 0.005 85);
+  --border: oklch(0.9 0.008 272);     /* cool hairline (~#DCDDE1) */
+  --input: oklch(0.86 0.012 272);     /* cool control border (~#C7C9D4) */
   --ring: var(--lime-solid);
 
   /* ── 3b. Anchor semantics ────────────────────────────────────────────── */

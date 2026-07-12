@@ -17,7 +17,7 @@ export function GroupSection({
 }) {
   return (
     <div className={className}>
-      <div className="px-1 pb-1 text-xs font-medium uppercase tracking-widest text-muted-foreground/70">
+      <div className="px-1 pb-1 text-[13px] font-medium uppercase tracking-widest text-muted-foreground/70">
         <span className="mr-1 text-muted-foreground/40">/</span>
         {label}
       </div>

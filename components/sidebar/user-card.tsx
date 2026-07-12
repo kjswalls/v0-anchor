@@ -73,21 +73,21 @@ export function UserCard() {
   const currentActionIndex = actionLog.length > 0 ? actionLog.length - historyIndex - 1 : -1;
 
   return (
-    <div className="flex items-center gap-2 px-1 py-1.5">
+    <div className="flex items-center gap-2 px-[11px]">
       {/* Identity dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
+            className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-0.5 transition-colors hover:bg-accent"
             aria-label="User menu"
           >
-            <Avatar className="h-7 w-7">
+            <Avatar className="h-5 w-5">
               <AvatarImage src={avatarUrl ?? ''} alt={label} />
-              <AvatarFallback className="bg-muted text-xs font-medium text-muted-foreground">
-                {email ? initials : <User className="h-4 w-4" />}
+              <AvatarFallback className="bg-muted text-[10px] font-medium text-muted-foreground">
+                {email ? initials : <User className="h-3 w-3" />}
               </AvatarFallback>
             </Avatar>
-            <span className="truncate text-sm font-medium text-foreground">{firstName}</span>
+            <span className="truncate text-[16px] font-medium text-foreground">{firstName}</span>
             {bestStreak > 0 && (
               <span className="flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
                 <Flame className="h-3 w-3" />
@@ -122,11 +122,11 @@ export function UserCard() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* History: session label + undo/redo */}
-      <div className="ml-auto flex items-center gap-0.5">
+      {/* History: session label + undo/redo (Figma 84:765 — ~24px gap between) */}
+      <div className="ml-auto flex items-center gap-5">
         <Popover>
           <PopoverTrigger asChild>
-            <button className="max-w-[110px] truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-2xs text-muted-foreground transition-colors hover:text-foreground">
+            <button className="max-w-[110px] truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground">
               {displayActions[0]?.label ?? 'Session start'}
             </button>
           </PopoverTrigger>
@@ -159,26 +159,28 @@ export function UserCard() {
           </PopoverContent>
         </Popover>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={undo}
-          disabled={!canUndo}
-          className="h-7 w-7 text-muted-foreground transition-all hover:text-foreground disabled:opacity-30"
-          title="Undo (⌘Z)"
-        >
-          <Undo2 className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={redo}
-          disabled={!canRedo}
-          className="h-7 w-7 text-muted-foreground transition-all hover:text-foreground disabled:opacity-30"
-          title="Redo (⌘⇧Z)"
-        >
-          <Redo2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={undo}
+            disabled={!canUndo}
+            className="h-6 w-6 text-muted-foreground transition-all hover:text-foreground disabled:opacity-30"
+            title="Undo (⌘Z)"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={redo}
+            disabled={!canRedo}
+            className="h-6 w-6 text-muted-foreground transition-all hover:text-foreground disabled:opacity-30"
+            title="Redo (⌘⇧Z)"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );

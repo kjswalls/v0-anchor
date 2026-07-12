@@ -160,7 +160,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       style={style}
       data-testid={isTask ? 'task-card' : 'habit-card'}
       className={cn(
-        'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 transition-colors hover:bg-accent',
+        'group relative flex w-full cursor-pointer items-center gap-[15px] rounded-lg px-2 transition-colors hover:bg-accent',
         compact ? 'py-1' : 'py-1.5',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'
@@ -218,18 +218,19 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           }}
           aria-label={completed ? 'Mark incomplete' : 'Mark complete'}
           className={cn(
-            'z-10 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-            completed ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary'
+            'z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors',
+            completed ? 'border-primary bg-primary' : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
           )}
         >
-          {completed && <Check className="h-3 w-3 text-primary-foreground" />}
+          {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
         </button>
       )}
 
       {/* Title */}
       <p
         className={cn(
-          'min-w-0 flex-1 font-serif font-semibold leading-snug text-foreground',
+          // Source Serif SemiBold 15 (Figma "Task font") — thick standout look
+          'min-w-0 flex-1 font-serif font-semibold leading-tight text-foreground',
           compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-base',
           completed && 'text-muted-foreground line-through'
         )}
@@ -239,7 +240,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
       {/* Trailing: tag · controls · pills */}
       <div className="z-10 flex flex-shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-        {!compact && emoji && (isTask ? task!.project : habit!.group) && (
+        {!compact && !inBraindump && emoji && (isTask ? task!.project : habit!.group) && (
           <TagPill
             emoji={emoji}
             name={isTask ? task!.project! : habit!.group}

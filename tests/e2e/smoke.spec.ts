@@ -46,16 +46,25 @@ test.describe('Smoke: core daily loop', () => {
   });
 
   test('day/week toggle switches views', async ({ page }) => {
+    // Scope is a dropdown selector: open it, then pick the option.
+    const pickScope = async (option: string) => {
+      await page.getByRole('button', { name: 'Scope', exact: true }).click();
+      await page.getByRole('menuitem', { name: option }).click();
+    };
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 10_000 });
-    await page.getByText('Week', { exact: true }).click();
+    await pickScope('Week');
     // The day-view bucket sections unmount in week view.
     await expect(page.locator('[data-dnd-bucket="morning"]')).toHaveCount(0, { timeout: 5_000 });
-    await page.getByText('Day', { exact: true }).click();
+    await pickScope('Day');
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 5_000 });
   });
 
   test('AI chat surface opens', async ({ page }) => {
-    await page.getByLabel('Toggle AI assistant').click();
+    // Chat has no persistent bar — it's summoned from the omnibar (⌘Enter = Ask Beacon).
+    const omnibar = page.locator('[data-tour="omnibar"] input');
+    await omnibar.click();
+    await omnibar.fill('plan my day');
+    await omnibar.press('ControlOrMeta+Enter');
     // The chat surface exposes a message input once open.
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 5_000 });
   });
