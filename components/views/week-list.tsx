@@ -10,8 +10,8 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { cn } from '@/lib/utils';
 
 /**
- * Week × List (P5c): the week as a stacked agenda — a serif date heading
- * per day with that day's rows beneath. Empty days collapse to a whisper.
+ * Week × List (P5c): the week as a stacked agenda — a date heading per day
+ * with that day's rows beneath. Empty days collapse to a whisper.
  */
 
 function DaySection({ date }: { date: Date }) {
@@ -34,7 +34,7 @@ function DaySection({ date }: { date: Date }) {
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
-        <span className="font-serif text-xl font-semibold text-foreground">{format(date, 'EEEE')}</span>
+        <span className="text-base font-medium text-foreground">{format(date, 'EEEE')}</span>
         <span className="text-sm text-muted-foreground">{format(date, 'MMM d')}</span>
         {isToday(date) && (
           <span className="text-2xs font-medium uppercase tracking-wide text-success-text">today</span>
@@ -44,7 +44,7 @@ function DaySection({ date }: { date: Date }) {
       {totalCount === 0 ? (
         <p className="px-2 pb-2 font-serif text-sm italic text-muted-foreground/50">Nothing planned.</p>
       ) : (
-        <div className="space-y-0.5 pl-2">
+        <div className="space-y-0 pl-2">
           {rows.map((row) => (
             <TaskRow key={row.item.id} row={row as never} date={date} />
           ))}

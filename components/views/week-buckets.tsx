@@ -41,7 +41,7 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
             {activeId ? 'Drop here' : '·'}
           </div>
         ) : (
-          <div className="space-y-0.5">
+          <div className="space-y-0">
             {habits.map((habit) => (
               <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} density="compact" date={date} />
             ))}
@@ -77,7 +77,7 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
-        <span className="font-serif text-lg font-semibold">{format(date, 'EEE')}</span>
+        <span className="text-sm font-medium">{format(date, 'EEE')}</span>
         <span className={cn('text-sm tabular-nums', today && !selected && 'font-bold text-success-text')}>
           {format(date, 'd')}
         </span>

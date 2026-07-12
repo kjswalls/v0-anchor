@@ -94,7 +94,7 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
         )}
         <span
           className={cn(
-            'min-w-0 flex-1 truncate font-serif text-sm font-semibold text-foreground',
+            'min-w-0 flex-1 truncate text-sm font-medium text-foreground',
             done && 'text-muted-foreground line-through'
           )}
         >
