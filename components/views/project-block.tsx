@@ -60,7 +60,7 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
         >
           {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
         </button>
-        <span className={cn('flex-1 text-sm font-medium', done && 'text-muted-foreground line-through')}>
+        <span className={cn('flex-1 font-content text-sm', done && 'text-muted-foreground line-through')}>
           {task.title}
         </span>
       </div>
@@ -101,7 +101,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="text-lg">{project.emoji}</span>
-        <span className="text-sm font-medium text-foreground">{project.name}</span>
+        <span className="font-content text-sm text-foreground">{project.name}</span>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
           {project.startTime}
@@ -141,7 +141,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
                 className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover:bg-muted"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
+                  <p className="truncate font-content text-sm text-foreground">{task.title}</p>
                 </div>
                 <Button
                   variant="ghost"

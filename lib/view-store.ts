@@ -17,6 +17,8 @@ export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
 export type BraindumpGroupBy = 'none' | 'type' | 'project';
+/** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
+export type TypeMode = 'sans' | 'serif';
 
 export interface BraindumpFilters {
   projects: string[];
@@ -37,6 +39,7 @@ interface ViewStore {
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
   braindumpFilters: BraindumpFilters;
+  typeMode: TypeMode;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -46,6 +49,7 @@ interface ViewStore {
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
   setBraindumpFilters: (filters: BraindumpFilters) => void;
+  setTypeMode: (mode: TypeMode) => void;
 }
 
 export const useViewStore = create<ViewStore>()(
@@ -57,6 +61,7 @@ export const useViewStore = create<ViewStore>()(
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
       braindumpFilters: EMPTY_BRAINDUMP_FILTERS,
+      typeMode: 'sans',
       adoptedLegacy: false,
 
       setScope: (scope) => {
@@ -75,6 +80,7 @@ export const useViewStore = create<ViewStore>()(
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
+      setTypeMode: (typeMode) => set({ typeMode }),
     }),
     {
       name: 'anchor-view',

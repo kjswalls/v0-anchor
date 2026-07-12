@@ -40,7 +40,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
-import { adoptLegacyViewPrefs } from '@/lib/view-store';
+import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
@@ -64,7 +64,7 @@ function DraggableTaskOverlay({ title }: { title: string }) {
       <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
       <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="font-content text-content text-foreground">{title}</p>
       </div>
     </div>
   );
@@ -108,6 +108,13 @@ export function AppShell() {
     setMounted(true);
     adoptLegacyViewPrefs();
   }, []);
+
+  // Content typeface toggle — stamp <html data-type-mode> so the CSS token
+  // pair in globals.css flips item-title family/weight/size app-wide.
+  const typeMode = useViewStore((s) => s.typeMode);
+  useEffect(() => {
+    document.documentElement.dataset.typeMode = typeMode;
+  }, [typeMode]);
 
   // Check onboarding status on mount
   useEffect(() => {

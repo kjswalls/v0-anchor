@@ -229,9 +229,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       {/* Title */}
       <p
         className={cn(
-          // Inter Medium 13 (Linear-style exploration) — quiet, dense, uniform
-          'min-w-0 flex-1 text-sm font-medium text-foreground',
-          compact ? 'line-clamp-1' : 'line-clamp-2',
+          // Content typeface via tokens: sans = Inter Medium 13 (Linear),
+          // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
+          'min-w-0 flex-1 font-content text-foreground',
+          compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-content',
           completed && 'text-muted-foreground line-through'
         )}
       >

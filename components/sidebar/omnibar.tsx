@@ -177,7 +177,7 @@ export function Omnibar() {
                     Ask Beacon{chatText ? (
                       <>
                         {' '}
-                        <span className="font-medium">“{chatText}”</span>
+                        <span className="font-content">“{chatText}”</span>
                       </>
                     ) : (
                       '…'
@@ -207,7 +207,7 @@ export function Omnibar() {
                     {task.project && <span>{getProjectEmoji(task.project)}</span>}
                     <span
                       className={cn(
-                        'truncate font-medium',
+                        'truncate font-content',
                         task.status === 'completed' && 'text-muted-foreground line-through'
                       )}
                     >
@@ -231,7 +231,7 @@ export function Omnibar() {
                   >
                     <Flame className="h-4 w-4 text-warning" />
                     <span>{getHabitGroupEmoji(habit.group)}</span>
-                    <span className="truncate font-medium">{habit.title}</span>
+                    <span className="truncate font-content">{habit.title}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -246,7 +246,7 @@ export function Omnibar() {
                       Add task{addTitle ? (
                         <>
                           {' '}
-                          <span className="font-medium">“{addTitle}”</span>
+                          <span className="font-content">“{addTitle}”</span>
                         </>
                       ) : (
                         '…'
@@ -261,7 +261,7 @@ export function Omnibar() {
                       Ask Beacon{chatText ? (
                         <>
                           {' '}
-                          <span className="font-medium">“{chatText}”</span>
+                          <span className="font-content">“{chatText}”</span>
                         </>
                       ) : (
                         '…'

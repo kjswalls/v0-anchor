@@ -365,6 +365,35 @@
   --shadow-soft-lg: 0 4px 8px oklch(0 0 0 / 30%), 0 16px 48px oklch(0 0 0 / 40%);
 }
 
+/* Content typeface toggle (settings → Appearance → Typeface). Flips the
+   look of item/content titles only — density, labels, and chrome stay
+   identical in both modes. `data-type-mode` is stamped on <html> by
+   AppShell from view-store. Default (no attribute) = sans / Linear look. */
+:root {
+  --font-content: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-content-weight: 500;
+  --text-content: 13px;
+  --text-content--line-height: 18px;
+}
+:root[data-type-mode='serif'] {
+  --font-content: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+  --font-content-weight: 600;
+  --text-content: 15px;
+  --text-content--line-height: 22px;
+}
+
+/* Utilities consumed by item titles (task-row, drag ghost, schedule blocks,
+   project blocks, omnibar results). font-content = family+weight;
+   text-content = size+leading (main row title + ghost only). */
+@utility font-content {
+  font-family: var(--font-content);
+  font-weight: var(--font-content-weight);
+}
+@utility text-content {
+  font-size: var(--text-content);
+  line-height: var(--text-content--line-height);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
