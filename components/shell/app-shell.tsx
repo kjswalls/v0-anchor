@@ -240,7 +240,10 @@ export function AppShell() {
     })
   );
 
-  const activeTask = activeId ? tasks.find((t) => t.id === activeId) : null;
+  // Drag ghost source — tasks OR habits (both are draggable now).
+  const activeItem = activeId
+    ? tasks.find((t) => t.id === activeId) ?? habits.find((h) => h.id === activeId)
+    : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -422,7 +425,7 @@ export function AppShell() {
         <MobileTabBar />
       </div>
 
-      <DragOverlay>{activeTask && <DraggableTaskOverlay title={activeTask.title} />}</DragOverlay>
+      <DragOverlay>{activeItem && <DraggableTaskOverlay title={activeItem.title} />}</DragOverlay>
 
       <AddTaskDialog
         open={!!addState}

@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { useEffect, useMemo, useRef } from 'react';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
@@ -87,14 +87,44 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
   const top = ((entry.startMin - gridStartMin) / 60) * HOUR_PX;
   const height = Math.max((entry.duration / 60) * HOUR_PX, 34);
 
+  // Blocks are drag sources — drop on another hour to reschedule, or on the
+  // Anytime section to un-time. Same post-drop click guard as TaskRow so a
+  // drop doesn't open the edit dialog.
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id });
+  const wasDraggedRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) {
+      wasDraggedRef.current = true;
+      return;
+    }
+    if (wasDraggedRef.current) {
+      const t = setTimeout(() => {
+        wasDraggedRef.current = false;
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
+
   return (
     <div
-      onClick={() => openEditFor(item, itemType)}
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={() => {
+        if (wasDraggedRef.current) return;
+        openEditFor(item, itemType);
+      }}
       className={cn(
-        'absolute left-0 right-0 cursor-pointer overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] transition-shadow hover:shadow-soft-md',
+        'absolute left-0 right-0 cursor-grab touch-manipulation overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] transition-shadow hover:shadow-soft-md active:cursor-grabbing',
+        isDragging && 'z-50 opacity-50',
         done && 'opacity-60'
       )}
-      style={{ top, height, borderLeft: `3px solid ${accent}` }}
+      style={{
+        top,
+        height,
+        borderLeft: `3px solid ${accent}`,
+        ...(transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : {}),
+      }}
     >
       <div className="flex items-start gap-2 px-[21px] py-[9px]">
         {isTask && (
@@ -103,6 +133,7 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
               e.stopPropagation();
               toggleTaskStatus(item.id, undefined, isRecurring(task!) ? selectedDate : undefined);
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             aria-label={done ? 'Mark incomplete' : 'Mark complete'}
             className={cn(
               'mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors',

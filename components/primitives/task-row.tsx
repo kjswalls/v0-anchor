@@ -85,9 +85,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       : undefined
     : getHabitGroupColor(habit!.group);
 
+  // Both tasks and habits are drag sources now (habits can be dropped onto
+  // the schedule grid / buckets — see lib/dnd/CONTRACT.md).
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
-    disabled: !isTask,
   });
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -176,17 +177,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     <div
       ref={setNodeRef}
       style={style}
-      {...(isTask ? attributes : {})}
-      {...(isTask ? listeners : {})}
+      {...attributes}
+      {...listeners}
       suppressHydrationWarning
       data-testid={isTask ? 'task-card' : 'habit-card'}
       className={cn(
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
         // touch scrolling alive; TouchSensor's 250ms delay handles drags.
-        // Hover cover: light gray fill + a thin lime left edge (inset shadow,
-        // no layout shift). Lighter than the Figma cover — no drop shadow.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60 hover:shadow-[inset_3px_0_0_0_var(--primary)]',
+        // Hover cover: flat gray fill, Linear-style — no edge, no shadow.
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60',
         compact ? 'py-1' : 'py-2',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'
@@ -206,14 +206,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     >
       {/* Grip — pure visual affordance now; the whole row is the drag origin
           (pointerdown here bubbles to the row's listeners) */}
-      {isTask && (
-        <span
-          aria-hidden="true"
-          className="absolute -left-4 z-10 flex-shrink-0 cursor-grab touch-none opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </span>
-      )}
+      <span
+        aria-hidden="true"
+        className="absolute -left-4 z-10 flex-shrink-0 cursor-grab touch-none opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </span>
 
       {/* Checkbox / multi-count */}
       {showMultiControls ? (
