@@ -1,5 +1,6 @@
 'use client';
 
+import { ChevronsRight } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { MorningCheck } from '@/components/ai/morning-check';
@@ -15,7 +16,7 @@ import { useMorningStore } from '@/lib/morning-store';
  */
 export function DesktopShell({ activeId }: { activeId: string | null }) {
   const eodStore = useEODStore();
-  const { leftSidebarOpen, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
+  const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
 
   return (
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
@@ -32,7 +33,21 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
 
         {/* Canvas header — capsule left, dev triggers right */}
         <div className="flex flex-shrink-0 items-start justify-between px-6 pt-[31px] pb-2">
-          <HeaderCapsule />
+          <div className="flex items-start gap-2">
+            {!leftSidebarOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={toggleLeftSidebar}
+                aria-label="Expand sidebar"
+                title="Expand sidebar (⌘[)"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            )}
+            <HeaderCapsule />
+          </div>
           <div className="flex items-center gap-2">
             {/* DEV: manual trigger buttons for testing — remove before launch */}
             <Button

@@ -477,3 +477,10 @@ body {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Thin Lucide strokes (Linear-style icon pass). Attribute-scoped so the few
+   deliberate inline strokeWidth sites (mobile-header 1.75, chat 1.25, legacy
+   views) keep their values — CSS overrides the svg presentation attribute. */
+.lucide[stroke-width='2'] {
+  stroke-width: 1.5;
+}

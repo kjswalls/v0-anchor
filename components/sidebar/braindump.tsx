@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, FolderOpen, Plus, Filter, X, Check } from 'lucide-react';
+import { AlignLeft, ChevronsLeft, FolderOpen, Plus, Filter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -10,6 +10,7 @@ import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
 import type { Priority } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -177,6 +178,7 @@ export function Braindump() {
   const { tasks, habits } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters } = useViewStore();
+  const toggleLeftSidebar = useSidebarStore((s) => s.toggleLeftSidebar);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });
 
@@ -229,7 +231,7 @@ export function Braindump() {
     <section
       ref={setNodeRef}
       data-dnd-id="sidebar"
-      className="flex min-h-0 flex-1 flex-col gap-3"
+      className="flex min-h-0 flex-1 flex-col gap-2"
     >
       {/* Header — gray capsule (flat) framing a shadowed white row-pill.
           Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
@@ -260,6 +262,16 @@ export function Braindump() {
           >
             <Plus className="h-4 w-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={toggleLeftSidebar}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar (⌘[)"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -270,7 +282,7 @@ export function Braindump() {
           isOver && 'ring-2 ring-ring/60'
         )}
       >
-        <div className="px-[14px] py-3">
+        <div className="px-[14px] py-2">
           {grouped.map(([label, groupRows]) => (
             <div key={label || 'all'}>
               {label && <SlashLabel>{label}</SlashLabel>}
