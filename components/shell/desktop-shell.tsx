@@ -31,14 +31,15 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
           />
         )}
 
-        {/* Expand-sidebar affordance when collapsed — absolutely positioned on
-            the panel's left edge so it never shifts the header capsule (which
-            stays fixed at the canvas-container left edge in both states). */}
+        {/* Expand-sidebar affordance when collapsed — absolutely positioned at
+            the panel's top-left so it never shifts the header capsule (which
+            stays fixed at the canvas-container left edge) and reads as the same
+            control that lived in the sidebar header, just flipped. */}
         {!leftSidebarOpen && (
           <Button
             variant="ghost"
             size="icon"
-            className="absolute left-2 top-1/2 z-30 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute left-2 top-[35px] z-30 h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={toggleLeftSidebar}
             aria-label="Expand sidebar"
             title="Expand sidebar (⌘[)"
