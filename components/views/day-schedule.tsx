@@ -22,15 +22,33 @@ import { cn } from '@/lib/utils';
  * hour slot schedules at the top of that hour (`hour:{H}`, CONTRACT.md).
  */
 
-const HOUR_PX = 64;
+const HOUR_PX = 75;
 
 type TimedEntry = { itemType: 'task' | 'habit'; item: Task | Habit; startMin: number; duration: number };
 
-function HourSlot({ hour, isActive, label }: { hour: number; isActive: boolean; label: string }) {
+function HourSlot({
+  hour,
+  isActive,
+  label,
+  isFirst,
+  isLast,
+}: {
+  hour: number;
+  isActive: boolean;
+  label: string;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour:${hour}`, disabled: !isActive });
   return (
     <div ref={setNodeRef} data-dnd-id={`hour:${hour}`} className="flex" style={{ height: HOUR_PX }}>
-      <div className="w-20 flex-shrink-0 border-r border-t border-border/50 pr-3 pt-1 text-right text-xs tabular-nums text-muted-foreground">
+      <div
+        className={cn(
+          'w-[88px] flex-shrink-0 border border-surface-3 bg-canvas pl-5 pt-[15px] text-xs font-medium text-foreground',
+          isFirst && 'rounded-tl-[20px]',
+          isLast && 'rounded-bl-[20px]'
+        )}
+      >
         {label}
       </div>
       <div
@@ -63,7 +81,7 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
   const accent = isTask
     ? task!.project
       ? getProjectColor(task!.project)
-      : 'var(--lime-solid)'
+      : 'var(--primary)'
     : getHabitGroupColor(habit!.group);
 
   const top = ((entry.startMin - gridStartMin) / 60) * HOUR_PX;
@@ -73,12 +91,12 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
     <div
       onClick={() => openEditFor(item, itemType)}
       className={cn(
-        'absolute left-1 right-1 cursor-pointer overflow-hidden rounded-lg bg-surface-3/80 shadow-soft-sm transition-shadow hover:shadow-soft-md',
+        'absolute left-0 right-0 cursor-pointer overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] transition-shadow hover:shadow-soft-md',
         done && 'opacity-60'
       )}
       style={{ top, height, borderLeft: `3px solid ${accent}` }}
     >
-      <div className="flex items-start gap-2 px-3 py-1.5">
+      <div className="flex items-start gap-2 px-[21px] py-[9px]">
         {isTask && (
           <button
             onClick={(e) => {
@@ -168,7 +186,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       <div
         key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
-          'mx-auto max-w-4xl space-y-4 p-6 pb-20',
+          'canvas-container space-y-4 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
@@ -195,11 +213,18 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         {/* Hour grid with absolutely positioned blocks */}
         <div className="relative">
           <div>
-            {hours.map((hour) => (
-              <HourSlot key={hour} hour={hour} isActive={dragging} label={formatHour(hour)} />
+            {hours.map((hour, i) => (
+              <HourSlot
+                key={hour}
+                hour={hour}
+                isActive={dragging}
+                label={formatHour(hour)}
+                isFirst={i === 0}
+                isLast={i === hours.length - 1}
+              />
             ))}
           </div>
-          <div className="absolute inset-y-0 left-20 right-0">
+          <div className="absolute inset-y-0 left-[132px] right-0">
             {timed.map((entry) => (
               <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartHour * 60} />
             ))}

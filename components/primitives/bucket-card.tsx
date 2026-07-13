@@ -29,8 +29,9 @@ interface BucketCardProps {
 }
 
 /**
- * Floating bucket card (day-buckets / week-buckets): tinted icon + sans
- * name + count, add button, children as the row area.
+ * Bucket card (day-buckets / week-buckets): light card (#FBFBFB, #EEEDED
+ * stroke, r20) with a white header band (tinted icon + sans name + count +
+ * add button), children as the row area.
  */
 export function BucketCard({
   bucket,
@@ -49,30 +50,35 @@ export function BucketCard({
   return (
     <section
       className={cn(
-        'group/bucket rounded-card bg-surface-2 shadow-soft-sm transition-shadow',
+        'group/bucket rounded-[20px] border border-surface-3 bg-surface-2 transition-shadow',
         isCurrent && 'ring-2 ring-ring/60',
         isDropTarget && 'ring-2 ring-ring bg-primary/5',
         className
       )}
     >
-      <header className={cn('flex items-center gap-2', mini ? 'px-2.5 pt-2 pb-1' : 'px-4 pt-3.5 pb-1.5')}>
+      <header
+        className={cn(
+          'flex items-center gap-2 rounded-t-[20px] border-b border-surface-3 bg-canvas',
+          mini ? 'h-[38px] px-3' : 'h-[45px] px-[21px]'
+        )}
+      >
         <Icon className={cn(meta.tint, mini ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-        {/* Understated bucket label — Inter Medium 13 muted (Linear section-header style) */}
-        <h3 className={cn('flex-1 font-sans font-medium text-muted-foreground', mini ? 'text-xs' : 'text-sm')}>
+        {/* Bucket label — Inter Regular 14→13 ramp, muted (mockup header band) */}
+        <h3 className={cn('flex-1 font-sans font-normal text-muted-foreground', mini ? 'text-xs' : 'text-sm')}>
           {meta.label}
         </h3>
         <CountBadge count={count} />
         {onAdd && (
           <button
-            className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border border-muted-foreground/50 text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => onAdd(bucket, 'task')}
             aria-label={`Add to ${meta.label}`}
           >
-            <Plus className="h-3 w-3" />
+            <Plus className={mini ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
           </button>
         )}
       </header>
-      <div className={cn(mini ? 'px-2 pb-2' : 'px-4 pb-3')}>{children}</div>
+      <div className={cn(mini ? 'px-2.5 pb-2 pt-1' : 'px-[23px] pb-4 pt-2')}>{children}</div>
     </section>
   );
 }

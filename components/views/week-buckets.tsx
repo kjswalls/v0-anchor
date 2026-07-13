@@ -70,18 +70,26 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
       <button
         onClick={() => setSelectedDate(date)}
         className={cn(
-          'flex items-baseline justify-center gap-1.5 rounded-card px-2 py-1.5 transition-colors',
-          selected
-            ? 'bg-primary text-primary-foreground shadow-soft-sm'
-            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+          'flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
+          selected ? 'border-success-text bg-primary' : 'border-surface-3 bg-surface-2'
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
-        <span className="text-sm font-medium">{format(date, 'EEE')}</span>
-        <span className={cn('text-sm tabular-nums', today && !selected && 'font-bold text-success-text')}>
-          {format(date, 'd')}
+        <span className={cn('text-sm font-normal uppercase', selected ? 'text-success-text' : 'text-muted-foreground')}>
+          {format(date, 'EEEE')}
         </span>
-        {today && <span className={cn('text-2xs uppercase tracking-wide', selected ? 'opacity-80' : 'text-success-text')}>today</span>}
+        <span
+          className={cn(
+            'text-sm',
+            selected
+              ? 'font-semibold text-success-text'
+              : today
+                ? 'font-bold text-success-text'
+                : 'font-semibold text-foreground'
+          )}
+        >
+          {format(date, 'MMMM d')}
+        </span>
       </button>
 
       {BUCKET_ORDER.map((bucket) => (
@@ -105,7 +113,7 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
       <div
         key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
-          'flex snap-x snap-mandatory gap-3 p-6 pb-20',
+          'canvas-container flex snap-x snap-mandatory gap-7 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
