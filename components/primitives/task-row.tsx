@@ -184,9 +184,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
         // touch scrolling alive; TouchSensor's 250ms delay handles drags.
-        // Hover "cover" per Figma (113:2329): light fill, 3px lime left edge
-        // (inset shadow — no layout shift), soft drop shadow, r5.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60 hover:shadow-[inset_3px_0_0_0_var(--primary),0px_2px_4px_0px_rgba(0,0,0,0.15)]',
+        // Hover cover: light gray fill + a thin lime left edge (inset shadow,
+        // no layout shift). Lighter than the Figma cover — no drop shadow.
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60 hover:shadow-[inset_3px_0_0_0_var(--primary)]',
         compact ? 'py-1' : 'py-2',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'

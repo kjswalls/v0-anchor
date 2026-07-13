@@ -31,24 +31,26 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
           />
         )}
 
+        {/* Expand-sidebar affordance when collapsed — absolutely positioned on
+            the panel's left edge so it never shifts the header capsule (which
+            stays fixed at the canvas-container left edge in both states). */}
+        {!leftSidebarOpen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute left-2 top-1/2 z-30 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={toggleLeftSidebar}
+            aria-label="Expand sidebar"
+            title="Expand sidebar (⌘[)"
+          >
+            <ChevronsRight className="h-4 w-4" />
+          </Button>
+        )}
+
         {/* Canvas header — capsule left, dev triggers right. canvas-container
             shares its left edge with every body view (Figma x=103 align). */}
         <div className="canvas-container flex flex-shrink-0 items-start justify-between pt-[31px] pb-2">
-          <div className="flex items-start gap-2">
-            {!leftSidebarOpen && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={toggleLeftSidebar}
-                aria-label="Expand sidebar"
-                title="Expand sidebar (⌘[)"
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </Button>
-            )}
-            <HeaderCapsule />
-          </div>
+          <HeaderCapsule />
           <div className="flex items-center gap-2">
             {/* DEV: manual trigger buttons for testing — remove before launch */}
             <Button
