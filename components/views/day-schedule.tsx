@@ -226,7 +226,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           <div
             ref={setAnytimeRef}
             data-dnd-id="unscheduled:anytime"
-            className={cn('rounded-card p-2 transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
+            className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
             <GroupSection label="Anytime">
               {untimed.map((row) => (

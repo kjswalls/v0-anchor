@@ -187,7 +187,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // touch scrolling alive; TouchSensor's 250ms delay handles drags.
         // Hover cover: flat gray fill, Linear-style — no edge, no shadow.
         'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60',
-        compact ? 'py-1' : 'py-2',
+        compact ? 'py-1' : 'py-1.5',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'
       )}
