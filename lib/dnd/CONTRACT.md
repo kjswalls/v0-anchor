@@ -56,3 +56,5 @@ useDraggable/useDroppable: `timeline.tsx` (8), `task-sidebar.tsx` (3),
 | ID | Meaning | Handler result |
 |---|---|---|
 | `hour:{H}` | Day-schedule grid slot (0–23) | schedule at `HH:00`; bucket = morning <12, afternoon <17, else evening |
+| `weekhour:{yyyy-MM-dd}:{H}` | Week-schedule grid slot | schedule task on that day at `HH:00` (habit: time only, no date); bucket by hour as above |
+| `week:{yyyy-MM-dd}:anytime` | Week-schedule per-day Anytime strip | schedule on that day, `anytime` bucket, no time (un-times) — existing `week:` branch |

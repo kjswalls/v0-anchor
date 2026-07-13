@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
-import { TaskRow } from '@/components/primitives/task-row';
+import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { PriorityPill, DurationPill } from '@/components/primitives/pills';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -12,6 +12,7 @@ import { openEditFor } from '@/lib/ui-store';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -20,11 +21,62 @@ import { cn } from '@/lib/utils';
  * an ANYTIME section up top, then an hour gutter with duration-height
  * blocks. Block left edges carry the project/group accent. Dropping on an
  * hour slot schedules at the top of that hour (`hour:{H}`, CONTRACT.md).
+ *
+ * The block + derivation helpers are exported so week-schedule reuses them.
  */
 
-const HOUR_PX = 75;
+export const HOUR_PX = 75;
 
-type TimedEntry = { itemType: 'task' | 'habit'; item: Task | Habit; startMin: number; duration: number };
+export type TimedEntry = {
+  itemType: 'task' | 'habit';
+  item: Task | Habit;
+  startMin: number;
+  duration: number;
+};
+
+const toMin = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+
+/** Timed items (tasks/habits with startTime + project-block tasks) for one day. */
+export function deriveTimedEntries(day: DayItems): TimedEntry[] {
+  const allTasks = BUCKET_ORDER.flatMap((b) => day.tasksByBucket[b]);
+  const allHabits = BUCKET_ORDER.flatMap((b) => day.habitsByBucket[b]);
+  return [
+    ...allHabits
+      .filter((h) => h.startTime)
+      .map((h) => ({ itemType: 'habit' as const, item: h, startMin: toMin(h.startTime!), duration: 30 })),
+    ...allTasks
+      .filter((t) => t.startTime && !t.inProjectBlock)
+      .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(t.startTime!), duration: t.duration ?? 30 })),
+    ...day.recurringProjects
+      .filter((p) => p.startTime)
+      .flatMap((p) =>
+        allTasks
+          .filter((t) => t.inProjectBlock && t.project === p.name)
+          .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(p.startTime!), duration: p.duration ?? 60 }))
+      ),
+  ].sort((a, b) => a.startMin - b.startMin);
+}
+
+/** Untimed items (no startTime, not in a project block) for one day. */
+export function deriveUntimedRows(day: DayItems): RowItem[] {
+  const allTasks = BUCKET_ORDER.flatMap((b) => day.tasksByBucket[b]);
+  const allHabits = BUCKET_ORDER.flatMap((b) => day.habitsByBucket[b]);
+  return [
+    ...allHabits.filter((h) => !h.startTime).map((h) => ({ itemType: 'habit' as const, item: h })),
+    ...allTasks.filter((t) => !t.startTime && !t.inProjectBlock).map((t) => ({ itemType: 'task' as const, item: t })),
+  ];
+}
+
+export function formatHourLabel(hour: number, timeFormatStr: string) {
+  if (timeFormatStr === 'HH:mm') return `${String(hour).padStart(2, '0')}:00`;
+  if (hour === 0) return '12 am';
+  if (hour < 12) return `${hour}:00 am`;
+  if (hour === 12) return '12 pm';
+  return `${hour - 12}:00 pm`;
+}
 
 function HourSlot({
   hour,
@@ -62,7 +114,15 @@ function HourSlot({
   );
 }
 
-function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMin: number }) {
+export function ScheduleBlock({
+  entry,
+  gridStartMin,
+  date,
+}: {
+  entry: TimedEntry;
+  gridStartMin: number;
+  date?: Date;
+}) {
   const { getProjectColor, getHabitGroupColor, selectedDate, userTimezone, toggleTaskStatus } =
     usePlannerStore();
   const { item, itemType } = entry;
@@ -71,7 +131,8 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
   const habit = !isTask ? (item as Habit) : null;
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const dateStr = toDateStr(selectedDate, timezone);
+  const rowDate = date ?? selectedDate;
+  const dateStr = toDateStr(rowDate, timezone);
   const done = isTask
     ? isRecurring(task!)
       ? isCompletedOnDate(task!, dateStr)
@@ -131,7 +192,7 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
           <button
             onClick={(e) => {
               e.stopPropagation();
-              toggleTaskStatus(item.id, undefined, isRecurring(task!) ? selectedDate : undefined);
+              toggleTaskStatus(item.id, undefined, isRecurring(task!) ? rowDate : undefined);
             }}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={done ? 'Mark incomplete' : 'Mark complete'}
@@ -159,7 +220,7 @@ function ScheduleBlock({ entry, gridStartMin }: { entry: TimedEntry; gridStartMi
 }
 
 export function DaySchedule({ activeId }: { activeId: string | null }) {
-  const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems();
+  const day = useDayItems();
   const { selectedDate, navDirection } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
   const dragging = !!activeId;
@@ -168,49 +229,13 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
     id: 'unscheduled:anytime',
   });
 
-  const allTasks = BUCKET_ORDER.flatMap((b) => tasksByBucket[b]);
-  const allHabits = BUCKET_ORDER.flatMap((b) => habitsByBucket[b]);
-  const untimed = [
-    ...allHabits.filter((h) => !h.startTime).map((h) => ({ itemType: 'habit' as const, item: h })),
-    ...allTasks.filter((t) => !t.startTime && !t.inProjectBlock).map((t) => ({ itemType: 'task' as const, item: t })),
-  ];
-
-  const timed: TimedEntry[] = useMemo(() => {
-    const toMin = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const projectBlocks: TimedEntry[] = []; // project blocks render as task blocks via their tasks for v1
-    void projectBlocks;
-    return [
-      ...allHabits
-        .filter((h) => h.startTime)
-        .map((h) => ({ itemType: 'habit' as const, item: h, startMin: toMin(h.startTime!), duration: 30 })),
-      ...allTasks
-        .filter((t) => t.startTime && !t.inProjectBlock)
-        .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(t.startTime!), duration: t.duration ?? 30 })),
-      ...recurringProjects
-        .filter((p) => p.startTime)
-        .flatMap((p) =>
-          allTasks
-            .filter((t) => t.inProjectBlock && t.project === p.name)
-            .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(p.startTime!), duration: p.duration ?? 60 }))
-        ),
-    ].sort((a, b) => a.startMin - b.startMin);
-  }, [allTasks, allHabits, recurringProjects]);
+  const untimed = useMemo(() => deriveUntimedRows(day), [day]);
+  const timed = useMemo(() => deriveTimedEntries(day), [day]);
 
   // Hour range: cover the items with breathing room; sane default day window
   const gridStartHour = Math.min(8, ...timed.map((e) => Math.floor(e.startMin / 60)));
   const gridEndHour = Math.max(19, ...timed.map((e) => Math.ceil((e.startMin + e.duration) / 60)));
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
-
-  const formatHour = (hour: number) => {
-    if (timeFormatStr === 'HH:mm') return `${String(hour).padStart(2, '0')}:00`;
-    if (hour === 0) return '12 am';
-    if (hour < 12) return `${hour}:00 am`;
-    if (hour === 12) return '12 pm';
-    return `${hour - 12}:00 pm`;
-  };
 
   return (
     <ScrollArea className="h-full flex-1">
@@ -230,7 +255,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           >
             <GroupSection label="Anytime">
               {untimed.map((row) => (
-                <TaskRow key={row.item.id} row={row as never} />
+                <TaskRow key={row.item.id} row={row} />
               ))}
               {untimed.length === 0 && dragging && (
                 <div className="py-2 text-center text-xs text-muted-foreground/50">
@@ -249,7 +274,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                 key={hour}
                 hour={hour}
                 isActive={dragging}
-                label={formatHour(hour)}
+                label={formatHourLabel(hour, timeFormatStr)}
                 isFirst={i === 0}
                 isLast={i === hours.length - 1}
               />

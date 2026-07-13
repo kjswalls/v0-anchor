@@ -101,6 +101,20 @@ export function resolveDrop(
       : { kind: 'schedule-habit', habitId: itemId, bucket, time };
   }
 
+  // weekhour:{yyyy-MM-dd}:{H} — week-schedule grid slot; drop lands at the top
+  // of that hour on that day's column (date has no colons, so split is safe)
+  if (targetId.startsWith('weekhour:')) {
+    const parts = targetId.split(':');
+    const dateStr = parts[1];
+    const hour = Number(parts[2]);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+    const bucket: TimeBucket = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    const time = `${String(hour).padStart(2, '0')}:00`;
+    return itemType === 'task'
+      ? { kind: 'schedule-task', taskId: itemId, bucket, time, dateStr }
+      : { kind: 'schedule-habit', habitId: itemId, bucket, time };
+  }
+
   // week:{yyyy-MM-dd}:{bucket}
   if (targetId.startsWith('week:')) {
     const parts = targetId.split(':');
