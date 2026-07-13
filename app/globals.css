@@ -398,6 +398,17 @@ body {
   line-height: var(--text-content--line-height);
 }
 
+/* Canvas content container — single source for the shared left/right edges
+   of the header capsule and every body view (Figma: both sit at x=103 in the
+   1277-wide body, content ~1073 wide). One class on both keeps them aligned
+   at every window width. */
+@utility canvas-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1100px;
+  padding-inline: 2rem;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

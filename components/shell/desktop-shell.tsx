@@ -31,8 +31,9 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
           />
         )}
 
-        {/* Canvas header — capsule left, dev triggers right */}
-        <div className="flex flex-shrink-0 items-start justify-between px-6 pt-[31px] pb-2">
+        {/* Canvas header — capsule left, dev triggers right. canvas-container
+            shares its left edge with every body view (Figma x=103 align). */}
+        <div className="canvas-container flex flex-shrink-0 items-start justify-between pt-[31px] pb-2">
           <div className="flex items-start gap-2">
             {!leftSidebarOpen && (
               <Button

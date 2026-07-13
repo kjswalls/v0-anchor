@@ -226,7 +226,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
       <div
         key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
-          'mx-auto max-w-3xl space-y-4 p-6 pb-20',
+          'canvas-container space-y-6 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >

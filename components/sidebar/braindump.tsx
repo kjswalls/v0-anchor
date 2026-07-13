@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
+import { GroupSection } from '@/components/primitives/group-section';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
@@ -22,15 +23,6 @@ import { cn } from '@/lib/utils';
  */
 
 const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
-
-function SlashLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-2 pb-1 pt-3 text-sm font-medium text-muted-foreground first:pt-1">
-      <span className="mr-1 text-muted-foreground/40">/</span>
-      {children}
-    </div>
-  );
-}
 
 function FilterPopover() {
   const { braindumpGroupBy, setBraindumpGroupBy, braindumpFilters, setBraindumpFilters } =
@@ -283,16 +275,21 @@ export function Braindump() {
         )}
       >
         <div className="px-[14px] py-2">
-          {grouped.map(([label, groupRows]) => (
-            <div key={label || 'all'}>
-              {label && <SlashLabel>{label}</SlashLabel>}
-              <div className="space-y-0">
+          {grouped.map(([label, groupRows]) =>
+            label ? (
+              <GroupSection key={label} label={label} className="pt-5 first:pt-1">
+                {groupRows.map((row) => (
+                  <TaskRow key={row.item.id} row={row} context="braindump" />
+                ))}
+              </GroupSection>
+            ) : (
+              <div key="all" className="space-y-0">
                 {groupRows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
               </div>
-            </div>
-          ))}
+            )
+          )}
 
           {rows.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-12 text-center">

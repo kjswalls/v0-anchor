@@ -68,7 +68,7 @@ export function WeekList() {
       <div
         key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
-          'mx-auto max-w-4xl space-y-6 p-6 pb-20',
+          'canvas-container space-y-6 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >

@@ -97,7 +97,7 @@ export function DayList() {
       <div
         key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
-          'mx-auto max-w-4xl space-y-5 p-6 pb-20',
+          'canvas-container space-y-5 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
