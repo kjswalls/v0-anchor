@@ -41,6 +41,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
+import { hoveredItem } from '@/lib/hovered-item';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
@@ -85,8 +86,6 @@ export function AppShell() {
     scheduleHabit,
     deleteTask,
     deleteHabit,
-    hoveredItemId,
-    hoveredItemType,
     moveTaskToProjectBlock,
     selectedDate,
     undo,
@@ -307,26 +306,29 @@ export function AppShell() {
     preventScrollOnSwipe: false,
   });
 
-  // Keyboard shortcut handlers
+  // Keyboard shortcut handlers — hovered item comes from the module ref
+  // (lib/hovered-item), read at keypress time. Not store state: a store write
+  // per row-hover re-rendered the whole shell tree (see lib/hovered-item.ts).
   const handleShortcutEdit = useCallback(() => {
-    if (!hoveredItemId || !hoveredItemType) return;
-    if (hoveredItemType === 'task') {
-      const task = tasks.find((t) => t.id === hoveredItemId);
+    const { id, type } = hoveredItem;
+    if (!id || !type) return;
+    if (type === 'task') {
+      const task = tasks.find((t) => t.id === id);
       if (task) openEditFor(task, 'task');
     } else {
-      const habit = habits.find((h) => h.id === hoveredItemId);
+      const habit = habits.find((h) => h.id === id);
       if (habit) openEditFor(habit, 'habit');
     }
-  }, [hoveredItemId, hoveredItemType, tasks, habits]);
+  }, [tasks, habits]);
 
   const handleShortcutDelete = useCallback(() => {
-    if (!hoveredItemId || !hoveredItemType) return;
+    const { id, type } = hoveredItem;
+    if (!id || !type) return;
     const item =
-      hoveredItemType === 'task'
-        ? tasks.find((t) => t.id === hoveredItemId)
-        : habits.find((h) => h.id === hoveredItemId);
+      type === 'task'
+        ? tasks.find((t) => t.id === id)
+        : habits.find((h) => h.id === id);
     if (!item) return;
-    const type = hoveredItemType;
     confirm({
       title: `Delete ${type === 'habit' ? 'Habit' : 'Task'}?`,
       description: `This will permanently delete "${item.title}". This action cannot be undone.`,
@@ -334,7 +336,7 @@ export function AppShell() {
       destructive: true,
       onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
     });
-  }, [hoveredItemId, hoveredItemType, tasks, habits, confirm, deleteTask, deleteHabit]);
+  }, [tasks, habits, confirm, deleteTask, deleteHabit]);
 
   useKeyboardShortcuts({
     new_task: useCallback(() => openAddDialog('task'), []),

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
+import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
   PriorityPill,
   DurationPill,
@@ -48,7 +49,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     getHabitGroupEmoji,
     getHabitGroupColor,
     getProjectColor,
-    setHoveredItem,
     selectedDate,
     userTimezone,
   } = usePlannerStore();
@@ -95,6 +95,24 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
   const [showMulti, setShowMulti] = useState(false);
 
+  // Full-row drag: after a drop, the browser fires a click on the row — swallow
+  // it so a drag never opens the edit dialog. Cleared on a macrotask because a
+  // drop outside the row fires no click at all (naive clear-in-onClick would
+  // swallow the NEXT legitimate click).
+  const wasDraggedRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) {
+      wasDraggedRef.current = true;
+      return;
+    }
+    if (wasDraggedRef.current) {
+      const t = setTimeout(() => {
+        wasDraggedRef.current = false;
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
+
   const handleTaskToggle = () =>
     toggleTaskStatus(item.id, undefined, taskRecurring ? selectedDate : undefined);
 
@@ -131,7 +149,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       <div
         data-testid="habit-card"
         onClick={() => openEditFor(item, itemType)}
-        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 transition-colors hover:bg-surface-3"
+        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover:bg-surface-3"
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
         <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
@@ -158,40 +176,50 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     <div
       ref={setNodeRef}
       style={style}
+      {...(isTask ? attributes : {})}
+      {...(isTask ? listeners : {})}
+      suppressHydrationWarning
       data-testid={isTask ? 'task-card' : 'habit-card'}
       className={cn(
-        'group relative flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors hover:bg-accent',
+        // No transition on the hover bg — highlights land instantly, like the
+        // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
+        // touch scrolling alive; TouchSensor's 250ms delay handles drags.
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-lg px-2 hover:bg-accent',
         compact ? 'py-1' : 'py-2',
         isDragging && 'z-50 opacity-50',
         completed && 'opacity-60'
       )}
-      onClick={() => openEditFor(item, itemType)}
+      onClick={() => {
+        if (wasDraggedRef.current) return;
+        openEditFor(item, itemType);
+      }}
       onMouseEnter={() => {
-        setHoveredItem(item.id, itemType);
+        setHoveredItemRef(item.id, itemType);
         setShowMulti(true);
       }}
       onMouseLeave={() => {
-        setHoveredItem(null, null);
+        setHoveredItemRef(null, null);
         setShowMulti(false);
       }}
     >
+      {/* Grip — pure visual affordance now; the whole row is the drag origin
+          (pointerdown here bubbles to the row's listeners) */}
       {isTask && (
-        <button
-          {...attributes}
-          {...listeners}
+        <span
+          aria-hidden="true"
           className="absolute -left-4 z-10 flex-shrink-0 cursor-grab touch-none opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-          suppressHydrationWarning
-          tabIndex={-1}
-          aria-label="Drag to schedule"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </button>
+        </span>
       )}
 
       {/* Checkbox / multi-count */}
       {showMultiControls ? (
-        <span className="z-10 flex flex-shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <span
+          className="z-10 flex flex-shrink-0 items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             onClick={() => habitEffectiveCount > 0 && toggleHabitStatus(habit!.id, 'pending', habitEffectiveCount - 1, selectedDate)}
             className="flex h-4 w-4 items-center justify-center rounded-full border border-muted-foreground/30 transition-colors hover:border-primary hover:bg-primary/10"
@@ -216,6 +244,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             if (isTask) handleTaskToggle();
             else handleHabitToggle();
           }}
+          onPointerDown={(e) => e.stopPropagation()}
           aria-label={completed ? 'Mark incomplete' : 'Mark complete'}
           className={cn(
             'z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors',
@@ -240,7 +269,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       </p>
 
       {/* Trailing: tag · controls · pills */}
-      <div className="z-10 flex flex-shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="z-10 flex flex-shrink-0 items-center gap-1.5"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         {!compact && !inBraindump && emoji && (isTask ? task!.project : habit!.group) && (
           <TagPill
             emoji={emoji}
