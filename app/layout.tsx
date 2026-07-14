@@ -85,7 +85,10 @@ export default function RootLayout({
           <SupabaseProvider>
             {children}
           </SupabaseProvider>
-          <Toaster position="bottom-center" closeButton />
+          {/* Bottom-left so the undo toast rises from the same corner as the
+              sidebar history controls; offset lifts it clear of the dock.
+              Single-value offset in sonner 1.x — tune if it sits too high/low. */}
+          <Toaster position="bottom-left" offset={96} closeButton />
         </ThemeProvider>
         <Analytics />
       </body>
