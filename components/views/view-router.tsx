@@ -11,6 +11,7 @@ import { DaySchedule } from '@/components/views/day-schedule';
 import { WeekSchedule } from '@/components/views/week-schedule';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDragStore } from '@/lib/drag-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -22,7 +23,13 @@ import type { TimeBucket } from '@/lib/planner-types';
  * Escape hatch while the rewrites bake (removed at the P6 checkpoint):
  * localStorage 'anchor-legacy-views' = '1' renders the old Timeline/WeekView.
  */
-export function ViewRouter({ activeId }: { activeId: string | null }) {
+/**
+ * Subscribes to drag state HERE (not via an app-shell prop) so a drag
+ * start/end only re-renders the canvas subtree — the views need it for
+ * drop hints, but the sidebar/dialogs/mobile trees don't (lib/drag-store).
+ */
+export function ViewRouter() {
+  const activeId = useDragStore((s) => s.activeId);
   const { scope, layout } = useViewStore();
   const [useLegacyViews] = useState(
     () => typeof window !== 'undefined' && localStorage.getItem('anchor-legacy-views') === '1'

@@ -41,6 +41,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
+import { useDragStore } from '@/lib/drag-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
@@ -71,6 +72,18 @@ function DraggableTaskOverlay({ title }: { title: string }) {
   );
 }
 
+/** Own subscriber so mounting the ghost never waits on an AppShell render. */
+function DragGhost() {
+  const activeId = useDragStore((s) => s.activeId);
+  const title = usePlannerStore((s) =>
+    activeId
+      ? (s.tasks.find((t) => t.id === activeId) ?? s.habits.find((h) => h.id === activeId))?.title ??
+        null
+      : null
+  );
+  return <DragOverlay>{title !== null && <DraggableTaskOverlay title={title} />}</DragOverlay>;
+}
+
 /**
  * App shell: owns the DndContext, global keyboard shortcuts, auto-triggers
  * (EOD/morning), the dialog mount point, and the desktop/mobile split.
@@ -99,7 +112,6 @@ export function AppShell() {
   useTimezoneSync();
 
   const [mounted, setMounted] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
 
@@ -229,7 +241,10 @@ export function AppShell() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        // 5px: low enough that the ghost appears near-instantly, high enough
+        // that a jittery click doesn't register as a drag (rows open the edit
+        // dialog on click).
+        distance: 5,
       },
     }),
     useSensor(TouchSensor, {
@@ -240,18 +255,15 @@ export function AppShell() {
     })
   );
 
-  // Drag ghost source — tasks OR habits (both are draggable now).
-  const activeItem = activeId
-    ? tasks.find((t) => t.id === activeId) ?? habits.find((h) => h.id === activeId)
-    : null;
-
+  // Drag state lives in lib/drag-store (NOT useState here): a shell-level
+  // setState re-rendered the whole app tree before the ghost could paint.
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    useDragStore.getState().setActiveId(event.active.id as string);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveId(null);
+    useDragStore.getState().setActiveId(null);
     if (!over) return;
 
     const itemId = active.id as string;
@@ -390,7 +402,7 @@ export function AppShell() {
         },
       }}
     >
-      <DesktopShell activeId={activeId} />
+      <DesktopShell />
 
       {/* Mobile Layout */}
       <div className="flex h-[100dvh] flex-col bg-background md:hidden">
@@ -415,7 +427,6 @@ export function AppShell() {
               onAddClick={(bucket, type) =>
                 openAddDialog(type, bucket, usePlannerStore.getState().selectedDate)
               }
-              activeId={activeId}
             />
           )}
           {activeTab === 'chat' && (
@@ -425,7 +436,7 @@ export function AppShell() {
         <MobileTabBar />
       </div>
 
-      <DragOverlay>{activeItem && <DraggableTaskOverlay title={activeItem.title} />}</DragOverlay>
+      <DragGhost />
 
       <AddTaskDialog
         open={!!addState}

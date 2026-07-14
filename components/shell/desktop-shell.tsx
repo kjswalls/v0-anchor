@@ -14,7 +14,7 @@ import { useMorningStore } from '@/lib/morning-store';
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
  * the warm backdrop. The views live behind ViewRouter (P5).
  */
-export function DesktopShell({ activeId }: { activeId: string | null }) {
+export function DesktopShell() {
   const eodStore = useEODStore();
   const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
 
@@ -78,7 +78,7 @@ export function DesktopShell({ activeId }: { activeId: string | null }) {
         <MorningCheck />
 
         <div data-tour="timeline" className="flex flex-1 flex-col overflow-hidden">
-          <ViewRouter activeId={activeId} />
+          <ViewRouter />
         </div>
 
       </main>

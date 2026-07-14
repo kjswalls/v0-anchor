@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { MiniWeekNav } from './mini-week-nav';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDragStore } from '@/lib/drag-store';
 import type { Task, Habit, TimeBucket, Project } from '@/lib/planner-types';
+import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 import { shouldShowOnDate, isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { useDroppable } from '@dnd-kit/core';
@@ -38,7 +40,6 @@ interface MobileSchedulePanelProps {
   onTaskClick: (task: Task) => void;
   onHabitClick: (habit: Habit) => void;
   onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') => void;
-  activeId: string | null;
 }
 
 // Mobile Scheduled Task Item
@@ -65,9 +66,9 @@ function MobileScheduledTask({ task, onClick }: { task: Task; onClick: () => voi
         )}
         onClick={onClick}
       >
-        {projectEmoji && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-4xl opacity-[0.06] select-none pointer-events-none">
-            {projectEmoji}
+        {task.project && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 opacity-[0.06] select-none pointer-events-none">
+            <CategoryIcon glyph={projectEmoji} name={task.project} className="h-10 w-10" />
           </span>
         )}
 
@@ -190,8 +191,8 @@ function MobileScheduledHabit({ habit, onClick }: { habit: Habit; onClick: () =>
       }}
       onClick={onClick}
     >
-      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-3xl opacity-[0.06] select-none pointer-events-none">
-        {groupEmoji}
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 opacity-[0.06] select-none pointer-events-none">
+        <CategoryIcon glyph={groupEmoji} name={habit.group} className="h-9 w-9" />
       </span>
 
       <button
@@ -260,7 +261,7 @@ function MobileProjectBlock({ project, tasks, allTasks, onTaskClick }: MobilePro
     >
       {/* Project header */}
       <div className="flex items-center gap-2">
-        {project.emoji && <span className="text-lg">{project.emoji}</span>}
+        <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4" />
         <span className="font-medium text-sm text-foreground">{project.name}</span>
         {project.startTime && (
           <span className="text-xs text-muted-foreground">
@@ -488,8 +489,9 @@ function TimeBucketSection({
   );
 }
 
-export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, activeId }: MobileSchedulePanelProps) {
+export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick }: MobileSchedulePanelProps) {
   const { tasks, habits, projects, selectedDate, timelineItemFilter, userTimezone, showCompletedTasks } = usePlannerStore();
+  const dragActive = useDragStore((s) => !!s.activeId);
   const resolvedTimezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   // Get items for selected date
@@ -621,7 +623,7 @@ export function MobileSchedulePanel({ onTaskClick, onHabitClick, onAddClick, act
               onTaskClick={onTaskClick}
               onHabitClick={onHabitClick}
               onAddClick={() => onAddClick(bucket, 'task')}
-              isActive={!!activeId}
+              isActive={dragActive}
               projectBlocks={projectBlocksByBucket[bucket]}
               allTasks={tasks}
             />
