@@ -1,56 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { Timeline } from '@/components/planner/timeline';
-import { WeekView } from '@/components/planner/week-view';
-import { DayBuckets } from '@/components/views/day-buckets';
 import { WeekBuckets } from '@/components/views/week-buckets';
-import { DayList } from '@/components/views/day-list';
 import { WeekList } from '@/components/views/week-list';
-import { DaySchedule } from '@/components/views/day-schedule';
 import { WeekSchedule } from '@/components/views/week-schedule';
+import { DayBuckets } from '@/components/views/day-buckets';
+import { DayList } from '@/components/views/day-list';
+import { DaySchedule } from '@/components/views/day-schedule';
 import { useViewStore } from '@/lib/view-store';
-import { usePlannerStore } from '@/lib/planner-store';
 import { useDragStore } from '@/lib/drag-store';
-import { openEditFor, openAddDialog } from '@/lib/ui-store';
-import type { TimeBucket } from '@/lib/planner-types';
 
 /**
- * Routes the canvas to one of the scope × layout views. Rollout state:
- *   day-buckets   → NEW (P5a)
- *   week-buckets  → legacy WeekView until P5b
- *   list/schedule → land in P5c/P5d (toggles disabled in the capsule)
- * Escape hatch while the rewrites bake (removed at the P6 checkpoint):
- * localStorage 'anchor-legacy-views' = '1' renders the old Timeline/WeekView.
- */
-/**
- * Subscribes to drag state HERE (not via an app-shell prop) so a drag
- * start/end only re-renders the canvas subtree — the views need it for
- * drop hints, but the sidebar/dialogs/mobile trees don't (lib/drag-store).
+ * Routes the canvas to one of the six scope × layout views. Subscribes to drag
+ * state here (not via a prop) so a drag only re-renders the canvas subtree —
+ * the views need it for drop hints, the rest of the shell doesn't.
  */
 export function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
   const { scope, layout } = useViewStore();
-  const [useLegacyViews] = useState(
-    () => typeof window !== 'undefined' && localStorage.getItem('anchor-legacy-views') === '1'
-  );
-
-  const legacyProps = {
-    onTaskClick: (task: Parameters<typeof openEditFor>[0]) => openEditFor(task, 'task'),
-    onHabitClick: (habit: Parameters<typeof openEditFor>[0]) => openEditFor(habit, 'habit'),
-    onAddClick: (bucket: TimeBucket, type: 'task' | 'habit') =>
-      openAddDialog(type, bucket, usePlannerStore.getState().selectedDate),
-  };
 
   if (scope === 'week') {
-    if (useLegacyViews) return <WeekView {...legacyProps} />;
     if (layout === 'list') return <WeekList />;
     if (layout === 'schedule') return <WeekSchedule activeId={activeId} />;
     return <WeekBuckets activeId={activeId} />;
-  }
-
-  if (useLegacyViews) {
-    return <Timeline {...legacyProps} activeId={activeId} />;
   }
 
   if (layout === 'list') return <DayList />;
