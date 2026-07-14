@@ -53,6 +53,16 @@ function nextResult(): CallResult {
 }
 
 const mockServiceClient = {
+  // The authorize route validates a Bearer token via the SERVICE client's
+  // auth.getUser(token); reads the shared mockAuthUser at call time.
+  auth: {
+    getUser: vi.fn((_token?: string) =>
+      Promise.resolve({
+        data: { user: mockAuthUser },
+        error: mockAuthUser ? null : { message: 'Not authenticated' },
+      })
+    ),
+  },
   from: vi.fn((_table: string) => ({
     delete: vi.fn(() => makeChain(nextResult())),
     select: vi.fn((_cols?: string, _opts?: unknown) => makeChain(nextResult())),
@@ -175,7 +185,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({ userCode: 'ABCD-2345' }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).toBe(401);
@@ -186,7 +196,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({}),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
@@ -199,7 +209,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({ userCode: 'ABCD-2345' }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).toBe(404);
@@ -220,7 +230,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({ userCode: 'ABCD-2345' }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -241,7 +251,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({ userCode: 'ABCD-2345' }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
@@ -258,7 +268,7 @@ describe('POST /api/agent/connect/authorize', () => {
     const req = makeRequest('http://localhost/api/agent/connect/authorize', {
       method: 'POST',
       body: JSON.stringify({ userCode: 'abcd-2345' }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
     });
     const res = await POST(req);
     expect(res.status).not.toBe(400);
