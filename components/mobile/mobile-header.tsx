@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
-import { Calendar, Plus, Rows3, List, Clock, Check, ChevronDown } from 'lucide-react';
+import { Calendar, Rows3, List, Clock, Check, ChevronDown } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -15,10 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
-import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
-  onAddClick: () => void;
   onOpenSettings: () => void;
 }
 
@@ -29,7 +27,13 @@ const LAYOUTS: { value: ViewLayout; label: string; icon: typeof Rows3 }[] = [
   { value: 'schedule', label: 'Schedule', icon: Clock },
 ];
 
-export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
+/**
+ * Mobile header: user menu + date on the left, layout picker on the right.
+ * No logo (the user menu takes that slot) and no add button (the always-present
+ * omnibar strip handles capture). pt-safe lives on the outer element so the
+ * content row keeps symmetric vertical padding (stays centered) under the notch.
+ */
+export function MobileHeader({ onOpenSettings }: MobileHeaderProps) {
   const { selectedDate, setSelectedDate } = usePlannerStore();
   const { layout, setLayout } = useViewStore();
   const [mounted, setMounted] = useState(false);
@@ -41,55 +45,47 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
   const LayoutIcon = currentLayout.icon;
 
   return (
-    <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 pt-safe">
-      <div className="flex items-center gap-3">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="flex-shrink-0 text-foreground"
-          aria-label="Anchor"
-        >
-          <circle cx="12" cy="5" r="2" />
-          <line x1="12" y1="7" x2="12" y2="22" />
-          <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
-        </svg>
+    <header className="border-b border-border bg-card pt-safe">
+      <div className="flex items-center justify-between px-3 py-2.5">
+        <div className="flex items-center gap-1">
+          <UserProfileDropdown onOpenSettings={onOpenSettings} />
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className="h-9 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-secondary"
+              >
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                {mounted ? (isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')) : <span className="w-16" />}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => {
+                  if (date) setSelectedDate(date);
+                  setCalendarOpen(false);
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
 
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" className="h-8 px-2 text-sm font-medium text-foreground hover:bg-secondary">
-              <Calendar className="mr-1.5 h-4 w-4 text-muted-foreground" />
-              {mounted ? (isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')) : <span className="w-16" />}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => {
-                if (date) setSelectedDate(date);
-                setCalendarOpen(false);
-              }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
-      </div>
-
-      <div className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-secondary" aria-label="Layout">
-              <LayoutIcon className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              className="h-9 gap-1.5 px-2.5 text-sm font-medium text-foreground hover:bg-secondary"
+              aria-label="Layout"
+            >
+              <LayoutIcon className="h-4 w-4 text-muted-foreground" />
+              {currentLayout.label}
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[140px]">
+          <DropdownMenuContent align="end" className="min-w-[150px]">
             {LAYOUTS.map((l) => {
               const Icon = l.icon;
               return (
@@ -102,17 +98,6 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <UserProfileDropdown onOpenSettings={onOpenSettings} />
-
-        <Button
-          size="sm"
-          onClick={onAddClick}
-          className="h-8 w-8 bg-primary p-0 text-primary-foreground hover:bg-primary/90"
-          aria-label="Add"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
       </div>
     </header>
   );
