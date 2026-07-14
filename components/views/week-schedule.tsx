@@ -140,6 +140,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
   const { selectedDate, weekStartDay, navDirection, tasks, habits, projects, showCompletedTasks, userTimezone } =
     usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
+  const canvasFilters = useViewStore((s) => s.canvasFilters);
   const timeFormatStr = useTimeFormat();
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -164,10 +165,11 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           timezone,
           typeFilter,
           showCompletedTasks,
+          filters: canvasFilters,
         });
         return { date: d, dateStr, timed: deriveTimedEntries(items), untimed: deriveUntimedRows(items) };
       }),
-    [weekDays, tasks, habits, projects, timezone, typeFilter, showCompletedTasks]
+    [weekDays, tasks, habits, projects, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 
   const allTimed = perDay.flatMap((c) => c.timed);

@@ -15,6 +15,7 @@ export function useDayItems(date?: Date): DayItems {
   const { tasks, habits, projects, selectedDate, showCompletedTasks, userTimezone } =
     usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
+  const canvasFilters = useViewStore((s) => s.canvasFilters);
 
   const target = date ?? selectedDate;
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -30,7 +31,8 @@ export function useDayItems(date?: Date): DayItems {
         timezone,
         typeFilter,
         showCompletedTasks,
+        filters: canvasFilters,
       }),
-    [tasks, habits, projects, target, timezone, typeFilter, showCompletedTasks]
+    [tasks, habits, projects, target, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 }

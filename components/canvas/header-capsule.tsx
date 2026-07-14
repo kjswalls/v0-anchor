@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, addDays, subDays, isToday } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -27,6 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { FilterPopover } from '@/components/primitives/filter-popover';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type ViewLayout, type ViewScope, type TypeFilter } from '@/lib/view-store';
 import { useSunTimes } from '@/hooks/use-sun-times';
@@ -106,8 +107,9 @@ const SCOPE_OPTS: Opt<ViewScope>[] = [
 ];
 
 export function HeaderCapsule() {
-  const { selectedDate, setSelectedDate, setNavDirection } = usePlannerStore();
-  const { scope, layout, typeFilter, setScope, setLayout, setTypeFilter } = useViewStore();
+  const { selectedDate, setSelectedDate, setNavDirection, projects } = usePlannerStore();
+  const { scope, layout, typeFilter, canvasFilters, setScope, setLayout, setTypeFilter, setCanvasFilters } =
+    useViewStore();
   const { isAfterSunset } = useSunTimes();
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -127,8 +129,6 @@ export function HeaderCapsule() {
     setTimeout(() => setNavDirection(null), 600);
   };
 
-  const showToday = mounted && !isToday(selectedDate);
-
   return (
     <div className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2">
       {/* Row 1 — calendar + date nav */}
@@ -144,9 +144,9 @@ export function HeaderCapsule() {
               <CalendarIcon className="h-4 w-4" />
               {mounted &&
                 (isAfterSunset ? (
-                  <Moon className="absolute -top-0.5 -right-0.5 h-3 w-3 text-evening" />
+                  <Moon className="absolute -top-px -right-px h-1.5 w-1.5 text-evening" />
                 ) : (
-                  <Sun className="absolute -top-0.5 -right-0.5 h-3 w-3 text-morning" />
+                  <Sun className="absolute -top-px -right-px h-1.5 w-1.5 text-morning" />
                 ))}
             </Button>
           </PopoverTrigger>
@@ -174,13 +174,9 @@ export function HeaderCapsule() {
         </Button>
 
         <button
-          onClick={() => setSelectedDate(new Date())}
-          disabled={!showToday}
-          title={showToday ? 'Jump to today' : undefined}
-          className={cn(
-            'px-1 font-sans text-base font-semibold text-foreground',
-            showToday && 'cursor-pointer hover:text-primary-foreground/80'
-          )}
+          onClick={() => setCalendarOpen(true)}
+          title="Open calendar"
+          className="cursor-pointer px-1 font-sans text-base font-semibold text-foreground transition-colors hover:text-primary-foreground/80"
         >
           {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="inline-block w-44" />}
         </button>
@@ -217,6 +213,8 @@ export function HeaderCapsule() {
             onChange={(v) => setScope(v)}
             ariaLabel="Scope"
           />
+          <div className="mx-1 h-4 w-px bg-border" />
+          <FilterPopover value={canvasFilters} onChange={setCanvasFilters} projects={projects} />
         </div>
       </div>
     </div>

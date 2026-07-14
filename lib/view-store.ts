@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy } from './planner-types';
+import type { GroupBy, Priority } from './planner-types';
 import { usePlannerStore } from './planner-store';
 
 /**
@@ -32,6 +32,18 @@ const EMPTY_BRAINDUMP_FILTERS: BraindumpFilters = {
   hideCompleted: false,
 };
 
+export interface CanvasFilters {
+  projects: string[];
+  priorities: Priority[];
+  hideCompleted: boolean;
+}
+
+const EMPTY_CANVAS_FILTERS: CanvasFilters = {
+  projects: [],
+  priorities: [],
+  hideCompleted: false,
+};
+
 interface ViewStore {
   scope: ViewScope;
   layout: ViewLayout;
@@ -39,6 +51,7 @@ interface ViewStore {
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
   braindumpFilters: BraindumpFilters;
+  canvasFilters: CanvasFilters;
   typeMode: TypeMode;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
@@ -49,6 +62,7 @@ interface ViewStore {
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
   setBraindumpFilters: (filters: BraindumpFilters) => void;
+  setCanvasFilters: (filters: CanvasFilters) => void;
   setTypeMode: (mode: TypeMode) => void;
 }
 
@@ -61,6 +75,7 @@ export const useViewStore = create<ViewStore>()(
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
       braindumpFilters: EMPTY_BRAINDUMP_FILTERS,
+      canvasFilters: EMPTY_CANVAS_FILTERS,
       typeMode: 'sans',
       adoptedLegacy: false,
 
@@ -80,6 +95,7 @@ export const useViewStore = create<ViewStore>()(
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
+      setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
       setTypeMode: (typeMode) => set({ typeMode }),
     }),
     {

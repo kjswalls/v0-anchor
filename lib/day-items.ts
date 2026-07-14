@@ -9,6 +9,15 @@ import { shouldShowOnDate, isCompletedOnDate, isRecurring } from './recurrence';
 
 export const BUCKET_ORDER: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
 
+/** Canvas filter set (view-store canvasFilters). All-empty = no-op. */
+export interface DayItemFilters {
+  projects: string[];
+  priorities: string[];
+  hideCompleted: boolean;
+}
+
+const NO_FILTERS: DayItemFilters = { projects: [], priorities: [], hideCompleted: false };
+
 export interface DayItemsInput {
   tasks: Task[];
   habits: Habit[];
@@ -20,6 +29,8 @@ export interface DayItemsInput {
   timezone: string;
   typeFilter: 'all' | 'tasks' | 'habits';
   showCompletedTasks: boolean;
+  /** Optional canvas filters (priority/project/hide-completed); defaults to none. */
+  filters?: DayItemFilters;
 }
 
 export interface DayItems {
@@ -43,13 +54,20 @@ function byTimeThenOrder(a: { startTime?: string; order?: number }, b: { startTi
 
 export function deriveDayItems(input: DayItemsInput): DayItems {
   const { tasks, habits, projects, dateStr, date, timezone, typeFilter, showCompletedTasks } = input;
+  const filters = input.filters ?? NO_FILTERS;
+  // hideCompleted stacks on the existing showCompletedTasks preference
+  const hideDoneTasks = !showCompletedTasks || filters.hideCompleted;
 
   // Tasks that belong to this day
   const dayTasks =
     typeFilter === 'habits'
       ? []
       : tasks.filter((task) => {
-          if (!showCompletedTasks && task.status === 'completed') return false;
+          if (hideDoneTasks && task.status === 'completed') return false;
+          if (filters.priorities.length && (!task.priority || !filters.priorities.includes(task.priority)))
+            return false;
+          if (filters.projects.length && (!task.project || !filters.projects.includes(task.project)))
+            return false;
           if (!task.startDate) return false;
           // startDate is yyyy-MM-dd; tolerate legacy ISO strings
           const taskStartDateStr = task.startDate.includes('T')
@@ -57,15 +75,23 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
             : task.startDate;
           if (isRecurring(task)) {
             if (!(shouldShowOnDate(task, dateStr, timezone) && taskStartDateStr <= dateStr)) return false;
-            if (!showCompletedTasks && isCompletedOnDate(task, dateStr)) return false;
+            if (hideDoneTasks && isCompletedOnDate(task, dateStr)) return false;
             return true;
           }
           return taskStartDateStr === dateStr;
         });
 
-  // Habits that occur on this day
+  // Habits that occur on this day. Habits carry no priority/project, so an
+  // active priority or project filter hides them entirely (same rule as the
+  // braindump's filters).
   const dayHabits =
-    typeFilter === 'tasks' ? [] : habits.filter((h) => shouldShowOnDate(h, dateStr, timezone));
+    typeFilter === 'tasks' || filters.priorities.length || filters.projects.length
+      ? []
+      : habits.filter((h) => {
+          if (!shouldShowOnDate(h, dateStr, timezone)) return false;
+          if (filters.hideCompleted && isCompletedOnDate(h, dateStr)) return false;
+          return true;
+        });
 
   const tasksByBucket = emptyBuckets<Task>();
   dayTasks

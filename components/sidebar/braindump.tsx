@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, ChevronsLeft, FolderOpen, Plus, Filter, X, Check } from 'lucide-react';
+import { AlignLeft, ChevronsLeft, FolderOpen, Plus, ListFilter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
+import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
@@ -36,6 +37,8 @@ function FilterPopover() {
     braindumpFilters.projects.length +
     braindumpFilters.priorities.length +
     (braindumpFilters.hideCompleted ? 1 : 0);
+  // The dot also signals an active grouping (group-by lives in this popover).
+  const isActive = activeCount > 0 || braindumpGroupBy !== 'none';
 
   const groupOptions: { value: BraindumpGroupBy; label: string }[] = [
     { value: 'none', label: 'None' },
@@ -49,10 +52,13 @@ function FilterPopover() {
         <Button
           variant="ghost"
           size="icon"
-          className={cn('h-6 w-6 text-muted-foreground hover:text-foreground', activeCount > 0 && 'text-primary-foreground')}
-          aria-label="Filter and group"
+          className={cn('relative h-6 w-6 text-muted-foreground hover:text-foreground', isActive && 'text-foreground')}
+          aria-label={isActive ? 'Filter and group (active)' : 'Filter and group'}
         >
-          <Filter className="h-4 w-4" />
+          <ListFilter className="h-4 w-4" />
+          {isActive && (
+            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-2">
@@ -122,7 +128,8 @@ function FilterPopover() {
                     >
                       {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                     </span>
-                    {project.emoji} {project.name}
+                    <CategoryIcon glyph={project.emoji} name={project.name} />
+                    {project.name}
                   </button>
                 );
               })}
