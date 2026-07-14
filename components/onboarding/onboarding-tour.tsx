@@ -193,6 +193,18 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   
   const spotlightRect = useSpotlightRect(spotlightSelector);
 
+  // Anchor a card just outside the spotlight target, computed from its live
+  // rect — replaces hardcoded left/right offsets that broke when the sidebar
+  // width changed. Falls back to null (callers keep a static class) if no rect.
+  const cardAnchor = (side: 'left' | 'right') => {
+    if (!spotlightRect) return undefined;
+    const top = spotlightRect.top + spotlightRect.height / 2;
+    const iw = typeof window !== 'undefined' ? window.innerWidth : 0;
+    return side === 'right'
+      ? { left: spotlightRect.right + 16, top, transform: 'translateY(-50%)' as const }
+      : { right: iw - spotlightRect.left + 16, top, transform: 'translateY(-50%)' as const };
+  };
+
   const inputRef = useRef<HTMLInputElement>(null);
   const onExpandChatRef = useRef(onExpandChat);
   const onCollapseChatRef = useRef(onCollapseChat);
@@ -522,6 +534,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
     const current = subStepContent[desktopSubStep];
     const subStepIndex = desktopSubStep === 'A' ? 0 : desktopSubStep === 'B' ? 1 : 2;
+    // A sits right of the sidebar, C left of the dock — anchored to the live
+    // spotlight rect; B stays centered via its static class.
+    const anchorStyle =
+      desktopSubStep === 'A' ? cardAnchor('right') : desktopSubStep === 'C' ? cardAnchor('left') : undefined;
 
     return (
       <div className="fixed inset-0 z-[100] pointer-events-none">
@@ -529,8 +545,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         <div
           className={cn(
             'absolute pointer-events-auto animate-in fade-in zoom-in-95 duration-200',
-            current.position
+            !anchorStyle && current.position
           )}
+          style={anchorStyle}
         >
           <div className="bg-card border border-border rounded-xl shadow-2xl p-4 w-64 flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">{current.title}</p>
@@ -605,7 +622,11 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
       <div className="fixed inset-0 z-[100] pointer-events-none">
         <SpotlightOverlay rect={spotlightRect} />
         <div
-          className="absolute right-[340px] top-1/2 -translate-y-1/2 pointer-events-auto animate-in fade-in zoom-in-95 duration-300"
+          className={cn(
+            'absolute pointer-events-auto animate-in fade-in zoom-in-95 duration-300',
+            !cardAnchor('left') && 'right-[340px] top-1/2 -translate-y-1/2'
+          )}
+          style={cardAnchor('left')}
         >
           <div className="bg-card border border-border rounded-xl shadow-2xl p-4 w-72 flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
