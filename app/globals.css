@@ -495,3 +495,23 @@ body {
 .lucide[stroke-width='2'] {
   stroke-width: 1.5;
 }
+
+/* Undo toast placement: a cohesive card that floats ABOVE the sidebar dock
+   (history controls) rather than covering them, aligned to the sidebar's left
+   edge. Sonner 1.x only takes a single offset, so pin left+bottom here.
+   Desktop clears the dock (~156px); mobile sits above the tab bar + omnibar. */
+[data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
+  left: 12px !important;
+  right: 12px !important;
+  bottom: 120px !important;
+}
+@media (min-width: 768px) {
+  [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
+    left: 20px !important;
+    right: auto !important;
+    /* --toast-bottom is measured from the live dock (sidebar-dock.tsx); the
+       fallback covers the moment before it's set. */
+    bottom: var(--toast-bottom, 156px) !important;
+    width: 356px !important;
+  }
+}
