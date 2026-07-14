@@ -157,8 +157,8 @@ function ConnectPageInner() {
         )}
 
         {state.kind === 'authorized' && (
-          <div className="rounded-lg border border-green-600/30 bg-green-600/10 p-5 text-center space-y-2">
-            <p className="text-lg font-semibold text-green-700 dark:text-green-400">
+          <div className="rounded-lg border border-success/30 bg-success/10 p-5 text-center space-y-2">
+            <p className="text-lg font-semibold text-success-text">
               ✅ Authorized!
             </p>
             <p className="text-sm text-muted-foreground">

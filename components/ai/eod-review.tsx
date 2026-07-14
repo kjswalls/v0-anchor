@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
+import type { TimeBucket } from '@/lib/planner-types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ export function EODReview() {
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
-      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as any, startTime: prev.startTime ?? undefined });
+      updateTask(id, { startDate: prev.startDate ?? undefined, isScheduled: prev.isScheduled, timeBucket: prev.timeBucket as TimeBucket, startTime: prev.startTime ?? undefined });
     } else {
       updateTask(id, { startDate: prev.startDate ?? undefined, startTime: prev.startTime ?? undefined });
     }
@@ -237,16 +238,16 @@ export function EODReview() {
         {/* Header */}
         <DialogHeader className="pb-4">
           <DialogTitle className="text-foreground flex items-center gap-2 text-base">
-            <Moon className="h-5 w-5 text-indigo-400" />
+            <Moon className="h-5 w-5 text-evening" />
             End of day
           </DialogTitle>
           <DialogDescription className="sr-only">
-            End-of-day review: celebrate wins and carry forward what's unfinished.
+            End-of-day review: celebrate wins and carry forward what&apos;s unfinished.
           </DialogDescription>
         </DialogHeader>
 
         {/* Beacon greeting */}
-        <div className="mb-5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 px-4 py-3">
+        <div className="mb-5 rounded-xl bg-evening/10 border border-evening/20 px-4 py-3">
           <p className="text-sm text-foreground leading-relaxed">
             Hey! It&apos;s end of day — let&apos;s take a quick look at how today went 🌙
           </p>
@@ -258,7 +259,7 @@ export function EODReview() {
           {(preExistingCompletedTasks.length > 0 || doneHabits.length > 0) && (
             <section>
               <div className="flex items-center gap-2 mb-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <CheckCircle2 className="h-4 w-4 text-success" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Done today
                 </h3>
@@ -268,7 +269,7 @@ export function EODReview() {
                   <li key={task.id} className="flex items-center gap-2 py-0.5">
                     <button
                       onClick={() => handleUnmarkDone(task.id)}
-                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-success bg-success text-success-foreground flex items-center justify-center hover:bg-success/90 transition-colors"
                       title="Undo"
                     >
                       <Check className="h-3 w-3" />
@@ -282,7 +283,7 @@ export function EODReview() {
                   <li key={habit.id} className="flex items-center gap-2 py-0.5">
                     <button
                       onClick={() => handleToggleHabit(habit.id, 'pending')}
-                      className="shrink-0 h-5 w-5 rounded-full border-2 border-emerald-500 bg-emerald-500 text-white flex items-center justify-center hover:bg-emerald-600 transition-colors"
+                      className="shrink-0 h-5 w-5 rounded-full border-2 border-success bg-success text-success-foreground flex items-center justify-center hover:bg-success/90 transition-colors"
                       title="Undo"
                     >
                       <Check className="h-3 w-3" />
@@ -291,7 +292,7 @@ export function EODReview() {
                       {habit.title}
                     </span>
                     {habit.streak > 1 && (
-                      <span className="text-xs text-amber-500">🔥 {habit.streak}</span>
+                      <span className="text-xs text-ai">🔥 {habit.streak}</span>
                     )}
                     <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">Habit</span>
                   </li>
@@ -326,8 +327,8 @@ export function EODReview() {
                         className={cn(
                           'shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors',
                           isDone
-                            ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600'
-                            : 'border-border hover:border-emerald-400 hover:bg-emerald-400/10'
+                            ? 'border-success bg-success text-success-foreground hover:bg-success/90'
+                            : 'border-border hover:border-success/60 hover:bg-success/10'
                         )}
                         title={isDone ? 'Undo' : 'Mark as done'}
                       >

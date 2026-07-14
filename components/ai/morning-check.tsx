@@ -58,14 +58,14 @@ export function MorningCheck() {
   const n = overdueTask.length;
 
   return (
-    <div className="flex-shrink-0 mx-4 mt-3 mb-1 rounded-xl border border-amber-200/60 bg-amber-50/80 dark:border-amber-800/40 dark:bg-amber-950/30 overflow-hidden">
+    <div className="flex-shrink-0 mx-4 mt-3 mb-1 rounded-xl border border-ai/30 bg-ai-muted overflow-hidden">
       {/* Header row */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left hover:bg-amber-100/50 dark:hover:bg-amber-900/20 transition-colors"
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left hover:bg-ai/15 transition-colors"
       >
-        <Sun className="h-4 w-4 text-amber-500 flex-shrink-0" />
-        <p className="flex-1 text-sm text-amber-900 dark:text-amber-200">
+        <Sun className="h-4 w-4 text-ai flex-shrink-0" />
+        <p className="flex-1 text-sm text-ai-text">
           Good morning!{' '}
           <span className="font-medium">
             {n === 1 ? '1 task' : `${n} tasks`} from yesterday
@@ -74,27 +74,27 @@ export function MorningCheck() {
         </p>
         <div className="flex items-center gap-1 ml-2">
           {expanded ? (
-            <ChevronUp className="h-3.5 w-3.5 text-amber-600/70 dark:text-amber-400/70" />
+            <ChevronUp className="h-3.5 w-3.5 text-ai-text/80" />
           ) : (
-            <ChevronDown className="h-3.5 w-3.5 text-amber-600/70 dark:text-amber-400/70" />
+            <ChevronDown className="h-3.5 w-3.5 text-ai-text/80" />
           )}
         </div>
       </button>
 
       {/* Task list */}
       {expanded && (
-        <div className="border-t border-amber-200/50 dark:border-amber-800/30 px-4 py-2 space-y-1">
+        <div className="border-t border-ai/30 px-4 py-2 space-y-1">
           {overdueTask.map((task) => (
             <div
               key={task.id}
               className="flex items-center gap-2 py-1 group"
             >
-              <div className="h-1.5 w-1.5 rounded-full bg-amber-400/80 flex-shrink-0" />
-              <span className="flex-1 text-sm text-amber-900/90 dark:text-amber-200/90 truncate">
+              <div className="h-1.5 w-1.5 rounded-full bg-ai flex-shrink-0" />
+              <span className="flex-1 text-sm text-ai-text/90 truncate">
                 {task.title}
               </span>
               {task.startDate && (
-                <span className="text-[11px] text-amber-600/60 dark:text-amber-400/50 flex-shrink-0 pr-1">
+                <span className="text-[11px] text-ai-text/80 flex-shrink-0 pr-1">
                   {format(parseISO(task.startDate), 'MMM d')}
                 </span>
               )}
@@ -103,8 +103,8 @@ export function MorningCheck() {
                 size="sm"
                 onClick={() => handleMoveToToday(task.id)}
                 className={cn(
-                  'h-6 px-2 text-[11px] gap-1 text-amber-700 dark:text-amber-300',
-                  'hover:bg-amber-200/60 dark:hover:bg-amber-800/40',
+                  'h-6 px-2 text-[11px] gap-1 text-ai-text',
+                  'hover:bg-ai/15',
                   'opacity-0 group-hover:opacity-100 transition-opacity'
                 )}
               >
@@ -116,8 +116,8 @@ export function MorningCheck() {
                 size="sm"
                 onClick={() => handleDismissTask(task.id)}
                 className={cn(
-                  'h-6 w-6 p-0 text-amber-600/60 dark:text-amber-400/50',
-                  'hover:bg-amber-200/60 dark:hover:bg-amber-800/40 hover:text-amber-700',
+                  'h-6 w-6 p-0 text-ai-text/80',
+                  'hover:bg-ai/15 hover:text-ai-text',
                   'opacity-0 group-hover:opacity-100 transition-opacity'
                 )}
               >
@@ -132,7 +132,7 @@ export function MorningCheck() {
               variant="ghost"
               size="sm"
               onClick={handleMoveAll}
-              className="h-6 px-2 text-[11px] gap-1.5 text-amber-700 dark:text-amber-300 hover:bg-amber-200/60 dark:hover:bg-amber-800/40"
+              className="h-6 px-2 text-[11px] gap-1.5 text-ai-text hover:bg-ai/15"
             >
               <ChevronsRight className="h-3 w-3" />
               Move all to today
@@ -141,7 +141,7 @@ export function MorningCheck() {
               variant="ghost"
               size="sm"
               onClick={dismiss}
-              className="h-6 px-2 text-[11px] text-amber-600/70 dark:text-amber-400/60 hover:bg-amber-200/60 dark:hover:bg-amber-800/40"
+              className="h-6 px-2 text-[11px] text-ai-text/80 hover:bg-ai/15"
             >
               Dismiss for today
             </Button>

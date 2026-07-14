@@ -42,6 +42,7 @@ import {
 } from './db';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
+import { accentColorForName } from './accent-colors';
 
 interface PlannerStore {
   tasks: Task[];
@@ -435,7 +436,7 @@ export const usePlannerStore = create<PlannerStore>()(
           tasks: state.tasks.map((t) => {
             if (t.id !== id) return t;
 
-            let newUpdates = { ...updates };
+            const newUpdates = { ...updates };
 
             // Auto-correct bucket if start time changes
             if (updates.startTime && (t.timeBucket || updates.timeBucket)) {
@@ -612,7 +613,7 @@ export const usePlannerStore = create<PlannerStore>()(
           habits: state.habits.map((h) => {
             if (h.id !== id) return h;
 
-            let newUpdates = { ...updates };
+            const newUpdates = { ...updates };
 
             // Auto-correct bucket if start time changes
             if (updates.startTime && (h.timeBucket || updates.timeBucket)) {
@@ -658,7 +659,7 @@ export const usePlannerStore = create<PlannerStore>()(
             const wasSkipped = (h.skippedDates ?? []).includes(dateStr);
             let newCompletedDates = [...h.completedDates];
             let newSkippedDates = [...(h.skippedDates ?? [])];
-            let newDailyCounts = { ...(h.dailyCounts ?? {}) };
+            const newDailyCounts = { ...(h.dailyCounts ?? {}) };
             let newStreak = h.streak;
 
             // Update completedDates
@@ -811,12 +812,7 @@ export const usePlannerStore = create<PlannerStore>()(
         return project?.emoji || '';
       },
 
-      getProjectColor: (name) => {
-        // Generate consistent color from project name
-        const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const hues = [200, 150, 280, 30, 340]; // blue, teal, purple, orange, pink
-        return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
-      },
+      getProjectColor: (name) => accentColorForName(name),
 
       getProject: (name) => {
         return get().projects.find((p) => p.name === name);
@@ -961,17 +957,16 @@ export const usePlannerStore = create<PlannerStore>()(
         const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
         if (group?.color) return group.color;
 
-        // Generate consistent color from group name
+        // Theme-aware tokens (app/globals.css). Stored group.color above passes
+        // through untouched — the DB column is free text, incl. legacy raw oklch.
         const colorMap: Record<string, string> = {
-          wellness: 'oklch(0.7 0.15 160)',
-          work: 'oklch(0.65 0.15 250)',
-          personal: 'oklch(0.7 0.15 320)',
+          wellness: 'var(--habit-wellness)',
+          work: 'var(--habit-work)',
+          personal: 'var(--habit-personal)',
         };
         if (colorMap[normalized]) return colorMap[normalized];
 
-        const hash = normalized.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-        const hues = [160, 250, 320, 30, 200]; // teal, blue, pink, orange, cyan
-        return `oklch(0.7 0.15 ${hues[hash % hues.length]})`;
+        return accentColorForName(normalized);
       },
 
       cleanupOrphanedReferences: () => {

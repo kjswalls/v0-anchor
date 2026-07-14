@@ -2,16 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
-import { Calendar, Plus, Sun, Moon, Undo2, Redo2 } from 'lucide-react';
+import { Calendar, Plus, Rows3, List, Clock, Check, ChevronDown } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useEODStore } from '@/lib/eod-store';
-import { useMorningStore } from '@/lib/morning-store';
-import { useTheme } from 'next-themes';
-import { saveSettings } from '@/lib/settings-service';
+import { useViewStore, type ViewLayout } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
@@ -19,20 +22,27 @@ interface MobileHeaderProps {
   onOpenSettings: () => void;
 }
 
-export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
-  const { selectedDate, setSelectedDate, undo, redo, canUndo, canRedo, userId } = usePlannerStore();
-  const eodStore = useEODStore();
-  const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+/** Mobile layouts that ship on small screens (subset of the desktop capsule). */
+const LAYOUTS: { value: ViewLayout; label: string; icon: typeof Rows3 }[] = [
+  { value: 'buckets', label: 'Buckets', icon: Rows3 },
+  { value: 'list', label: 'List', icon: List },
+  { value: 'schedule', label: 'Schedule', icon: Clock },
+];
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
+  const { selectedDate, setSelectedDate } = usePlannerStore();
+  const { layout, setLayout } = useViewStore();
+  const [mounted, setMounted] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const currentLayout = LAYOUTS.find((l) => l.value === layout) ?? LAYOUTS[0];
+  const LayoutIcon = currentLayout.icon;
 
   return (
-    <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+    <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 pt-safe">
       <div className="flex items-center gap-3">
-        {/* Anchor logo mark */}
         <svg
           width="20"
           height="20"
@@ -42,116 +52,64 @@ export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) 
           strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-foreground flex-shrink-0"
+          className="flex-shrink-0 text-foreground"
           aria-label="Anchor"
         >
           <circle cx="12" cy="5" r="2" />
           <line x1="12" y1="7" x2="12" y2="22" />
           <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
         </svg>
-        
-        <Popover>
+
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
           <PopoverTrigger asChild>
-            <Button 
-              variant="ghost" 
-              className="h-8 px-2 text-sm font-medium text-foreground hover:bg-secondary"
-            >
-              <Calendar className="h-4 w-4 mr-1.5 text-muted-foreground" />
-              {mounted ? (
-                isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')
-              ) : (
-                <span className="w-16" />
-              )}
+            <Button variant="ghost" className="h-8 px-2 text-sm font-medium text-foreground hover:bg-secondary">
+              <Calendar className="mr-1.5 h-4 w-4 text-muted-foreground" />
+              {mounted ? (isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')) : <span className="w-16" />}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <CalendarComponent
               mode="single"
               selected={selectedDate}
-              onSelect={(date) => date && setSelectedDate(date)}
+              onSelect={(date) => {
+                if (date) setSelectedDate(date);
+                setCalendarOpen(false);
+              }}
               initialFocus
             />
           </PopoverContent>
         </Popover>
       </div>
-      
+
       <div className="flex items-center gap-1">
-        {/* Undo/Redo buttons */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={undo}
-          disabled={!canUndo}
-          className={cn(
-            'h-8 w-8 text-muted-foreground hover:text-foreground',
-            !canUndo && 'opacity-30'
-          )}
-          title="Undo"
-        >
-          <Undo2 className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={redo}
-          disabled={!canRedo}
-          className={cn(
-            'h-8 w-8 text-muted-foreground hover:text-foreground',
-            !canRedo && 'opacity-30'
-          )}
-          title="Redo"
-        >
-          <Redo2 className="h-4 w-4" />
-        </Button>
-
-        <div className="w-px h-5 bg-border mx-1" />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            if (!mounted) return;
-            const newTheme = resolvedTheme === 'dark' ? 'light' : 'dark';
-            setTheme(newTheme);
-            if (userId) saveSettings(userId, { theme: newTheme });
-          }}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-        >
-          {mounted ? (
-            resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
-          ) : (
-            <span className="h-4 w-4" />
-          )}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-secondary" aria-label="Layout">
+              <LayoutIcon className="h-4 w-4" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[140px]">
+            {LAYOUTS.map((l) => {
+              const Icon = l.icon;
+              return (
+                <DropdownMenuItem key={l.value} onClick={() => setLayout(l.value)} className="gap-2 text-sm">
+                  <Icon className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1">{l.label}</span>
+                  {l.value === layout && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <UserProfileDropdown onOpenSettings={onOpenSettings} />
 
-        {/* DEV: manual trigger buttons for testing — remove before launch */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title="[DEV] Reset morning check"
-        >
-          ☀️
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => eodStore.open()}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title="[DEV] Trigger EOD review"
-        >
-          🌙
-        </Button>
-
-        <div className="w-px h-5 bg-border mx-1" />
-        
         <Button
           size="sm"
           onClick={onAddClick}
-          className="h-8 w-8 p-0 bg-primary text-primary-foreground hover:bg-primary/90"
+          className="h-8 w-8 bg-primary p-0 text-primary-foreground hover:bg-primary/90"
+          aria-label="Add"
         >
           <Plus className="h-4 w-4" />
         </Button>

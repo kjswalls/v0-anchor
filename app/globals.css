@@ -3,115 +3,255 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Anchor design tokens — redesign token layer (see design/redesign/)
+
+   Structure:
+     1. Raw ramps        — primitives; never referenced by components
+     2. Surfaces         — elevation scale (backdrop → canvas → card → well)
+     3. Semantic colors  — shadcn aliases + Anchor domain tokens
+     4. Type / radius / shadow / motion
+   Light values derive from the Figma mockups; dark from the navy reference
+   (design/redesign/darkModeColorReference.png) with the lime accent retained.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  /* Calm, minimal palette - soft whites and grays with gentle accents */
-  --background: oklch(0.985 0.002 240);
-  --foreground: oklch(0.25 0.01 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.01 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.01 250);
-  --primary: oklch(0.45 0.12 250);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.96 0.005 240);
-  --secondary-foreground: oklch(0.35 0.01 250);
-  --muted: oklch(0.94 0.005 240);
-  --muted-foreground: oklch(0.5 0.01 250);
-  --accent: oklch(0.85 0.08 180);
-  --accent-foreground: oklch(0.25 0.05 180);
+  /* ── 1. Raw ramps (do not use in components) ─────────────────────────── */
+  /* Values sampled from the Figma file (6ZFClj80tMQOCYUhzyuWFL) */
+  --paper-0: oklch(0.986 0.0012 90);  /* #FBFBFB backdrop (window + sidebar field) */
+  --paper-1: oklch(0.99 0.001 90);    /* surface-1 */
+  --paper-2: oklch(0.996 0 0);        /* #FEFEFE canvas / body panel (whitest) */
+  --paper-3: oklch(0.986 0.0012 90);  /* #FBFBFB white pills / cards / popovers */
+  --paper-well: oklch(0.945 0.0015 90);/* #EEEDED gray capsules (header, date, dock) */
+  --ink-0: oklch(0.24 0.01 272);      /* primary text (~#1E1E1E, faint cool) */
+  --ink-1: oklch(0.5 0.02 272);       /* secondary text — cool gray */
+  --ink-2: oklch(0.66 0.03 272);      /* muted text / hints — cool blue-gray (~#A9ADBE) */
+  --lime-solid: oklch(0.86 0.17 125); /* pill fill */
+  --lime-ink: oklch(0.32 0.07 130);   /* text on lime / lime-as-text */
+  --lime-tint: oklch(0.95 0.05 125);  /* subtle lime wash */
+  --honey-solid: oklch(0.84 0.11 85);
+  --honey-ink: oklch(0.38 0.08 75);
+  --honey-tint: oklch(0.96 0.035 85);
+  --coral-solid: oklch(0.72 0.14 30);
+  --coral-ink: oklch(0.34 0.09 30);
+  --coral-tint: oklch(0.95 0.03 30);
+
+  /* ── 2. Surfaces ─────────────────────────────────────────────────────── */
+  --surface-0: var(--paper-0);
+  --surface-1: var(--paper-1);
+  --surface-2: var(--paper-3);
+  --surface-3: var(--paper-well);
+  --canvas: var(--paper-2);
+
+  /* ── 3a. shadcn semantic aliases ─────────────────────────────────────── */
+  --background: var(--surface-0);
+  --foreground: var(--ink-0);
+  --card: var(--surface-2);
+  --card-foreground: var(--ink-0);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--ink-0);
+  --primary: var(--lime-solid);
+  --primary-foreground: var(--lime-ink);
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--ink-1);
+  --muted: var(--surface-3);
+  --muted-foreground: var(--ink-2);
+  --accent: oklch(0.955 0.006 85);    /* hover wash */
+  --accent-foreground: var(--ink-0);
   --destructive: oklch(0.6 0.15 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.9 0.005 240);
-  --input: oklch(0.92 0.005 240);
-  --ring: oklch(0.45 0.12 250);
-  
-  /* Custom planner colors */
-  --morning: oklch(0.88 0.08 85);
-  --afternoon: oklch(0.85 0.08 45);
-  --evening: oklch(0.75 0.08 280);
-  --anytime: oklch(0.92 0.02 240);
-  
-  /* Priority colors - gentle tones */
-  --priority-high: oklch(0.75 0.12 25);
-  --priority-medium: oklch(0.8 0.1 85);
-  --priority-low: oklch(0.75 0.08 180);
-  
-  /* Habit group colors */
-  --habit-wellness: oklch(0.8 0.1 160);
-  --habit-work: oklch(0.75 0.1 250);
-  --habit-personal: oklch(0.8 0.08 320);
-  
-  --chart-1: oklch(0.7 0.12 250);
-  --chart-2: oklch(0.75 0.1 180);
-  --chart-3: oklch(0.8 0.08 85);
-  --chart-4: oklch(0.75 0.1 320);
-  --chart-5: oklch(0.7 0.12 25);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.98 0.002 240);
-  --sidebar-foreground: oklch(0.25 0.01 250);
-  --sidebar-primary: oklch(0.45 0.12 250);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.94 0.005 240);
-  --sidebar-accent-foreground: oklch(0.25 0.01 250);
-  --sidebar-border: oklch(0.9 0.005 240);
-  --sidebar-ring: oklch(0.45 0.12 250);
+  --border: oklch(0.9 0.008 272);     /* cool hairline (~#DCDDE1) */
+  --input: oklch(0.86 0.012 272);     /* cool control border (~#C7C9D4) */
+  --ring: var(--lime-solid);
+
+  /* ── 3b. Anchor semantics ────────────────────────────────────────────── */
+  --success: var(--lime-solid);
+  --success-foreground: var(--lime-ink);
+  --warning: var(--honey-solid);
+  --warning-foreground: var(--honey-ink);
+  --ai: var(--honey-solid);            /* Beacon / coaching surfaces */
+  --ai-foreground: var(--honey-ink);
+  --ai-muted: var(--honey-tint);
+
+  /* -text role: the semantic color used AS text on a surface or tint.
+     -foreground is ink for text ON the solid fill (dark in both modes);
+     -text flips bright in dark mode so it stays readable on navy. */
+  --success-text: var(--lime-ink);
+  --warning-text: var(--honey-ink);
+  --ai-text: var(--honey-ink);
+
+  /* Time-of-day (bucket icon tints — subtler role than before) */
+  --morning: oklch(0.78 0.11 85);
+  --afternoon: oklch(0.76 0.11 55);
+  --evening: oklch(0.62 0.1 285);
+  --anytime: oklch(0.7 0.06 160);
+
+  /* Priority — calm-by-default: lime low, honey medium, coral high */
+  --priority-low: var(--lime-solid);
+  --priority-low-foreground: var(--lime-ink);
+  --priority-medium: var(--honey-solid);
+  --priority-medium-foreground: var(--honey-ink);
+  --priority-high: var(--coral-solid);
+  --priority-high-foreground: oklch(0.98 0.005 30);
+
+  /* Habit groups (legacy trio kept until generic item types land) */
+  --habit-wellness: oklch(0.72 0.1 160);
+  --habit-work: oklch(0.65 0.09 250);
+  --habit-personal: oklch(0.7 0.09 320);
+
+  /* Project / user-content accent ramp (see planner-store getProjectColor) */
+  --accent-1: oklch(0.68 0.11 140);   /* moss */
+  --accent-2: oklch(0.68 0.1 190);    /* teal */
+  --accent-3: oklch(0.62 0.11 265);   /* indigo */
+  --accent-4: oklch(0.66 0.11 320);   /* plum */
+  --accent-5: oklch(0.68 0.13 30);    /* coral */
+  --accent-6: oklch(0.75 0.11 85);    /* honey */
+  --accent-7: oklch(0.6 0.04 250);    /* slate */
+  --accent-8: oklch(0.78 0.14 125);   /* lime */
+
+  --chart-1: var(--accent-3);
+  --chart-2: var(--accent-2);
+  --chart-3: var(--accent-6);
+  --chart-4: var(--accent-4);
+  --chart-5: var(--accent-5);
+
+  /* Sidebar (floating card) */
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: var(--ink-0);
+  --sidebar-primary: var(--lime-solid);
+  --sidebar-primary-foreground: var(--lime-ink);
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: var(--ink-0);
+  --sidebar-border: oklch(0.915 0.005 85);
+  --sidebar-ring: var(--lime-solid);
+
+  /* ── 4. Geometry ─────────────────────────────────────────────────────── */
+  --radius: 1rem;
 }
 
 .dark {
-  --background: oklch(0.14 0.01 250);
-  --foreground: oklch(0.92 0.005 240);
-  --card: oklch(0.18 0.01 250);
-  --card-foreground: oklch(0.92 0.005 240);
-  --popover: oklch(0.18 0.01 250);
-  --popover-foreground: oklch(0.92 0.005 240);
-  --primary: oklch(0.7 0.12 250);
-  --primary-foreground: oklch(0.14 0.01 250);
-  --secondary: oklch(0.22 0.01 250);
-  --secondary-foreground: oklch(0.88 0.005 240);
-  --muted: oklch(0.22 0.01 250);
-  --muted-foreground: oklch(0.6 0.01 250);
-  --accent: oklch(0.5 0.08 180);
-  --accent-foreground: oklch(0.92 0.005 240);
-  --destructive: oklch(0.5 0.15 25);
-  --destructive-foreground: oklch(0.92 0.005 240);
-  --border: oklch(0.26 0.01 250);
-  --input: oklch(0.22 0.01 250);
-  --ring: oklch(0.7 0.12 250);
-  
-  /* Custom planner colors - dark mode */
-  --morning: oklch(0.45 0.08 85);
-  --afternoon: oklch(0.45 0.08 45);
-  --evening: oklch(0.4 0.08 280);
-  --anytime: oklch(0.26 0.02 240);
-  
-  /* Priority colors - dark mode */
-  --priority-high: oklch(0.55 0.12 25);
-  --priority-medium: oklch(0.55 0.1 85);
-  --priority-low: oklch(0.5 0.08 180);
-  
-  /* Habit group colors - dark mode */
-  --habit-wellness: oklch(0.5 0.1 160);
-  --habit-work: oklch(0.5 0.1 250);
-  --habit-personal: oklch(0.5 0.08 320);
-  
-  --chart-1: oklch(0.6 0.12 250);
-  --chart-2: oklch(0.55 0.1 180);
-  --chart-3: oklch(0.6 0.08 85);
-  --chart-4: oklch(0.55 0.1 320);
-  --chart-5: oklch(0.55 0.12 25);
-  --sidebar: oklch(0.16 0.01 250);
-  --sidebar-foreground: oklch(0.92 0.005 240);
-  --sidebar-primary: oklch(0.7 0.12 250);
-  --sidebar-primary-foreground: oklch(0.14 0.01 250);
-  --sidebar-accent: oklch(0.22 0.01 250);
-  --sidebar-accent-foreground: oklch(0.92 0.005 240);
-  --sidebar-border: oklch(0.26 0.01 250);
-  --sidebar-ring: oklch(0.7 0.12 250);
+  /* Navy surface ramp (Graide reference), lime accent retained */
+  --paper-0: oklch(0.175 0.02 275);
+  --paper-1: oklch(0.21 0.021 275);
+  --paper-2: oklch(0.225 0.021 275);
+  --paper-3: oklch(0.26 0.022 275);
+  --paper-well: oklch(0.29 0.022 275);
+  --ink-0: oklch(0.93 0.006 260);
+  --ink-1: oklch(0.74 0.01 260);
+  --ink-2: oklch(0.6 0.012 260);
+  --lime-solid: oklch(0.84 0.15 125);
+  --lime-ink: oklch(0.26 0.06 130);
+  --lime-tint: oklch(0.32 0.05 125);
+  --honey-solid: oklch(0.78 0.1 85);
+  --honey-ink: oklch(0.24 0.05 80);
+  --honey-tint: oklch(0.3 0.04 85);
+  --coral-solid: oklch(0.68 0.13 30);
+  --coral-ink: oklch(0.95 0.02 30);
+  --coral-tint: oklch(0.3 0.05 30);
+
+  --surface-0: var(--paper-0);
+  --surface-1: var(--paper-1);
+  --surface-2: var(--paper-3);
+  --surface-3: var(--paper-well);
+  --canvas: var(--paper-2);
+
+  --background: var(--surface-0);
+  --foreground: var(--ink-0);
+  --card: var(--surface-2);
+  --card-foreground: var(--ink-0);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--ink-0);
+  --primary: var(--lime-solid);
+  --primary-foreground: var(--lime-ink);
+  --secondary: var(--surface-3);
+  --secondary-foreground: var(--ink-1);
+  --muted: var(--surface-3);
+  --muted-foreground: var(--ink-2);
+  --accent: oklch(1 0 0 / 6%);
+  --accent-foreground: var(--ink-0);
+  --destructive: oklch(0.55 0.15 25);
+  --destructive-foreground: oklch(0.95 0.01 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 8%);
+  --ring: var(--lime-solid);
+
+  --success: var(--lime-solid);
+  --success-foreground: var(--lime-ink);
+  --warning: var(--honey-solid);
+  --warning-foreground: var(--honey-ink);
+  --ai: var(--honey-solid);
+  --ai-foreground: var(--honey-ink);
+  --ai-muted: var(--honey-tint);
+
+  --success-text: oklch(0.82 0.14 125);
+  --warning-text: oklch(0.84 0.1 85);
+  --ai-text: oklch(0.84 0.1 85);
+
+  --morning: oklch(0.68 0.1 85);
+  --afternoon: oklch(0.66 0.1 55);
+  --evening: oklch(0.62 0.1 285);
+  --anytime: oklch(0.62 0.06 160);
+
+  --priority-low: var(--lime-solid);
+  --priority-low-foreground: var(--lime-ink);
+  --priority-medium: var(--honey-solid);
+  --priority-medium-foreground: var(--honey-ink);
+  --priority-high: var(--coral-solid);
+  --priority-high-foreground: var(--coral-ink);
+
+  --habit-wellness: oklch(0.62 0.09 160);
+  --habit-work: oklch(0.62 0.09 250);
+  --habit-personal: oklch(0.64 0.08 320);
+
+  --accent-1: oklch(0.66 0.1 140);
+  --accent-2: oklch(0.66 0.09 190);
+  --accent-3: oklch(0.64 0.11 265);
+  --accent-4: oklch(0.66 0.1 320);
+  --accent-5: oklch(0.66 0.12 30);
+  --accent-6: oklch(0.72 0.1 85);
+  --accent-7: oklch(0.62 0.04 250);
+  --accent-8: oklch(0.76 0.13 125);
+
+  --chart-1: var(--accent-3);
+  --chart-2: var(--accent-2);
+  --chart-3: var(--accent-6);
+  --chart-4: var(--accent-4);
+  --chart-5: var(--accent-5);
+
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: var(--ink-0);
+  --sidebar-primary: var(--lime-solid);
+  --sidebar-primary-foreground: var(--lime-ink);
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: var(--ink-0);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: var(--lime-solid);
 }
 
 @theme inline {
-  --font-sans: var(--font-sans), 'Inter', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback', monospace;
+  /* Fonts — loaded via next/font in app/layout.tsx */
+  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Type ramp — content default is text-base (serif at rest) */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-lg: 17px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 26px;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 30px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 36px;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -131,15 +271,40 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Surfaces */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-canvas: var(--canvas);
+
+  /* Anchor semantics */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-ai-muted: var(--ai-muted);
+  --color-success-text: var(--success-text);
+  --color-warning-text: var(--warning-text);
+  --color-ai-text: var(--ai-text);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+
+  /* Radii — rounded-card / rounded-panel for the layered surfaces */
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-card: 1.25rem;
+  --radius-panel: 1.5rem;
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -148,22 +313,100 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  
-  /* Custom planner colors */
+
+  /* Time-of-day */
   --color-morning: var(--morning);
   --color-afternoon: var(--afternoon);
   --color-evening: var(--evening);
   --color-anytime: var(--anytime);
-  
-  /* Priority colors */
+
+  /* Priority */
   --color-priority-high: var(--priority-high);
+  --color-priority-high-foreground: var(--priority-high-foreground);
   --color-priority-medium: var(--priority-medium);
+  --color-priority-medium-foreground: var(--priority-medium-foreground);
   --color-priority-low: var(--priority-low);
-  
-  /* Habit group colors */
+  --color-priority-low-foreground: var(--priority-low-foreground);
+
+  /* Habit groups */
   --color-habit-wellness: var(--habit-wellness);
   --color-habit-work: var(--habit-work);
   --color-habit-personal: var(--habit-personal);
+
+  /* Project/user accent ramp */
+  --color-accent-1: var(--accent-1);
+  --color-accent-2: var(--accent-2);
+  --color-accent-3: var(--accent-3);
+  --color-accent-4: var(--accent-4);
+  --color-accent-5: var(--accent-5);
+  --color-accent-6: var(--accent-6);
+  --color-accent-7: var(--accent-7);
+  --color-accent-8: var(--accent-8);
+}
+
+/* Shadow + motion tokens live in a non-inline @theme so utilities reference
+   the emitted CSS variables — this lets .dark re-tune shadows below, and lets
+   plain CSS use var(--ease-out-soft) / var(--ease-spring) directly. */
+@theme {
+  /* Soft layered shadows (ambient + key) */
+  --shadow-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
+  --shadow-soft-md: 0 2px 4px oklch(0.3 0.02 80 / 5%), 0 8px 24px oklch(0.3 0.02 80 / 7%);
+  --shadow-soft-lg: 0 4px 8px oklch(0.3 0.02 80 / 6%), 0 16px 48px oklch(0.3 0.02 80 / 10%);
+
+  /* Motion — the "settle" identity */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Dark mode: shadows read as darkness, elevation reads as lighter surface */
+.dark {
+  --shadow-soft-sm: 0 1px 2px oklch(0 0 0 / 25%), 0 2px 8px oklch(0 0 0 / 20%);
+  --shadow-soft-md: 0 2px 4px oklch(0 0 0 / 25%), 0 8px 24px oklch(0 0 0 / 30%);
+  --shadow-soft-lg: 0 4px 8px oklch(0 0 0 / 30%), 0 16px 48px oklch(0 0 0 / 40%);
+}
+
+/* Content typeface toggle (settings → Appearance → Typeface). Flips the
+   look of item/content titles only — density, labels, and chrome stay
+   identical in both modes. `data-type-mode` is stamped on <html> by
+   AppShell from view-store. Default (no attribute) = sans / Linear look.
+   MUST be scoped to body: the next/font variables (--font-inter,
+   --font-source-serif) are defined by classNames on <body>, so an inner
+   var() chain only resolves at body or below — defined on :root it
+   computes to guaranteed-invalid and font-family silently falls back. */
+body {
+  --font-content: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-content-weight: 500;
+  --text-content: 13px;
+  --text-content--line-height: 18px;
+}
+:root[data-type-mode='serif'] body {
+  --font-content: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+  --font-content-weight: 600;
+  --text-content: 15px;
+  --text-content--line-height: 22px;
+}
+
+/* Utilities consumed by item titles (task-row, drag ghost, schedule blocks,
+   project blocks, omnibar results). font-content = family+weight;
+   text-content = size+leading (main row title + ghost only). */
+@utility font-content {
+  font-family: var(--font-content);
+  font-weight: var(--font-content-weight);
+}
+@utility text-content {
+  font-size: var(--text-content);
+  line-height: var(--text-content--line-height);
+}
+
+/* Canvas content container — single source for the shared left/right edges
+   of the header capsule and every body view (Figma: both sit at x=103 in the
+   1277-wide body, content ~1073 wide). One class on both keeps them aligned
+   at every window width. */
+@utility canvas-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 1100px;
+  padding-inline: 2rem;
 }
 
 @layer base {
@@ -199,11 +442,11 @@
 }
 
 .animate-slide-in-from-left {
-  animation: slide-in-from-left 0.6s ease-out;
+  animation: slide-in-from-left 0.4s var(--ease-out-soft);
 }
 
 .animate-slide-in-from-right {
-  animation: slide-in-from-right 0.6s ease-out;
+  animation: slide-in-from-right 0.4s var(--ease-out-soft);
 }
 
 /* Hide scrollbar while keeping scroll functionality */
@@ -244,4 +487,11 @@
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* Thin Lucide strokes (Linear-style icon pass). Attribute-scoped so the few
+   deliberate inline strokeWidth sites (mobile-header 1.75, chat 1.25, legacy
+   views) keep their values — CSS overrides the svg presentation attribute. */
+.lucide[stroke-width='2'] {
+  stroke-width: 1.5;
 }

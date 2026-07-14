@@ -29,10 +29,12 @@ import {
 } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import type { TimeBucket } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useViewStore, type TypeMode } from '@/lib/view-store';
 import { saveSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
 import { useIsMobile } from '@/components/ui/use-mobile';
@@ -109,6 +111,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const { isSupported: pushSupported, isSubscribed: pushSubscribed, permissionState, subscribe: subscribePush, unsubscribe: unsubscribePush } = usePushSubscription();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
   const { theme, setTheme } = useTheme();
+  const { typeMode, setTypeMode } = useViewStore();
   const isMobile = useIsMobile();
   const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime } = useMorningStore();
   const { eodReviewEnabled, setEodReviewEnabled, eodReviewTime, setEodReviewTime } = useEODStore();
@@ -197,12 +200,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     };
   }, [open, provider]);
 
-  const {
-    leftSidebarHoverEnabled,
-    rightSidebarHoverEnabled,
-    setLeftSidebarHoverEnabled,
-    setRightSidebarHoverEnabled,
-  } = useSidebarStore();
+  const { leftSidebarHoverEnabled, setLeftSidebarHoverEnabled } = useSidebarStore();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -262,7 +260,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       try {
                         if (checked) await subscribePush();
                         else await unsubscribePush();
-                      } catch (err: any) {
+                      } catch (err) {
                         console.error("Push toggle error:", err);
                       }
                     }}
@@ -300,6 +298,18 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     <SelectItem value="light">Light</SelectItem>
                     <SelectItem value="dark">Dark</SelectItem>
                     <SelectItem value="system">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              <SettingRow label="Typeface" description="How task and habit titles are set">
+                <Select value={typeMode} onValueChange={(v) => setTypeMode(v as TypeMode)}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sans">Sans</SelectItem>
+                    <SelectItem value="serif">Serif</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>
@@ -345,14 +355,6 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                 </SettingRow>
               )}
 
-              {!isMobile && (
-                <SettingRow label="Show chat sidebar on hover" description="Reveal the right sidebar when hovering the right edge (when collapsed)">
-                  <Switch
-                    checked={rightSidebarHoverEnabled}
-                    onCheckedChange={setRightSidebarHoverEnabled}
-                  />
-                </SettingRow>
-              )}
             </SettingsSection>
 
             {/* Keyboard Shortcuts */}
@@ -431,7 +433,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                       <p className="text-xs text-muted-foreground">Checking connection…</p>
                     ) : openclawConn.chatUrl ? (
                       <div className="space-y-1">
-                        <Badge className="bg-green-600/15 text-green-700 dark:text-green-400 hover:bg-green-600/20 border-green-600/30">
+                        <Badge className="bg-success/15 text-success-text hover:bg-success/20 border-success/30">
                           Connected
                         </Badge>
                         <p className="text-[11px] text-muted-foreground">
@@ -464,7 +466,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-medium text-foreground">Beacon <span className="text-muted-foreground font-normal">(OpenAI fallback)</span></p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Use when OpenClaw isn't connected.</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Use when OpenClaw isn&apos;t connected.</p>
                     </div>
                     <Switch
                       checked={provider === 'openai'}
@@ -489,7 +491,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                             <Loader2 className="h-3.5 w-3.5 text-muted-foreground animate-spin shrink-0" />
                           )}
                           {keyValidation === 'valid' && (
-                            <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                            <Check className="h-3.5 w-3.5 text-success shrink-0" />
                           )}
                           {keyValidation === 'invalid' && (
                             <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
@@ -551,7 +553,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               )}
 
               <SettingRow label="Default time bucket" description="Where new tasks are placed">
-                <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as any)}>
+                <Select value={defaultTimeBucket} onValueChange={(v) => setDefaultTimeBucket(v as TimeBucket)}>
                   <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>

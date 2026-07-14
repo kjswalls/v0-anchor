@@ -1,15 +1,22 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
-const inter = Inter({ 
-  subsets: ["latin"],
-  variable: "--font-sans"
-});
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+})
+
+// Variable font: full weight range + optical sizing; italic for serif microcopy
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  variable: '--font-source-serif',
+})
 
 export const metadata: Metadata = {
   title: 'Anchor — ADHD-Friendly Daily Planning',
@@ -54,9 +61,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  // Keep in sync with --surface-0 in app/globals.css (oklch → hex)
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f8f9fc' },
-    { media: '(prefers-color-scheme: dark)', color: '#1a1b23' },
+    { media: '(prefers-color-scheme: light)', color: '#eeede9' },
+    { media: '(prefers-color-scheme: dark)', color: '#0e1019' },
   ],
 }
 
@@ -67,7 +75,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -77,7 +85,10 @@ export default function RootLayout({
           <SupabaseProvider>
             {children}
           </SupabaseProvider>
-          <Toaster position="bottom-center" closeButton />
+          {/* Bottom-left so the undo toast rises from the same corner as the
+              sidebar history controls; offset lifts it clear of the dock.
+              Single-value offset in sonner 1.x — tune if it sits too high/low. */}
+          <Toaster position="bottom-left" offset={96} closeButton />
         </ThemeProvider>
         <Analytics />
       </body>

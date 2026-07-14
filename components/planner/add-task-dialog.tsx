@@ -37,9 +37,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { IconPicker } from '@/components/primitives/icon-picker';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
+import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 interface AddTaskDialogProps {
@@ -83,10 +85,10 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
   // New category state
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [newProjectEmoji, setNewProjectEmoji] = useState('📋');
+  const [newProjectEmoji, setNewProjectEmoji] = useState(makeIconToken('Briefcase'));
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupEmoji, setNewGroupEmoji] = useState('⭐');
+  const [newGroupEmoji, setNewGroupEmoji] = useState(makeIconToken('Star'));
   
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string; id: string } | null>(null);
@@ -149,7 +151,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       setTaskProject(newProjectName.trim());
       setShowNewProject(false);
       setNewProjectName('');
-      setNewProjectEmoji('📋');
+      setNewProjectEmoji(makeIconToken('Briefcase'));
     }
   };
 
@@ -159,7 +161,7 @@ export function AddTaskDialog({ open, onOpenChange, defaultTab = 'task', default
       setHabitGroup(newGroupName.trim());
       setShowNewGroup(false);
       setNewGroupName('');
-      setNewGroupEmoji('⭐');
+      setNewGroupEmoji(makeIconToken('Star'));
     }
   };
 
@@ -282,29 +284,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                     <Label className="text-xs text-muted-foreground">Project</Label>
                     {showNewProject ? (
                       <div className="flex gap-1">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                              <span>{newProjectEmoji}</span>
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-64 p-2">
-                            <div className="grid grid-cols-6 gap-1">
-                              {EMOJI_OPTIONS.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  className={cn(
-                                    'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                                    newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                                  )}
-                                  onClick={() => setNewProjectEmoji(emoji)}
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                        <IconPicker value={newProjectEmoji} name={newProjectName} onSelect={setNewProjectEmoji} />
                         <Input
                           placeholder="Name"
                           value={newProjectName}
@@ -331,7 +311,10 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                         <SelectContent>
                           {projects.map((project) => (
                             <SelectItem key={project.name} value={project.name}>
-                              <span>{project.emoji} {project.name}</span>
+                              <span className="flex items-center gap-1.5">
+                                <CategoryIcon glyph={project.emoji} name={project.name} />
+                                {project.name}
+                              </span>
                             </SelectItem>
                           ))}
                           <SelectItem value="__new__" className="text-primary">
@@ -538,29 +521,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                     <Label className="text-xs text-muted-foreground">Group</Label>
                     {showNewGroup ? (
                       <div className="flex gap-1">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                              <span>{newGroupEmoji}</span>
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-64 p-2">
-                            <div className="grid grid-cols-6 gap-1">
-                              {EMOJI_OPTIONS.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  className={cn(
-                                    'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                                    newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                                  )}
-                                  onClick={() => setNewGroupEmoji(emoji)}
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                        <IconPicker value={newGroupEmoji} name={newGroupName} onSelect={setNewGroupEmoji} />
                         <Input
                           placeholder="Name"
                           value={newGroupName}
@@ -587,7 +548,10 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                         <SelectContent>
                           {habitGroups.map((group) => (
                             <SelectItem key={group.name} value={group.name}>
-                              <span>{group.emoji} <span className="capitalize">{group.name}</span></span>
+                              <span className="flex items-center gap-1.5">
+                                <CategoryIcon glyph={group.emoji} name={group.name} />
+                                <span className="capitalize">{group.name}</span>
+                              </span>
                             </SelectItem>
                           ))}
                           <SelectItem value="__new__" className="text-primary">

@@ -8,6 +8,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { loadSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
+import type { TimeBucket } from '@/lib/planner-types';
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const initializeStore = usePlannerStore((s) => s.initializeStore);
@@ -45,7 +46,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         animationsEnabled: settings.animations_enabled ?? true,
         weekStartDay: (settings.week_start_day as 'sunday' | 'monday' | 'saturday') ?? 'sunday',
         defaultView: (settings.default_view as 'day' | 'week') ?? 'day',
-        defaultTimeBucket: (settings.default_time_bucket as any) ?? 'anytime',
+        defaultTimeBucket: (settings.default_time_bucket as TimeBucket) ?? 'anytime',
         timeFormat: (settings.time_format as '12h' | '24h') ?? '12h',
         viewMode: (settings.default_view as 'day' | 'week') ?? 'day',
         userTimezone: settings.timezone?.trim() || null,
@@ -53,7 +54,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
       useSidebarStore.setState({
         leftSidebarHoverEnabled: settings.left_sidebar_hover ?? false,
-        rightSidebarHoverEnabled: settings.right_sidebar_hover ?? false,
       });
 
       useMorningStore.setState({

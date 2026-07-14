@@ -21,6 +21,18 @@ export default defineConfig({
         // Match the app's timezone so date helpers and the browser agree on "today".
         timezoneId: 'America/Los_Angeles',
       },
+      // Mobile-tagged tests run in the mobile project below (touch + phone metrics).
+      grepInvert: /@mobile/,
+    },
+    {
+      // iPhone-14 metrics + touch, kept on Chromium so CI needs no WebKit install.
+      name: 'mobile',
+      use: {
+        ...devices['iPhone 14'],
+        defaultBrowserType: 'chromium',
+        timezoneId: 'America/Los_Angeles',
+      },
+      grep: /@mobile/,
     },
   ],
 

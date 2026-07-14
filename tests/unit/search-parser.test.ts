@@ -1,34 +1,80 @@
 import { describe, it, expect } from 'vitest';
-
-// ---------------------------------------------------------------------------
-// Placeholder module — the search parser doesn't exist as a standalone pure
-// function yet. These tests document the EXPECTED behaviour so we can TDD it
-// once the parser is extracted from the component.
-// ---------------------------------------------------------------------------
-
-// Known issue: "task:" and "habit:" keyword filters are not yet implemented (#93)
+import { parseSearchQuery } from '@/lib/search';
 
 describe('search keyword parser', () => {
-  it.todo('empty string returns no filters');
-  // parseSearchQuery('') → { text: '', type: null, priority: null, project: null }
-
-  it.todo('plain text query sets text field only');
-  // parseSearchQuery('meeting notes') → { text: 'meeting notes', type: null, ... }
-
-  it.skip('"task:" prefix filters to tasks only (#93 — keyword not implemented)', () => {
-    // BUG #93: "task:" and "habit:" keywords are not yet implemented.
-    // Once fixed:
-    //   parseSearchQuery('task:standup') → { text: 'standup', type: 'task', ... }
+  it('empty string returns no filters', () => {
+    expect(parseSearchQuery('')).toEqual({ text: '', type: null, priority: null, project: null });
   });
 
-  it.skip('"habit:" prefix filters to habits only (#93 — keyword not implemented)', () => {
-    // BUG #93: same as above for "habit:" keyword
-    //   parseSearchQuery('habit:water') → { text: 'water', type: 'habit', ... }
+  it('plain text query sets text field only', () => {
+    expect(parseSearchQuery('meeting notes')).toEqual({
+      text: 'meeting notes',
+      type: null,
+      priority: null,
+      project: null,
+    });
   });
 
-  it.todo('"priority:high" keyword sets priority filter');
-  // parseSearchQuery('priority:high report') → { text: 'report', priority: 'high', ... }
+  it('"task:" prefix filters to tasks only (#93)', () => {
+    expect(parseSearchQuery('task:standup')).toEqual({
+      text: 'standup',
+      type: 'task',
+      priority: null,
+      project: null,
+    });
+  });
 
-  it.todo('unknown keywords are treated as plain text');
-  // parseSearchQuery('foo:bar baz') → { text: 'foo:bar baz', type: null, ... }
+  it('"habit:" prefix filters to habits only (#93)', () => {
+    expect(parseSearchQuery('habit:water')).toEqual({
+      text: 'water',
+      type: 'habit',
+      priority: null,
+      project: null,
+    });
+  });
+
+  it('"priority:high" keyword sets priority filter', () => {
+    expect(parseSearchQuery('priority:high report')).toEqual({
+      text: 'report',
+      type: null,
+      priority: 'high',
+      project: null,
+    });
+  });
+
+  it('"project:" keyword sets project filter', () => {
+    expect(parseSearchQuery('project:Website copy')).toEqual({
+      text: 'copy',
+      type: null,
+      priority: null,
+      project: 'Website',
+    });
+  });
+
+  it('unknown keywords are treated as plain text', () => {
+    expect(parseSearchQuery('foo:bar baz')).toEqual({
+      text: 'foo:bar baz',
+      type: null,
+      priority: null,
+      project: null,
+    });
+  });
+
+  it('invalid priority values fall back to plain text', () => {
+    expect(parseSearchQuery('priority:urgent fix')).toEqual({
+      text: 'priority:urgent fix',
+      type: null,
+      priority: null,
+      project: null,
+    });
+  });
+
+  it('combines type and priority keywords', () => {
+    expect(parseSearchQuery('task:report priority:high')).toEqual({
+      text: 'report',
+      type: 'task',
+      priority: 'high',
+      project: null,
+    });
+  });
 });
