@@ -37,10 +37,16 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run dev',
+    // In CI, test against a PRODUCTION build (next build && next start) instead
+    // of the dev server. `next dev` compiles routes on-demand at first hit, so
+    // under a test run the first request to each route can take many seconds —
+    // the source of the 30s timeouts / "WebServer aborted" flakiness. A prod
+    // build is fully precompiled, so responses are fast and stable (and it's
+    // what real users hit). Locally, keep the dev server for fast iteration.
+    command: process.env.CI ? 'pnpm build && pnpm start' : 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    timeout: 120 * 1000,
+    reuseExistingServer: !process.env.CI,
+    timeout: (process.env.CI ? 300 : 120) * 1000,
     // Env vars (NEXT_PUBLIC_SUPABASE_URL, TEST_USER_EMAIL, etc.) are read from
     // .env.test — load it before running: `dotenv -e .env.test -- npx playwright test`
     // In CI the env vars are injected via GitHub Actions secrets.
