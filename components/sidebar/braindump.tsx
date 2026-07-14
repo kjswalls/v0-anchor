@@ -173,7 +173,7 @@ function FilterPopover() {
   );
 }
 
-export function Braindump() {
+export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } = {}) {
   const { tasks, habits } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters } = useViewStore();
@@ -261,16 +261,18 @@ export function Braindump() {
           >
             <Plus className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={toggleLeftSidebar}
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar (⌘[)"
-          >
-            <ChevronsLeft className="h-4 w-4" />
-          </Button>
+          {!hideCollapse && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              onClick={toggleLeftSidebar}
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar (⌘[)"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

@@ -15,8 +15,6 @@ import {
   MeasuringStrategy,
 } from '@dnd-kit/core';
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
-import { useSwipeable } from 'react-swipeable';
-
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
@@ -27,11 +25,7 @@ import { ManageCategoriesDialog } from '@/components/planner/manage-categories-d
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
-import { MobileHeader } from '@/components/mobile/mobile-header';
-import { MobileTabBar } from '@/components/mobile/mobile-tab-bar';
-import { MobileTasksPanel } from '@/components/mobile/mobile-tasks-panel';
-import { MobileSchedulePanel } from '@/components/mobile/mobile-schedule-panel';
-import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { MobileShell } from '@/components/shell/mobile-shell';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
@@ -47,9 +41,9 @@ import { resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
 function KbdHint() {
@@ -104,9 +98,9 @@ export function AppShell() {
     undo,
     redo,
   } = usePlannerStore();
-  const { activeTab } = useMobileNavStore();
   const { toggleLeftSidebar, toggleChat, setChatExpanded } = useSidebarStore();
   const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
+  const isMobile = useIsMobile();
 
   useUndoToast();
   useTimezoneSync();
@@ -301,25 +295,6 @@ export function AppShell() {
     }
   };
 
-  // Mobile swipe to switch tabs
-  const MOBILE_TABS: MobileTab[] = ['tasks', 'schedule', 'chat'];
-  const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => {
-      const idx = MOBILE_TABS.indexOf(activeTab);
-      if (idx < MOBILE_TABS.length - 1) {
-        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx + 1]);
-      }
-    },
-    onSwipedRight: () => {
-      const idx = MOBILE_TABS.indexOf(activeTab);
-      if (idx > 0) {
-        useMobileNavStore.getState().setActiveTab(MOBILE_TABS[idx - 1]);
-      }
-    },
-    trackMouse: false,
-    delta: 50,
-    preventScrollOnSwipe: false,
-  });
 
   // Keyboard shortcut handlers — hovered item comes from the module ref
   // (lib/hovered-item), read at keypress time. Not store state: a store write
@@ -367,9 +342,6 @@ export function AppShell() {
   const editingTask = activeDialog?.type === 'edit-task' ? activeDialog.task : null;
   const editingHabit = activeDialog?.type === 'edit-habit' ? activeDialog.habit : null;
 
-  const handleTaskClick = (task: Task) => openEditFor(task, 'task');
-  const handleHabitClick = (habit: Habit) => openEditFor(habit, 'habit');
-
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
     return (
@@ -402,39 +374,10 @@ export function AppShell() {
         },
       }}
     >
-      <DesktopShell />
-
-      {/* Mobile Layout */}
-      <div className="flex h-[100dvh] flex-col bg-background md:hidden">
-        <MobileHeader
-          onAddClick={() => openAddDialog('task')}
-          onOpenSettings={() => openDialog({ type: 'settings' })}
-        />
-        <div className="flex-1 overflow-hidden" {...swipeHandlers}>
-          {activeTab === 'tasks' && (
-            <MobileTasksPanel
-              onTaskClick={handleTaskClick}
-              onHabitClick={handleHabitClick}
-              onAddClick={() => openAddDialog('task')}
-              onAddHabitClick={() => openAddDialog('habit')}
-              onManageCategories={() => openDialog({ type: 'manage-categories' })}
-            />
-          )}
-          {activeTab === 'schedule' && (
-            <MobileSchedulePanel
-              onTaskClick={handleTaskClick}
-              onHabitClick={handleHabitClick}
-              onAddClick={(bucket, type) =>
-                openAddDialog(type, bucket, usePlannerStore.getState().selectedDate)
-              }
-            />
-          )}
-          {activeTab === 'chat' && (
-            <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
-          )}
-        </div>
-        <MobileTabBar />
-      </div>
+      {/* One shell mounts at a time (post-hydration) so the shared view
+          components don't register duplicate dnd-kit droppable ids across the
+          two trees — and mobile no longer pays for the desktop tree, or v.v. */}
+      {isMobile ? <MobileShell /> : <DesktopShell />}
 
       <DragGhost />
 

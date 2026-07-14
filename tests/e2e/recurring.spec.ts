@@ -33,10 +33,13 @@ async function navigateToDate(page: import('@playwright/test').Page, targetDate:
     await page.waitForTimeout(150);
   }
 
-  // Assert the date header in the top nav reflects the target date.
-  // The header button shows the date as "EEEE, MMMM d" (e.g. "Saturday, April 5").
-  const expectedLabel = format(targetDate, 'EEEE, MMMM d');
-  await expect(page.locator('header').getByText(expectedLabel)).toBeVisible({ timeout: 3_000 });
+  // Assert the header reflects the target date. Desktop shows the long form
+  // ("Saturday, April 5"); the mobile header shows the short form ("Sat, Apr 5").
+  const longLabel = format(targetDate, 'EEEE, MMMM d');
+  const shortLabel = format(targetDate, 'EEE, MMM d');
+  await expect(
+    page.locator('header').getByText(new RegExp(`${longLabel}|${shortLabel}`))
+  ).toBeVisible({ timeout: 3_000 });
 }
 
 /**
@@ -313,11 +316,12 @@ test.describe('Recurring tasks and habits', () => {
   });
 });
 
-test.describe('Mobile', () => {
+test.describe('Mobile @mobile', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   async function openMobileSchedule(page: import('@playwright/test').Page) {
-    await page.click('[data-tour="tab-schedule"]');
+    // The redesigned mobile "Today" tab renders the dated day view (DayBuckets).
+    await page.click('[data-tour="tab-today"]');
     await page.waitForTimeout(300);
   }
 
@@ -347,7 +351,7 @@ test.describe('Mobile', () => {
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
@@ -372,9 +376,9 @@ test.describe('Mobile', () => {
       await openMobileSchedule(page);
 
       // Find task card on today and mark complete
-      const taskCard = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle });
+      const taskCard = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle });
       await expect(taskCard).toBeVisible({ timeout: 5_000 });
-      await taskCard.locator('[data-testid="mobile-task-complete-button"]').click();
+      await taskCard.locator('[data-testid="task-complete-button"]').click();
       await page.waitForTimeout(300);
 
       // Navigate to tomorrow — task should appear un-completed
@@ -382,15 +386,15 @@ test.describe('Mobile', () => {
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
       // Confirm task title is not struck through on tomorrow
-      const tomorrowTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
+      const tomorrowTaskTitle = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
       await expect(tomorrowTaskTitle).not.toHaveClass(/line-through/);
 
       // Navigate back to today (schedule tab stays open — no need to re-open it)
       await navigateByDaysFromCurrent(page, -1);
-      const todayTaskTitle = page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
+      const todayTaskTitle = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
       await expect(todayTaskTitle).toHaveClass(/line-through/);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
@@ -416,7 +420,7 @@ test.describe('Mobile', () => {
       await navigateToDate(page, saturday);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="mobile-habit-card"]').filter({ hasText: habitTitle })
+        page.locator('[data-testid="habit-card"]').filter({ hasText: habitTitle })
       ).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [], [habitId]);
@@ -441,7 +445,7 @@ test.describe('Mobile', () => {
 
       // Stay on today — task should be visible
       await expect(
-        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
 
       // Navigate to yesterday — task should NOT appear
@@ -449,7 +453,7 @@ test.describe('Mobile', () => {
       await navigateToDate(page, yesterday);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="mobile-task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
       ).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);

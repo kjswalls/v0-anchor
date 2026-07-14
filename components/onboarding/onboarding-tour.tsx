@@ -180,8 +180,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         if (desktopSubStep === 'B') return '[data-tour="timeline"]';
         if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
       } else {
-        if (mobileSubStep === 'A') return '[data-tour="tab-tasks"]';
-        if (mobileSubStep === 'B') return '[data-tour="tab-schedule"]';
+        if (mobileSubStep === 'A') return '[data-tour="tab-braindump"]';
+        if (mobileSubStep === 'B') return '[data-tour="tab-today"]';
       }
     }
     if (step === 4) {
@@ -231,9 +231,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   useEffect(() => {
     if (step === 3 && isMobile) {
       if (mobileSubStep === 'A') {
-        onSetActiveTabRef.current?.('tasks');
+        onSetActiveTabRef.current?.('braindump');
       } else if (mobileSubStep === 'B') {
-        onSetActiveTabRef.current?.('schedule');
+        onSetActiveTabRef.current?.('today');
       }
     }
   }, [step, isMobile, mobileSubStep]);
@@ -255,7 +255,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
   const handleComplete = useCallback(async () => {
     onCollapseChatRef.current?.();
-    onSetActiveTabRef.current?.('tasks');
+    onSetActiveTabRef.current?.('braindump');
     setIsVisible(false);
     toast.success("You're all set ✨ One thing at a time — you've got this.", {
       description: 'Tip: replay this tour anytime from Settings.',
@@ -320,7 +320,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
   const handleSkip = async () => {
     onCollapseChatRef.current?.();
-    onSetActiveTabRef.current?.('tasks');
+    onSetActiveTabRef.current?.('braindump');
     setIsVisible(false);
     await setOnboardingComplete(userId);
     onComplete();

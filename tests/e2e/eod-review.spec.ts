@@ -333,7 +333,7 @@ test.describe('End of day (EOD) review modal', () => {
     await expect(page.getByRole('dialog', { name: 'End of day' })).toBeVisible({ timeout: 8_000 });
   });
 
-  test.describe('mobile viewport', () => {
+  test.describe('mobile viewport @mobile', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
     test('Tomorrow pill is visible and clickable on mobile', async ({ page }) => {
@@ -349,10 +349,10 @@ test.describe('End of day (EOD) review modal', () => {
       });
 
       try {
-        await page.reload();
-        await page.waitForURL('/');
-
-        await openEODReview(page);
+        // Mobile has no DEV trigger button; open EOD via the ?eod=1 deep link
+        // that app-shell handles (the same path a push notification uses).
+        await page.goto('/?eod=1');
+        await page.waitForLoadState('networkidle');
 
         const dialog = page.getByRole('dialog', { name: 'End of day' });
         await expect(dialog).toBeVisible({ timeout: 5_000 });
