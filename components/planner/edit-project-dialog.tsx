@@ -18,17 +18,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { IconPicker } from '@/components/primitives/icon-picker';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Project, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { EMOJI_OPTIONS, WEEKDAY_LABELS } from '@/lib/planner-types';
+import { WEEKDAY_LABELS } from '@/lib/planner-types';
+import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 interface EditProjectDialogProps {
@@ -67,7 +64,7 @@ const DURATION_OPTIONS = [
 export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDialogProps) {
   const { updateProject } = usePlannerStore();
   
-  const [emoji, setEmoji] = useState(project?.emoji || '📋');
+  const [emoji, setEmoji] = useState(project?.emoji || makeIconToken('Briefcase'));
   const [hasTimeBlock, setHasTimeBlock] = useState(false);
   const [timeBucket, setTimeBucket] = useState<TimeBucket>('morning');
   const [startTime, setStartTime] = useState('05:00');
@@ -166,32 +163,10 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Emoji selector */}
+          {/* Icon selector */}
           <div className="flex items-center gap-4">
             <Label className="w-20 text-sm text-muted-foreground">Icon</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-10 w-10">
-                  <span className="text-xl">{emoji}</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-2">
-                <div className="grid grid-cols-6 gap-1">
-                  {EMOJI_OPTIONS.map((e) => (
-                    <button
-                      key={e}
-                      className={cn(
-                        'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                        emoji === e && 'bg-secondary ring-1 ring-primary'
-                      )}
-                      onClick={() => setEmoji(e)}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </PopoverContent>
-            </Popover>
+            <IconPicker value={emoji} name={project.name} onSelect={setEmoji} className="h-10 w-10" />
           </div>
 
           {/* Time block toggle */}

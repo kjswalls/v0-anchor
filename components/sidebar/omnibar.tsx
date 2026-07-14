@@ -19,6 +19,7 @@ import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { searchItems } from '@/lib/search';
+import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 /**
@@ -204,7 +205,9 @@ export function Omnibar() {
                         task.status === 'completed' ? 'text-success' : 'text-muted-foreground/50'
                       )}
                     />
-                    {task.project && <span>{getProjectEmoji(task.project)}</span>}
+                    {task.project && (
+                      <CategoryIcon glyph={getProjectEmoji(task.project)} name={task.project} />
+                    )}
                     <span
                       className={cn(
                         'truncate font-content',
@@ -230,7 +233,7 @@ export function Omnibar() {
                     }}
                   >
                     <Flame className="h-4 w-4 text-warning" />
-                    <span>{getHabitGroupEmoji(habit.group)}</span>
+                    <CategoryIcon glyph={getHabitGroupEmoji(habit.group)} name={habit.group} />
                     <span className="truncate font-content">{habit.title}</span>
                   </CommandItem>
                 ))}

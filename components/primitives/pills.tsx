@@ -1,6 +1,7 @@
 'use client';
 
 import { Clock, Flame } from 'lucide-react';
+import { CategoryIcon } from '@/lib/category-icons';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -84,14 +85,20 @@ export function CountBadge({ count, className }: { count: number; className?: st
   );
 }
 
-/** Outlined emoji+name chip for a project or habit group; color via inline style. */
+/**
+ * Outlined chip for a project or habit group; color via inline style. Shows
+ * a Lucide category icon resolved from the name (lib/category-icons); the
+ * emoji is only a fallback when no name is available.
+ */
 export function TagPill({
   emoji,
+  glyph,
   name,
   color,
   className,
 }: {
   emoji?: string | null;
+  glyph?: string | null;
   name: string;
   color?: string;
   className?: string;
@@ -111,7 +118,11 @@ export function TagPill({
           : undefined
       }
     >
-      {emoji && <span aria-hidden>{emoji}</span>}
+      {name ? (
+        <CategoryIcon glyph={glyph} name={name} className="h-2.5 w-2.5" />
+      ) : (
+        emoji && <span aria-hidden>{emoji}</span>
+      )}
       <span className="truncate text-foreground/80">{name}</span>
     </span>
   );

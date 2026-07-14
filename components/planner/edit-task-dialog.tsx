@@ -37,9 +37,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { IconPicker } from '@/components/primitives/icon-picker';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
+import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 interface EditTaskDialogProps {
@@ -216,29 +218,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                 <Label className="text-xs text-muted-foreground">Project</Label>
                 {showNewProject ? (
                   <div className="flex gap-1">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                          <span>{newProjectEmoji || '+'}</span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-64 p-2">
-                        <div className="grid grid-cols-6 gap-1">
-                          {EMOJI_OPTIONS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              className={cn(
-                                'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                                newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                              )}
-                              onClick={() => setNewProjectEmoji(emoji)}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                    <IconPicker value={newProjectEmoji} name={newProjectName} onSelect={setNewProjectEmoji} />
                     <Input
                       placeholder="Name"
                       value={newProjectName}
@@ -266,7 +246,10 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                       <SelectItem value="none">None</SelectItem>
                       {projects.map((p) => (
                         <SelectItem key={p.name} value={p.name}>
-                          {p.emoji} {p.name}
+                          <span className="flex items-center gap-1.5">
+                            <CategoryIcon glyph={p.emoji} name={p.name} />
+                            {p.name}
+                          </span>
                         </SelectItem>
                       ))}
                       <SelectItem value="__new__" className="text-primary">

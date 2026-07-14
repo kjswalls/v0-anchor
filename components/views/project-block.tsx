@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import type { Task, Project } from '@/lib/planner-types';
+import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 /**
@@ -100,7 +101,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
       style={{ borderColor: isOver ? undefined : projectColor }}
     >
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-lg">{project.emoji}</span>
+        <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4" />
         <span className="font-content text-sm text-foreground">{project.name}</span>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />

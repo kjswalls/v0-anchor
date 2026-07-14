@@ -45,6 +45,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Habit, GroupBy, Priority, TimeBucket } from '@/lib/planner-types';
+import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 import { useDraggable } from '@dnd-kit/core';
 
@@ -129,13 +130,10 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
         )}
         onClick={onClick}
       >
-        {/* Large background emoji */}
-        {projectEmoji && (
-          <span
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-5xl opacity-[0.08] select-none pointer-events-none"
-            style={{ lineHeight: 1 }}
-          >
-            {projectEmoji}
+        {/* Large background icon */}
+        {task.project && (
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.08] select-none pointer-events-none">
+            <CategoryIcon glyph={projectEmoji} name={task.project} className="h-12 w-12" />
           </span>
         )}
         
@@ -167,9 +165,9 @@ function MobileTaskItem({ task, onClick }: { task: Task; onClick: () => void }) 
           </p>
           
           <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
-            {projectEmoji && task.project && (
+            {task.project && (
               <span className="flex items-center gap-1 leading-none">
-                <span className="text-sm">{projectEmoji}</span>
+                <CategoryIcon glyph={projectEmoji} name={task.project} />
                 <span>{task.project}</span>
               </span>
             )}
@@ -358,9 +356,9 @@ function MobileHabitItem({ habit, onClick }: { habit: Habit; onClick: () => void
       }}
       onClick={onClick}
     >
-      {/* Background emoji */}
-      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-4xl opacity-[0.08] select-none pointer-events-none" style={{ lineHeight: 1 }}>
-        {groupEmoji}
+      {/* Background icon */}
+      <span className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.08] select-none pointer-events-none">
+        <CategoryIcon glyph={groupEmoji} name={habit.group} className="h-10 w-10" />
       </span>
 
       {/* Status circle */}
@@ -382,7 +380,7 @@ function MobileHabitItem({ habit, onClick }: { habit: Habit; onClick: () => void
         <div className="flex items-center gap-2 mt-2 flex-wrap text-xs text-muted-foreground">
           {habit.group && (
             <span className="flex items-center gap-1 leading-none">
-              {groupEmoji && <span className="text-sm">{groupEmoji}</span>}
+              <CategoryIcon glyph={groupEmoji} name={habit.group} />
               <span>{habit.group}</span>
             </span>
           )}
@@ -549,12 +547,12 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
                                   ? 'bg-primary text-primary-foreground border-primary' 
                                   : 'border-border hover:bg-accent'
                               )}
-                              onClick={() => setFilters({ 
-                                ...filters, 
-                                project: filters.project === p.name ? undefined : p.name 
+                              onClick={() => setFilters({
+                                ...filters,
+                                project: filters.project === p.name ? undefined : p.name
                               })}
                             >
-                              <span>{getProjectEmoji(p.name)}</span>
+                              <CategoryIcon glyph={getProjectEmoji(p.name)} name={p.name} />
                               <span>{p.name}</span>
                             </button>
                           ))}
@@ -658,7 +656,8 @@ export function MobileTasksPanel({ onTaskClick, onHabitClick, onAddClick, onAddH
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {filters.project && (
                   <Badge variant="secondary" className="text-xs h-6 px-2 gap-1">
-                    {getProjectEmoji(filters.project)} {filters.project}
+                    <CategoryIcon glyph={getProjectEmoji(filters.project)} name={filters.project} />
+                    {filters.project}
                     <button onClick={() => setFilters({ ...filters, project: undefined })} className="hover:text-destructive">
                       <X className="h-3 w-3" />
                     </button>

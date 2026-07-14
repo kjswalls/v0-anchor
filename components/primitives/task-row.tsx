@@ -277,6 +277,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         {!compact && !inBraindump && emoji && (isTask ? task!.project : habit!.group) && (
           <TagPill
             emoji={emoji}
+            glyph={emoji}
             name={isTask ? task!.project! : habit!.group}
             color={tagColor}
             className="hidden lg:inline-flex"

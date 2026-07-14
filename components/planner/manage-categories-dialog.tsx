@@ -22,16 +22,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { IconPicker } from '@/components/primitives/icon-picker';
 import { usePlannerStore } from '@/lib/planner-store';
-import { EMOJI_OPTIONS } from '@/lib/planner-types';
-import { cn } from '@/lib/utils';
+import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
 
 interface ManageCategoriesDialogProps {
   open: boolean;
@@ -41,9 +36,9 @@ interface ManageCategoriesDialogProps {
 export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesDialogProps) {
   const { projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup } = usePlannerStore();
   const [newProject, setNewProject] = useState('');
-  const [newProjectEmoji, setNewProjectEmoji] = useState('📋');
+  const [newProjectEmoji, setNewProjectEmoji] = useState(makeIconToken('Briefcase'));
   const [newGroup, setNewGroup] = useState('');
-  const [newGroupEmoji, setNewGroupEmoji] = useState('⭐');
+  const [newGroupEmoji, setNewGroupEmoji] = useState(makeIconToken('Star'));
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string; id: string } | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -51,7 +46,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
     if (newProject.trim()) {
       addProject(newProject.trim(), newProjectEmoji);
       setNewProject('');
-      setNewProjectEmoji('📋');
+      setNewProjectEmoji(makeIconToken('Briefcase'));
     }
   };
 
@@ -59,7 +54,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
     if (newGroup.trim()) {
       addHabitGroup(newGroup.trim(), newGroupEmoji);
       setNewGroup('');
-      setNewGroupEmoji('⭐');
+      setNewGroupEmoji(makeIconToken('Star'));
     }
   };
 
@@ -99,29 +94,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
 
             <TabsContent value="projects" className="mt-4 space-y-4">
               <div className="flex gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                      <span>{newProjectEmoji}</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2">
-                    <div className="grid grid-cols-6 gap-1">
-                      {EMOJI_OPTIONS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          className={cn(
-                            'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                            newProjectEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                          )}
-                          onClick={() => setNewProjectEmoji(emoji)}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <IconPicker value={newProjectEmoji} name={newProject} onSelect={setNewProjectEmoji} />
                 <Input
                   placeholder="New project name..."
                   value={newProject}
@@ -146,7 +119,10 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                       className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-foreground">{project.emoji} {project.name}</span>
+                        <span className="flex items-center gap-1.5 text-sm text-foreground">
+                          <CategoryIcon glyph={project.emoji} name={project.name} />
+                          {project.name}
+                        </span>
                         {project.startTime && project.timeBucket && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                             {project.startTime} · {project.duration}m
@@ -179,29 +155,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
 
             <TabsContent value="groups" className="mt-4 space-y-4">
               <div className="flex gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 flex-shrink-0">
-                      <span>{newGroupEmoji}</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2">
-                    <div className="grid grid-cols-6 gap-1">
-                      {EMOJI_OPTIONS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          className={cn(
-                            'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
-                            newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
-                          )}
-                          onClick={() => setNewGroupEmoji(emoji)}
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <IconPicker value={newGroupEmoji} name={newGroup} onSelect={setNewGroupEmoji} />
                 <Input
                   placeholder="New group name..."
                   value={newGroup}
@@ -225,7 +179,10 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                       key={group.name}
                       className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
                     >
-                      <span className="text-sm text-foreground">{group.emoji} <span className="capitalize">{group.name}</span></span>
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <CategoryIcon glyph={group.emoji} name={group.name} />
+                        <span className="capitalize">{group.name}</span>
+                      </span>
                       <Button
                         variant="ghost"
                         size="icon"
