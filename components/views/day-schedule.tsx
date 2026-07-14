@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -13,7 +13,7 @@ import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, Habit } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -93,23 +93,31 @@ function HourSlot({
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour:${hour}`, disabled: !isActive });
   return (
-    <div ref={setNodeRef} data-dnd-id={`hour:${hour}`} className="flex" style={{ height: HOUR_PX }}>
+    <div ref={setNodeRef} data-dnd-id={`hour:${hour}`} className="relative flex" style={{ height: HOUR_PX }}>
+      {/* Gutter: one contiguous bordered column (Figma). Each cell draws only a
+          bottom border; the first also a top border — so boundaries are a single
+          1px line, never the doubled 2px the earlier per-cell full border made.
+          Left corners round to the canvas panel; the right side stays square. */}
       <div
         className={cn(
-          'w-[88px] flex-shrink-0 border border-surface-3 bg-canvas pl-5 pt-[15px] text-xs font-medium text-foreground',
-          isFirst && 'rounded-tl-[20px]',
+          'w-[88px] flex-shrink-0 border-x border-b border-border bg-canvas pl-[17px] pt-[15px] text-xs font-medium text-foreground',
+          isFirst && 'rounded-tl-[20px] border-t',
           isLast && 'rounded-bl-[20px]'
         )}
       >
         {label}
       </div>
-      <div
-        className={cn(
-          'flex-1 border-t border-border/30 transition-colors',
-          isActive && 'border-dashed',
-          isOver && 'bg-primary/10'
-        )}
-      />
+      {/* Hour line in the event area, inset both sides (Figma: 147px from left,
+          17px from right — shorter than the blocks). None above the first row. */}
+      {!isFirst && (
+        <div
+          className={cn(
+            'pointer-events-none absolute left-[147px] right-[17px] top-0 border-t border-border/50',
+            isActive && 'border-dashed'
+          )}
+        />
+      )}
+      <div className={cn('flex-1 transition-colors', isOver && 'bg-primary/10')} />
     </div>
   );
 }
@@ -123,7 +131,7 @@ export function ScheduleBlock({
   gridStartMin: number;
   date?: Date;
 }) {
-  const { getProjectColor, getHabitGroupColor, selectedDate, userTimezone, toggleTaskStatus } =
+  const { getProjectColor, getHabitGroupColor, selectedDate, userTimezone, toggleTaskStatus, updateTask } =
     usePlannerStore();
   const { item, itemType } = entry;
   const isTask = itemType === 'task';
@@ -145,13 +153,69 @@ export function ScheduleBlock({
       : 'var(--primary)'
     : getHabitGroupColor(habit!.group);
 
-  const top = ((entry.startMin - gridStartMin) / 60) * HOUR_PX;
-  const height = Math.max((entry.duration / 60) * HOUR_PX, 34);
+  // Drag-to-resize a task's own-timed block (habits have no duration column,
+  // project blocks take their length from the project — both are excluded).
+  // Bottom edge changes duration; top edge changes start (bottom fixed).
+  // Live preview from local state; the store write lands on pointer-up.
+  const canResize = isTask && !!task!.startTime && !task!.inProjectBlock;
+  const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
+  const resizeRef = useRef<{ y: number; edge: 'top' | 'bottom'; startMin: number; duration: number } | null>(null);
+  const effStartMin = preview?.startMin ?? entry.startMin;
+  const effDuration = preview?.duration ?? entry.duration;
+
+  const snap = (m: number) => Math.round(m / 15) * 15;
+  const minToTime = (m: number) =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const bucketForMin = (m: number): TimeBucket => {
+    const h = Math.floor(m / 60);
+    return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  };
+
+  const onResizeDown = (edge: 'top' | 'bottom', e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    resizeRef.current = { y: e.clientY, edge, startMin: entry.startMin, duration: entry.duration };
+    setPreview({ startMin: entry.startMin, duration: entry.duration });
+  };
+  const onResizeMove = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    const delta = ((e.clientY - r.y) / HOUR_PX) * 60;
+    if (r.edge === 'bottom') {
+      setPreview({ startMin: r.startMin, duration: Math.max(15, snap(r.duration + delta)) });
+    } else {
+      const end = r.startMin + r.duration;
+      const ns = Math.min(Math.max(0, snap(r.startMin + delta)), end - 15);
+      setPreview({ startMin: ns, duration: end - ns });
+    }
+  };
+  const onResizeUp = () => {
+    const r = resizeRef.current;
+    const p = preview;
+    resizeRef.current = null;
+    setPreview(null);
+    if (!r || !task || !p) return;
+    if (r.edge === 'bottom') {
+      if (p.duration !== entry.duration) updateTask(task.id, { duration: p.duration });
+    } else if (p.startMin !== entry.startMin || p.duration !== entry.duration) {
+      updateTask(task.id, {
+        startTime: minToTime(p.startMin),
+        duration: p.duration,
+        timeBucket: bucketForMin(p.startMin),
+      });
+    }
+  };
+
+  const top = ((effStartMin - gridStartMin) / 60) * HOUR_PX;
+  const height = Math.max((effDuration / 60) * HOUR_PX, 34);
 
   // Blocks are drag sources — drop on another hour to reschedule, or on the
-  // Anytime section to un-time. Same post-drop click guard as TaskRow so a
-  // drop doesn't open the edit dialog.
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: item.id });
+  // Anytime section to un-time. The source stays in place (dimmed) while the
+  // DragOverlay ghost moves — same as TaskRow, and cheaper to repaint than
+  // transforming this shadowed block every pointermove. Post-drop click guard
+  // keeps a drop from opening the edit dialog.
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: item.id });
   const wasDraggedRef = useRef(false);
   useEffect(() => {
     if (isDragging) {
@@ -176,16 +240,11 @@ export function ScheduleBlock({
         openEditFor(item, itemType);
       }}
       className={cn(
-        'absolute left-0 right-0 cursor-grab touch-manipulation overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] transition-shadow hover:shadow-soft-md active:cursor-grabbing',
-        isDragging && 'z-50 opacity-50',
+        'group/blk absolute left-0 right-0 cursor-grab touch-manipulation overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] active:cursor-grabbing',
+        isDragging && 'opacity-50',
         done && 'opacity-60'
       )}
-      style={{
-        top,
-        height,
-        borderLeft: `3px solid ${accent}`,
-        ...(transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : {}),
-      }}
+      style={{ top, height, borderLeft: `3px solid ${accent}` }}
     >
       <div className="flex items-start gap-2 px-[21px] py-[9px]">
         {isTask && (
@@ -212,9 +271,36 @@ export function ScheduleBlock({
         </span>
         <span className="flex flex-shrink-0 items-center gap-1.5">
           {task?.priority && <PriorityPill priority={task.priority} />}
-          {entry.duration > 0 && <DurationPill minutes={entry.duration} />}
+          {effDuration > 0 && <DurationPill minutes={effDuration} />}
         </span>
       </div>
+
+      {/* Resize handles — drag the top or bottom edge to set start/duration.
+          A grabber bar fades in on block hover so the affordance is visible. */}
+      {canResize && (
+        <>
+          <div
+            onPointerDown={(e) => onResizeDown('top', e)}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeUp}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-x-0 top-0 z-10 flex h-2 cursor-ns-resize items-start justify-center"
+            aria-label="Resize start"
+          >
+            <div className="mt-0.5 h-1 w-6 rounded-full bg-foreground/25 opacity-0 transition-opacity group-hover/blk:opacity-60" />
+          </div>
+          <div
+            onPointerDown={(e) => onResizeDown('bottom', e)}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeUp}
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-x-0 bottom-0 z-10 flex h-2 cursor-ns-resize items-end justify-center"
+            aria-label="Resize duration"
+          >
+            <div className="mb-0.5 h-1 w-6 rounded-full bg-foreground/25 opacity-0 transition-opacity group-hover/blk:opacity-60" />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -280,7 +366,8 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               />
             ))}
           </div>
-          <div className="absolute inset-y-0 left-[132px] right-0">
+          {/* Blocks sit ~4px below their hour line (Figma), not flush on it. */}
+          <div className="absolute bottom-0 left-[132px] right-0 top-1">
             {timed.map((entry) => (
               <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartHour * 60} />
             ))}
