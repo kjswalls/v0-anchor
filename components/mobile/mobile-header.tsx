@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format, isToday } from 'date-fns';
-import { Calendar, Plus, Rows3, List, Check, ChevronDown } from 'lucide-react';
+import { Calendar, Plus, Rows3, List, Clock, Check, ChevronDown } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -26,6 +26,7 @@ interface MobileHeaderProps {
 const LAYOUTS: { value: ViewLayout; label: string; icon: typeof Rows3 }[] = [
   { value: 'buckets', label: 'Buckets', icon: Rows3 },
   { value: 'list', label: 'List', icon: List },
+  { value: 'schedule', label: 'Schedule', icon: Clock },
 ];
 
 export function MobileHeader({ onAddClick, onOpenSettings }: MobileHeaderProps) {
