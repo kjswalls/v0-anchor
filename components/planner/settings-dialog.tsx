@@ -37,7 +37,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore, type TypeMode } from '@/lib/view-store';
 import { saveSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
-import { useIsMobile } from '@/components/ui/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface SettingsDialogProps {
   open: boolean;
