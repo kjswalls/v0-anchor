@@ -36,7 +36,11 @@ interface OmniCommand {
   run: () => void;
 }
 
-export function Omnibar() {
+/**
+ * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
+ *   grows the sidebar dock (default); mobile switches to the Chat tab.
+ */
+export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
   const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
   const openDialog = useUIStore((s) => s.openDialog);
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
@@ -57,13 +61,13 @@ export function Omnibar() {
   // Click outside closes the panel
   useEffect(() => {
     if (!open) return;
-    const onMouseDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
   const commands: OmniCommand[] = useMemo(
@@ -158,7 +162,8 @@ export function Omnibar() {
   };
 
   const askBeacon = () => {
-    useSidebarStore.getState().setChatExpanded(true);
+    if (onAskBeacon) onAskBeacon();
+    else useSidebarStore.getState().setChatExpanded(true);
     if (chatText) useChatStore.getState().send(chatText);
     closeAndClear();
     inputRef.current?.blur();

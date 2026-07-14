@@ -33,8 +33,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title ?? 'Anchor';
   const options: NotificationOptions = {
     body: payload.body ?? '',
-    icon: '/icon-192x192.png',
-    badge: '/icon-192x192.png',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
     data: { url: payload.url ?? '/' },
   };
 

@@ -8,6 +8,7 @@ import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
 import { Braindump } from '@/components/sidebar/braindump';
+import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
 import { openAddDialog, useUIStore } from '@/lib/ui-store';
 
@@ -58,6 +59,14 @@ export function MobileShell() {
           <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
         )}
       </div>
+
+      {/* Persistent capture strip — always one tap away (hidden on Chat, which
+          has its own input). Its results panel opens upward over the content. */}
+      {activeTab !== 'chat' && (
+        <div className="border-t border-border bg-card px-3 py-2">
+          <Omnibar onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')} />
+        </div>
+      )}
 
       <MobileTabBar />
     </div>
