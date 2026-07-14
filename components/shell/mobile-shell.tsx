@@ -11,7 +11,7 @@ import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
-import { openAddDialog, useUIStore } from '@/lib/ui-store';
+import { useUIStore } from '@/lib/ui-store';
 
 /**
  * Mobile layout: slim header + (Today-only) day strip, the active tab's
@@ -42,10 +42,7 @@ export function MobileShell() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background md:hidden">
-      <MobileHeader
-        onAddClick={() => openAddDialog('task')}
-        onOpenSettings={() => openDialog({ type: 'settings' })}
-      />
+      <MobileHeader onOpenSettings={() => openDialog({ type: 'settings' })} />
 
       {activeTab === 'today' && <MiniWeekNav />}
 
