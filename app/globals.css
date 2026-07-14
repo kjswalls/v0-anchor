@@ -509,7 +509,9 @@ body {
   [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
     left: 20px !important;
     right: auto !important;
-    bottom: 168px !important;
+    /* --toast-bottom is measured from the live dock (sidebar-dock.tsx); the
+       fallback covers the moment before it's set. */
+    bottom: var(--toast-bottom, 156px) !important;
     width: 356px !important;
   }
 }
