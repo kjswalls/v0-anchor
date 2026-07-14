@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2 } from 'lucide-react';
+import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
+import { useScheduleSheet } from '@/lib/schedule-sheet-store';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
@@ -53,6 +55,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     userTimezone,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
+  const isMobile = useIsMobile();
   const { item, itemType } = row;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
@@ -284,8 +287,22 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           />
         )}
 
-        {/* Hover controls */}
-        {!inBraindump && (
+        {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
+            no hover, so the desktop cluster below is hidden on mobile). */}
+        {isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground"
+            aria-label="Actions"
+            onClick={() => useScheduleSheet.getState().open(row)}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        )}
+
+        {/* Hover controls (desktop) */}
+        {!inBraindump && !isMobile && (
           <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100">
             {isTask && (
               <Button
@@ -320,7 +337,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             </Button>
           </span>
         )}
-        {inBraindump && (
+        {inBraindump && !isMobile && (
           <Button
             variant="ghost"
             size="icon"

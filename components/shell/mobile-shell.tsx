@@ -7,6 +7,7 @@ import { MobileTabBar } from '@/components/mobile/mobile-tab-bar';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
+import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
@@ -69,6 +70,8 @@ export function MobileShell() {
       )}
 
       <MobileTabBar />
+
+      <ScheduleSheet />
     </div>
   );
 }
