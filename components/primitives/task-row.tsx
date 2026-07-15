@@ -8,6 +8,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
@@ -176,7 +177,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const showMultiControls =
     habit && habit.timesPerDay && habit.timesPerDay > 1 && habitStatus === 'pending' && (showMulti || (habitEffectiveCount ?? 0) > 0);
 
-  return (
+  const rowContent = (
     <div
       ref={setNodeRef}
       style={style}
@@ -371,4 +372,19 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       </div>
     </div>
   );
+
+  // Mobile: reveal Schedule / Complete / Delete on swipe-left. Desktop returns
+  // the row unchanged (hover controls + the ellipsis handle these actions).
+  if (isMobile) {
+    return (
+      <SwipeRow
+        onComplete={isTask ? handleTaskToggle : handleHabitToggle}
+        onSchedule={() => useScheduleSheet.getState().open(row)}
+        onDelete={handleDelete}
+      >
+        {rowContent}
+      </SwipeRow>
+    );
+  }
+  return rowContent;
 }

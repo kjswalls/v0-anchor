@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useSwipeable } from 'react-swipeable';
 
 import { MobileHeader } from '@/components/mobile/mobile-header';
@@ -11,6 +12,7 @@ import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
 import { useUIStore } from '@/lib/ui-store';
+import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
 /**
  * Mobile layout: slim header + (Today-only) day strip, the active tab's
@@ -23,14 +25,19 @@ export function MobileShell() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
 
+  // Close any open row swipe-actions when switching tabs.
+  useEffect(() => closeAllRowSwipes(), [activeTab]);
+
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
+      if (rowSwipeActive.current) return; // a row swipe is in progress, not a tab swipe
       const idx = MOBILE_TAB_ORDER.indexOf(activeTab);
       if (idx < MOBILE_TAB_ORDER.length - 1) {
         useMobileNavStore.getState().setActiveTab(MOBILE_TAB_ORDER[idx + 1]);
       }
     },
     onSwipedRight: () => {
+      if (rowSwipeActive.current) return;
       const idx = MOBILE_TAB_ORDER.indexOf(activeTab);
       if (idx > 0) useMobileNavStore.getState().setActiveTab(MOBILE_TAB_ORDER[idx - 1]);
     },
@@ -46,6 +53,12 @@ export function MobileShell() {
       {activeTab === 'today' && <MiniWeekNav />}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
+        {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
+            under [data-reduce-motion]). */}
+        <div
+          key={activeTab}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
+        >
         {activeTab === 'chat' ? (
           <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
         ) : (
@@ -58,6 +71,7 @@ export function MobileShell() {
             {activeTab === 'today' && <MobileViewRouter />}
           </div>
         )}
+        </div>
       </div>
 
       <MobileBottomDock />
