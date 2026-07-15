@@ -409,6 +409,16 @@ body {
   padding-inline: 2rem;
 }
 
+/* On phones the views live inside a floating rounded panel (mobile-shell),
+   so the desktop 2rem gutter would waste ~64px of a 390px screen. Desktop is
+   md:/≥768, so this override never touches it. */
+@media (max-width: 767px) {
+  .canvas-container {
+    padding-inline: 0.875rem;
+    max-width: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

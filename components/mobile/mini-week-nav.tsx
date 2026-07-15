@@ -42,7 +42,7 @@ export function MiniWeekNav() {
   }, [selectedDate, days]);
 
   return (
-    <div className="flex items-center gap-1 px-2 py-2 border-b border-border bg-card">
+    <div className="mx-3 mb-1 flex items-center gap-1 rounded-[16px] border border-surface-3 bg-surface-2 px-1.5 py-1 shadow-soft-sm">
       <Button
         variant="ghost"
         size="icon"

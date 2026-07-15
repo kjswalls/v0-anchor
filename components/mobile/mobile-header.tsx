@@ -45,8 +45,12 @@ export function MobileHeader({ onOpenSettings }: MobileHeaderProps) {
   const LayoutIcon = currentLayout.icon;
 
   return (
-    <header className="border-b border-border bg-card pt-safe">
-      <div className="flex items-center justify-between px-3 py-2.5">
+    <header className="pt-safe">
+      {/* A shadowed white pill floating on the paper backdrop (desktop's
+          white-pill recipe: surface-2 + surface-3 hairline + hard shadow that
+          still reads in light mode). pt-safe on the header, mt-2 on the pill —
+          separate elements, so the safe inset and the top gap don't collide. */}
+      <div className="mx-3 mt-2 flex items-center justify-between rounded-[16px] border border-surface-3 bg-surface-2 px-2 py-1.5 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.15)]">
         <div className="flex items-center gap-1">
           <UserProfileDropdown onOpenSettings={onOpenSettings} />
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>

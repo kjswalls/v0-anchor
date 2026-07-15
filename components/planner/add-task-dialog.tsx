@@ -6,12 +6,12 @@ import { CalendarIcon, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+  ResponsiveModalDescription,
+} from '@/components/ui/responsive-modal';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -225,9 +225,9 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-<DialogContent
-  className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto overflow-x-hidden"
+      <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+        <ResponsiveModalContent
+          className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
               e.preventDefault();
@@ -235,12 +235,12 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
             }
           }}
         >
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Add New</DialogTitle>
-            <DialogDescription className="sr-only">
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle className="text-foreground">Add New</ResponsiveModalTitle>
+            <ResponsiveModalDescription className="sr-only">
               Add a new task or habit to your daily planner.
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'task' | 'habit')}>
             <TabsList className="grid w-full grid-cols-2 bg-secondary">
@@ -690,8 +690,8 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
 </Button>
   </TabsContent>
           </Tabs>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
