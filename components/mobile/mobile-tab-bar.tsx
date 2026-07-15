@@ -27,7 +27,7 @@ export function MobileTabBar() {
   };
 
   return (
-    <nav className="flex items-center justify-around border-t border-border bg-card pb-safe">
+    <nav className="flex items-center gap-1">
       {MOBILE_TAB_ORDER.map((id) => {
         const Icon = icons[id];
         const isActive = activeTab === id;
@@ -37,8 +37,8 @@ export function MobileTabBar() {
             data-tour={`tab-${id}`}
             onClick={() => setActiveTab(id)}
             className={cn(
-              'flex min-w-[72px] flex-col items-center justify-center gap-1 px-6 py-2 transition-colors',
-              isActive ? 'text-primary' : 'text-muted-foreground'
+              'flex flex-1 flex-col items-center justify-center gap-1 rounded-[16px] py-1.5 transition-all',
+              isActive ? 'bg-surface-2 text-primary shadow-soft-sm' : 'text-muted-foreground'
             )}
           >
             <Icon className={cn('h-5 w-5', isActive && 'stroke-[2.5]')} />

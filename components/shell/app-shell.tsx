@@ -351,11 +351,12 @@ export function AppShell() {
           <div className="w-80 rounded-panel bg-sidebar" />
           <main className="flex-1 rounded-panel bg-canvas" />
         </div>
-        {/* Mobile skeleton */}
-        <div className="flex h-[100dvh] flex-col bg-background md:hidden">
-          <div className="h-14 border-b border-border bg-card" />
-          <div className="flex-1 bg-background" />
-          <div className="h-14 border-t border-border bg-card" />
+        {/* Mobile skeleton — matches the floating-chrome silhouette (header
+            pill · content panel · bottom dock) so there's no flash of flat bars. */}
+        <div className="flex h-[100dvh] flex-col bg-surface-0 md:hidden">
+          <div className="mx-3 mt-2 h-11 flex-shrink-0 rounded-[16px] bg-surface-2" />
+          <div className="mx-2 my-2 flex-1 rounded-[24px] border border-surface-3 bg-canvas" />
+          <div className="mx-3 mb-3 h-24 flex-shrink-0 rounded-[24px] bg-surface-3" />
         </div>
       </>
     );
