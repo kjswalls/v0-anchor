@@ -1,0 +1,31 @@
+# Normalize line endings to LF — in the repo AND in every working tree,
+# on macOS, Windows, and Linux alike. The repo was authored on macOS (LF);
+# this keeps a Windows checkout (core.autocrlf) from silently introducing
+# CRLF and producing whole-file diffs.
+* text=auto eol=lf
+
+# Batch/PowerShell-adjacent scripts that genuinely require CRLF to run.
+# (None exist today — this is a guard for anything added later.)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never apply text or EOL processing.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.avif  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.pdf   binary
+*.mp4   binary
+*.webm  binary
+
+# Lockfiles are text (keep LF) but noisy in review — collapse their diffs.
+pnpm-lock.yaml   -diff
+package-lock.json -diff
