@@ -240,7 +240,7 @@ export function ScheduleBlock({
         openEditFor(item, itemType);
       }}
       className={cn(
-        'group/blk absolute left-0 right-0 cursor-grab touch-manipulation overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[2px_4px_7px_0px_rgba(0,0,0,0.2)] active:cursor-grabbing',
+        'group/blk absolute left-0 right-0 cursor-grab touch-manipulation overflow-hidden rounded-[5px] bg-surface-3/60 shadow-[var(--shadow-elev-md)] active:cursor-grabbing',
         isDragging && 'opacity-50',
         done && 'opacity-60'
       )}
@@ -339,7 +339,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             data-dnd-id="unscheduled:anytime"
             className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
-            <GroupSection label="Anytime">
+            <GroupSection label="Anytime" variant="canvas">
               {untimed.map((row) => (
                 <TaskRow key={row.item.id} row={row} />
               ))}

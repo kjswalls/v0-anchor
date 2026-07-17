@@ -109,7 +109,7 @@ export function DayList() {
           </div>
         ) : (
           groups.map(([label, rows]) => (
-            <GroupSection key={label} label={label}>
+            <GroupSection key={label} label={label} variant="canvas">
               {rows.map((row) => (
                 <TaskRow key={row.item.id} row={row as never} />
               ))}

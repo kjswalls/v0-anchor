@@ -338,7 +338,7 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
           }}
           placeholder="Search, add a task, start a chat, run a command..."
           aria-label="Omnibar"
-          className="h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-sm text-foreground shadow-[1px_4px_5.3px_2px_rgba(0,0,0,0.1)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
+          className="h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-sm text-foreground shadow-[var(--shadow-elev-sm)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
         />
       </Command>
     </div>

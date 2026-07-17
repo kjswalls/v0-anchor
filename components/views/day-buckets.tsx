@@ -140,14 +140,14 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
             className="space-y-2 pl-4"
           >
             {untimedHabits.length > 0 && (
-              <GroupSection label="Habits">
+              <GroupSection label="Habits" variant="canvas">
                 {untimedHabits.map((habit) => (
                   <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} />
                 ))}
               </GroupSection>
             )}
             {untimedTaskGroups.map(([label, groupTasks]) => (
-              <GroupSection key={label} label={label}>
+              <GroupSection key={label} label={label} variant="canvas">
                 {groupTasks.map((task) => (
                   <TaskRow key={task.id} row={{ itemType: 'task', item: task }} />
                 ))}

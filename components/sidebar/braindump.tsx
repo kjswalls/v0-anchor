@@ -237,7 +237,7 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
           for the Linear-style exploration. */}
       <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px]">
-        <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.15)]">
+        <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
           <AlignLeft className="h-4 w-4 text-muted-foreground" />
           <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
             Braindump

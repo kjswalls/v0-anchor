@@ -22,7 +22,7 @@ export function DesktopShell() {
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
       <Sidebar />
 
-      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] bg-canvas shadow-[-2px_2px_4.8px_0px_rgba(0,0,0,0.1)]">
+      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] bg-canvas shadow-[var(--shadow-elev-md)]">
         {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div

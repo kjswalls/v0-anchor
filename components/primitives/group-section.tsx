@@ -15,16 +15,24 @@ import { cn } from '@/lib/utils';
  * label's font color.
  * The whole heading row is the hit target — hovering anywhere reveals the
  * chevron and a subtle highlight, Linear-style. Collapse state is local.
+ *
+ * `variant` picks the surface. 'sidebar' (default, the Braindump) keeps the
+ * leading type icon and the content-color label. 'canvas' (the body/day
+ * views) drops the icon and uses the muted-gray label from the mockups — the
+ * icon and heavier color there were noise that hurt row readability.
  */
 export function GroupSection({
   label,
   children,
   className,
+  variant = 'sidebar',
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  variant?: 'canvas' | 'sidebar';
 }) {
+  const isCanvas = variant === 'canvas';
   const [collapsed, setCollapsed] = useState(false);
   // Subscribe to the arrays (not the getter fns) so a glyph edit re-renders.
   const projects = usePlannerStore((s) => s.projects);
@@ -40,9 +48,14 @@ export function GroupSection({
       <button
         onClick={() => setCollapsed((c) => !c)}
         aria-expanded={!collapsed}
-        className="group/heading flex w-full items-center gap-1 rounded-[5px] px-1 py-1 text-xs font-medium text-foreground/70 hover:bg-muted/50"
+        className={cn(
+          'group/heading flex w-full items-center gap-1 rounded-[5px] px-1 py-1 text-xs font-medium hover:bg-muted/50',
+          isCanvas ? 'text-muted-foreground' : 'text-foreground/70'
+        )}
       >
-        <CategoryIcon glyph={glyph} name={label} className="mr-0.5 text-foreground/70" />
+        {!isCanvas && (
+          <CategoryIcon glyph={glyph} name={label} className="mr-0.5 text-foreground/70" />
+        )}
         {label}
         <ChevronDown
           className={cn(

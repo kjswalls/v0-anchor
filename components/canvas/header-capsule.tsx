@@ -193,7 +193,7 @@ export function HeaderCapsule() {
       </div>
 
       {/* Row 2 — white pill: type · layout · scope selectors */}
-      <div className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.15)]">
+      <div className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]">
         <SelectMenu
           value={typeFilter}
           options={TYPE_OPTS}
