@@ -35,6 +35,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Habit, HabitGroup, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, EMOJI_OPTIONS } from '@/lib/planner-types';
@@ -233,9 +234,11 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                         onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
                         data-sub-input
                       />
-                      <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
+                      <AddIconButton
+                        size="input"
+                        onClick={handleAddNewGroup}
+                        aria-label="Add group"
+                      />
                     </div>
                   ) : (
                     <Select value={group} onValueChange={(v) => {

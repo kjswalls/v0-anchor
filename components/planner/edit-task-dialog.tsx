@@ -38,6 +38,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { IconPicker } from '@/components/primitives/icon-picker';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Task, Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
@@ -227,9 +228,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                       onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
                       data-sub-input
                     />
-                    <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                    <AddIconButton size="input" onClick={handleAddNewProject} aria-label="Add project" />
                   </div>
                 ) : (
                   <Select value={project} onValueChange={(v) => {

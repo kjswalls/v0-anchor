@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { IconPicker } from '@/components/primitives/icon-picker';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Priority, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
@@ -293,9 +294,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                           onKeyDown={(e) => e.key === 'Enter' && handleAddNewProject()}
                           data-sub-input
                         />
-                        <Button size="icon" className="h-9 w-9" onClick={handleAddNewProject}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <AddIconButton size="input" onClick={handleAddNewProject} aria-label="Add project" />
                       </div>
                     ) : (
                       <Select value={taskProject} onValueChange={(v) => {
@@ -530,9 +529,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                           onKeyDown={(e) => e.key === 'Enter' && handleAddNewGroup()}
                           data-sub-input
                         />
-                        <Button size="icon" className="h-9 w-9" onClick={handleAddNewGroup}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <AddIconButton size="input" onClick={handleAddNewGroup} aria-label="Add group" />
                       </div>
                     ) : (
                       <Select value={habitGroup} onValueChange={(v) => {

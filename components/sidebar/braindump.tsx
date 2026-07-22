@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, ChevronsLeft, FolderOpen, Plus, ListFilter, X, Check } from 'lucide-react';
+import { AlignLeft, ChevronsLeft, FolderOpen, ListFilter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
@@ -252,15 +253,11 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           >
             <FolderOpen className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          <AddIconButton
+            size="md"
             onClick={() => openAddDialog('task')}
             aria-label="Add task"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          />
           {!hideCollapse && (
             <Button
               variant="ghost"

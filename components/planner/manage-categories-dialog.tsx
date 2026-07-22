@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, FolderKanban, Tag, Settings2 } from 'lucide-react';
+import { Trash2, FolderKanban, Tag, Settings2 } from 'lucide-react';
 import { EditProjectDialog } from './edit-project-dialog';
 import type { Project } from '@/lib/planner-types';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { IconPicker } from '@/components/primitives/icon-picker';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
 
@@ -102,9 +103,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                   onKeyDown={(e) => e.key === 'Enter' && handleAddProject()}
                   className="bg-background border-border flex-1"
                 />
-                <Button size="icon" onClick={handleAddProject} disabled={!newProject.trim()}>
-                  <Plus className="h-4 w-4" />
-                </Button>
+                <AddIconButton size="input" onClick={handleAddProject} disabled={!newProject.trim()} aria-label="Add project" />
               </div>
 
               <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -163,9 +162,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                   onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
                   className="bg-background border-border flex-1"
                 />
-                <Button size="icon" onClick={handleAddGroup} disabled={!newGroup.trim()}>
-                  <Plus className="h-4 w-4" />
-                </Button>
+                <AddIconButton size="input" onClick={handleAddGroup} disabled={!newGroup.trim()} aria-label="Add habit group" />
               </div>
 
               <div className="space-y-2 max-h-60 overflow-y-auto">

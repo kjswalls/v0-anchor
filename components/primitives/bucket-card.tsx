@@ -1,6 +1,7 @@
 'use client';
 
-import { Plus, Timer, Sunrise, Sun, Moon } from 'lucide-react';
+import { Timer, Sunrise, Sun, Moon } from 'lucide-react';
+import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { CountBadge } from '@/components/primitives/pills';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -31,7 +32,8 @@ interface BucketCardProps {
 /**
  * Bucket card (day-buckets / week-buckets): light card (#FBFBFB, #EEEDED
  * stroke, r20) with a white header band (tinted icon + sans name + count +
- * add button), children as the row area.
+ * add button), children as the row area. The add button is a rounded-square
+ * box (r5, muted-foreground hairline) per the Figma mockup (node 62:38).
  */
 export function BucketCard({
   bucket,
@@ -69,13 +71,11 @@ export function BucketCard({
         </h3>
         <CountBadge count={count} />
         {onAdd && (
-          <button
-            className="flex-shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+          <AddIconButton
+            size={mini ? 'sm' : 'md'}
             onClick={() => onAdd(bucket, 'task')}
             aria-label={`Add to ${meta.label}`}
-          >
-            <Plus className={mini ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-          </button>
+          />
         )}
       </header>
       <div className={cn(mini ? 'px-2.5 pb-2 pt-1' : 'px-[23px] pb-4 pt-2')}>{children}</div>
