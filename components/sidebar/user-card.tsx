@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, Undo2, Redo2, ChevronDown, Flame } from 'lucide-react';
 import {
@@ -14,7 +14,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
+import { RELAY } from '@/lib/relay-config';
 import { useUIStore } from '@/lib/ui-store';
 import { createClient } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -46,6 +48,9 @@ export function UserCard() {
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const prevStreak = useRef<number | null>(null);
+  const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [burst, setBurst] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -69,6 +74,26 @@ export function UserCard() {
   const firstName = (displayName ?? email ?? 'You').split(/[\s@]/)[0];
   const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak ?? 0), 0);
 
+  useEffect(() => {
+    if (prevStreak.current !== null && bestStreak > prevStreak.current) {
+      setBurst(true);
+      if (burstTimer.current) clearTimeout(burstTimer.current);
+      burstTimer.current = setTimeout(() => setBurst(false), 1200);
+    }
+    prevStreak.current = bestStreak;
+  }, [bestStreak]);
+
+  // Clear the pending burst timer only on unmount. The detection effect above
+  // deliberately does NOT clear it on re-run, so a later bestStreak *decrease*
+  // (e.g. undo right after a streak tick) can't cancel an in-flight burst and
+  // leave the field stuck lit.
+  useEffect(
+    () => () => {
+      if (burstTimer.current) clearTimeout(burstTimer.current);
+    },
+    []
+  );
+
   const displayActions = actionLog.slice(0, 10);
   const currentActionIndex = actionLog.length > 0 ? actionLog.length - historyIndex - 1 : -1;
 
@@ -89,7 +114,19 @@ export function UserCard() {
             </Avatar>
             <span className="truncate text-sm font-medium text-foreground">{firstName}</span>
             {bestStreak > 0 && (
-              <span className="flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
+              <span className="relative isolate flex items-center gap-0.5 overflow-hidden rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
+                {RELAY.streak && (
+                  <RelayField
+                    className="absolute inset-0 -z-10"
+                    pitch={18}
+                    period={2.4}
+                    focalY={0.5}
+                    idleIntensity={0}
+                    activeIntensity={1}
+                    active={burst}
+                    mask="radial-gradient(closest-side, black, transparent)"
+                  />
+                )}
                 <Flame className="h-3 w-3" />
                 {bestStreak}
               </span>

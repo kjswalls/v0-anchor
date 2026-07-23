@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { AlignLeft, ChevronsLeft, FolderOpen, ListFilter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,11 +9,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { RelayField } from '@/components/primitives/relay-field';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { RELAY } from '@/lib/relay-config';
 import type { Priority } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -298,13 +300,23 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           )}
 
           {rows.length === 0 && (
-            <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <p className="font-serif text-base italic text-muted-foreground">
+            <div className="relative flex flex-col items-center gap-2 overflow-hidden py-12 text-center">
+              {RELAY.emptyState && (
+                <RelayField
+                  className="absolute inset-0 z-0"
+                  focalY={0.42}
+                  pitch={34}
+                  period={4.5}
+                  idleIntensity={0.35}
+                  mask="radial-gradient(120% 120% at 50% 45%, black 35%, transparent 100%)"
+                />
+              )}
+              <p className="relative z-10 font-serif text-base italic text-muted-foreground">
                 A clear head. Drop stray thoughts here.
               </p>
               <button
                 onClick={() => openAddDialog('task')}
-                className="text-xs text-success-text hover:underline underline-offset-2"
+                className="relative z-10 text-xs text-success-text hover:underline underline-offset-2"
               >
                 + Add something
               </button>

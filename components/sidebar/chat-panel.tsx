@@ -2,10 +2,12 @@
 
 import { Sparkles, ChevronDown } from 'lucide-react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
+import { RelayField } from '@/components/primitives/relay-field';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useUIStore } from '@/lib/ui-store';
+import { RELAY } from '@/lib/relay-config';
 
 /**
  * Chat body inside the sidebar dock. Mounted only while expanded (summoned
@@ -18,6 +20,7 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
   const { openDialog } = useUIStore();
   const provider = useAISettingsStore((s) => s.provider);
   const agentId = useChatStore((s) => s.openclawAgentIdDisplay);
+  const isStreaming = useChatStore((s) => s.isLoading);
 
   const label =
     provider === 'openclaw' ? (agentId ? `OpenClaw · ${agentId}` : 'OpenClaw') : 'Beacon';
@@ -35,7 +38,19 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
 
-      <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
+      <div className="relative isolate flex min-h-0 flex-1 flex-col overflow-hidden border-t border-border/60">
+        {RELAY.beacon && (
+          <RelayField
+            className="absolute inset-0 -z-10"
+            focalY={0.5}
+            pitch={30}
+            period={3.0}
+            idleIntensity={0}
+            activeIntensity={0.5}
+            active={isStreaming}
+            mask="linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)"
+          />
+        )}
         <ChatConversation
           variant="desktop"
           hideHeader

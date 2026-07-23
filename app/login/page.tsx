@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase';
+import { RELAY } from '@/lib/relay-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RelayField } from '@/components/primitives/relay-field';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,9 +65,19 @@ function LoginPageInner() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-background px-4">
+    <div className="relative min-h-[100dvh] flex items-center justify-center overflow-hidden bg-background px-4">
+      {RELAY.auth && (
+        <RelayField
+          className="absolute inset-0 z-0"
+          focalY={0.42}
+          pitch={44}
+          period={3.6}
+          idleIntensity={0.85}
+          mask="radial-gradient(115% 90% at 50% 38%, black 0%, black 45%, transparent 100%)"
+        />
+      )}
 
-      <div className="w-full max-w-sm space-y-8">
+      <div className="relative z-10 w-full max-w-sm space-y-8">
         {/* Logo / Title */}
         <div className="text-center space-y-2">
           <div className="text-4xl">⚓</div>

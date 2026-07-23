@@ -14,12 +14,14 @@ import {
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
+import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { searchItems } from '@/lib/search';
 import { CategoryIcon } from '@/lib/category-icons';
+import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
 
 /**
@@ -47,6 +49,7 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
 
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -312,34 +315,52 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
           </CommandList>
         )}
 
-        <CommandPrimitive.Input
-          ref={inputRef}
-          value={query}
-          onValueChange={(value) => {
-            setQuery(value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              closeAndClear();
-              inputRef.current?.blur();
-            }
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              askBeacon();
-              return;
-            }
-            if (e.key === 'Enter' && isAddMode) {
-              e.preventDefault();
-              quickAdd();
-            }
-          }}
-          placeholder="Search, add a task, start a chat, run a command..."
-          aria-label="Omnibar"
-          className="h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-sm text-foreground shadow-[var(--shadow-elev-sm)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
-        />
+        <div className="relative isolate">
+          {RELAY.omnibar && (
+            <RelayField
+              className="absolute -inset-3 z-0"
+              focalY={0.5}
+              pitch={30}
+              period={3.2}
+              idleIntensity={0}
+              activeIntensity={0.7}
+              active={focused}
+              mask="radial-gradient(closest-side, black, transparent)"
+            />
+          )}
+          <CommandPrimitive.Input
+            ref={inputRef}
+            value={query}
+            onValueChange={(value) => {
+              setQuery(value);
+              setOpen(true);
+            }}
+            onFocus={() => {
+              setOpen(true);
+              setFocused(true);
+            }}
+            onBlur={() => setFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                closeAndClear();
+                inputRef.current?.blur();
+              }
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                askBeacon();
+                return;
+              }
+              if (e.key === 'Enter' && isAddMode) {
+                e.preventDefault();
+                quickAdd();
+              }
+            }}
+            placeholder="Search, add a task, start a chat, run a command..."
+            aria-label="Omnibar"
+            className="relative z-10 h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-sm text-foreground shadow-[var(--shadow-elev-sm)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
+          />
+        </div>
       </Command>
     </div>
   );

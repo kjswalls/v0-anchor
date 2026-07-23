@@ -3,6 +3,8 @@
 import { Timer, Sunrise, Sun, Moon } from 'lucide-react';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { CountBadge } from '@/components/primitives/pills';
+import { RelayField } from '@/components/primitives/relay-field';
+import { RELAY } from '@/lib/relay-config';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -60,10 +62,20 @@ export function BucketCard({
     >
       <header
         className={cn(
-          'flex items-center gap-2 rounded-t-[20px] border-b border-surface-3 bg-canvas',
+          'relative isolate flex items-center gap-2 overflow-hidden rounded-t-[20px] border-b border-surface-3 bg-canvas',
           mini ? 'h-[38px] px-3' : 'h-[45px] px-[21px]'
         )}
       >
+        {isCurrent && RELAY.currentBucket && (
+          <RelayField
+            className="absolute inset-0 -z-10"
+            focalY={0.5}
+            pitch={30}
+            period={6}
+            idleIntensity={0.4}
+            mask="radial-gradient(120% 140% at 50% 50%, black 40%, transparent 100%)"
+          />
+        )}
         <Icon className={cn(meta.tint, mini ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
         {/* Bucket label — Inter Regular 14→13 ramp, muted (mockup header band) */}
         <h3 className={cn('flex-1 font-sans font-normal text-muted-foreground', mini ? 'text-xs' : 'text-sm')}>
