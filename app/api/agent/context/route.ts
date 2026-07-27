@@ -53,6 +53,9 @@ export async function GET(req: NextRequest) {
     habits,
     projects,
     habitGroups,
+    // Additive — old plugin builds strip unknown keys. Version 2 = tasks/habits
+    // are projections of the unified items table (migration 019).
+    schemaVersion: 2,
   })
 }
 

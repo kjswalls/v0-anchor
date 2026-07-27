@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateHabit, deleteHabit } from '@/lib/db'
+import { updateHabit, deleteHabit, verifyItemOwnership } from '@/lib/db'
 import type { Habit } from '@/lib/planner-types'
 
 /**
@@ -30,13 +30,7 @@ export async function PATCH(
   const { id } = await params
   const serviceClient = createServiceClient()
 
-  const { data: existing } = await serviceClient
-    .from('habits')
-    .select('user_id')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single()
-  if (!existing || existing.user_id !== userId) {
+  if (!(await verifyItemOwnership(serviceClient, id, 'habit', userId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -75,13 +69,7 @@ export async function DELETE(
   const { id } = await params
   const serviceClient = createServiceClient()
 
-  const { data: existing } = await serviceClient
-    .from('habits')
-    .select('user_id')
-    .eq('id', id)
-    .is('deleted_at', null)
-    .single()
-  if (!existing || existing.user_id !== userId) {
+  if (!(await verifyItemOwnership(serviceClient, id, 'habit', userId))) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 

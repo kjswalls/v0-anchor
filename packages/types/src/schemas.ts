@@ -10,19 +10,36 @@ export const RepeatFrequencySchema = z.enum([
   'none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom',
 ])
 
+// Normalize legacy "weekly" (removed in migration 014) to "custom" before enum validation
+const normalizeWeekly = (val: unknown) => val === 'weekly' ? 'custom' : val
+
+// Pre-unification schemas silently stripped `notes` as an unknown key, so a
+// third-party payload with notes:null must keep parsing — accept and coalesce.
+const NotesSchema = z.string().nullish().transform((v) => v ?? undefined)
+
 // ── Shared recurrence fields ───────────────────────────────────────────────────
 
 export const RecurrenceFieldsSchema = z.object({
-  // Normalize legacy "weekly" (removed in migration 014) to "custom" before enum validation
-  repeatFrequency: z.preprocess(
-    (val) => val === 'weekly' ? 'custom' : val,
-    RepeatFrequencySchema,
-  ).optional(),
+  repeatFrequency: z.preprocess(normalizeWeekly, RepeatFrequencySchema).optional(),
   repeatDays: z.array(z.number()).optional(),
   repeatMonthDay: z.number().optional(),
   completedDates: z.array(z.string()).optional(),
 })
 export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
+
+// custom frequency requires at least one repeat day — shared by every item shape
+const requireCustomDays = (
+  data: { repeatFrequency?: string; repeatDays?: number[] },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Must select at least one day when using custom repeat frequency',
+      path: ['repeatDays'],
+    });
+  }
+}
 
 // ── Core entities ──────────────────────────────────────────────────────────────
 
@@ -45,7 +62,13 @@ export const HabitGroupSchema = z.object({
   color: z.string().optional(),
 })
 
-export const TaskSchema = z.object({
+// Field shapes are shared between the legacy per-kind schemas (TaskSchema /
+// HabitSchema — the pinned external contract the OpenClaw plugin validates
+// against) and the unified ItemSchema branches. Task and Habit deliberately
+// keep their own status vocabularies; unification happens via the `type`
+// discriminator, never by merging enums.
+
+const taskShape = {
   id: z.string(),
   title: z.string(),
   priority: PrioritySchema.optional(),
@@ -60,18 +83,11 @@ export const TaskSchema = z.object({
   inProjectBlock: z.boolean().optional(),
   previousStartTime: z.string().optional(),
   previousStartDate: z.string().optional(),
+  notes: NotesSchema,
   ...RecurrenceFieldsSchema.shape,
-}).superRefine((data, ctx) => {
-  if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Must select at least one day when using custom repeat frequency',
-      path: ['repeatDays'],
-    });
-  }
-})
+}
 
-export const HabitSchema = z.object({
+const habitShape = {
   id: z.string(),
   title: z.string(),
   group: z.string(),
@@ -82,20 +98,36 @@ export const HabitSchema = z.object({
   dailyCounts: z.record(z.string(), z.number()),
   timeBucket: TimeBucketSchema.optional(),
   startTime: z.string().optional(),
-  repeatFrequency: RepeatFrequencySchema,
+  // Required (a habit is recurring by definition); .or().transform() rather
+  // than z.preprocess so z.input keeps the field required and enum-typed.
+  repeatFrequency: RepeatFrequencySchema
+    .or(z.literal('weekly'))
+    .transform((v) => v === 'weekly' ? 'custom' as const : v),
   repeatDays: z.array(z.number()).optional(),
   repeatMonthDay: z.number().optional(),
   timesPerDay: z.number().optional(),
   currentDayCount: z.number().optional(),
-}).superRefine((data, ctx) => {
-  if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Must select at least one day when using custom repeat frequency',
-      path: ['repeatDays'],
-    });
-  }
-})
+  notes: NotesSchema,
+}
+
+export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays)
+export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays)
+
+// ── Unified Item ───────────────────────────────────────────────────────────────
+// One entity, discriminated by `type`. Branches are structurally identical to
+// Task/Habit so projections (item → legacy shape) are plain field subsets.
+// Future user-defined types (goal, …) will widen this union once the item_types
+// registry table lands.
+
+const taskItemObject = z.object({ type: z.literal('task'), ...taskShape })
+const habitItemObject = z.object({ type: z.literal('habit'), ...habitShape })
+
+export const TaskItemSchema = taskItemObject.superRefine(requireCustomDays)
+export const HabitItemSchema = habitItemObject.superRefine(requireCustomDays)
+
+export const ItemSchema = z
+  .discriminatedUnion('type', [taskItemObject, habitItemObject])
+  .superRefine(requireCustomDays)
 
 // ── API response schemas ───────────────────────────────────────────────────────
 
@@ -107,6 +139,9 @@ export const AnchorContextResponseSchema = z.object({
   habits: z.array(HabitSchema),
   projects: z.array(ProjectSchema),
   habitGroups: z.array(HabitGroupSchema),
+  // Additive (old clients strip unknown keys): bump when the response gains
+  // shapes beyond the legacy arrays, e.g. the unified items[] in a later phase.
+  schemaVersion: z.number().optional(),
 })
 
 export const AnchorChangeEventSchema = z.object({

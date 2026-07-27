@@ -10,6 +10,9 @@ export {
   HabitGroupSchema,
   TaskSchema,
   HabitSchema,
+  TaskItemSchema,
+  HabitItemSchema,
+  ItemSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'
@@ -27,6 +30,9 @@ import {
   HabitGroupSchema,
   TaskSchema,
   HabitSchema,
+  TaskItemSchema,
+  HabitItemSchema,
+  ItemSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'
@@ -41,5 +47,9 @@ export type Project          = z.infer<typeof ProjectSchema>
 export type HabitGroupType   = z.infer<typeof HabitGroupSchema>
 export type Task             = z.infer<typeof TaskSchema>
 export type Habit            = z.infer<typeof HabitSchema>
+export type TaskItem         = z.infer<typeof TaskItemSchema>
+export type HabitItem        = z.infer<typeof HabitItemSchema>
+export type Item             = z.infer<typeof ItemSchema>
+export type ItemType         = Item['type']
 export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>
 export type AnchorChangeEvent     = z.infer<typeof AnchorChangeEventSchema>

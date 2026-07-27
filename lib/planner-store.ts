@@ -566,14 +566,22 @@ export const usePlannerStore = create<PlannerStore>()(
 
       reorderTasks: (taskIds) => {
         setNextActionLabel('Reorder tasks');
-        const updatedTasks = taskIds.map((id, index) => {
-          const task = get().tasks.find((t) => t.id === id);
-          return task ? { ...task, order: index } : null;
-        }).filter(Boolean) as Task[];
+        // Tasks absent from taskIds keep their current order — a partial list
+        // (e.g. one filtered view) must never drop the rest of the store.
+        const orderById = new Map(taskIds.map((id, index) => [id, index]));
+        const changed: Task[] = [];
 
-        set({ tasks: updatedTasks });
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
+            const order = orderById.get(t.id);
+            if (order === undefined || order === t.order) return t;
+            const updated = { ...t, order };
+            changed.push(updated);
+            return updated;
+          }),
+        }));
 
-        updatedTasks.forEach((t) =>
+        changed.forEach((t) =>
           dbUpdateTask(t.id, { order: t.order }).catch(console.error)
         );
       },
@@ -647,7 +655,8 @@ export const usePlannerStore = create<PlannerStore>()(
         const habit = get().habits.find((h) => h.id === id);
         const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
         setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
-        const dateStr = toDateStr(date ?? get().selectedDate, get().userTimezone);
+        const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const dateStr = toDateStr(date ?? get().selectedDate, userTimezone);
 
         let updatedHabit: Habit | null = null;
 
@@ -1040,7 +1049,7 @@ export const usePlannerStore = create<PlannerStore>()(
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
                 const patch: Partial<Task> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
                 for (const key of taskKeys) {
                   if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
                     (patch as Record<string, unknown>)[key] = t[key];
@@ -1134,7 +1143,7 @@ export const usePlannerStore = create<PlannerStore>()(
               const cur = currentState.tasks.find((ct) => ct.id === t.id);
               if (cur) {
                 const patch: Partial<Task> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'dueDate', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
+                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
                 for (const key of taskKeys) {
                   if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
                     (patch as Record<string, unknown>)[key] = t[key];

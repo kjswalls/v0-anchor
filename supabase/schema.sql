@@ -1,6 +1,13 @@
 -- ============================================================
--- Anchor Schema
--- Run this in the Supabase SQL Editor (https://app.supabase.com)
+-- Anchor Schema — STALE SNAPSHOT, DO NOT AUTHOR AGAINST THIS
+--
+-- This file predates migrations 007+ and is missing: deleted_at,
+-- tasks.completed_dates, all 007 future-proofing columns, the repeat CHECKs
+-- (014), the completion RPC (016/019), the purge cron (013/019), and the
+-- unified `items` table (019) which supersedes tasks/habits entirely.
+-- The migrations in supabase/migrations/ are the ONLY authority on the live
+-- schema. Kept for bootstrapping a fresh project (run this, then every
+-- migration in order).
 -- ============================================================
 
 -- Enable UUID extension

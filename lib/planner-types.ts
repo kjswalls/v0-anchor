@@ -17,6 +17,10 @@ export type {
   RepeatFrequency,
   Task,
   Habit,
+  Item,
+  ItemType,
+  TaskItem,
+  HabitItem,
   Project,
   HabitGroupType,
 } from '@anchor-app/types'

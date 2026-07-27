@@ -1,34 +1,75 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Project, HabitGroupType } from './planner-types';
+import type { Task, Habit, Item, ItemType, TaskItem, HabitItem, Project, HabitGroupType } from './planner-types';
+import { ITEM_TYPES } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 
-// ---- Task row type ----
-interface TaskRow {
+// ============================================================
+// Unified items (tasks + habits live in one table since migration 019).
+// Legacy-named exports (fetchTasks, createHabit, …) are kept so callers and
+// the external agent API keep their exact shapes; they are thin projections
+// over the item functions. Old tasks/habits tables are frozen — never query
+// them.
+// ============================================================
+
+// ---- Item row type ----
+interface ItemRow {
   id: string;
   user_id: string;
+  type: string;
   title: string;
-  priority?: string | null;
-  project?: string | null;
-  start_date?: string | null;
   status: string;
+  notes?: string | null;
   time_bucket?: string | null;
   start_time?: string | null;
-  duration?: number | null;
-  is_scheduled: boolean;
   repeat_frequency?: string | null;
   repeat_days?: number[] | null;
   repeat_month_day?: number | null;
   completed_dates: string[] | null;
-  order: number;
+  // task-side
+  priority?: string | null;
+  project?: string | null;
+  start_date?: string | null;
+  duration?: number | null;
+  is_scheduled?: boolean | null;
+  order?: number | null;
   in_project_block?: boolean | null;
   previous_start_time?: string | null;
   previous_start_date?: string | null;
+  // habit-side
+  group?: string | null;
+  streak?: number | null;
+  skipped_dates?: string[] | null;
+  daily_counts?: Record<string, number> | null;
+  times_per_day?: number | null;
+  current_day_count?: number | null;
 }
 
-function taskFromRow(row: TaskRow): Task {
+function itemFromRow(row: ItemRow): Item {
+  if (row.type === 'habit') {
+    return {
+      type: 'habit',
+      id: row.id,
+      title: row.title,
+      group: row.group ?? '',
+      streak: row.streak ?? 0,
+      status: row.status as Habit['status'],
+      completedDates: row.completed_dates ?? [],
+      skippedDates: row.skipped_dates ?? [],
+      dailyCounts: row.daily_counts ?? {},
+      timeBucket: (row.time_bucket ?? undefined) as Habit['timeBucket'],
+      startTime: row.start_time ?? undefined,
+      repeatFrequency: (row.repeat_frequency ?? ITEM_TYPES.habit.defaultFrequency) as Habit['repeatFrequency'],
+      repeatDays: row.repeat_days ?? undefined,
+      repeatMonthDay: row.repeat_month_day ?? undefined,
+      timesPerDay: row.times_per_day ?? undefined,
+      currentDayCount: row.current_day_count ?? undefined,
+      notes: row.notes ?? undefined,
+    };
+  }
   return {
+    type: 'task',
     id: row.id,
     title: row.title,
     priority: (row.priority ?? undefined) as Task['priority'],
@@ -38,42 +79,74 @@ function taskFromRow(row: TaskRow): Task {
     timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
     startTime: row.start_time ?? undefined,
     duration: row.duration ?? undefined,
-    isScheduled: row.is_scheduled,
+    isScheduled: row.is_scheduled ?? false,
     repeatFrequency: (row.repeat_frequency ?? undefined) as Task['repeatFrequency'],
     repeatDays: row.repeat_days ?? undefined,
     repeatMonthDay: row.repeat_month_day ?? undefined,
     completedDates: row.completed_dates ?? [],
-    order: row.order,
+    order: row.order ?? 0,
     inProjectBlock: row.in_project_block ?? undefined,
     previousStartTime: row.previous_start_time ?? undefined,
     previousStartDate: row.previous_start_date ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
-function taskToRow(userId: string, task: Task): TaskRow {
+function itemToRow(userId: string, item: Item): ItemRow {
+  if (item.type === 'habit') {
+    return {
+      id: item.id,
+      user_id: userId,
+      type: 'habit',
+      title: item.title,
+      group: item.group,
+      streak: item.streak,
+      status: item.status,
+      completed_dates: item.completedDates,
+      skipped_dates: item.skippedDates,
+      daily_counts: item.dailyCounts,
+      time_bucket: item.timeBucket ?? null,
+      start_time: item.startTime ?? null,
+      repeat_frequency: item.repeatFrequency,
+      repeat_days: item.repeatDays ?? null,
+      repeat_month_day: item.repeatMonthDay ?? null,
+      times_per_day: item.timesPerDay ?? null,
+      current_day_count: item.currentDayCount ?? null,
+      notes: item.notes ?? null,
+    };
+  }
   return {
-    id: task.id,
+    id: item.id,
     user_id: userId,
-    title: task.title,
-    priority: task.priority ?? null,
-    project: task.project ?? null,
-    start_date: task.startDate ?? null,
-    status: task.status,
-    time_bucket: task.timeBucket ?? null,
-    start_time: task.startTime ?? null,
-    duration: task.duration ?? null,
-    is_scheduled: task.isScheduled,
-    repeat_frequency: task.repeatFrequency ?? null,
-    repeat_days: task.repeatDays ?? null,
-    repeat_month_day: task.repeatMonthDay ?? null,
-    completed_dates: task.completedDates ?? [],
-    order: task.order,
-    in_project_block: task.inProjectBlock ?? null,
-    previous_start_time: task.previousStartTime ?? null,
-    previous_start_date: task.previousStartDate ?? null,
+    type: 'task',
+    title: item.title,
+    priority: item.priority ?? null,
+    project: item.project ?? null,
+    start_date: item.startDate ?? null,
+    status: item.status,
+    time_bucket: item.timeBucket ?? null,
+    start_time: item.startTime ?? null,
+    duration: item.duration ?? null,
+    is_scheduled: item.isScheduled ?? false,
+    repeat_frequency: item.repeatFrequency ?? null,
+    repeat_days: item.repeatDays ?? null,
+    repeat_month_day: item.repeatMonthDay ?? null,
+    completed_dates: item.completedDates ?? [],
+    // legacy tasks."order" was NOT NULL DEFAULT 0; agent POST bodies may omit it
+    order: item.order ?? 0,
+    in_project_block: item.inProjectBlock ?? null,
+    previous_start_time: item.previousStartTime ?? null,
+    previous_start_date: item.previousStartDate ?? null,
+    notes: item.notes ?? null,
   };
 }
 
+// Per-type update allowlists — these are the ONLY field filter for the agent
+// PATCH endpoints (bodies are unvalidated), so they must stay separate: a
+// merged list would let habit fields be written onto tasks and vice versa.
+// Fields the legacy tables declared NOT NULL keep that semantics via null
+// guards here — the unified table is nullable-superset, so without the guard
+// a PATCH {"group": null} would silently corrupt instead of erroring.
 function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
@@ -84,186 +157,219 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
   if ('duration' in updates) row.duration = updates.duration ?? null;
-  if ('isScheduled' in updates) row.is_scheduled = updates.isScheduled;
+  if ('isScheduled' in updates && updates.isScheduled != null) row.is_scheduled = updates.isScheduled;
   if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency ?? null;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
   if ('completedDates' in updates) row.completed_dates = updates.completedDates ?? [];
-  if ('order' in updates) row.order = updates.order;
+  if ('order' in updates && updates.order != null) row.order = updates.order;
   if ('inProjectBlock' in updates) row.in_project_block = updates.inProjectBlock ?? null;
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;
   if ('previousStartDate' in updates) row.previous_start_date = updates.previousStartDate ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   return row;
-}
-
-export async function fetchTasks(userId: string, client?: DbClient): Promise<Task[]> {
-  const supabase = client ?? createClient();
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('user_id', userId)
-    .is('deleted_at', null)
-    .order('order', { ascending: true });
-  if (error) throw error;
-  return (data as TaskRow[]).map(taskFromRow);
-}
-
-export async function createTask(userId: string, task: Task, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('tasks').insert(taskToRow(userId, task));
-  if (error) throw error;
-  notifyPlugins(userId, 'tasks.updated', { action: 'create', task });
-}
-
-export async function updateTask(id: string, updates: Partial<Task>, userId?: string, client?: DbClient): Promise<void> {
-  const row = taskUpdatesToRow(updates);
-  if (Object.keys(row).length === 0) return;
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('tasks').update(row).eq('id', id);
-  if (error) throw error;
-  if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'update', id, updates });
-}
-
-export async function deleteTask(id: string, userId?: string, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  if (error) throw error;
-  if (userId) notifyPlugins(userId, 'tasks.updated', { action: 'delete', id });
-}
-
-export async function restoreTask(id: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase.from('tasks').update({ deleted_at: null }).eq('id', id);
-  if (error) throw error;
-}
-
-export async function dbToggleTaskCompletedDate(id: string, dateStr: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase.rpc("toggle_task_completed_date", {
-    task_id: id,
-    date_str: dateStr,
-  });
-  if (error) throw error;
-}
-
-// ---- Habit row type ----
-interface HabitRow {
-  id: string;
-  user_id: string;
-  title: string;
-  group: string;
-  streak: number;
-  status: string;
-  completed_dates: string[];
-  skipped_dates: string[];
-  daily_counts: Record<string, number>;
-  time_bucket?: string | null;
-  start_time?: string | null;
-  repeat_frequency: string;
-  repeat_days?: number[] | null;
-  repeat_month_day?: number | null;
-  times_per_day?: number | null;
-  current_day_count?: number | null;
-}
-
-function habitFromRow(row: HabitRow): Habit {
-  return {
-    id: row.id,
-    title: row.title,
-    group: row.group,
-    streak: row.streak,
-    status: row.status as Habit['status'],
-    completedDates: row.completed_dates ?? [],
-    skippedDates: row.skipped_dates ?? [],
-    dailyCounts: row.daily_counts ?? {},
-    timeBucket: (row.time_bucket ?? undefined) as Habit['timeBucket'],
-    startTime: row.start_time ?? undefined,
-    repeatFrequency: row.repeat_frequency as Habit['repeatFrequency'],
-    repeatDays: row.repeat_days ?? undefined,
-    repeatMonthDay: row.repeat_month_day ?? undefined,
-    timesPerDay: row.times_per_day ?? undefined,
-    currentDayCount: row.current_day_count ?? undefined,
-  };
-}
-
-function habitToRow(userId: string, habit: Habit): HabitRow {
-  return {
-    id: habit.id,
-    user_id: userId,
-    title: habit.title,
-    group: habit.group,
-    streak: habit.streak,
-    status: habit.status,
-    completed_dates: habit.completedDates,
-    skipped_dates: habit.skippedDates,
-    daily_counts: habit.dailyCounts,
-    time_bucket: habit.timeBucket ?? null,
-    start_time: habit.startTime ?? null,
-    repeat_frequency: habit.repeatFrequency,
-    repeat_days: habit.repeatDays ?? null,
-    repeat_month_day: habit.repeatMonthDay ?? null,
-    times_per_day: habit.timesPerDay ?? null,
-    current_day_count: habit.currentDayCount ?? null,
-  };
 }
 
 function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
-  if ('group' in updates) row.group = updates.group;
-  if ('streak' in updates) row.streak = updates.streak;
+  if ('group' in updates && updates.group != null) row.group = updates.group;
+  if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
-  if ('completedDates' in updates) row.completed_dates = updates.completedDates;
-  if ('skippedDates' in updates) row.skipped_dates = updates.skippedDates;
-  if ('dailyCounts' in updates) row.daily_counts = updates.dailyCounts;
+  if ('completedDates' in updates && updates.completedDates != null) row.completed_dates = updates.completedDates;
+  if ('skippedDates' in updates && updates.skippedDates != null) row.skipped_dates = updates.skippedDates;
+  if ('dailyCounts' in updates && updates.dailyCounts != null) row.daily_counts = updates.dailyCounts;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
-  if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency;
+  if ('repeatFrequency' in updates && updates.repeatFrequency != null) row.repeat_frequency = updates.repeatFrequency;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
   if ('timesPerDay' in updates) row.times_per_day = updates.timesPerDay ?? null;
   if ('currentDayCount' in updates) row.current_day_count = updates.currentDayCount ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   return row;
 }
 
-export async function fetchHabits(userId: string, client?: DbClient): Promise<Habit[]> {
+function updatesToRow(type: ItemType, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
+  return type === 'habit'
+    ? habitUpdatesToRow(updates as Partial<Habit>)
+    : taskUpdatesToRow(updates as Partial<Task>);
+}
+
+// Legacy webhook contract: per-kind event names + payload keys, mapped from
+// item.type. The payload keeps the legacy shape (no `type` field) so deployed
+// plugin installs see byte-identical events.
+function notifyItemChange(
+  userId: string,
+  type: ItemType,
+  payload: Record<string, unknown>,
+): void {
+  notifyPlugins(userId, ITEM_TYPES[type].webhookEvent, payload);
+}
+
+function legacyPayload(item: Item): Record<string, unknown> {
+  const { type: _type, ...legacy } = item;
+  return legacy;
+}
+
+// ---- Item CRUD ----
+
+export async function fetchItems(userId: string, type?: ItemType, client?: DbClient): Promise<Item[]> {
   const supabase = client ?? createClient();
-  const { data, error } = await supabase
-    .from('habits')
+  let query = supabase
+    .from('items')
     .select('*')
     .eq('user_id', userId)
     .is('deleted_at', null);
+  if (type) query = query.eq('type', type);
+  const { data, error } = await query
+    .order('order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
   if (error) throw error;
-  return (data as HabitRow[]).map(habitFromRow);
+  return (data as ItemRow[]).map(itemFromRow);
+}
+
+export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('items').insert(itemToRow(userId, item));
+  if (error) throw error;
+  notifyItemChange(userId, item.type, {
+    action: 'create',
+    [ITEM_TYPES[item.type].webhookPayloadKey]: legacyPayload(item),
+  });
+}
+
+export async function updateItem(
+  id: string,
+  type: ItemType,
+  updates: Partial<Task> | Partial<Habit>,
+  userId?: string,
+  client?: DbClient,
+): Promise<void> {
+  const row = updatesToRow(type, updates);
+  if (Object.keys(row).length === 0) return;
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+  if (error) throw error;
+  if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
+}
+
+export async function deleteItem(id: string, type: ItemType, userId?: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('items')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('type', type);
+  if (error) throw error;
+  if (userId) notifyItemChange(userId, type, { action: 'delete', id });
+}
+
+// No plugin notify, matching the legacy restoreTask/restoreHabit exactly — a
+// 'restore' webhook action would widen the pinned event contract (Phase 5).
+export async function restoreItem(id: string, type: ItemType, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('items')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .eq('type', type);
+  if (error) throw error;
+}
+
+export async function toggleItemCompletedDate(id: string, type: ItemType, dateStr: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.rpc('toggle_item_completed_date', {
+    item_id: id,
+    item_type: type,
+    date_str: dateStr,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Service-role ownership pre-check for the agent API routes. The service
+ * client bypasses RLS, so routes MUST call this before any write. The type
+ * filter keeps per-kind endpoints scoped: /api/agent/tasks/:id 404s for a
+ * habit id exactly as it did when the kinds lived in separate tables.
+ */
+export async function verifyItemOwnership(
+  client: DbClient,
+  id: string,
+  type: ItemType,
+  userId: string,
+): Promise<boolean> {
+  const { data } = await client
+    .from('items')
+    .select('user_id')
+    .eq('id', id)
+    .eq('type', type)
+    .is('deleted_at', null)
+    .single();
+  return !!data && data.user_id === userId;
+}
+
+// ---- Legacy task-named projections ----
+
+// The `type` discriminator is stripped at runtime, not just in the type system:
+// these objects flow into the pinned GET /api/agent/context response, which
+// must stay byte-shape-identical to the pre-unification contract.
+function toLegacyTask(item: TaskItem): Task {
+  const { type: _type, ...task } = item;
+  return task;
+}
+
+function toLegacyHabit(item: HabitItem): Habit {
+  const { type: _type, ...habit } = item;
+  return habit;
+}
+
+export async function fetchTasks(userId: string, client?: DbClient): Promise<Task[]> {
+  const items = await fetchItems(userId, 'task', client);
+  return items.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask);
+}
+
+export async function createTask(userId: string, task: Task, client?: DbClient): Promise<void> {
+  return createItem(userId, { ...task, type: 'task' }, client);
+}
+
+export async function updateTask(id: string, updates: Partial<Task>, userId?: string, client?: DbClient): Promise<void> {
+  return updateItem(id, 'task', updates, userId, client);
+}
+
+export async function deleteTask(id: string, userId?: string, client?: DbClient): Promise<void> {
+  return deleteItem(id, 'task', userId, client);
+}
+
+export async function restoreTask(id: string, client?: DbClient): Promise<void> {
+  return restoreItem(id, 'task', client);
+}
+
+export async function dbToggleTaskCompletedDate(id: string, dateStr: string): Promise<void> {
+  return toggleItemCompletedDate(id, 'task', dateStr);
+}
+
+// ---- Legacy habit-named projections ----
+
+export async function fetchHabits(userId: string, client?: DbClient): Promise<Habit[]> {
+  const items = await fetchItems(userId, 'habit', client);
+  return items.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit);
 }
 
 export async function createHabit(userId: string, habit: Habit, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habits').insert(habitToRow(userId, habit));
-  if (error) throw error;
-  notifyPlugins(userId, 'habits.updated', { action: 'create', habit });
+  return createItem(userId, { ...habit, type: 'habit' }, client);
 }
 
 export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string, client?: DbClient): Promise<void> {
-  const row = habitUpdatesToRow(updates);
-  if (Object.keys(row).length === 0) return;
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habits').update(row).eq('id', id);
-  if (error) throw error;
-  if (userId) notifyPlugins(userId, 'habits.updated', { action: 'update', id, updates });
+  return updateItem(id, 'habit', updates, userId, client);
 }
 
 export async function deleteHabit(id: string, userId?: string, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habits').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  if (error) throw error;
-  if (userId) notifyPlugins(userId, 'habits.updated', { action: 'delete', id });
+  return deleteItem(id, 'habit', userId, client);
 }
 
-export async function restoreHabit(id: string): Promise<void> {
-  const supabase = createClient();
-  const { error } = await supabase.from('habits').update({ deleted_at: null }).eq('id', id);
-  if (error) throw error;
+export async function restoreHabit(id: string, client?: DbClient): Promise<void> {
+  return restoreItem(id, 'habit', client);
 }
 
 // ---- Project row type ----
