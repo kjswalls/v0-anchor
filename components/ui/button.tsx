@@ -12,12 +12,18 @@ const buttonVariants = cva(
         default: 'bg-primary text-primary-foreground hover:bg-primary/90',
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
+        // outline + secondary carry a resting fill, so their hover LAYERS the
+        // wash (hover-wash) rather than swapping background-color — swapping
+        // would drop the fill and composite --accent onto whatever is behind.
+        // ghost is transparent at rest, so plain hover:bg-accent is correct.
+        // The old dark: overrides are gone: --accent is now defined per theme
+        // (ink 4% light, white 6% dark), so one class is right in both.
         outline:
-          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50',
+          'border bg-background shadow-xs hover-wash hover:text-accent-foreground dark:bg-input/30 dark:border-input',
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+          'bg-secondary text-secondary-foreground hover-wash',
         ghost:
-          'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
+          'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
       },
       size: {

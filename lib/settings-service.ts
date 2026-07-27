@@ -17,7 +17,8 @@ export interface UserSettingsRow {
   left_sidebar_hover?: boolean;
   right_sidebar_hover?: boolean;
   morning_check_time?: string;
-  morning_check_dismissed_date?: string;
+  /** null clears the dismissal so today's morning check shows again. */
+  morning_check_dismissed_date?: string | null;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
 }
@@ -70,14 +71,57 @@ export async function loadSettings(userId: string): Promise<UserSettingsRow> {
 }
 
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+let _pending: Partial<UserSettingsRow> = {};
+let _pendingUserId: string | null = null;
 
+/**
+ * Debounced settings write. Calls within the window MERGE rather than replace.
+ *
+ * The timer is a single module-level one shared by every call site, so the
+ * obvious implementation — capture `patch` in the timeout closure and
+ * clearTimeout the previous one — silently discards every write but the last.
+ * That was survivable when settings changes were clicks in a dialog; the
+ * command palette can fire eight of them one Enter apart, so the patches are
+ * accumulated into `_pending` and flushed as one upsert instead.
+ *
+ * A userId change flushes immediately: the pending patch belongs to the
+ * previous user and must not be written against the new one.
+ */
 export function saveSettings(userId: string, patch: Partial<UserSettingsRow>): void {
+  if (_pendingUserId && _pendingUserId !== userId) flushSettings();
+
+  _pendingUserId = userId;
+  _pending = { ..._pending, ...patch };
+
   if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(async () => {
+  _saveTimer = setTimeout(flushSettings, 500);
+}
+
+/**
+ * Write any accumulated patch now and reset the buffer.
+ *
+ * Await this before signing out or navigating away: the debounce window is
+ * 500ms, and a write that lands after `signOut()` is rejected by the
+ * user_settings RLS policy with nothing but a console error to show for it.
+ */
+export function flushSettings(): Promise<void> {
+  if (_saveTimer) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+  }
+
+  const userId = _pendingUserId;
+  const patch = _pending;
+  _pendingUserId = null;
+  _pending = {};
+
+  if (!userId || Object.keys(patch).length === 0) return Promise.resolve();
+
+  return (async () => {
     const supabase = createClient();
     const { error } = await supabase
       .from('user_settings')
       .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' });
     if (error) console.error('[settings] saveSettings error:', error.message);
-  }, 500);
+  })();
 }

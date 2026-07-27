@@ -11,6 +11,8 @@ interface MorningStore {
   morningCheckEnabled: boolean;
   morningCheckTime: string; // HH:mm
   dismiss: () => void;
+  /** Undo today's dismissal so the morning check renders again. */
+  resetDismissal: () => void;
   isDismissedToday: () => boolean;
   setMorningCheckEnabled: (enabled: boolean) => void;
   setMorningCheckTime: (time: string) => void;
@@ -28,6 +30,18 @@ export const useMorningStore = create<MorningStore>()(
         set({ morningCheckDismissedDate: today });
         const userId = usePlannerStore.getState().userId;
         if (userId) saveSettings(userId, { morning_check_dismissed_date: today });
+      },
+
+      /**
+       * Clears BOTH the local date and the server-persisted one. Clearing only
+       * local state (which is what the dev button in desktop-shell used to do)
+       * shows the banner until the next reload, when settings hydrate from
+       * Supabase and re-dismiss it.
+       */
+      resetDismissal: () => {
+        set({ morningCheckDismissedDate: null });
+        const userId = usePlannerStore.getState().userId;
+        if (userId) saveSettings(userId, { morning_check_dismissed_date: null });
       },
 
       isDismissedToday: () => {

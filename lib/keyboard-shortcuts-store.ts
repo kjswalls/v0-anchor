@@ -1,91 +1,61 @@
 'use client';
 
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
+import { COMMAND_GROUPS } from './commands/types';
 
 export interface ShortcutBinding {
   id: string;
   label: string;
   description: string;
-  /** Array of keys/modifiers pressed concurrently (up to 3). e.g., ['ctrl', 'shift', 'k'] or ['n'] */
+  /** Keys pressed concurrently (up to 3), e.g. ['ctrl', 'shift', 'z'] or ['n']. */
   keys: string[];
-
+  /** Section heading in the shortcuts modal. */
+  groupHeading: string;
 }
 
+const GROUP_HEADINGS = new Map(COMMAND_GROUPS.map((g) => [g.id, g.heading]));
+
+/**
+ * The default bindings are DERIVED from the command registry — a command owns
+ * its shortcut, so this list and the palette can never disagree about what a
+ * key does, and the shortcuts modal renders itself.
+ *
+ * SHELL_SHORTCUTS covers the two bindings the registry can't own, because they
+ * act on the item under the mouse and need state that only the shell has.
+ *
+ * The ids are load-bearing: they are the keys a user's rebinding is stored
+ * under. Never rename one.
+ */
 export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
-  {
-    id: 'new_task',
-    label: 'New task',
-    description: 'Open the dialog to create a new task',
-    keys: ['n'],
-  },
-  {
-    id: 'edit_hovered',
-    label: 'Edit hovered item',
-    description: 'Open the edit dialog for the task currently under the mouse',
-    keys: ['e'],
-  },
-  {
-    id: 'delete_hovered',
-    label: 'Delete hovered item',
-    description: 'Delete the task currently under the mouse (shows confirmation)',
-    keys: ['backspace'],
-  },
-  {
-    id: 'undo',
-    label: 'Undo',
-    description: 'Undo the last action',
-    keys: ['ctrl', 'z'],
-  },
-  {
-    id: 'redo',
-    label: 'Redo',
-    description: 'Redo the last undone action',
-    keys: ['ctrl', 'shift', 'z'],
-  },
-  {
-    id: 'toggle_left_sidebar',
-    label: 'Toggle left sidebar',
-    description: 'Show or hide the tasks sidebar',
-    keys: ['meta', '['],
-  },
-  {
-    id: 'toggle_right_sidebar',
-    label: 'Toggle right sidebar',
-    description: 'Show or hide the AI chat sidebar',
-    keys: ['meta', ']'],
-  },
-  {
-    id: 'system_settings',
-    label: 'Open Settings',
-    description: 'Open the settings dialog',
-    keys: ['meta', ','],
-  },
-  {
-    id: 'system_shortcuts',
-    label: 'Open Keyboard Shortcuts',
-    description: 'Open this shortcuts modal',
-    keys: ['meta', '/'],
-  },
-  {
-    id: 'system_search',
-    label: 'Search',
-    description: 'Focus the search bar',
-    keys: ['meta', 'k'],
-  },
-  {
-    id: 'report_bug',
-    label: 'Report a bug',
-    description: 'Open the bug / feature report dialog',
-    keys: ['?'],
-  },
+  ...COMMANDS.filter((command) => command.shortcut).map((command) => ({
+    id: command.shortcut!.id,
+    label: command.label,
+    description: command.description ?? '',
+    keys: command.shortcut!.keys,
+    groupHeading: GROUP_HEADINGS.get(command.group) ?? 'Other',
+  })),
+  ...SHELL_SHORTCUTS.map((shortcut) => ({
+    id: shortcut.id,
+    label: shortcut.label,
+    description: shortcut.description,
+    keys: [...shortcut.keys],
+    groupHeading: 'Item under the cursor',
+  })),
 ];
 
-// Keep for backward compatibility — no longer used for rendering
-export const SYSTEM_SHORTCUTS: ShortcutBinding[] = [];
-
 interface KeyboardShortcutsStore {
-  shortcuts: ShortcutBinding[];
+  /**
+   * Only the bindings the user has actually changed, id → keys.
+   *
+   * v2 persisted whole binding objects, which meant a user who had ever opened
+   * the modal was frozen on the labels and descriptions from that day, and
+   * newly added shortcuts arrived only through a migrate. Storing overrides
+   * alone means labels always come from the registry.
+   */
+  overrides: Record<string, string[]>;
   updateShortcut: (id: string, keys: string[]) => void;
   resetShortcuts: () => void;
 }
@@ -93,31 +63,52 @@ interface KeyboardShortcutsStore {
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
   persist(
     (set) => ({
-      shortcuts: DEFAULT_SHORTCUTS,
+      overrides: {},
 
       updateShortcut: (id, keys) =>
-        set((state) => ({
-          shortcuts: state.shortcuts.map((s) =>
-            s.id === id ? { ...s, keys } : s
-          ),
-        })),
+        set((state) => ({ overrides: { ...state.overrides, [id]: keys } })),
 
-      resetShortcuts: () => set({ shortcuts: DEFAULT_SHORTCUTS }),
+      resetShortcuts: () => set({ overrides: {} }),
     }),
     {
       name: 'anchor-keyboard-shortcuts',
-      version: 2,
-      migrate: (persistedState: unknown, _version: number) => {
-        // Merge any new shortcuts from DEFAULT_SHORTCUTS that aren't in the
-        // persisted state (handles shortcuts added after the user's first save).
-        const state = persistedState as KeyboardShortcutsStore;
-        const existingIds = new Set((state.shortcuts ?? []).map((s) => s.id));
-        const merged = [
-          ...(state.shortcuts ?? []),
-          ...DEFAULT_SHORTCUTS.filter((s) => !existingIds.has(s.id)),
-        ];
-        return { ...state, shortcuts: merged };
+      version: 3,
+      migrate: (persistedState: unknown, version: number) => {
+        if (version >= 3) return persistedState as KeyboardShortcutsStore;
+
+        // v1/v2 → v3: keep only the bindings that differ from their default.
+        const legacy = persistedState as { shortcuts?: ShortcutBinding[] } | null;
+        const overrides: Record<string, string[]> = {};
+        for (const binding of legacy?.shortcuts ?? []) {
+          const fallback = DEFAULT_SHORTCUTS.find((d) => d.id === binding.id);
+          if (!fallback) continue;
+          const same =
+            fallback.keys.length === binding.keys.length &&
+            fallback.keys.every((key, i) => key === binding.keys[i]);
+          if (!same) overrides[binding.id] = binding.keys;
+        }
+        return { overrides } as KeyboardShortcutsStore;
       },
     }
   )
 );
+
+/** Defaults with the user's rebindings applied. */
+export function useShortcutBindings(): ShortcutBinding[] {
+  const overrides = useKeyboardShortcutsStore((s) => s.overrides);
+  return useMemo(
+    () =>
+      DEFAULT_SHORTCUTS.map((binding) =>
+        overrides[binding.id] ? { ...binding, keys: overrides[binding.id] } : binding
+      ),
+    [overrides]
+  );
+}
+
+/** Non-reactive read for the keydown dispatcher. */
+export function getShortcutBindings(): ShortcutBinding[] {
+  const { overrides } = useKeyboardShortcutsStore.getState();
+  return DEFAULT_SHORTCUTS.map((binding) =>
+    overrides[binding.id] ? { ...binding, keys: overrides[binding.id] } : binding
+  );
+}

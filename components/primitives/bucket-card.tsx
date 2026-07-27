@@ -77,11 +77,15 @@ export function BucketCard({
           />
         )}
         <Icon className={cn(meta.tint, mini ? 'h-3.5 w-3.5' : 'h-4 w-4')} />
-        {/* Bucket label — Inter Regular 14→13 ramp, muted (mockup header band) */}
-        <h3 className={cn('flex-1 font-sans font-normal text-muted-foreground', mini ? 'text-xs' : 'text-sm')}>
-          {meta.label}
-        </h3>
+        {/* Bucket label — text-xs at both densities, matching the section
+            headings in the list/schedule views (GroupSection, canvas variant) so
+            a bucket name and a category name are the same size wherever you are.
+            The count sits immediately beside the name rather than floating at
+            the far end of the band: it reads as part of the label ("Anytime, 6")
+            instead of as a second, unrelated control next to the add button. */}
+        <h3 className="font-sans text-xs font-normal text-muted-foreground">{meta.label}</h3>
         <CountBadge count={count} />
+        <span className="flex-1" />
         {onAdd && (
           <AddIconButton
             size={mini ? 'sm' : 'md'}

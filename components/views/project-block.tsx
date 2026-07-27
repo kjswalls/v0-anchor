@@ -44,10 +44,10 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
       </button>
       <div
         onClick={onClick}
-        className={cn(
-          'flex flex-1 cursor-pointer items-center gap-2 rounded-lg bg-surface-3/70 px-3 py-2 transition-colors hover:bg-surface-3',
-          done && 'opacity-60'
-        )}
+        // No done-fade on this container — it would composite the lime check down
+        // with everything else, and 60% lime on the dark ramp is olive. The title
+        // carries the fade instead (below).
+        className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg bg-surface-3/70 px-3 py-2 transition-colors hover-wash"
       >
         <button
           onClick={(e) => {
@@ -61,7 +61,9 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
         >
           {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
         </button>
-        <span className={cn('flex-1 font-content text-sm', done && 'text-muted-foreground line-through')}>
+        <span
+          className={cn('flex-1 font-content text-content', done && 'text-muted-foreground line-through opacity-60')}
+        >
           {task.title}
         </span>
       </div>
@@ -102,7 +104,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
     >
       <div className="mb-2 flex items-center gap-2">
         <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4" />
-        <span className="font-content text-sm text-foreground">{project.name}</span>
+        <span className="font-content text-content text-foreground">{project.name}</span>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
           {project.startTime}
@@ -139,10 +141,10 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
               <div
                 key={task.id}
                 onClick={() => onTaskClick(task)}
-                className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover:bg-muted"
+                className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover-wash"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-content text-sm text-foreground">{task.title}</p>
+                  <p className="truncate font-content text-content text-foreground">{task.title}</p>
                 </div>
                 <Button
                   variant="ghost"

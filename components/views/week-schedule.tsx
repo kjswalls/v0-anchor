@@ -7,12 +7,15 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import {
   ScheduleBlock,
-  HOUR_PX,
+  deriveGridRange,
   deriveTimedEntries,
   deriveUntimedRows,
   formatHourLabel,
+  FULL_DAY_RANGE,
   type TimedEntry,
 } from '@/components/views/day-schedule';
+import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
+import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -33,14 +36,24 @@ import { cn } from '@/lib/utils';
 const HEADER_H = 60;
 const ANYTIME_H = 88;
 
-function WeekHourCell({ dateStr, hour, isActive }: { dateStr: string; hour: number; isActive: boolean }) {
+function WeekHourCell({
+  dateStr,
+  hour,
+  isActive,
+  hourPx,
+}: {
+  dateStr: string;
+  hour: number;
+  isActive: boolean;
+  hourPx: number;
+}) {
   const { isOver, setNodeRef } = useDroppable({ id: `weekhour:${dateStr}:${hour}`, disabled: !isActive });
   return (
     <div
       ref={setNodeRef}
       data-dnd-id={`weekhour:${dateStr}:${hour}`}
       className={cn('border-b border-l border-border/25 transition-colors', isOver && 'bg-primary/10')}
-      style={{ height: HOUR_PX }}
+      style={{ height: hourPx }}
     />
   );
 }
@@ -56,6 +69,7 @@ function WeekScheduleColumn({
   col,
   hours,
   gridStartMin,
+  hourPx,
   activeId,
   selected,
   today,
@@ -63,6 +77,7 @@ function WeekScheduleColumn({
   col: ColumnData;
   hours: number[];
   gridStartMin: number;
+  hourPx: number;
   activeId: string | null;
   selected: boolean;
   today: boolean;
@@ -84,17 +99,25 @@ function WeekScheduleColumn({
         style={{ height: HEADER_H }}
         className={cn(
           'flex flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
-          selected ? 'border-success-text bg-primary' : 'border-surface-3 bg-surface-2'
+          // On the lime fill the label takes the INK role (-foreground), not the
+          // lime-as-text one: -text tracks the fill, so it was lime on lime.
+          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
         )}
         title={`Select ${format(col.date, 'EEEE, MMMM d')}`}
       >
-        <span className={cn('text-xs font-medium uppercase', selected ? 'text-success-text' : 'text-muted-foreground')}>
+        <span
+          className={cn('text-xs font-medium uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
+        >
           {format(col.date, 'EEE')}
         </span>
         <span
           className={cn(
             'text-sm',
-            selected ? 'font-semibold text-success-text' : today ? 'font-bold text-success-text' : 'font-semibold text-foreground'
+            selected
+              ? 'font-semibold text-primary-foreground'
+              : today
+                ? 'font-bold text-success-text'
+                : 'font-semibold text-foreground'
           )}
         >
           {format(col.date, 'MMM d')}
@@ -123,12 +146,12 @@ function WeekScheduleColumn({
       <div className="relative mt-2">
         <div>
           {hours.map((h) => (
-            <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} />
+            <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} hourPx={hourPx} />
           ))}
         </div>
         <div className="absolute inset-0">
           {col.timed.map((entry) => (
-            <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartMin} date={col.date} />
+            <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartMin} date={col.date} hourPx={hourPx} />
           ))}
         </div>
       </div>
@@ -172,10 +195,18 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     [weekDays, tasks, habits, projects, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 
+  // One shared range + hour height across the gutter and all 7 columns so the
+  // labels stay aligned. Range spans the union of every day's items when idle,
+  // the full day while dragging (every hour a drop target) or resizing (see/reach
+  // any target time); rows shrink to fit the pane, except during resize where the
+  // scale is frozen and the grid auto-scrolls instead.
+  const resizing = useScheduleResizeStore((s) => s.resizing);
   const allTimed = perDay.flatMap((c) => c.timed);
-  const gridStartHour = Math.min(8, ...allTimed.map((e) => Math.floor(e.startMin / 60)));
-  const gridEndHour = Math.max(19, ...allTimed.map((e) => Math.ceil((e.startMin + e.duration) / 60)));
+  const contentRange = useMemo(() => deriveGridRange(allTimed), [allTimed]);
+  const { gridStartHour, gridEndHour } = activeId || resizing ? FULL_DAY_RANGE : contentRange;
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
+  const { hourPx, anchorRef } = useFitHourPx(hours.length, resizing);
+  useResizeScrollCompensation(gridStartHour, hourPx, resizing, anchorRef);
 
   return (
     <ScrollArea className="h-full flex-1">
@@ -190,11 +221,11 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
         <div className="flex w-[72px] flex-shrink-0 flex-col">
           <div style={{ height: HEADER_H }} />
           <div style={{ height: ANYTIME_H }} className="mt-2" />
-          <div className="mt-2">
+          <div ref={anchorRef} className="mt-2">
             {hours.map((h) => (
               <div
                 key={h}
-                style={{ height: HOUR_PX }}
+                style={{ height: hourPx }}
                 className="pl-1 pt-1 text-xs font-medium text-muted-foreground"
               >
                 {formatHourLabel(h, timeFormatStr)}
@@ -209,6 +240,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             col={col}
             hours={hours}
             gridStartMin={gridStartHour * 60}
+            hourPx={hourPx}
             activeId={activeId}
             selected={isSameDay(col.date, selectedDate)}
             today={isToday(col.date)}

@@ -215,7 +215,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                               <button
                                 key={emoji}
                                 className={cn(
-                                  'w-8 h-8 rounded hover:bg-secondary flex items-center justify-center',
+                                  'w-8 h-8 rounded hover:bg-accent flex items-center justify-center',
                                   newGroupEmoji === emoji && 'bg-secondary ring-1 ring-primary'
                                 )}
                                 onClick={() => setNewGroupEmoji(emoji)}
@@ -346,7 +346,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                           'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                           repeatDays.includes(index)
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                            : 'bg-secondary/50 text-muted-foreground hover-wash'
                         )}
                       >
                         {day}
@@ -371,7 +371,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
                           'w-7 h-7 rounded text-xs font-medium transition-colors',
                           repeatMonthDay === day
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                            : 'bg-secondary/50 text-muted-foreground hover-wash'
                         )}
                       >
                         {day}

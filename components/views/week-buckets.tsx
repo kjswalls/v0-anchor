@@ -71,18 +71,21 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
         onClick={() => setSelectedDate(date)}
         className={cn(
           'flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
-          selected ? 'border-success-text bg-primary' : 'border-surface-3 bg-surface-2'
+          // Ink role on the lime fill — see week-schedule's day header.
+          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
-        <span className={cn('text-sm font-normal uppercase', selected ? 'text-success-text' : 'text-muted-foreground')}>
+        <span
+          className={cn('text-sm font-normal uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
+        >
           {format(date, 'EEEE')}
         </span>
         <span
           className={cn(
             'text-sm',
             selected
-              ? 'font-semibold text-success-text'
+              ? 'font-semibold text-primary-foreground'
               : today
                 ? 'font-bold text-success-text'
                 : 'font-semibold text-foreground'

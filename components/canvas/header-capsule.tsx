@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, addDays, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -9,13 +9,6 @@ import {
   ChevronDown,
   Sun,
   Moon,
-  CheckCheck,
-  ListTodo,
-  Repeat,
-  Rows3,
-  Clock,
-  List,
-  CalendarDays,
   Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,9 +22,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { FilterPopover } from '@/components/primitives/filter-popover';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useViewStore, type ViewLayout, type ViewScope, type TypeFilter } from '@/lib/view-store';
+import { useViewStore } from '@/lib/view-store';
+import {
+  LAYOUT_OPTIONS,
+  SCOPE_OPTIONS,
+  TYPE_OPTIONS,
+  type ViewOption,
+} from '@/lib/view-options';
+import { goToDate, stepScope } from '@/lib/nav-commands';
 import { useSunTimes } from '@/hooks/use-sun-times';
-import { cn } from '@/lib/utils';
 
 /**
  * Floating header capsule at the top of the canvas (Figma view controls
@@ -40,12 +39,6 @@ import { cn } from '@/lib/utils';
  * dropdown selectors — type · layout · scope.
  */
 
-type Opt<T extends string> = {
-  value: T;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-};
-
 function SelectMenu<T extends string>({
   value,
   options,
@@ -53,7 +46,7 @@ function SelectMenu<T extends string>({
   ariaLabel,
 }: {
   value: T;
-  options: Opt<T>[];
+  options: ViewOption<T>[];
   onChange: (v: T) => void;
   ariaLabel: string;
 }) {
@@ -64,7 +57,7 @@ function SelectMenu<T extends string>({
       <DropdownMenuTrigger asChild>
         <button
           aria-label={ariaLabel}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-surface-3"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Icon className="h-4 w-4" />
           {current.label}
@@ -91,23 +84,8 @@ function SelectMenu<T extends string>({
   );
 }
 
-const TYPE_OPTS: Opt<TypeFilter>[] = [
-  { value: 'all', label: 'All', icon: CheckCheck },
-  { value: 'tasks', label: 'Tasks', icon: ListTodo },
-  { value: 'habits', label: 'Habits', icon: Repeat },
-];
-const LAYOUT_OPTS: Opt<ViewLayout>[] = [
-  { value: 'buckets', label: 'Buckets', icon: Rows3 },
-  { value: 'schedule', label: 'Schedule', icon: Clock },
-  { value: 'list', label: 'List', icon: List },
-];
-const SCOPE_OPTS: Opt<ViewScope>[] = [
-  { value: 'day', label: 'Day', icon: Sun },
-  { value: 'week', label: 'Week', icon: CalendarDays },
-];
-
 export function HeaderCapsule() {
-  const { selectedDate, setSelectedDate, setNavDirection, projects } = usePlannerStore();
+  const { selectedDate, projects } = usePlannerStore();
   const { scope, layout, typeFilter, canvasFilters, setScope, setLayout, setTypeFilter, setCanvasFilters } =
     useViewStore();
   const { isAfterSunset } = useSunTimes();
@@ -118,19 +96,11 @@ export function HeaderCapsule() {
     setMounted(true);
   }, []);
 
-  const goPrevious = () => {
-    setNavDirection('right');
-    setSelectedDate(subDays(selectedDate, scope === 'week' ? 7 : 1));
-    setTimeout(() => setNavDirection(null), 600);
-  };
-  const goNext = () => {
-    setNavDirection('left');
-    setSelectedDate(addDays(selectedDate, scope === 'week' ? 7 : 1));
-    setTimeout(() => setNavDirection(null), 600);
-  };
+  const goPrevious = () => stepScope(-1);
+  const goNext = () => stepScope(1);
 
   return (
-    <div className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2">
+    <div className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2 shadow-[var(--shadow-elev-bar)]">
       {/* Row 1 — calendar + date nav */}
       <div className="flex items-center gap-1 px-1">
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -155,7 +125,7 @@ export function HeaderCapsule() {
               mode="single"
               selected={selectedDate}
               onSelect={(date) => {
-                if (date) setSelectedDate(date);
+                if (date) goToDate(date);
                 setCalendarOpen(false);
               }}
               initialFocus
@@ -196,20 +166,20 @@ export function HeaderCapsule() {
       <div className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]">
         <SelectMenu
           value={typeFilter}
-          options={TYPE_OPTS}
+          options={TYPE_OPTIONS}
           onChange={(v) => setTypeFilter(v)}
           ariaLabel="Filter by type"
         />
         <div className="ml-auto flex items-center">
           <SelectMenu
             value={layout}
-            options={LAYOUT_OPTS}
+            options={LAYOUT_OPTIONS}
             onChange={(v) => setLayout(v)}
             ariaLabel="Layout"
           />
           <SelectMenu
             value={scope}
-            options={SCOPE_OPTS}
+            options={SCOPE_OPTIONS}
             onChange={(v) => setScope(v)}
             ariaLabel="Scope"
           />

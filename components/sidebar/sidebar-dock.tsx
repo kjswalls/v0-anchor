@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChatPanel } from '@/components/sidebar/chat-panel';
 import { UserCard } from '@/components/sidebar/user-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
@@ -20,8 +20,17 @@ import { cn } from '@/lib/utils';
 export function SidebarDock() {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
   const dockRef = useRef<HTMLDivElement>(null);
-  // Relay wakes up while anything in the dock (the omnibar, chiefly) has focus.
+  // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
+  // own focus (via onFocusChange) rather than the dock's focus-within: the
+  // latter sticks lit when a menu returns focus to its trigger or the chat
+  // input unmounts, since neither fires a focusout that leaves the container.
   const [focused, setFocused] = useState(false);
+  // Bumped by the omnibar the moment focus lands: the relay's ripple restarts
+  // from the focal point and flares. Separate from `focused` on purpose — that
+  // drives a sustained brightness the field holds for as long as you're in the
+  // input, this marks the instant you arrived.
+  const [burst, setBurst] = useState(0);
+  const pulse = useCallback(() => setBurst((n) => n + 1), []);
 
   // Publish the dock's top edge (distance from the viewport bottom) as
   // --toast-bottom so the undo toast can anchor just above it — exact instead
@@ -50,15 +59,11 @@ export function SidebarDock() {
     <div
       ref={dockRef}
       data-tour="right-sidebar"
-      onFocus={() => setFocused(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
-      }}
       // No overflow-hidden here: the omnibar's suggestion panel grows upward
       // out of the dock, so clipping the capsule would cut it off. The relay
       // clips itself instead (its own rounded overflow-hidden, below).
       className={cn(
-        'relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px]',
+        'relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]',
         chatExpanded && 'flex-1'
       )}
     >
@@ -71,6 +76,7 @@ export function SidebarDock() {
           activeIntensity={0.6}
           activeIntensityLight={0.4}
           active={focused}
+          burst={burst}
           mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
         />
       )}
@@ -83,7 +89,7 @@ export function SidebarDock() {
         <UserCard />
       </div>
       <div className="relative z-10 mt-5">
-        <Omnibar />
+        <Omnibar onFocusChange={setFocused} onPulse={pulse} />
       </div>
     </div>
   );

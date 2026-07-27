@@ -19,6 +19,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { RELAY } from '@/lib/relay-config';
 import { useUIStore } from '@/lib/ui-store';
 import { createClient } from '@/lib/supabase';
+import { flushSettings } from '@/lib/settings-service';
 import { cn } from '@/lib/utils';
 
 function getInitials(email: string, name?: string | null): string {
@@ -64,6 +65,9 @@ export function UserCard() {
   }, []);
 
   const handleSignOut = async () => {
+    // Settings writes are debounced 500ms. Anything still buffered has to land
+    // while the session is alive, or RLS rejects it and the change is lost.
+    await flushSettings();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push('/login');

@@ -33,12 +33,15 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
-import { useUIStore, openAddDialog, openEditFor } from '@/lib/ui-store';
+import { useChatStore } from '@/lib/chat-store';
+import { flushSettings } from '@/lib/settings-service';
+import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
-import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
+import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -95,12 +98,11 @@ export function AppShell() {
     deleteHabit,
     moveTaskToProjectBlock,
     selectedDate,
-    undo,
-    redo,
   } = usePlannerStore();
-  const { toggleLeftSidebar, toggleChat, setChatExpanded } = useSidebarStore();
+  const { setChatExpanded } = useSidebarStore();
   const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
   const isMobile = useIsMobile();
+  const commandContext = useCommandContext();
 
   useUndoToast();
   useTimezoneSync();
@@ -112,6 +114,20 @@ export function AppShell() {
   useEffect(() => {
     setMounted(true);
     adoptLegacyViewPrefs();
+    // Hydrate the chat transcript here rather than waiting for
+    // ChatConversation to mount. A command ("Plan my day") can send a message
+    // before the panel has ever been opened, and send() persists the message
+    // list it appends to — over an empty one, that wipes the saved history.
+    useChatStore.getState().hydrate();
+  }, []);
+
+  // Settings writes are debounced 500ms; closing the tab inside that window
+  // would otherwise drop the patch. pagehide (not beforeunload) is the event
+  // that actually fires on mobile Safari.
+  useEffect(() => {
+    const onPageHide = () => void flushSettings();
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
   // Content typeface toggle — stamp <html data-type-mode> so the CSS token
@@ -188,49 +204,6 @@ export function AppShell() {
       eodStore.open();
     }
   }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
-
-  // Global keyboard shortcuts (chrome-level; item shortcuts via useKeyboardShortcuts below)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-
-      if (e.key === '[') {
-        e.preventDefault();
-        toggleLeftSidebar();
-      }
-      if (e.key === ']') {
-        e.preventDefault();
-        toggleChat();
-      }
-      if (e.key === '/') {
-        e.preventDefault();
-        openDialog({ type: 'keyboard-shortcuts' });
-      }
-      if (e.key === ',') {
-        e.preventDefault();
-        openDialog({ type: 'settings' });
-      }
-      if (key === 'k') {
-        e.preventDefault();
-        useUIStore.getState().focusOmnibar();
-      }
-      // Undo/redo (moved from top-nav)
-      if (key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      }
-      if (key === 'y') {
-        e.preventDefault();
-        redo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleLeftSidebar, toggleChat, openDialog, undo, redo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -328,11 +301,12 @@ export function AppShell() {
     });
   }, [tasks, habits, confirm, deleteTask, deleteHabit]);
 
-  useKeyboardShortcuts({
-    new_task: useCallback(() => openAddDialog('task'), []),
+  // Every other binding is owned by its command in lib/commands/registry.ts.
+  // These two stay here because they act on the item under the mouse, which
+  // only the shell can resolve.
+  useCommandShortcuts(commandContext, {
     edit_hovered: handleShortcutEdit,
     delete_hovered: handleShortcutDelete,
-    report_bug: useCallback(() => useUIStore.getState().openDialog({ type: 'bug-report' }), []),
   });
 
   // Dialog state — keep the last add payload so close animations don't flicker

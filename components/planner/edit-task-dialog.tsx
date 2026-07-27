@@ -294,7 +294,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                   {startDate && (
                     <button
                       type="button"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
                       onClick={(e) => { e.stopPropagation(); setStartDate(undefined); }}
                     >
                       <X className="h-3 w-3" />
@@ -386,7 +386,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                         'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                         repeatDays.includes(index)
                           ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          : 'bg-secondary/50 text-muted-foreground hover-wash'
                       )}
                     >
                       {day}
@@ -411,7 +411,7 @@ export function EditTaskDialog({ task, open, onOpenChange }: EditTaskDialogProps
                         'w-7 h-7 rounded text-xs font-medium transition-colors',
                         repeatMonthDay === day
                           ? 'bg-primary text-primary-foreground'
-                          : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                          : 'bg-secondary/50 text-muted-foreground hover-wash'
                       )}
                     >
                       {day}

@@ -7,22 +7,25 @@ import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { Button } from '@/components/ui/button';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useEODStore } from '@/lib/eod-store';
-import { useMorningStore } from '@/lib/morning-store';
 
 /**
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
  * the warm backdrop. The views live behind ViewRouter (P5).
  */
 export function DesktopShell() {
-  const eodStore = useEODStore();
   const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
 
   return (
     <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
       <Sidebar />
 
-      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] bg-canvas shadow-[var(--shadow-elev-md)]">
+      {/* Body panel: a big card floating over the backdrop/sidebar field. The
+          hairline border does the close-range work (it survives on top of the
+          shadow at the panel's edge, which is what reads as "lifted" in dark
+          mode where a black drop barely registers); shadow-elev-panel adds the
+          leftward cast onto the sidebar plus a left-edge light-catch, which the
+          vertical-only elev family couldn't give it. */}
+      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]">
         {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div
@@ -48,31 +51,16 @@ export function DesktopShell() {
           </Button>
         )}
 
-        {/* Canvas header — capsule left, dev triggers right. canvas-container
-            shares its left edge with every body view (Figma x=103 align). */}
-        <div className="canvas-container flex flex-shrink-0 items-start justify-between pt-[31px] pb-2">
+        {/* Canvas header. canvas-container shares its left edge with every body
+            view (Figma x=103 align).
+
+            The two [DEV] emoji triggers that used to sit on the right are gone:
+            "Show overdue tasks" and "Start end-of-day review" are real commands
+            in the palette now, and the morning one no longer pokes store state
+            (which left the server-side dismissal in place, so the reset died on
+            the next reload). */}
+        <div className="canvas-container flex flex-shrink-0 items-start pt-[31px] pb-2">
           <HeaderCapsule />
-          <div className="flex items-center gap-2">
-            {/* DEV: manual trigger buttons for testing — remove before launch */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground"
-              onClick={() => useMorningStore.setState({ morningCheckDismissedDate: null })}
-              title="[DEV] Reset morning check (clears dismissed state)"
-            >
-              ☀️
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground"
-              onClick={() => eodStore.open()}
-              title="[DEV] Trigger EOD review"
-            >
-              🌙
-            </Button>
-          </div>
         </div>
 
         <MorningCheck />

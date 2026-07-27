@@ -1,65 +1,124 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Plus,
-  Sparkles,
-  SlashSquare,
-  CheckCircle2,
-  Flame,
-  Settings,
-  Keyboard,
-  FolderOpen,
-  Bug,
-} from 'lucide-react';
+import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
-import { Command, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
+import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+  CommandShortcut,
+} from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
-import { useSidebarStore } from '@/lib/sidebar-store';
 import { searchItems } from '@/lib/search';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
+import {
+  formatKeys,
+  groupRows,
+  isAvailable,
+  matchArgOptions,
+  matchCommands,
+  recentRows,
+  resolveLabel,
+  RECENT_HEADING,
+  type Command as AnchorCommand,
+  type CommandArgOption,
+  type CommandRow,
+} from '@/lib/commands';
+import { useCommandUsageStore } from '@/lib/command-usage-store';
+import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
+import { useCommandContext } from '@/hooks/use-command-context';
 
 /**
- * The omnibar (v1): search, quick-add, and /commands from one input at the
- * bottom of the sidebar. Prefixes: '+' add, '/' command, '?' chat (lands in
- * P4 — shows a hint until then). ⌘K focuses it via ui-store.focusOmnibar().
+ * The omnibar: search, quick-add, /commands and chat from one input at the
+ * bottom of the sidebar. Prefixes: '+' add, '/' command, '?' chat. ⌘K focuses
+ * it via ui-store.focusOmnibar().
+ *
+ * Commands are NOT declared here — they come from lib/commands/registry.ts,
+ * which also owns the keyboard bindings, so this component only knows how to
+ * render and run whatever the registry exposes.
  */
 
-interface OmniCommand {
-  id: string;
-  label: string;
-  keywords: string;
-  icon: React.ComponentType<{ className?: string }>;
-  run: () => void;
-}
+/** Mobile has ~320px of panel above a docked input; desktop can scroll. */
+const MOBILE_ROW_LIMIT = 8;
+const FREE_TEXT_COMMAND_LIMIT = 4;
 
 /**
  * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
  *   grows the sidebar dock (default); mobile switches to the Chat tab.
+ * @param onFocusChange reports the input's focus state to the parent (the dock
+ *   drives its ambient relay from this — a stable signal, unlike container
+ *   focus-within which sticks when a menu returns focus or a child unmounts).
+ * @param onPulse fires on the INSTANT focus arrives (and on every ⌘K), for a
+ *   one-shot flourish. Not derivable from onFocusChange: ⌘K on an already
+ *   focused input fires no focus event but should still register.
  */
-export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
+export function Omnibar({
+  onAskBeacon,
+  onFocusChange,
+  onPulse,
+}: {
+  onAskBeacon?: () => void;
+  onFocusChange?: (focused: boolean) => void;
+  onPulse?: () => void;
+} = {}) {
   const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
-  const openDialog = useUIStore((s) => s.openDialog);
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
 
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
+  /** Set once a command needing an argument is picked — the "chip" state. */
+  const [activeCommand, setActiveCommand] = useState<AnchorCommand | null>(null);
+  const [isMac, setIsMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ⌘K (and friends) focus request
+  const ctx = useCommandContext({ openChat: onAskBeacon });
+  const usage = useCommandUsageStore((s) => s.usage);
+  const bindings = useShortcutBindings();
+
+  useEffect(() => {
+    setIsMac(typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform));
+  }, []);
+
+  /** Resolved key hint per shortcut id, for the right-aligned label. */
+  const keyHints = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const binding of bindings) map.set(binding.id, formatKeys(binding.keys, isMac).join(' '));
+    return map;
+  }, [bindings, isMac]);
+
+  // Held in a ref so it stays OUT of the focusToken effect's deps. That effect
+  // fires a pulse on every run, and its `focusToken > 0` guard stays true once
+  // tripped — so an unmemoised onPulse in the deps would re-fire the wave on
+  // every parent render.
+  const onPulseRef = useRef(onPulse);
+  useEffect(() => {
+    onPulseRef.current = onPulse;
+  });
+
+  // ⌘K (and friends) focus request. Pulses unconditionally: when the input is
+  // already focused, .focus() fires no focus event, and the shortcut should
+  // still register as *something* happening.
   useEffect(() => {
     if (focusToken > 0) {
       inputRef.current?.focus();
       setOpen(true);
+      onPulseRef.current?.();
     }
   }, [focusToken]);
+
+  // Report focus up so the dock can light its relay off a reliable signal.
+  useEffect(() => {
+    onFocusChange?.(focused);
+  }, [focused, onFocusChange]);
 
   // Click outside closes the panel
   useEffect(() => {
@@ -73,89 +132,127 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
-  const commands: OmniCommand[] = useMemo(
-    () => [
-      {
-        id: 'add-task',
-        label: 'Add task…',
-        keywords: 'add new task create',
-        icon: Plus,
-        run: () => openAddDialog('task'),
-      },
-      {
-        id: 'add-habit',
-        label: 'Add habit…',
-        keywords: 'add new habit create',
-        icon: Plus,
-        run: () => openAddDialog('habit'),
-      },
-      {
-        id: 'settings',
-        label: 'Settings',
-        keywords: 'settings preferences theme',
-        icon: Settings,
-        run: () => openDialog({ type: 'settings' }),
-      },
-      {
-        id: 'shortcuts',
-        label: 'Keyboard shortcuts',
-        keywords: 'keyboard shortcuts keys help',
-        icon: Keyboard,
-        run: () => openDialog({ type: 'keyboard-shortcuts' }),
-      },
-      {
-        id: 'categories',
-        label: 'Manage projects & groups',
-        keywords: 'projects groups categories manage folders',
-        icon: FolderOpen,
-        run: () => openDialog({ type: 'manage-categories' }),
-      },
-      {
-        id: 'bug',
-        label: 'Report a bug',
-        keywords: 'bug report feedback issue',
-        icon: Bug,
-        run: () => openDialog({ type: 'bug-report' }),
-      },
-    ],
-    [openDialog]
-  );
-
   const trimmed = query.trim();
-  const isCommandMode = trimmed.startsWith('/');
-  const isAddMode = trimmed.startsWith('+');
-  const isChatMode = trimmed.startsWith('?');
-  const commandQuery = isCommandMode ? trimmed.slice(1).trim().toLowerCase() : '';
+  // Prefixes are suspended while a command is waiting for its argument — a
+  // project called "/etc" has to be typeable.
+  const isCommandMode = !activeCommand && trimmed.startsWith('/');
+  const isAddMode = !activeCommand && trimmed.startsWith('+');
+  const isChatMode = !activeCommand && trimmed.startsWith('?');
+  const commandQuery = isCommandMode ? trimmed.slice(1).trim() : '';
   const addTitle = isAddMode ? trimmed.slice(1).trim() : trimmed;
-  const chatText = isChatMode ? trimmed.slice(1).trim() : trimmed;
+  // Every prefix is stripped, not just '?': ⌘Enter sends to Beacon from any
+  // mode, and it must not send the literal '+' or '/' along with the text.
+  const chatText =
+    isChatMode || isAddMode || isCommandMode ? trimmed.slice(1).trim() : trimmed;
+
+  /* ── argument mode ─────────────────────────────────────────────────── */
+
+  const argument = activeCommand?.argument;
+
+  const argOptions = useMemo(() => {
+    if (!activeCommand || argument?.kind !== 'enum') return [];
+    return matchArgOptions(activeCommand, query, ctx);
+  }, [activeCommand, argument, query, ctx]);
+
+  const argError = useMemo(() => {
+    if (argument?.kind !== 'text' || !query.trim()) return null;
+    return argument.validate?.(query) ?? null;
+  }, [argument, query]);
+
+  /* ── rows ──────────────────────────────────────────────────────────── */
 
   const results = useMemo(() => {
-    if (isCommandMode || isAddMode || isChatMode || !trimmed) return { tasks: [], habits: [] };
+    if (activeCommand || isCommandMode || isAddMode || isChatMode || !trimmed) {
+      return { tasks: [], habits: [] };
+    }
     const r = searchItems(trimmed, tasks, habits);
     return { tasks: r.tasks.slice(0, 6), habits: r.habits.slice(0, 4) };
-  }, [trimmed, isCommandMode, isAddMode, isChatMode, tasks, habits]);
+  }, [trimmed, activeCommand, isCommandMode, isAddMode, isChatMode, tasks, habits]);
 
-  const matchedCommands = useMemo(() => {
-    if (isAddMode || isChatMode) return [];
-    if (isCommandMode)
-      return commands.filter(
-        (c) => !commandQuery || c.label.toLowerCase().includes(commandQuery) || c.keywords.includes(commandQuery)
-      );
-    // Free-text mode: surface at most 2 loosely matching commands under Actions
-    if (!trimmed) return commands.slice(0, 2);
-    return commands
-      .filter((c) => c.label.toLowerCase().includes(trimmed.toLowerCase()) || c.keywords.includes(trimmed.toLowerCase()))
-      .slice(0, 2);
-  }, [commands, isCommandMode, isAddMode, isChatMode, commandQuery, trimmed]);
+  /**
+   * The "Recently used" rows, kept out of `commandRows` so they render as
+   * their own labelled section rather than blending into the actions that are
+   * always on offer. Only shown when you have not typed a query — once you are
+   * searching, relevance is the only ordering that makes sense.
+   *
+   * Add task and Ask Beacon are excluded: the inline rows below already are
+   * those two commands, so a recent entry for either would render twice.
+   */
+  const recentCommandRows = useMemo<CommandRow[]>(() => {
+    if (activeCommand || isAddMode || isChatMode) return [];
+    if (trimmed && !(isCommandMode && !commandQuery)) return [];
+    return recentRows(ctx, usage, 6)
+      .filter((row) => row.command.id !== 'create.task' && row.command.id !== 'rituals.chat')
+      .slice(0, ctx.isMobile ? 3 : 4);
+  }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
+
+  const commandRows = useMemo<CommandRow[]>(() => {
+    if (activeCommand || isAddMode || isChatMode) return [];
+
+    // Resting state: nothing but the recents section above and the inline
+    // add / chat rows below.
+    if (!trimmed) return [];
+
+    if (isCommandMode) {
+      const rows = matchCommands(commandQuery, ctx, { usage });
+      return ctx.isMobile ? rows.slice(0, MOBILE_ROW_LIMIT) : rows;
+    }
+
+    // Free text: the inline quick-add and Ask Beacon rows below already ARE
+    // those two commands, so drop the duplicates before capping.
+    return matchCommands(trimmed, ctx, { usage })
+      .filter((row) => row.command.id !== 'create.task' && row.command.id !== 'rituals.chat')
+      .slice(0, ctx.isMobile ? 3 : FREE_TEXT_COMMAND_LIMIT);
+  }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
+
+  /**
+   * Grouped headings only in the full palette on desktop. On mobile the panel
+   * is 320px tall and nine group headings would eat most of it before a row
+   * rendered, so it stays a flat ranked list there.
+   */
+  const grouped = useMemo(
+    // commandRows.length matters: groupRows([]) is an empty ARRAY, which is
+    // truthy, so `grouped?.map` would render nothing while `!grouped` also
+    // skipped the fallback — leaving an empty popover for a query like "/zzz".
+    () =>
+      isCommandMode && !ctx.isMobile && commandRows.length > 0 ? groupRows(commandRows) : null,
+    [isCommandMode, ctx.isMobile, commandRows]
+  );
+
+  /* ── actions ───────────────────────────────────────────────────────── */
 
   const closeAndClear = () => {
     setQuery('');
+    setActiveCommand(null);
     setOpen(false);
+  };
+
+  const clearArgument = () => {
+    setActiveCommand(null);
+    setQuery('');
+    inputRef.current?.focus();
+  };
+
+  const runCommand = (command: AnchorCommand, arg?: string) => {
+    if (!isAvailable(command, ctx)) return;
+
+    // Needs a value and doesn't have one yet — chip it and wait.
+    if (command.argument && arg === undefined) {
+      setActiveCommand(command);
+      setQuery('');
+      inputRef.current?.focus();
+      return;
+    }
+
+    command.run(ctx, arg);
+    useCommandUsageStore.getState().record(command.id);
+    closeAndClear();
   };
 
   const quickAdd = () => {
     if (!addTitle) {
       openAddDialog('task');
+      useCommandUsageStore.getState().record('create.task');
       closeAndClear();
       return;
     }
@@ -165,11 +262,75 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
   };
 
   const askBeacon = () => {
-    if (onAskBeacon) onAskBeacon();
-    else useSidebarStore.getState().setChatExpanded(true);
+    ctx.openChat();
+    useCommandUsageStore.getState().record('rituals.chat');
     if (chatText) useChatStore.getState().send(chatText);
     closeAndClear();
     inputRef.current?.blur();
+  };
+
+  /* ── rendering ─────────────────────────────────────────────────────── */
+
+  const renderCommandRow = (row: CommandRow) => {
+    const Icon = row.arg?.icon ?? row.command.icon;
+    const needsArgument = !!row.command.argument && !row.arg;
+
+    // Right-hand hint: the key binding if there is one, otherwise the token you
+    // can type to reach the row. The slash form is only truthful in command
+    // mode, so the alias hint is confined to it.
+    const keyHint =
+      row.command.shortcut && !ctx.isMobile ? keyHints.get(row.command.shortcut.id) : undefined;
+    const alias = (row.arg?.aliases ?? row.command.aliases)?.[0];
+    const hint = keyHint ?? (isCommandMode && alias ? `/${alias}` : undefined);
+
+    return (
+      <CommandItem
+        key={row.value}
+        value={row.value}
+        disabled={row.disabled}
+        onSelect={() => runCommand(row.command, row.arg?.value)}
+      >
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="truncate">
+          {row.label}
+          {needsArgument && <span className="text-muted-foreground">…</span>}
+        </span>
+        {hint && (
+          <CommandShortcut className={cn(!keyHint && 'font-mono tracking-normal')}>
+            {hint}
+          </CommandShortcut>
+        )}
+      </CommandItem>
+    );
+  };
+
+  /**
+   * Its own labelled section so a recent command never reads as one of the
+   * fixed actions. Position differs by mode on purpose: at rest it sits BELOW
+   * the actions, so Enter still means "add a task"; in /command mode it sits on
+   * top, where it is the whole point and would otherwise be buried under
+   * thirty rows nobody scrolls to.
+   */
+  const recentGroup =
+    recentCommandRows.length > 0 ? (
+      <CommandGroup heading={RECENT_HEADING}>
+        {recentCommandRows.map(renderCommandRow)}
+      </CommandGroup>
+    ) : null;
+
+  const renderArgOption = (option: CommandArgOption) => {
+    const Icon = option.icon;
+    return (
+      <CommandItem
+        key={option.value}
+        value={`arg:${option.value}`}
+        onSelect={() => activeCommand && runCommand(activeCommand, option.value)}
+      >
+        {Icon ? <Icon className="h-4 w-4 text-muted-foreground" /> : <span className="w-4" />}
+        <span className="truncate">{option.label}</span>
+        {option.active && <CommandShortcut>current</CommandShortcut>}
+      </CommandItem>
+    );
   };
 
   return (
@@ -178,139 +339,180 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
         {/* Panel above the input */}
         {open && (
           <CommandList className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg">
-            {isChatMode && (
-              <CommandGroup heading="Chat">
-                <CommandItem value="action-chat" onSelect={askBeacon}>
-                  <Sparkles className="h-4 w-4 text-ai" />
-                  <span className="truncate">
-                    Ask Beacon{chatText ? (
-                      <>
-                        {' '}
-                        <span className="font-content">“{chatText}”</span>
-                      </>
-                    ) : (
-                      '…'
-                    )}
-                  </span>
-                </CommandItem>
-              </CommandGroup>
-            )}
-
-            {results.tasks.length > 0 && (
-              <CommandGroup heading="Tasks">
-                {results.tasks.map((task) => (
+            {/* Argument mode owns the whole panel — nothing else is relevant
+                while a command is waiting for its value. */}
+            {activeCommand ? (
+              <CommandGroup heading={argument?.placeholder ?? 'Value'}>
+                {argument?.kind === 'text' ? (
                   <CommandItem
-                    key={task.id}
-                    value={`task-${task.id}`}
-                    onSelect={() => {
-                      openEditFor(task, 'task');
-                      closeAndClear();
-                    }}
+                    value="arg-submit"
+                    disabled={!!argError || !query.trim()}
+                    onSelect={() => runCommand(activeCommand, query.trim())}
                   >
-                    <CheckCircle2
-                      className={cn(
-                        'h-4 w-4',
-                        task.status === 'completed' ? 'text-success' : 'text-muted-foreground/50'
-                      )}
-                    />
-                    {task.project && (
-                      <CategoryIcon glyph={getProjectEmoji(task.project)} name={task.project} />
-                    )}
-                    <span
-                      className={cn(
-                        'truncate font-content',
-                        task.status === 'completed' && 'text-muted-foreground line-through'
-                      )}
-                    >
-                      {task.title}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-
-            {results.habits.length > 0 && (
-              <CommandGroup heading="Habits">
-                {results.habits.map((habit) => (
-                  <CommandItem
-                    key={habit.id}
-                    value={`habit-${habit.id}`}
-                    onSelect={() => {
-                      openEditFor(habit, 'habit');
-                      closeAndClear();
-                    }}
-                  >
-                    <Flame className="h-4 w-4 text-warning" />
-                    <CategoryIcon glyph={getHabitGroupEmoji(habit.group)} name={habit.group} />
-                    <span className="truncate font-content">{habit.title}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-
-            {!isChatMode && (
-              <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
-                {!isCommandMode && (
-                  <CommandItem value="action-add" onSelect={quickAdd}>
-                    <Plus className="h-4 w-4 text-success-text" />
+                    <activeCommand.icon className="h-4 w-4 text-muted-foreground" />
                     <span className="truncate">
-                      Add task{addTitle ? (
+                      {argError ? (
+                        <span className="text-destructive">{argError}</span>
+                      ) : query.trim() ? (
                         <>
-                          {' '}
-                          <span className="font-content">“{addTitle}”</span>
+                          {resolveLabel(activeCommand, ctx)}{' '}
+                          <span className="font-content">“{query.trim()}”</span>
                         </>
                       ) : (
-                        '…'
+                        <span className="text-muted-foreground">{argument.placeholder}</span>
                       )}
                     </span>
                   </CommandItem>
-                )}
-                {!isCommandMode && !isAddMode && (
-                  <CommandItem value="action-chat" onSelect={askBeacon}>
-                    <Sparkles className="h-4 w-4 text-ai" />
-                    <span className="truncate">
-                      Ask Beacon{chatText ? (
-                        <>
-                          {' '}
-                          <span className="font-content">“{chatText}”</span>
-                        </>
-                      ) : (
-                        '…'
-                      )}
-                    </span>
-                  </CommandItem>
-                )}
-                {matchedCommands.map((command) => (
-                  <CommandItem
-                    key={command.id}
-                    value={`cmd-${command.id}`}
-                    onSelect={() => {
-                      command.run();
-                      closeAndClear();
-                    }}
-                  >
-                    <command.icon className="h-4 w-4 text-muted-foreground" />
-                    <span>{command.label}</span>
-                  </CommandItem>
-                ))}
-                {isCommandMode && matchedCommands.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No matching command</div>
+                ) : argOptions.length > 0 ? (
+                  argOptions.map(renderArgOption)
+                ) : (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No match</div>
                 )}
               </CommandGroup>
-            )}
+            ) : (
+              <>
+                {isChatMode && (
+                  <CommandGroup heading="Chat">
+                    <CommandItem value="action-chat" onSelect={askBeacon}>
+                      <Sparkles className="h-4 w-4 text-ai" />
+                      <span className="truncate">
+                        Ask Beacon
+                        {chatText ? (
+                          <>
+                            {' '}
+                            <span className="font-content">“{chatText}”</span>
+                          </>
+                        ) : (
+                          '…'
+                        )}
+                      </span>
+                    </CommandItem>
+                  </CommandGroup>
+                )}
 
-            {!isChatMode && !isCommandMode && !trimmed && (
-              <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
-                <span className="flex items-center gap-1">
-                  <Plus className="h-3 w-3" /> add
-                </span>
-                <span className="flex items-center gap-1">
-                  <SlashSquare className="h-3 w-3" /> commands
-                </span>
-                <span className="flex items-center gap-1">
-                  <Sparkles className="h-3 w-3" /> ? chat
-                </span>
-              </div>
+                {results.tasks.length > 0 && (
+                  <CommandGroup heading="Tasks">
+                    {results.tasks.map((task) => (
+                      <CommandItem
+                        key={task.id}
+                        value={`task-${task.id}`}
+                        onSelect={() => {
+                          openEditFor(task, 'task');
+                          closeAndClear();
+                        }}
+                      >
+                        <CheckCircle2
+                          className={cn(
+                            'h-4 w-4',
+                            task.status === 'completed' ? 'text-success' : 'text-muted-foreground/50'
+                          )}
+                        />
+                        {task.project && (
+                          <CategoryIcon glyph={getProjectEmoji(task.project)} name={task.project} />
+                        )}
+                        <span
+                          className={cn(
+                            'truncate font-content text-content',
+                            task.status === 'completed' && 'text-muted-foreground line-through'
+                          )}
+                        >
+                          {task.title}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {results.habits.length > 0 && (
+                  <CommandGroup heading="Habits">
+                    {results.habits.map((habit) => (
+                      <CommandItem
+                        key={habit.id}
+                        value={`habit-${habit.id}`}
+                        onSelect={() => {
+                          openEditFor(habit, 'habit');
+                          closeAndClear();
+                        }}
+                      >
+                        <Flame className="h-4 w-4 text-warning" />
+                        <CategoryIcon glyph={getHabitGroupEmoji(habit.group)} name={habit.group} />
+                        <span className="truncate font-content text-content">{habit.title}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {isCommandMode && recentGroup}
+
+                {/* Grouped palette — /command mode on desktop */}
+                {grouped?.map((group) => (
+                  <CommandGroup key={group.id} heading={group.heading}>
+                    {group.rows.map(renderCommandRow)}
+                  </CommandGroup>
+                ))}
+
+                {/* Flat list: mobile, or the free-text slice beside search.
+                    Rendered before the recents so Enter at rest still lands on
+                    Add task rather than on whatever you last ran. */}
+                {!grouped && !isChatMode && (
+                  <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
+                    {!isCommandMode && (
+                      <CommandItem value="action-add" onSelect={quickAdd}>
+                        <Plus className="h-4 w-4 text-success-text" />
+                        <span className="truncate">
+                          Add task
+                          {addTitle ? (
+                            <>
+                              {' '}
+                              <span className="font-content">“{addTitle}”</span>
+                            </>
+                          ) : (
+                            '…'
+                          )}
+                        </span>
+                      </CommandItem>
+                    )}
+                    {commandRows.map(renderCommandRow)}
+                    {!isCommandMode && !isAddMode && (
+                      <CommandItem value="action-chat" onSelect={askBeacon}>
+                        <Sparkles className="h-4 w-4 text-ai" />
+                        <span className="truncate">
+                          Ask Beacon
+                          {chatText ? (
+                            <>
+                              {' '}
+                              <span className="font-content">“{chatText}”</span>
+                            </>
+                          ) : (
+                            '…'
+                          )}
+                        </span>
+                      </CommandItem>
+                    )}
+                    {isCommandMode && commandRows.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No matching command
+                      </div>
+                    )}
+                  </CommandGroup>
+                )}
+
+                {!isCommandMode && recentGroup}
+
+                {!isChatMode && !isCommandMode && !trimmed && (
+                  <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
+                    <span className="flex items-center gap-1">
+                      <Plus className="h-3 w-3" /> add
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <SlashSquare className="h-3 w-3" /> commands
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> ? chat
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </CommandList>
         )}
@@ -328,38 +530,134 @@ export function Omnibar({ onAskBeacon }: { onAskBeacon?: () => void } = {}) {
               mask="radial-gradient(closest-side, black, transparent)"
             />
           )}
-          <CommandPrimitive.Input
-            ref={inputRef}
-            value={query}
-            onValueChange={(value) => {
-              setQuery(value);
-              setOpen(true);
+          {/* Resting: a raised pill floating above the dock. Focus: it presses
+              down into it — the drop shadow cross-fades to an inner one, the
+              surface darkens a hair toward the well, and it nudges 1px lower.
+              A tactile "key pressed" feel.
+
+              The states live on this WRAPPER rather than on the input, because
+              the input now shares the pill with the argument chip. They are
+              driven off the same `focused` state the relay uses, not
+              :focus-within, which sticks when a child unmounts.
+
+              All three properties animate, so all three need an explicit
+              resting value, and every animated property is named in the
+              transition list. Two things that look like details but are not:
+                • Tailwind v4 presses via the standalone `translate` property,
+                  NOT `transform` — listing `transform` here animates nothing.
+                • The shadow uses the --shadow-key-* PAIR rather than
+                  elev-sm → inset-sm. A box-shadow list whose layers disagree on
+                  `inset` is uninterpolable and hard-swaps mid-transition; the
+                  pair is padded so it actually cross-fades. See globals.css. */}
+          <div
+            // The pill LOOKS like the text field, so all of it has to behave
+            // like one. The input is a flex item roughly 20px tall inside a
+            // 48px pill, which leaves dead bands above and below it plus the
+            // side padding; a click there would otherwise focus nothing. The
+            // target check keeps the chip button's own clicks intact — it only
+            // redirects hits that landed on this wrapper itself.
+            onMouseDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              e.preventDefault();
+              inputRef.current?.focus();
             }}
-            onFocus={() => {
-              setOpen(true);
-              setFocused(true);
-            }}
-            onBlur={() => setFocused(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                closeAndClear();
-                inputRef.current?.blur();
+            className={cn(
+              'relative z-10 flex h-[48px] w-full items-center gap-2 rounded-[10px] bg-surface-2',
+              activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
+              'translate-y-0 shadow-[var(--shadow-key-rest)]',
+              'transition-[box-shadow,translate,background-color] duration-150 ease-[var(--ease-out-soft)]',
+              focused &&
+                'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]'
+            )}
+          >
+            {activeCommand && (
+              <button
+                type="button"
+                onClick={clearArgument}
+                aria-label={`Cancel ${activeCommand.label}`}
+                // A real hit target, not just Escape: phones have no Escape key
+                // and backspace-on-empty is not reliable under an IME.
+                className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-primary/15 pl-2 pr-1.5 text-xs font-medium text-foreground"
+              >
+                <activeCommand.icon className="h-3.5 w-3.5" />
+                <span className="max-w-[140px] truncate">{resolveLabel(activeCommand, ctx)}</span>
+                <X className="h-3 w-3 text-muted-foreground" />
+              </button>
+            )}
+            <CommandPrimitive.Input
+              ref={inputRef}
+              value={query}
+              onValueChange={(value) => {
+                setQuery(value);
+                setOpen(true);
+              }}
+              onFocus={() => {
+                setOpen(true);
+                setFocused(true);
+                onPulseRef.current?.();
+              }}
+              onBlur={() => setFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  if (activeCommand) {
+                    clearArgument();
+                    return;
+                  }
+                  closeAndClear();
+                  inputRef.current?.blur();
+                  return;
+                }
+                // Backspace on an empty value pops the chip, the way a token in
+                // a mail "To:" field does.
+                if (e.key === 'Backspace' && activeCommand && query === '') {
+                  e.preventDefault();
+                  clearArgument();
+                  return;
+                }
+                // Not while a chip is pending — ⌘Enter there would abandon the
+                // command and send the half-typed argument as a chat message.
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !activeCommand) {
+                  e.preventDefault();
+                  askBeacon();
+                  return;
+                }
+                // Submit a text argument explicitly rather than relying on cmdk
+                // having re-selected the row the moment validation flipped it
+                // from disabled to enabled.
+                if (e.key === 'Enter' && activeCommand && argument?.kind === 'text') {
+                  e.preventDefault();
+                  const value = query.trim();
+                  if (value && !argument.validate?.(value)) runCommand(activeCommand, value);
+                  return;
+                }
+                if (e.key === 'Enter' && isAddMode) {
+                  e.preventDefault();
+                  quickAdd();
+                }
+              }}
+              placeholder={
+                activeCommand
+                  ? (activeCommand.argument?.placeholder ?? '')
+                  : 'Search, add a task, start a chat, run a command...'
               }
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                askBeacon();
-                return;
-              }
-              if (e.key === 'Enter' && isAddMode) {
-                e.preventDefault();
-                quickAdd();
-              }
-            }}
-            placeholder="Search, add a task, start a chat, run a command..."
-            aria-label="Omnibar"
-            className="relative z-10 h-[48px] w-full rounded-[10px] bg-surface-2 px-[22px] text-sm text-foreground shadow-[var(--shadow-elev-sm)] outline-none transition-shadow placeholder:text-muted-foreground/70 focus:ring-2 focus:ring-ring/30"
-          />
+              aria-label="Omnibar"
+              // Identifiers typed as an argument (a project name is the key
+              // every task references) must not be autocapitalised.
+              //
+              // Only autoCapitalize is set here: cmdk's Input spreads its own
+              // autoComplete/autoCorrect/spellCheck AFTER the caller's props,
+              // so passing those would look like it worked and do nothing.
+              // cmdk already pins autoCorrect and spellCheck off for us.
+              autoCapitalize={argument?.kind === 'text' ? 'off' : 'sentences'}
+              // self-stretch, not the flex row's default centring: it makes the
+              // input as tall as the pill so a click anywhere down its column
+              // lands in the text and places the caret, rather than hitting the
+              // wrapper. An input centres its own text, so this costs nothing
+              // visually. See the wrapper's onMouseDown for the side padding.
+              className="min-w-0 flex-1 self-stretch bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
+            />
+          </div>
         </div>
       </Command>
     </div>

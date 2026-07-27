@@ -124,7 +124,7 @@ export function IconPicker({ value, name = '', onSelect, className }: IconPicker
                 title={name}
                 onClick={() => handleSelect(name)}
                 className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded hover:bg-secondary',
+                  'flex h-8 w-8 items-center justify-center rounded hover:bg-accent',
                   selected && 'bg-secondary ring-1 ring-primary'
                 )}
               >

@@ -297,7 +297,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                           'w-9 h-9 rounded-lg text-xs font-medium transition-colors',
                           repeatDays.includes(index)
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                            : 'bg-secondary text-secondary-foreground hover-wash'
                         )}
                       >
                         {day}
@@ -321,7 +321,7 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                           'w-8 h-8 rounded-lg text-xs font-medium transition-colors',
                           repeatMonthDay === day
                             ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                            : 'bg-secondary text-secondary-foreground hover-wash'
                         )}
                       >
                         {day}

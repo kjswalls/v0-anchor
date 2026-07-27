@@ -60,6 +60,29 @@ export interface RelayFieldProps {
    */
   activeIntensityLight?: number;
   /**
+   * A token, not a flag: every time this value CHANGES the field's ripple
+   * restarts from the focal point and flares briefly — a stone dropped in the
+   * pond. It is the SAME wave the field always runs, re-struck; nothing new is
+   * drawn over the top. Increment a counter to trigger it.
+   */
+  burst?: number;
+  /**
+   * How far above its settled level the field flares on a burst, as a multiple.
+   * Relative rather than absolute so one value reads the same in both themes,
+   * where the settled levels differ. Default 1.6.
+   */
+  burstBoost?: number;
+  /**
+   * Seconds for the flare to fall back to the settled level. Default 0.9.
+   *
+   * Needs its own decay rather than riding the field's settle lerp: that lerp
+   * is tuned for a focus ramp and lands inside ~300ms, which is over before the
+   * restarted ripple has travelled anywhere, so the flare and the wave read as
+   * two unrelated events. This wants to still be fading while the first ring is
+   * on its way out.
+   */
+  burstDecay?: number;
+  /**
    * Which light-mode palette to paint (see lib/relay-palettes.ts). Only affects
    * light contexts — dark always reads the live theme tokens. Defaults to the
    * catalog default ('gray'); this is the seam for future user theming.
@@ -170,8 +193,14 @@ function readPalette(dark: boolean, el: Element, lightKey: RelayLightPaletteKey)
  */
 function isDarkContext(el: Element): boolean {
   const bg = getComputedStyle(el).getPropertyValue('--background').trim();
-  const m = bg.match(/oklch\(\s*([\d.]+)/);
-  if (m) return parseFloat(m[1]) < 0.5;
+  // Lightness is oklch()'s first component, but its SERIALISATION is not
+  // stable: the authored token is a 0–1 number (`oklch(0.173 …)`) and the
+  // production build's minifier rewrites it as a percentage
+  // (`oklch(17.3% …)`). Parsing the number without checking for the '%' makes
+  // 17.3 fail a `< 0.5` test, so every field quietly fell back to its LIGHT
+  // palette in a prod dark theme while looking correct in dev.
+  const m = bg.match(/oklch\(\s*([\d.]+)(%?)/);
+  if (m) return parseFloat(m[1]) / (m[2] ? 100 : 1) < 0.5;
   return !!el.closest('.dark');
 }
 
@@ -193,15 +222,36 @@ export function RelayField({
   idleIntensity = 0.6,
   activeIntensity = 1,
   activeIntensityLight,
+  burst = 0,
+  burstBoost = 1.6,
+  burstDecay = 0.9,
   lightPalette = DEFAULT_LIGHT_PALETTE,
 }: RelayFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Mutable knobs the RAF loop reads without forcing a re-init on change.
-  const knobs = useRef({ active, idleIntensity, activeIntensity, activeIntensityLight, period });
+  const knobs = useRef({
+    active,
+    idleIntensity,
+    activeIntensity,
+    activeIntensityLight,
+    period,
+    burst,
+    burstBoost,
+    burstDecay,
+  });
   useEffect(() => {
-    knobs.current = { active, idleIntensity, activeIntensity, activeIntensityLight, period };
+    knobs.current = {
+      active,
+      idleIntensity,
+      activeIntensity,
+      activeIntensityLight,
+      period,
+      burst,
+      burstBoost,
+      burstDecay,
+    };
   });
 
   useEffect(() => {
@@ -229,6 +279,14 @@ export function RelayField({
     let rafId = 0;
     let startTs = 0;
     let visible = false;
+    // Seeded from the CURRENT token so a field that mounts with a non-zero
+    // burst (a remount mid-session) doesn't fire one on its first frame.
+    let lastBurst = knobs.current.burst;
+    // Time origin for the ripple. A burst moves it to "now", which is what
+    // restarts the wave from the focal point. `flareT0` runs the brightness
+    // flare that rides along with it.
+    let phaseT0 = 0;
+    let flareT0 = -1;
 
     const draw = (t: number) => {
       const w = canvas.width / dpr;
@@ -238,14 +296,33 @@ export function RelayField({
       const k = knobs.current;
       const target = k.active ? activeFor(k) : k.idleIntensity;
       curIntensity += (target - curIntensity) * 0.08;
+
+      // A burst re-strikes the pond: the ripple's origin moves to now, so the
+      // same wave the field always runs starts over from the focal point, and a
+      // flare rides on top. Nothing extra is painted — `flare` only scales the
+      // tiles the restarted wave is already lighting.
+      if (k.burst !== lastBurst) {
+        lastBurst = k.burst;
+        phaseT0 = t;
+        flareT0 = t;
+      }
+      let flare = 1;
+      if (flareT0 >= 0) {
+        const u = (t - flareT0) / Math.max(0.05, k.burstDecay);
+        if (u >= 1) flareT0 = -1;
+        // Squared falloff: a sharp strike that tails off, rather than a linear
+        // ramp that reads as the whole field being dimmed on a slider.
+        else flare = 1 + (k.burstBoost - 1) * (1 - u) * (1 - u);
+      }
+
       ctx.clearRect(0, 0, w, h);
       // Dark adds light (lighter); light lays down ink (source-over) — higher
       // alpha = a deeper ink tile on the paper, so the pulse darkens toward the
       // crest rather than brightening.
       ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
       for (const cell of cells) {
-        const env = reduced ? 0.5 * cell.max : pulse(cell, t, k.period);
-        const a = env * curIntensity;
+        const env = reduced ? 0.5 * cell.max : pulse(cell, t - phaseT0, k.period);
+        const a = Math.min(1, env * curIntensity * flare);
         if (a <= 0.02) continue;
         ctx.globalAlpha = a;
         ctx.drawImage(sprites[cell.ci], cell.x - size / 2, cell.y - size / 2, size, size);

@@ -49,7 +49,7 @@ export function GroupSection({
         onClick={() => setCollapsed((c) => !c)}
         aria-expanded={!collapsed}
         className={cn(
-          'group/heading flex w-full items-center gap-1 rounded-[5px] px-1 py-1 text-xs font-medium hover:bg-muted/50',
+          'group/heading flex w-full items-center gap-1 rounded-[5px] px-1 py-1 text-xs font-medium hover:bg-accent',
           isCanvas ? 'text-muted-foreground' : 'text-foreground/70'
         )}
       >

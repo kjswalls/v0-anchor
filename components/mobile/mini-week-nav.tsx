@@ -5,10 +5,11 @@ import { format, addDays, subDays, startOfWeek, isToday, isSameDay } from 'date-
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { goToDate, stepDays } from '@/lib/nav-commands';
 import { cn } from '@/lib/utils';
 
 export function MiniWeekNav() {
-  const { selectedDate, setSelectedDate, setNavDirection, weekStartDay } = usePlannerStore();
+  const { selectedDate, weekStartDay } = usePlannerStore();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Get days for 3 weeks: previous, current, next
@@ -16,17 +17,10 @@ export function MiniWeekNav() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: weekStartsOn as 0 | 1 | 6 });
   const days = Array.from({ length: 21 }, (_, i) => addDays(subDays(weekStart, 7), i));
 
-  const goPrevious = () => {
-    setNavDirection('right');
-    setSelectedDate(subDays(selectedDate, 1));
-    setTimeout(() => setNavDirection(null), 600);
-  };
-
-  const goNext = () => {
-    setNavDirection('left');
-    setSelectedDate(addDays(selectedDate, 1));
-    setTimeout(() => setNavDirection(null), 600);
-  };
+  // Always a whole day, never scope-aware: this strip only ever renders on
+  // mobile, which is day-only (MobileViewRouter ignores view-store scope).
+  const goPrevious = () => stepDays(-1);
+  const goNext = () => stepDays(1);
 
   // Scroll to selected date when it changes
   useEffect(() => {
@@ -63,14 +57,14 @@ export function MiniWeekNav() {
           return (
             <button
               key={day.toISOString()}
-              onClick={() => setSelectedDate(day)}
+              onClick={() => goToDate(day)}
               className={cn(
                 'flex flex-col items-center justify-center min-w-[44px] h-[52px] rounded-lg transition-colors snap-center',
                 isSelected 
                   ? 'bg-primary text-primary-foreground' 
                   : isDayToday
                     ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:bg-secondary/50'
+                    : 'text-muted-foreground hover:bg-accent'
               )}
             >
               <span className={cn(

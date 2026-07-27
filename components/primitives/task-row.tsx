@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -12,12 +12,12 @@ import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
-  PriorityPill,
-  DurationPill,
-  TimePill,
-  StreakPill,
-  TagPill,
-  RecurrencePills,
+  PriorityGlyph,
+  StreakFlame,
+  MetaText,
+  TagDot,
+  DayDots,
+  formatDuration,
 } from '@/components/primitives/pills';
 import type { Task, Habit, HabitStatus } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -48,8 +48,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     deleteTask,
     deleteHabit,
     unscheduleTask,
-    getProjectEmoji,
-    getHabitGroupEmoji,
     getHabitGroupColor,
     getProjectColor,
     selectedDate,
@@ -78,11 +76,17 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const habitEffectiveCount = habitDoneOnDate ? habitCount || habit?.timesPerDay || 1 : habitCount;
   const completed = isTask ? taskDone : habitStatus === 'done';
 
-  const emoji = isTask
-    ? task!.project
-      ? getProjectEmoji(task!.project)
-      : null
-    : getHabitGroupEmoji(habit!.group) || null;
+  // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
+  // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
+  // leading slot therefore holds one 16px checkbox on EVERY row in EVERY state,
+  // so hovering a habit never re-measures the row and the title never shifts.
+  const multiTarget = habit?.timesPerDay && habit.timesPerDay > 1 ? habit.timesPerDay : 0;
+  const multiPartial = multiTarget > 0 && habitEffectiveCount > 0 && !completed;
+  const multiPct = multiTarget > 0 ? Math.min(100, Math.round((habitEffectiveCount / multiTarget) * 100)) : 0;
+
+  // Project (task) or group (habit) — one identity per item, rendered as a
+  // color dot + name in the trailing rail.
+  const tagName = isTask ? task!.project : habit!.group;
   const tagColor = isTask
     ? task!.project
       ? getProjectColor(task!.project)
@@ -97,8 +101,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
-
-  const [showMulti, setShowMulti] = useState(false);
 
   // Full-row drag: after a drop, the browser fires a click on the row — swallow
   // it so a drag never opens the edit dialog. Cleared on a macrotask because a
@@ -121,19 +123,27 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const handleTaskToggle = () =>
     toggleTaskStatus(item.id, undefined, taskRecurring ? selectedDate : undefined);
 
+  /** One step up; landing on the target marks the habit done. */
+  const handleHabitIncrement = () => {
+    if (!habit || multiTarget === 0) return;
+    const next = habitEffectiveCount + 1;
+    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, selectedDate);
+    else toggleHabitStatus(habit.id, 'pending', next, selectedDate);
+  };
+
+  /**
+   * Checkbox semantics, which are binary: checked or not. Below target a click
+   * counts up, but AT target a click clears the day entirely rather than
+   * stepping down to target-1 — unchecking a box should mean "I didn't do this",
+   * and landing on 2/3 means neither done nor undone. Stepping down by one is
+   * what the trailing `−` control is for; the two affordances stay distinct.
+   * The store logs this as "Reset habit", and it's undoable.
+   */
   const handleHabitToggle = () => {
     if (!habit) return;
-    if (habit.timesPerDay && habit.timesPerDay > 1) {
-      if (habitStatus === 'done') {
-        toggleHabitStatus(habit.id, 'pending', habit.timesPerDay - 1, selectedDate);
-      } else {
-        const newCount = (habitEffectiveCount || 0) + 1;
-        if (newCount >= habit.timesPerDay) {
-          toggleHabitStatus(habit.id, 'done', habit.timesPerDay, selectedDate);
-        } else {
-          toggleHabitStatus(habit.id, 'pending', newCount, selectedDate);
-        }
-      }
+    if (multiTarget > 0) {
+      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, selectedDate);
+      else handleHabitIncrement();
     } else {
       toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, selectedDate);
     }
@@ -154,7 +164,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       <div
         data-testid="habit-card"
         onClick={() => openEditFor(item, itemType)}
-        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover:bg-surface-3"
+        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover-wash"
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
         <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
@@ -174,8 +184,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     );
   }
 
-  const showMultiControls =
-    habit && habit.timesPerDay && habit.timesPerDay > 1 && habitStatus === 'pending' && (showMulti || (habitEffectiveCount ?? 0) > 0);
+  const handleHabitDecrement = () => {
+    if (!habit || habitEffectiveCount <= 0) return;
+    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, selectedDate);
+  };
 
   const rowContent = (
     <div
@@ -189,24 +201,25 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
         // touch scrolling alive; TouchSensor's 250ms delay handles drags.
-        // Hover cover: flat gray fill, Linear-style — no edge, no shadow.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-muted/60',
+        // Hover cover: flat wash, Linear-style — no edge, no shadow. --accent is
+        // the token defined for exactly this (a light gray in light mode, a
+        // white 6% overlay in dark) so the highlight lifts off the card in dark
+        // mode instead of darkening it, which bg-muted/60 did.
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-accent',
         compact ? 'py-1' : 'py-1.5',
-        isDragging && 'z-50 opacity-50',
-        completed && 'opacity-60'
+        isDragging && 'z-50 opacity-50'
+        // The completed fade is NOT applied here. Opacity on the row composites
+        // the checkbox too, and lime at 60% over the dark ramp turns olive — the
+        // one mark that has to stay bright, since it's the confirmation the
+        // click landed. The fade rides the title and the rail instead (below);
+        // opacity only ever goes down a tree, so a child can't opt back out.
       )}
       onClick={() => {
         if (wasDraggedRef.current) return;
         openEditFor(item, itemType);
       }}
-      onMouseEnter={() => {
-        setHoveredItemRef(item.id, itemType);
-        setShowMulti(true);
-      }}
-      onMouseLeave={() => {
-        setHoveredItemRef(null, null);
-        setShowMulti(false);
-      }}
+      onMouseEnter={() => setHoveredItemRef(item.id, itemType)}
+      onMouseLeave={() => setHoveredItemRef(null, null)}
     >
       {/* Grip — pure visual affordance now; the whole row is the drag origin
           (pointerdown here bubbles to the row's listeners) */}
@@ -217,79 +230,168 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         <GripVertical className="h-4 w-4 text-muted-foreground" />
       </span>
 
-      {/* Checkbox / multi-count */}
-      {showMultiControls ? (
-        <span
-          className="z-10 flex flex-shrink-0 items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => habitEffectiveCount > 0 && toggleHabitStatus(habit!.id, 'pending', habitEffectiveCount - 1, selectedDate)}
-            className="flex h-4 w-4 items-center justify-center rounded-full border border-muted-foreground/30 transition-colors hover:border-primary hover:bg-primary/10"
-            aria-label="Decrease count"
-          >
-            <Minus className="h-2.5 w-2.5 text-muted-foreground" />
-          </button>
-          <span className="w-4 text-center text-sm font-bold text-success-text">{habitEffectiveCount}</span>
-          <button
-            onClick={handleHabitToggle}
-            className="flex h-4 w-4 items-center justify-center rounded-full border border-muted-foreground/30 transition-colors hover:border-primary hover:bg-primary/10"
-            aria-label="Increase count"
-          >
-            <Plus className="h-2.5 w-2.5 text-muted-foreground" />
-          </button>
-        </span>
-      ) : (
-        <button
-          data-testid={isTask ? 'task-complete-button' : 'habit-complete-button'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isTask) handleTaskToggle();
-            else handleHabitToggle();
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-          aria-label={completed ? 'Mark incomplete' : 'Mark complete'}
-          className={cn(
-            'z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] border transition-colors',
-            completed ? 'border-primary bg-primary' : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
-          )}
-        >
-          {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-        </button>
-      )}
+      {/* Checkbox — 16px on EVERY row of both types in every state, so the
+          leading edge is one straight column and nothing downstream of it can
+          move. A multi-count habit shows its progress as a fill rising inside
+          the box (clipped to the rounded corners by overflow-hidden) rather
+          than by swapping in a wider stepper; the stepper itself lives in the
+          trailing rail, where revealing it costs no width. Clicking still
+          increments — handleHabitToggle counts up and lands on done at target. */}
+      <button
+        data-testid={isTask ? 'task-complete-button' : 'habit-complete-button'}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isTask) handleTaskToggle();
+          else handleHabitToggle();
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        aria-label={
+          multiTarget > 0
+            ? // At target a click clears the day; below it a click counts up.
+              `${completed ? 'Reset' : 'Increment'} — ${habitEffectiveCount} of ${multiTarget} complete`
+            : completed
+              ? 'Mark incomplete'
+              : 'Mark complete'
+        }
+        className={cn(
+          'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
+          completed
+            ? 'border-primary bg-primary'
+            : multiPartial
+              ? 'border-primary/60 bg-surface-3 hover:border-primary'
+              : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+        )}
+      >
+        {multiPartial && (
+          <span
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 bg-primary/70 transition-[height] duration-150"
+            style={{ height: `${multiPct}%` }}
+          />
+        )}
+        {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+      </button>
 
       {/* Title */}
       <p
         className={cn(
-          // Content typeface via tokens: sans = Inter Medium 13 (Linear),
+          // Content typeface via tokens: sans = Inter Regular 11.5,
           // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
           'min-w-0 flex-1 font-content text-foreground',
-          compact ? 'line-clamp-1 text-sm' : 'line-clamp-2 text-content',
-          completed && 'text-muted-foreground line-through'
+          // Both densities take text-content: the week views render compact
+          // rows and the day view default ones, and a title that changed size
+          // between the two would break the token's whole purpose.
+          compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
+          completed && 'text-muted-foreground line-through opacity-60'
         )}
       >
         {item.title}
       </p>
 
-      {/* Trailing: tag · controls · pills */}
+      {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
+          right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].
+          The last FOUR reserve width, and they do so on EVERY row of BOTH types,
+          so a mixed task+habit list forms four straight vertical rails plus the
+          row's own right edge:
+
+            days     59px   weekday dots — empty slot when the item doesn't repeat
+            identity 96px   tag dot + truncating name (6px, dot only, below lg)
+            glyph    16px   priority bars / streak flame
+            quantity 48px   right-aligned tabular figures
+
+          Reserving the first two is a change of mind, and the reason is that the
+          old rule ("only fixed-size things reserve") produced rails only at the
+          two outermost columns — the tag sized to its name, so its dot landed at
+          a different x on every row and the column read as debris rather than as
+          a column. Reserving costs a void on rows that lack the datum; a straight
+          edge down a dense list is worth more than those pixels. It stays cheap
+          because the two new slots only exist at lg and above, where the day view
+          has the room; below that the day dots unmount and the tag collapses to
+          its 6px dot.
+
+          Genuinely occasional metadata (start time, habit progress) is still NOT
+          reserved and now sits INBOARD of the day dots. Because the rail is
+          right-anchored, a variable item only moves what is to its left — so
+          parking them innermost lets the title's elastic gap absorb them while
+          every column outboard of them stays nailed down.
+
+          Action controls stay absolutely pinned to the left of the rail and only
+          fade in on hover/focus, so they reserve no space and shift nothing. */}
+      {/* gap-3 (12px), not gap-2: several rail items are bare text with no
+          container, and the day-letter run has its own 4px internal gap — at 8px
+          between items the run ran straight into its neighbour. 12px is wide
+          enough that the between-item gap clearly outranks the within-item one. */}
       <div
-        className="z-10 flex flex-shrink-0 items-center gap-1.5"
+        className={cn('relative z-10 flex flex-shrink-0 items-center gap-3', completed && 'opacity-60')}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {!compact && !inBraindump && emoji && (isTask ? task!.project : habit!.group) && (
-          <TagPill
-            emoji={emoji}
-            glyph={emoji}
-            name={isTask ? task!.project! : habit!.group}
-            color={tagColor}
-            className="hidden lg:inline-flex"
-          />
+        {/* Action controls — one boxed cluster, absolutely positioned to the left
+            of the columns so it reserves no space. pointer-events gate off until
+            reveal so the invisible buttons aren't clickable while idle. */}
+        {!inBraindump && !isMobile && (
+          <span className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+            {/* Multi-count stepper — leads the cluster, so the destructive
+                delete stays at the far end away from the one control here that
+                gets clicked repeatedly. mr-1 doubles the 4px gap into 8px,
+                separating the value editor from the action buttons. The count
+                it edits reads live as `n/target` in the rail to the right. */}
+            {multiTarget > 0 && (
+              <span className="mr-1 flex items-center gap-1">
+                <RowControl
+                  icon={Minus}
+                  label="Decrease count"
+                  disabled={habitEffectiveCount <= 0}
+                  onClick={handleHabitDecrement}
+                />
+                <RowControl
+                  icon={Plus}
+                  label="Increase count"
+                  disabled={habitEffectiveCount >= multiTarget}
+                  onClick={handleHabitIncrement}
+                />
+              </span>
+            )}
+            {isTask && (
+              <RowControl icon={ArrowLeftToLine} label="Move to Braindump" onClick={() => unscheduleTask(item.id)} />
+            )}
+            {habit && habitStatus === 'pending' && (
+              <RowControl
+                icon={SkipForward}
+                label="Skip today"
+                onClick={() => toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate)}
+              />
+            )}
+            <RowControl icon={Trash2} label="Delete" destructive onClick={handleDelete} />
+          </span>
+        )}
+
+        {/* Mobile: no hover, so the stepper can't hide behind one — it renders
+            inline and always-on for multi-count habits (the leading checkbox
+            still increments; this is the only way back DOWN). Always present,
+            so it shifts nothing either. 28px to match the ellipsis beside it,
+            since 22px is too small a touch target. */}
+        {!inBraindump && isMobile && multiTarget > 0 && (
+          <span className="flex items-center gap-1">
+            <RowControl
+              icon={Minus}
+              label="Decrease count"
+              disabled={habitEffectiveCount <= 0}
+              onClick={handleHabitDecrement}
+              className="h-7 w-7"
+            />
+            <RowControl
+              icon={Plus}
+              label="Increase count"
+              disabled={habitEffectiveCount >= multiTarget}
+              onClick={handleHabitIncrement}
+              className="h-7 w-7"
+            />
+          </span>
         )}
 
         {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
-            no hover, so the desktop cluster below is hidden on mobile). */}
+            no hover, so the desktop control cluster above is hidden on mobile). */}
         {isMobile && (
           <Button
             variant="ghost"
@@ -302,42 +404,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           </Button>
         )}
 
-        {/* Hover controls (desktop) */}
-        {!inBraindump && !isMobile && (
-          <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 has-[:focus-visible]:opacity-100">
-            {isTask && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                onClick={() => unscheduleTask(item.id)}
-                title="Move to Braindump"
-              >
-                <ArrowLeftToLine className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            {habit && habitStatus === 'pending' && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                onClick={() => toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate)}
-                title="Skip today"
-              >
-                <SkipForward className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-destructive"
-              onClick={handleDelete}
-              title="Delete"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </span>
-        )}
+        {/* Braindump (sidebar) delete — inline, since braindump rows carry no
+            tag or pills to sit beside. */}
         {inBraindump && !isMobile && (
           <Button
             variant="ghost"
@@ -350,23 +418,61 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           </Button>
         )}
 
-        {/* Pills */}
         {!compact && !inBraindump && (
           <>
+            {/* OCCASIONAL — unreserved and variable, so it sits innermost where
+                the title's elastic gap absorbs it and no rail outboard moves. */}
+            {item.startTime && <MetaText className="hidden md:inline">{item.startTime}</MetaText>}
             {habit && habit.timesPerDay && habit.timesPerDay > 1 && (
-              <span className="text-2xs text-muted-foreground">
+              <MetaText>
                 {habitEffectiveCount || 0}/{habit.timesPerDay}
-              </span>
+              </MetaText>
             )}
-            {item.startTime && <TimePill time={item.startTime} />}
-            {task?.priority && <PriorityPill priority={task.priority} />}
-            {task?.duration && <DurationPill minutes={task.duration} />}
-            <RecurrencePills
+
+            {/* DAYS — 59px on every row. Habits and recurring tasks plot their
+                weekdays; one-off tasks render the empty slot, which is what
+                holds the tag column to a straight edge in a mixed list. Hidden
+                below lg, where the rail can't afford it. */}
+            <DayDots
               frequency={item.repeatFrequency}
               repeatDays={item.repeatDays}
-              className="hidden xl:inline-flex"
+              highlightDay={rowDate.getDay()}
+              className="hidden lg:flex"
             />
-            {habit && <StreakPill streak={habit.streak} />}
+
+            {/* IDENTITY — 96px at lg (dot + truncating name), 6px below it where
+                only the dot survives as a presence indicator, name on hover. */}
+            {tagName ? (
+              <TagDot
+                name={tagName}
+                color={tagColor}
+                className="w-1.5 lg:w-24"
+                nameClassName="hidden lg:block"
+              />
+            ) : (
+              <span aria-hidden className="w-1.5 flex-shrink-0 lg:w-24" />
+            )}
+
+            {/* GLYPH — 16px, reserved on every row of both types. Priority bars
+                for tasks, streak flame for habits: the first shared rail. */}
+            <span className="flex w-4 flex-shrink-0 items-center justify-center">
+              {isTask
+                ? task?.priority && <PriorityGlyph priority={task.priority} />
+                : <StreakFlame active={(habit?.streak ?? 0) > 0} />}
+            </span>
+
+            {/* QUANTITY — 48px, right-aligned tabular figures on both types
+                (duration for tasks, streak count for habits): the second rail,
+                and the most scannable element in the list. */}
+            <MetaText className="w-12 flex-shrink-0 text-right">
+              {isTask
+                ? task?.duration
+                  ? formatDuration(task.duration)
+                  : ''
+                : (habit?.streak ?? 0) > 0
+                  ? habit!.streak
+                  : ''}
+            </MetaText>
           </>
         )}
       </div>
@@ -387,4 +493,55 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     );
   }
   return rowContent;
+}
+
+/**
+ * Boxed row action (delete / unschedule / skip) — the rounded-square hairline
+ * language of AddIconButton (Figma node 67:268), but a lighter border so a
+ * cluster of them stays quiet until the row is hovered. `destructive` swaps the
+ * hover wash to the destructive tone (delete).
+ */
+function RowControl({
+  icon: Icon,
+  label,
+  destructive,
+  disabled,
+  onClick,
+  className,
+}: {
+  icon: LucideIcon;
+  label: string;
+  destructive?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[5px] border border-border bg-surface-3 text-muted-foreground transition-colors',
+        // Hover styles are dropped entirely rather than overridden when
+        // disabled: :hover still fires on a disabled button, so leaving them in
+        // would light up a control that does nothing.
+        disabled
+          ? 'cursor-not-allowed opacity-40'
+          : cn(
+              // hover-wash, not hover:bg-accent: this control sits ON the well
+              // (bg-surface-3). Swapping to the wash would composite it onto the
+              // row behind and make the button LIGHTEN on hover while the row
+              // beside it darkens — the exact mismatch the token change fixed.
+              'hover-wash hover:border-muted-foreground hover:text-foreground',
+              destructive && 'hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive'
+            ),
+        className
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  );
 }

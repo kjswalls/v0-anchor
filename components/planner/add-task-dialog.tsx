@@ -359,7 +359,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                       {taskStartDate && (
                         <button
                           type="button"
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
                           onClick={(e) => { e.stopPropagation(); setTaskStartDate(undefined); }}
                         >
                           <X className="h-3 w-3" />
@@ -451,7 +451,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                             'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                             taskRepeatDays.includes(index)
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                              : 'bg-secondary/50 text-muted-foreground hover-wash'
                           )}
                         >
                           {day}
@@ -476,7 +476,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                             'w-7 h-7 rounded text-xs font-medium transition-colors',
                             taskRepeatMonthDay === day
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                              : 'bg-secondary/50 text-muted-foreground hover-wash'
                           )}
                         >
                           {day}
@@ -639,7 +639,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                             'w-8 h-8 rounded-md text-xs font-medium transition-colors',
                             habitRepeatDays.includes(index)
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                              : 'bg-secondary/50 text-muted-foreground hover-wash'
                           )}
                         >
                           {day}
@@ -664,7 +664,7 @@ const effectiveTimeBucket = taskStartDate ? (taskTimeBucket || 'anytime') : unde
                             'w-7 h-7 rounded text-xs font-medium transition-colors',
                             habitRepeatMonthDay === day
                               ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'
+                              : 'bg-secondary/50 text-muted-foreground hover-wash'
                           )}
                         >
                           {day}

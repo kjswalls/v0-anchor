@@ -239,7 +239,7 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
           shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
           for the Linear-style exploration. */}
-      <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px]">
+      <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]">
         <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
           <AlignLeft className="h-4 w-4 text-muted-foreground" />
           <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
@@ -300,15 +300,19 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           )}
 
           {rows.length === 0 && (
-            <div className="relative flex flex-col items-center gap-2 overflow-hidden py-12 text-center">
+            <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
+                // pitch matches the dock capsule (20) — tile size derives from it.
+                // The field overhangs the box horizontally and its mask reaches
+                // full transparency inside its own bounds (closest-side), so the
+                // grid dissolves at every edge instead of being clipped mid-tile.
                 <RelayField
-                  className="absolute inset-0 z-0"
-                  focalY={0.42}
-                  pitch={34}
+                  className="absolute -inset-x-4 inset-y-0 z-0"
+                  focalY={0.45}
+                  pitch={20}
                   period={4.5}
                   idleIntensity={0.35}
-                  mask="radial-gradient(120% 120% at 50% 45%, black 35%, transparent 100%)"
+                  mask="radial-gradient(closest-side at 50% 45%, black 0%, black 40%, transparent 100%)"
                 />
               )}
               <p className="relative z-10 font-serif text-base italic text-muted-foreground">

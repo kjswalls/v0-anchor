@@ -21,7 +21,11 @@
   --paper-0: oklch(0.986 0.0012 90);  /* #FBFBFB backdrop (window + sidebar field) */
   --paper-1: oklch(0.99 0.001 90);    /* surface-1 */
   --paper-2: oklch(0.996 0 0);        /* #FEFEFE canvas / body panel (whitest) */
-  --paper-3: oklch(0.986 0.0012 90);  /* #FBFBFB white pills / cards / popovers */
+  /* Pure white — raised pills/cards/popovers must sit ABOVE the canvas (0.996),
+     not below it. At 0.986 this was darker than the body panel, so the header
+     capsule's control pill read gray on the canvas while the identically-built
+     Braindump pill still read white against the dimmer sidebar (0.99). */
+  --paper-3: oklch(1 0 0);            /* white pills / cards / popovers */
   --paper-well: oklch(0.945 0.0015 90);/* #EEEDED gray capsules (header, date, dock) */
   --ink-0: oklch(0.24 0.01 272);      /* primary text (~#1E1E1E, faint cool) */
   --ink-1: oklch(0.5 0.02 272);       /* secondary text — cool gray */
@@ -56,7 +60,23 @@
   --secondary-foreground: var(--ink-1);
   --muted: var(--surface-3);
   --muted-foreground: var(--ink-2);
-  --accent: oklch(0.955 0.006 85);    /* hover wash */
+  /* Hover / selection wash — a thinned version of the ink, not a separate grey.
+     Was oklch(0.955 0.006 85), a WARM solid (#F2F0EC, red channel above blue)
+     that read pink against this palette's cool ink and borders, and spent 4.0
+     points of lightness against the 0.996 canvas.
+
+     Two changes. Cool: hue 272 is the ink's own hue, so the wash reads as the
+     text darkening its row rather than as a colour arriving. Translucent: the
+     same declaration now composites correctly onto every surface — canvas,
+     sidebar, white card AND the 0.945 well. The old solid was LIGHTER than the
+     well, so a row control on a well got brighter on hover (+1.1) while the row
+     beside it got darker (−4.0). That was the "different depending on what
+     you're hovering" complaint, and it is a property of solid washes, not a
+     tuning mistake.
+
+     Dark mode has always done it this way (white 6%); light now matches the
+     model. Lands at −2.3 to −2.7 L on every surface. */
+  --accent: oklch(0.22 0.012 272 / 4%);
   --accent-foreground: var(--ink-0);
   --destructive: oklch(0.6 0.15 25);
   --destructive-foreground: oklch(0.98 0 0);
@@ -79,6 +99,20 @@
   --success-text: var(--lime-ink);
   --warning-text: var(--honey-ink);
   --ai-text: var(--honey-ink);
+
+  /* Weekday dots — the habit row's recurrence strip. Scheduled days are a solid
+     5px bead; the rest are drawn as a 1px ring rather than a faded fill, so
+     "off" is a shape and survives a dimmed or low-contrast display.
+     The ring's weight is deliberately NOT shared between themes. A 1px dark
+     hairline on near-white paper loses most of its coverage to antialiasing,
+     while a 1px light hairline on the dark ground blooms — so light mode carries
+     the ring at 72% of the muted ink and dark mode pulls it back to 50%. Sharing
+     one value is what makes the strip read heavy in one theme and vanish in the
+     other. --day-on stays a full step darker than the muted numerals: a 5px mark
+     has too little area to read at text weight. */
+  --day-on: var(--ink-1);
+  --day-off: color-mix(in oklab, var(--ink-2) 72%, transparent);
+  --day-today: var(--lime-ink);
 
   /* Time-of-day (bucket icon tints — subtler role than before) */
   --morning: oklch(0.78 0.11 85);
@@ -130,27 +164,45 @@
 }
 
 .dark {
-  /* Navy surface ramp (Graide reference), lime accent retained.
-     Ordering is monotonic so a RAISED surface is always lighter than the base
-     it sits on — the only elevation cue that works on navy. Note paper-3
-     (surface-2 = card/popover/pill, the raised layer) is LIGHTER than
-     paper-well (surface-3 = muted/secondary/well, the recessed layer): the
-     reverse of a naive dark ramp, but it matches light mode, where cards sit
-     above their gray wells. Getting these two backwards is what made the
-     header filter pill read as sunk into its capsule. */
-  --paper-0: oklch(0.175 0.02 275);
-  --paper-1: oklch(0.21 0.021 275);
-  /* Body canvas sits just above the backdrop (0.175): dark enough for crisp text
-     and to match the sidebar field's contrast, but a hair lighter so the rounded
-     panel still reads as a plate floating on the backdrop rather than merging
-     into the gutter. */
-  --paper-2: oklch(0.2 0.021 275);
-  --paper-well: oklch(0.26 0.022 275);
-  --paper-3: oklch(0.29 0.022 275);
-  --ink-0: oklch(0.93 0.006 260);
-  --ink-1: oklch(0.74 0.01 260);
-  --ink-2: oklch(0.6 0.012 260);
-  --lime-solid: oklch(0.84 0.15 125);
+  /* Neutral near-black surface ramp ("quiet rail" pass), lime accent retained.
+     The navy tint is gone — chroma drops from ~0.021 to ~0.006 — and the whole
+     ramp is pulled down ~0.03L so cards sit closer to the backdrop and a dense
+     list reads calm rather than lit. Hue is held at 286 (a whisper of cool) so
+     the neutrals are chosen, not a flat gray.
+
+     The ramp is strictly monotonic, and now mirrors LIGHT mode's ordering
+     instead of inverting it: backdrop → sidebar → canvas → well → card, each
+     lighter than the last. Dark mode previously put the sidebar (0.21) ABOVE the
+     canvas (0.20), which is why the body panel stopped reading as a plate
+     floating over the backdrop the way it does in light mode.
+
+     Still load-bearing: paper-3 (surface-2 = card/popover/pill, the raised
+     layer) stays LIGHTER than paper-well (surface-3 = muted/secondary/well, the
+     recessed layer). Getting these two backwards is what made the header filter
+     pill (a surface-2 pill inside a surface-3 capsule) read as sunk. */
+  --paper-0: oklch(0.173 0.009 264);   /* #0e1014 — window backdrop */
+  --paper-1: oklch(0.178 0.008 268);   /* sidebar field: a hair above the
+                                          backdrop, mirroring light mode's
+                                          0.986 → 0.99 step, so the two read as
+                                          one continuous field behind the body */
+  /* Body canvas — #18181b. Clearly above the backdrop/sidebar pair so the
+     rounded panel reads as a big card floating over them, carried by a border
+     plus shadow-elev-md (see components/shell/desktop-shell.tsx). */
+  --paper-2: oklch(0.21 0.006 286);
+  --paper-well: oklch(0.245 0.006 286);
+  --paper-3: oklch(0.278 0.006 286);
+  /* Ink brightens across the board: the 11px metadata text (text-2xs on
+     muted-foreground) was the weakest link in the row audit, so ink-2 moves
+     0.60 → 0.70 — roughly zinc-400, the artifact's muted tone. */
+  --ink-0: oklch(0.955 0.002 286);
+  --ink-1: oklch(0.8 0.005 286);
+  --ink-2: oklch(0.7 0.008 286);
+  /* The accent does NOT lose energy in the dark. It used to (0.84L / 0.15C vs
+     light's 0.86 / 0.17, #b4db68 vs #b8e45c) and against the near-black ramp
+     that read olive rather than lime — a dark surround already eats apparent
+     chroma, so matching light's numbers isn't matching light's appearance.
+     Lightness returns to light's step and chroma goes a notch past it. */
+  --lime-solid: oklch(0.87 0.19 125);
   --lime-ink: oklch(0.26 0.06 130);
   --lime-tint: oklch(0.32 0.05 125);
   --honey-solid: oklch(0.78 0.1 85);
@@ -178,6 +230,9 @@
   --secondary-foreground: var(--ink-1);
   --muted: var(--surface-3);
   --muted-foreground: var(--ink-2);
+  /* Same model as light, mirrored: the ground is dark, so the wash is white.
+     Lands at +5.2 to +6.2 L across the ramp — roughly twice light's step,
+     because a dark ground needs more of one to read. */
   --accent: oklch(1 0 0 / 6%);
   --accent-foreground: var(--ink-0);
   --destructive: oklch(0.55 0.15 25);
@@ -194,9 +249,20 @@
   --ai-foreground: var(--honey-ink);
   --ai-muted: var(--honey-tint);
 
-  --success-text: oklch(0.82 0.14 125);
+  /* Lime-as-text tracks the fill exactly — a separate, dimmer value here is how
+     "today", the braindump links and the drop hints ended up a shade off the
+     checkboxes they sit beside. */
+  --success-text: var(--lime-solid);
   --warning-text: oklch(0.84 0.1 85);
   --ai-text: oklch(0.84 0.1 85);
+
+  /* See the light block for why the ring alpha differs by theme. Here the ring
+     goes lighter (50%) because a pale hairline on the near-black ramp already
+     reads at full strength, and --day-today flips to the bright lime since
+     lime-ink is near-black in this theme. */
+  --day-on: var(--ink-1);
+  --day-off: color-mix(in oklab, var(--ink-2) 50%, transparent);
+  --day-today: var(--lime-solid);
 
   --morning: oklch(0.68 0.1 85);
   --afternoon: oklch(0.66 0.1 55);
@@ -243,25 +309,40 @@
   /* Fonts — loaded via next/font in app/layout.tsx */
   --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
   --font-serif: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Metadata/numeral face. ui-monospace resolves to Cascadia Mono on Windows
+     and SF Mono on macOS; the explicit names cover browsers that don't map the
+     generic. Consumed through the font-num utility, never applied to prose. */
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Cascadia Code', 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Liberation Mono', monospace;
 
-  /* Type ramp — content default is text-base (serif at rest) */
-  --text-2xs: 11px;
-  --text-2xs--line-height: 14px;
-  --text-xs: 12px;
-  --text-xs--line-height: 16px;
-  --text-sm: 13px;
-  --text-sm--line-height: 18px;
-  --text-base: 15px;
-  --text-base--line-height: 22px;
-  --text-lg: 17px;
-  --text-lg--line-height: 24px;
-  --text-xl: 20px;
-  --text-xl--line-height: 26px;
-  --text-2xl: 24px;
-  --text-2xl--line-height: 30px;
-  --text-3xl: 30px;
-  --text-3xl--line-height: 36px;
+  /* Type ramp. Scaled by 12/13 (≈0.923) when item titles dropped from 13 to 12,
+     so the chrome around the content moved with it instead of the content
+     quietly shrinking away from a ramp that stayed put.
+
+     The step that forced this: section headings and bucket labels are text-xs.
+     At the old ramp that was 12px — the same size as a 12px item title, and at
+     font-medium it was HEAVIER than the title it labelled. The heading
+     out-shouted the content. At 11px the label sits below the title again.
+
+     Floor watch: text-2xs (row metadata — durations, streaks, times, all mono)
+     lands at 10px. That is the smallest type in the app and the first thing to
+     raise if the rail starts to strain. */
+  --text-2xs: 10px;
+  --text-2xs--line-height: 13px;
+  --text-xs: 11px;
+  --text-xs--line-height: 15px;
+  --text-sm: 12px;
+  --text-sm--line-height: 17px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 22px;
+  --text-xl: 18px;
+  --text-xl--line-height: 24px;
+  --text-2xl: 22px;
+  --text-2xl--line-height: 28px;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 34px;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -301,6 +382,9 @@
   --color-success-text: var(--success-text);
   --color-warning-text: var(--warning-text);
   --color-ai-text: var(--ai-text);
+  --color-day-on: var(--day-on);
+  --color-day-off: var(--day-off);
+  --color-day-today: var(--day-today);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -385,6 +469,59 @@
   --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
   --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
   --shadow-elev-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+
+  /* ── The "key press" pair (omnibar input) ────────────────────────────────
+     Rest = a raised pill floating above the dock. Pressed = the same pill sunk
+     into it, the drop replaced by an inner shadow.
+
+     These two MUST be edited as a pair, and the pairing is load-bearing, not
+     stylistic. CSS interpolates box-shadow layer-by-layer, and per spec: if any
+     corresponding pair of layers disagrees on the `inset` keyword, the WHOLE
+     list becomes uninterpolable and the browser hard-swaps at the 50% mark
+     instead of animating. Pointing the rest state at --shadow-elev-sm (all
+     outer) and focus at a pure inset list does exactly that — the transition
+     silently degrades to a snap.
+
+     So both lists carry the same layers in the same order with the same
+     inset-ness, and each state zeroes the alpha on the layers it doesn't want.
+     The shadow then genuinely cross-fades. The real (un-padded) values are:
+
+       rest    = --shadow-elev-sm
+       pressed = inset 0 1px 0 /9%, inset 0 3px 6px /12%, inset 0 1px 2px /7%
+
+     Layer order below: [3 inset] then [2 outer]. Pressed reads as a hard 1px
+     top line (the lip the surface disappears under), a soft cast falling from
+     it, and a tight contact shadow. */
+  --shadow-key-rest:
+    inset 0 1px 0 oklch(0 0 0 / 0%), inset 0 3px 6px oklch(0 0 0 / 0%),
+    inset 0 1px 2px oklch(0 0 0 / 0%),
+    0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
+  --shadow-key-pressed:
+    inset 0 1px 0 oklch(0 0 0 / 9%), inset 0 3px 6px oklch(0 0 0 / 12%),
+    inset 0 1px 2px oklch(0 0 0 / 7%),
+    0 4px 4px oklch(0 0 0 / 0%), 0 1px 2px oklch(0 0 0 / 0%);
+
+  /* The surface a pressed pill settles onto — a hair of the well (surface-3)
+     mixed into the raised surface, so the recess darkens as it sinks rather
+     than staying the same colour it had while floating. */
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
+
+  /* Body panel. The elev family is all vertical offsets (0 x), so nothing ever
+     falls on the sidebar sitting to the panel's left — the edge where the two
+     meet read flat. This adds a leftward cast plus a left-edge light-catch, so
+     the panel reads as a card lifted off the backdrop on its side as well as
+     its bottom. Panel-only: a global left cast would be wrong for centered
+     surfaces like dialogs and popovers. */
+  --shadow-elev-panel:
+    -6px 0 18px oklch(0 0 0 / 7%), 0 4px 10px oklch(0 0 0 / 12%), 0 1px 2px oklch(0 0 0 / 8%);
+
+  /* Gray capsules that read as floating bars: the Braindump header, the canvas
+     header controls, the sidebar dock. Same construction as elev-panel, aimed
+     down instead of left — these are wide, short surfaces whose free edges are
+     top and bottom, so a sideways cast would have nothing to fall on. Sits
+     between elev-sm and elev-md in weight, since each capsule already frames a
+     shadowed elev-sm pill and two competing drops read muddy. */
+  --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
 }
 
 /* Dark mode: on navy a black drop shadow barely registers, so elevation is
@@ -400,6 +537,49 @@
   --shadow-elev-sm: inset 0 1px 0 oklch(1 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 35%), 0 4px 10px oklch(0 0 0 / 30%);
   --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
   --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
+
+  /* The key-press pair, dark. Same padding contract as the light one above —
+     matched layer order and inset-ness in both states, or the shadow snaps
+     instead of animating. Dark needs a 4th inset layer, so the pair is
+     [4 inset] then [2 outer] here (vs [3 inset] + [2 outer] in light); the two
+     themes only have to match THEMSELVES, since a theme flip isn't animated.
+
+     Pressed drops the raised light-catch and sinks the pill with a deeper inner
+     shadow (black barely registers on a dark ground, so it needs more punch
+     than the light one), then puts the light back on the BOTTOM lip — light
+     reaching the far inside wall of the well is what sells the depth here. The
+     top layer therefore travels white 8% → black 25%: the highlight on a raised
+     lip becoming the shadow under a sunk one, which is the whole gesture.
+
+     Un-padded values:
+       rest    = --shadow-elev-sm
+       pressed = inset 0 1px 0 /25%, inset 0 3px 7px /42%, inset 0 1px 2px /25%,
+                 inset 0 -1px 1px white/6% */
+  --shadow-key-rest:
+    inset 0 1px 0 oklch(1 0 0 / 8%), inset 0 3px 7px oklch(0 0 0 / 0%),
+    inset 0 1px 2px oklch(0 0 0 / 0%), inset 0 -1px 1px oklch(1 0 0 / 0%),
+    0 1px 2px oklch(0 0 0 / 35%), 0 4px 10px oklch(0 0 0 / 30%);
+  --shadow-key-pressed:
+    inset 0 1px 0 oklch(0 0 0 / 25%), inset 0 3px 7px oklch(0 0 0 / 42%),
+    inset 0 1px 2px oklch(0 0 0 / 25%), inset 0 -1px 1px oklch(1 0 0 / 6%),
+    0 1px 2px oklch(0 0 0 / 0%), 0 4px 10px oklch(0 0 0 / 0%);
+
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
+
+  /* Body panel, dark: same two-part trick the elev family uses here — a 1px
+     inset light-catch simulating light hitting the raised lip (now on the LEFT
+     edge as well as the top, since that lip faces the sidebar) plus a stronger
+     ambient cast, because a black drop barely registers on a dark ground. */
+  --shadow-elev-panel:
+    inset 1px 0 0 oklch(1 0 0 / 7%), inset 0 1px 0 oklch(1 0 0 / 9%),
+    -8px 0 22px oklch(0 0 0 / 45%), 0 8px 24px oklch(0 0 0 / 42%), 0 2px 4px oklch(0 0 0 / 35%);
+
+  /* Bars, dark: the top light-catch is doing most of the work here — on a dark
+     ground a black drop barely registers, but a 1px lit lip along the top edge
+     reads unmistakably as a raised surface. */
+  --shadow-elev-bar:
+    inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%),
+    0 6px 18px -4px oklch(0 0 0 / 45%);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
@@ -412,20 +592,37 @@
    computes to guaranteed-invalid and font-family silently falls back. */
 body {
   --font-content: var(--font-inter), 'Inter', system-ui, sans-serif;
-  --font-content-weight: 500;
-  --text-content: 13px;
-  --text-content--line-height: 18px;
+  /* Regular, not Medium. Medium made every title assert itself; at 400 a dense
+     list settles and the mono metadata rail has somewhere to sit. Inter is
+     loaded as a variable face (100–900), so 450 is a real option if 400 ever
+     reads thin on the near-white paper. */
+  --font-content-weight: 400;
+  --text-content: 12px;
+  --text-content--line-height: 17px;
 }
+/* Serif mode now matches the sans size (12/17) instead of running larger at
+   15/22. The two modes therefore differ by FACE and WEIGHT only — switching
+   typeface no longer reflows a list, which is what you want from a preference
+   toggle. Weight stays 600: Source Serif needs more of it than Inter does to
+   hold at this size, and it is the one lever left that still distinguishes the
+   modes. If SemiBold reads dense at 12, 500 is the next stop. */
 :root[data-type-mode='serif'] body {
   --font-content: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
   --font-content-weight: 600;
-  --text-content: 15px;
-  --text-content--line-height: 22px;
+  --text-content: 12px;
+  --text-content--line-height: 17px;
 }
 
 /* Utilities consumed by item titles (task-row, drag ghost, schedule blocks,
-   project blocks, omnibar results). font-content = family+weight;
-   text-content = size+leading (main row title + ghost only). */
+   project blocks, omnibar results, morning check). font-content =
+   family+weight; text-content = size+leading.
+   The two now travel TOGETHER on every item title. They used to diverge —
+   only the main row title and the drag ghost took text-content while the
+   other eight sites hardcoded text-sm — which meant a size change to the
+   token moved two surfaces and left the rest at 13px. Anything that is an
+   item's own title gets both utilities; the only font-content without
+   text-content is the omnibar's quoted echo of what you typed, which is
+   inline inside a text-sm sentence and has to match that sentence. */
 @utility font-content {
   font-family: var(--font-content);
   font-weight: var(--font-content-weight);
@@ -433,6 +630,32 @@ body {
 @utility text-content {
   font-size: var(--text-content);
   line-height: var(--text-content--line-height);
+}
+
+/* Numerals in row metadata, counts and chips: mono + tabular figures so
+   durations, streaks and times share a column edge down a list. Titles stay on
+   Inter (font-content) — this is only for digits and the short labels that sit
+   beside them. The slight negative tracking keeps 11px mono from reading wide
+   next to Inter. */
+/* Hover wash for targets that already carry a resting fill — row controls, the
+   project block, filled secondary buttons, badges, dialog chips.
+   `hover:bg-accent` REPLACES background-color, so on a filled element a
+   translucent --accent would drop the fill and composite onto whatever is
+   behind it — which on a well makes the control get LIGHTER on hover. This
+   layers instead: background-image paints over background-color, so the fill
+   stays and the wash darkens it by the same amount it darkens a bare row.
+   Transparent-at-rest targets (rows, ghost buttons, menu items) don't need
+   this — plain `hover:bg-accent` is already correct for them. */
+@utility hover-wash {
+  &:hover {
+    background-image: linear-gradient(var(--accent), var(--accent));
+  }
+}
+
+@utility font-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Canvas content container — single source for the shared left/right edges

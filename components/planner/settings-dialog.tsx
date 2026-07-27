@@ -60,7 +60,7 @@ function SettingsSection({ title, icon, children, defaultOpen = false }: Setting
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
-        <button className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent/50 rounded-lg transition-colors">
+        <button className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent rounded-lg transition-colors">
           <div className="flex items-center gap-3">
             <div className="text-muted-foreground">{icon}</div>
             <span className="text-sm font-medium text-foreground">{title}</span>
@@ -360,7 +360,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
             {/* Keyboard Shortcuts */}
             {!isMobile && (
               <button
-                className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent/50 rounded-lg transition-colors"
+                className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent rounded-lg transition-colors"
                 onClick={() => {
                   onOpenChange(false);
                   onOpenKeyboardShortcuts?.();

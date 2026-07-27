@@ -57,7 +57,7 @@ export function MobileHeader({ onOpenSettings }: MobileHeaderProps) {
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
-                className="h-9 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-secondary"
+                className="h-9 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-accent"
               >
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 {mounted ? (isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')) : <span className="w-16" />}
@@ -81,7 +81,7 @@ export function MobileHeader({ onOpenSettings }: MobileHeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="h-9 gap-1.5 px-2.5 text-sm font-medium text-foreground hover:bg-secondary"
+              className="h-9 gap-1.5 px-2.5 text-sm font-medium text-foreground hover:bg-accent"
               aria-label="Layout"
             >
               <LayoutIcon className="h-4 w-4 text-muted-foreground" />

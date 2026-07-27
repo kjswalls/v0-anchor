@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase';
+import { flushSettings } from '@/lib/settings-service';
 
 interface UserProfileDropdownProps {
   onOpenSettings: () => void;
@@ -56,6 +57,8 @@ export function UserProfileDropdown({ onOpenSettings }: UserProfileDropdownProps
   }, []);
 
   const handleSignOut = async () => {
+    // See user-card.tsx — flush the debounced settings patch first.
+    await flushSettings();
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push('/login');
