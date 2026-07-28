@@ -16,7 +16,7 @@ import {
   deleteHabit,
   verifyItemOwnership,
 } from './db'
-import type { Habit, ItemType, Task } from './planner-types'
+import type { Habit, KnownItemType, Task } from './planner-types'
 
 /**
  * Shared machinery for the /api/agent/tasks|habits routes. The route files are
@@ -49,7 +49,9 @@ interface AgentApiConfig {
   remove: (id: string, userId: string, client: DbClient) => Promise<void>
 }
 
-const AGENT_API: Record<ItemType, AgentApiConfig> = {
+// Built-ins only: custom types are not exposed through the agent write API in
+// v1 (items[] on the context endpoint serves reads).
+const AGENT_API: Record<KnownItemType, AgentApiConfig> = {
   task: {
     payloadKey: 'task',
     createSchema: TaskCreateSchema,
@@ -118,7 +120,7 @@ const errorResponse = (err: unknown) => {
 }
 
 /** POST /api/agent/<plural> — create an item of the given type. */
-export function makeAgentCreateHandler(type: ItemType) {
+export function makeAgentCreateHandler(type: KnownItemType) {
   const api = AGENT_API[type]
   return async function POST(req: NextRequest) {
     const auth = await authenticateAgent(req)
@@ -144,7 +146,7 @@ export function makeAgentCreateHandler(type: ItemType) {
 }
 
 /** PATCH + DELETE /api/agent/<plural>/:id handlers for the given type. */
-export function makeAgentItemHandlers(type: ItemType) {
+export function makeAgentItemHandlers(type: KnownItemType) {
   const api = AGENT_API[type]
 
   const PATCH = async (

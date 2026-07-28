@@ -44,13 +44,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type {
   HabitItem,
   Item,
-  ItemType,
   Priority,
   RepeatFrequency,
   TimeBucket,
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { ALL_ITEM_TYPES, ITEM_TYPES } from '@/lib/item-registry';
+import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -62,8 +61,9 @@ import { cn } from '@/lib/utils';
  * `undefined` clears) byte-compatible with the pre-unification dialogs.
  */
 
+/** `type` is the registry name ('task', 'habit', or a custom slug like 'goal'). */
 export type ItemDialogState =
-  | { mode: 'add'; type: ItemType; bucket?: TimeBucket; date?: Date }
+  | { mode: 'add'; type: string; bucket?: TimeBucket; date?: Date }
   | { mode: 'edit'; item: Item };
 
 interface ItemDialogProps {
@@ -97,8 +97,8 @@ interface AddSeed {
   habitGroups: { name: string }[];
 }
 
-function makeAddDraft(type: ItemType, seed: AddSeed): ItemDraft {
-  const config = ITEM_TYPES[type];
+function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
+  const config = getItemTypeConfig(type);
   return {
     title: '',
     priority: 'none',
@@ -124,18 +124,16 @@ function makeAddDraft(type: ItemType, seed: AddSeed): ItemDraft {
   };
 }
 
-function buildAddDrafts(seed: AddSeed): Record<ItemType, ItemDraft> {
-  return Object.fromEntries(
-    ALL_ITEM_TYPES.map((t) => [t, makeAddDraft(t, seed)])
-  ) as Record<ItemType, ItemDraft>;
+function buildAddDrafts(seed: AddSeed): Record<string, ItemDraft> {
+  return Object.fromEntries(ALL_ITEM_TYPES.map((t) => [t, makeAddDraft(t, seed)]));
 }
 
 function draftFromItem(item: Item): ItemDraft {
-  const config = ITEM_TYPES[item.type];
+  const config = getItemTypeConfig(itemTypeName(item));
   // Parse date string as local date, not UTC
   // "2026-03-22" should be March 22 local time, not UTC midnight which shows as March 21
   let startDate: Date | undefined;
-  if (item.type === 'task' && item.startDate) {
+  if (item.type !== 'habit' && item.startDate) {
     // startDate is always a string; handle legacy ISO format just in case
     const dateStr = item.startDate.includes('T')
       ? item.startDate.split('T')[0]
@@ -145,12 +143,12 @@ function draftFromItem(item: Item): ItemDraft {
   }
   return {
     title: item.title,
-    priority: item.type === 'task' ? item.priority || 'none' : 'none',
-    container: item.type === 'task' ? item.project || 'none' : item.group,
+    priority: item.type !== 'habit' ? item.priority || 'none' : 'none',
+    container: item.type === 'habit' ? item.group : item.project || 'none',
     startDate,
     timeBucket: item.timeBucket || 'none',
     startTime: item.startTime || '',
-    duration: item.type === 'task' ? item.duration?.toString() || '30' : '30',
+    duration: item.type !== 'habit' ? item.duration?.toString() || '30' : '30',
     repeatFrequency: item.repeatFrequency ?? config.defaultFrequency,
     repeatDays: item.repeatDays || [],
     repeatMonthDay: item.repeatMonthDay || 1,
@@ -199,10 +197,10 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   const mode = last?.mode ?? 'add';
   const addPayload = last?.mode === 'add' ? last : null;
   const editItem = last?.mode === 'edit' ? last.item : null;
-  const editConfig = editItem ? ITEM_TYPES[editItem.type] : null;
+  const editConfig = editItem ? getItemTypeConfig(itemTypeName(editItem)) : null;
 
-  const [activeType, setActiveType] = useState<ItemType>('task');
-  const [addDrafts, setAddDrafts] = useState<Record<ItemType, ItemDraft>>(() =>
+  const [activeType, setActiveType] = useState<string>('task');
+  const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
     buildAddDrafts({ defaultTimeBucket, habitGroups })
   );
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
@@ -229,14 +227,14 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
         next[t] = {
           ...drafts[t],
           timeBucket: bucket,
-          ...(ITEM_TYPES[t].dateAnchored ? { startDate: addPayload.date } : null),
+          ...(getItemTypeConfig(t).dateAnchored ? { startDate: addPayload.date } : null),
         };
       }
       return next;
     });
   }, [open, addPayload, defaultTimeBucket]);
 
-  const patchDraft = (type: ItemType, updates: Partial<ItemDraft>) => {
+  const patchDraft = (type: string, updates: Partial<ItemDraft>) => {
     if (last?.mode === 'edit') {
       setEditDraft((d) => (d ? { ...d, ...updates } : d));
     } else {
@@ -252,7 +250,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
   // ── Save adapters — faithful ports of the per-type dialogs' handlers ──────
 
-  const handleAddSave = (type: ItemType) => {
+  const handleAddSave = (type: string) => {
     // Guard on the LIVE state, not the latch — the latch stays populated
     // through the close animation and must never re-arm a save (the old
     // dialogs disarmed instantly when their item prop went null).
@@ -300,7 +298,10 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     if (!editItem || !editDraft || !editDraft.title.trim()) return;
     const d = editDraft;
 
-    if (editItem.type === 'task') {
+    // Habit first; task and custom items share the task-shaped save path.
+    // (Custom edits aren't reachable until 6b wires rows + a generic update —
+    // updateTask type-guards to a no-op for non-task ids.)
+    if (editItem.type !== 'habit') {
       // Save date as yyyy-MM-dd string to avoid timezone issues
       const startDateStr = d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined;
       updateTask(editItem.id, {
@@ -359,8 +360,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
   const handleDeleteConfirm = () => {
     if (!state || state.mode !== 'edit' || !editItem) return;
-    if (editItem.type === 'task') deleteTask(editItem.id);
-    else deleteHabit(editItem.id);
+    if (editItem.type === 'habit') deleteHabit(editItem.id);
+    else deleteTask(editItem.id);
     setShowDeleteConfirm(false);
     onOpenChange(false);
   };
@@ -373,8 +374,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
   // ── Registry-driven form body ─────────────────────────────────────────────
 
-  const renderForm = (type: ItemType, d: ItemDraft) => {
-    const config = ITEM_TYPES[type];
+  const renderForm = (type: string, d: ItemDraft) => {
+    const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     const containers = config.containerKind === 'projects' ? projects : habitGroups;
     const titleId = mode === 'add' ? `${type}-title` : `edit-${type}-title`;
@@ -744,11 +745,11 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
           </ResponsiveModalHeader>
 
           {mode === 'add' ? (
-            <Tabs value={activeType} onValueChange={(v) => setActiveType(v as ItemType)}>
+            <Tabs value={activeType} onValueChange={setActiveType}>
               <TabsList className="grid w-full grid-cols-2 bg-secondary">
                 {ALL_ITEM_TYPES.map((t) => (
                   <TabsTrigger key={t} value={t} className="data-[state=active]:bg-card">
-                    {ITEM_TYPES[t].label}
+                    {getItemTypeConfig(t).label}
                   </TabsTrigger>
                 ))}
               </TabsList>
@@ -760,7 +761,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                     className="w-full h-10 mt-6"
                     disabled={invalidCustomDays(addDrafts[t])}
                   >
-                    Add {ITEM_TYPES[t].label}
+                    Add {getItemTypeConfig(t).label}
                   </Button>
                 </TabsContent>
               ))}

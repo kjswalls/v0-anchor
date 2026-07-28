@@ -1,5 +1,5 @@
 import { format } from 'date-fns'
-import { ALL_ITEM_TYPES, ITEM_TYPES } from './item-registry'
+import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
 import type { Item, Project, HabitGroupType } from './planner-types'
 
 /**
@@ -21,10 +21,10 @@ export function buildAnchorContext(state: {
   lines.push(`Date: ${format(today, 'EEEE, MMMM d yyyy')}`)
   lines.push('')
 
-  for (const type of ALL_ITEM_TYPES) {
+  for (const type of getAllItemTypeNames()) {
     lines.push(
-      ...ITEM_TYPES[type].ai.renderContextSection(
-        state.items.filter((i) => i.type === type),
+      ...getItemTypeConfig(type).ai.renderContextSection(
+        state.items.filter((i) => itemTypeName(i) === type),
         { today, todayStr }
       )
     )

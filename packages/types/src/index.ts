@@ -12,7 +12,9 @@ export {
   HabitSchema,
   TaskItemSchema,
   HabitItemSchema,
+  CustomItemSchema,
   ItemSchema,
+  ItemTypeDefSchema,
   TaskCreateSchema,
   HabitCreateSchema,
   TaskUpdateSchema,
@@ -39,7 +41,9 @@ import {
   HabitSchema,
   TaskItemSchema,
   HabitItemSchema,
+  CustomItemSchema,
   ItemSchema,
+  ItemTypeDefSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'
@@ -56,7 +60,12 @@ export type Task             = z.infer<typeof TaskSchema>
 export type Habit            = z.infer<typeof HabitSchema>
 export type TaskItem         = z.infer<typeof TaskItemSchema>
 export type HabitItem        = z.infer<typeof HabitItemSchema>
+export type CustomItem       = z.infer<typeof CustomItemSchema>
 export type Item             = z.infer<typeof ItemSchema>
+/** Open — user-defined types widen this to arbitrary slugs (Phase 6). */
 export type ItemType         = Item['type']
+/** The built-in types with dedicated schema branches and static registry configs. */
+export type KnownItemType    = TaskItem['type'] | HabitItem['type']
+export type ItemTypeDef      = z.infer<typeof ItemTypeDefSchema>
 export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>
 export type AnchorChangeEvent     = z.infer<typeof AnchorChangeEventSchema>

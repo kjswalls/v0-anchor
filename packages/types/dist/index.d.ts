@@ -1,7 +1,7 @@
-export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, ItemSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, } from './schemas.js';
+export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, } from './schemas.js';
 export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS } from './schemas.js';
 import { z } from 'zod';
-import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, ItemSchema, AnchorContextResponseSchema, AnchorChangeEventSchema } from './schemas.js';
+import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, AnchorContextResponseSchema, AnchorChangeEventSchema } from './schemas.js';
 export type Priority = z.infer<typeof PrioritySchema>;
 export type TimeBucket = z.infer<typeof TimeBucketSchema>;
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
@@ -14,8 +14,13 @@ export type Task = z.infer<typeof TaskSchema>;
 export type Habit = z.infer<typeof HabitSchema>;
 export type TaskItem = z.infer<typeof TaskItemSchema>;
 export type HabitItem = z.infer<typeof HabitItemSchema>;
+export type CustomItem = z.infer<typeof CustomItemSchema>;
 export type Item = z.infer<typeof ItemSchema>;
+/** Open — user-defined types widen this to arbitrary slugs (Phase 6). */
 export type ItemType = Item['type'];
+/** The built-in types with dedicated schema branches and static registry configs. */
+export type KnownItemType = TaskItem['type'] | HabitItem['type'];
+export type ItemTypeDef = z.infer<typeof ItemTypeDefSchema>;
 export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>;
 export type AnchorChangeEvent = z.infer<typeof AnchorChangeEventSchema>;
 //# sourceMappingURL=index.d.ts.map

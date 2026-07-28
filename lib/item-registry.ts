@@ -16,6 +16,8 @@ import type {
   HabitItem,
   Item,
   ItemType,
+  ItemTypeDef,
+  KnownItemType,
   RepeatFrequency,
   TaskItem,
   TimeBucket,
@@ -102,7 +104,7 @@ export interface ItemTypeConfig {
   }
 }
 
-export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
+export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
   task: {
     type: 'task',
     label: 'Task',
@@ -252,14 +254,119 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
   },
 }
 
-export function getItemTypeConfig(type: ItemType): ItemTypeConfig {
-  return ITEM_TYPES[type]
-}
-
 /**
  * Key order of ITEM_TYPES is presentation-load-bearing: the Beacon context
  * sections and the system-prompt noun lists iterate this array, and their
  * output is pinned byte-for-byte (tests/unit/ai-context.test.ts). Insert new
  * types at the end.
  */
-export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as ItemType[]
+export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as KnownItemType[]
+
+// ── User-defined types (Phase 6) ─────────────────────────────────────────────
+// item_types rows hydrate into ItemTypeConfig via a fixed v1 template: custom
+// types are task-shaped, date-anchored, container-less, counter-less. The
+// `config` jsonb column is carried on the def for future capability overrides
+// but is NOT applied yet — overriding capabilities is a product decision per
+// capability, not a generic merge.
+
+const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+export function buildCustomTypeConfig(
+  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural'>
+): ItemTypeConfig {
+  const label = def.label || capitalize(def.name)
+  const labelPlural = def.labelPlural || `${label}s`
+  return {
+    type: 'custom',
+    label,
+    labelPlural,
+    allowedStatuses: ['pending', 'completed', 'cancelled'],
+    doneStatus: 'completed',
+    defaultFrequency: 'none',
+    allowedFrequencies: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+    dateAnchored: true,
+    dateAddressable: true,
+    // Manual ordering is per-type ("order" sequences would collide); custom
+    // types sort by created_at until reordering becomes a real need.
+    orderable: false,
+    containerKind: null,
+    containerRequired: false,
+    orphanContainerFallback: null,
+    counters: { streak: false, dailyCounts: false },
+    schedule: { resizable: true, defaultBlockMinutes: 60 },
+    braindumpEligible: true,
+    // Morning-check rollover runs through updateTask, which type-guards to a
+    // no-op for non-tasks — flip this only when the store grows a generic
+    // update path for carry-forward.
+    carryForwardEligible: false,
+    defaultTimeBucket: null,
+    // Trigger-only for the plugin: it refetches context on any event and its
+    // tasks[]/habits[] projections exclude custom types (items[] carries them).
+    webhookEvent: 'tasks.updated',
+    webhookPayloadKey: 'task',
+    fields: TASK_FIELDS,
+    form: {
+      titlePlaceholder: `Add a ${label.toLowerCase()}…`,
+      editDescription: `Edit the details of your ${label.toLowerCase()}.`,
+      containerLabel: 'Project',
+      newContainerLabel: 'New Project',
+      newContainerIcon: 'Star',
+      deleteDescription: (title) =>
+        `This will permanently delete "${title}". This action cannot be undone.`,
+    },
+    ai: {
+      renderContextSection: (items, _ctx) => {
+        const lines: string[] = [`### ${labelPlural}`]
+        const active = items.filter(
+          (i) => i.type === 'custom' && i.status !== 'cancelled'
+        )
+        if (active.length === 0) {
+          lines.push(`No ${labelPlural.toLowerCase()} yet.`)
+        } else {
+          active.forEach((i) =>
+            lines.push(`- ${i.title}${i.status === 'completed' ? ' ✓' : ''}`)
+          )
+        }
+        return lines
+      },
+    },
+  }
+}
+
+let customTypeDefs: ItemTypeDef[] = []
+let customTypeConfigs: Record<string, ItemTypeConfig> = {}
+
+/** Replace the hydrated custom-type set (called by the planner store on load/CRUD). */
+export function hydrateCustomTypes(defs: ItemTypeDef[]): void {
+  customTypeDefs = defs
+  customTypeConfigs = Object.fromEntries(
+    defs.map((d) => [d.name, buildCustomTypeConfig(d)])
+  )
+}
+
+export function getCustomTypeDefs(): ItemTypeDef[] {
+  return customTypeDefs
+}
+
+/** All type machine names: built-ins first (order pinned), then custom. */
+export function getAllItemTypeNames(): string[] {
+  return [...ALL_ITEM_TYPES, ...customTypeDefs.map((d) => d.name)]
+}
+
+/** The registry name an item resolves against ('goal', not 'custom'). */
+export function itemTypeName(item: Item): string {
+  return item.type === 'custom' ? item.customType : item.type
+}
+
+/**
+ * Never returns undefined: built-in → hydrated custom → an on-the-fly default
+ * template (covers items whose item_types row was deleted — they keep working
+ * with a capitalized-name label).
+ */
+export function getItemTypeConfig(name: string): ItemTypeConfig {
+  if (name === 'task' || name === 'habit') return ITEM_TYPES[name]
+  return (
+    customTypeConfigs[name] ??
+    buildCustomTypeConfig({ name, label: capitalize(name), labelPlural: `${capitalize(name)}s` })
+  )
+}

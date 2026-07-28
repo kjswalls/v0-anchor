@@ -128,8 +128,49 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
 - **Phase 6 — extensibility:** `item_types` table + CRUD + manage-types UI (create
   "goal" etc.); drop the type CHECK; registry hydrated from DB; dynamic `TYPE_OPTIONS`,
   `create.<type>` palette commands, `type:<name>` search grammar (keep `task:`/`habit:`);
-  testid policy `item-card` + `data-item-type` migrating all e2e selectors in one PR;
-  after bake: drop legacy tables, retire RPC wrapper.
+  `data-item-type` attributes app-side (e2e selector migration moved to the separate
+  e2e-repair effort); after bake: drop legacy tables, retire RPC wrapper.
+
+  **Phase 6 settled design (written 2026-07-27; typing REVISED during 6a):**
+  - *Typing:* custom items use a CLOSED envelope `{ type: 'custom'; customType: string;
+    ...taskShape }` — an open `type: string` union branch was tried first and destroys
+    discriminated narrowing at every `item.type === '…'` site (then- AND else-branches
+    keep the custom member). `ItemType` = 'task'|'habit'|'custom';
+    `KnownItemType = 'task' | 'habit'`. The DB stores the SLUG in items.type; the app
+    maps slug ↔ envelope in itemFromRow/itemToRow, and db-layer `type` params stay the
+    DB slug (`.eq('type', slug)`). Registry lookups go through
+    `getItemTypeConfig(name: string)` (built-in → hydrated custom → default template,
+    never undefined) with `itemTypeName(item)` = type==='custom' ? customType : type.
+    'custom' joins task/habit as a reserved slug in the migration CHECK.
+  - *Zod:* `CustomItemSchema` = the envelope above; `ItemSchema` stays a
+    discriminatedUnion(task, habit, custom). MUST land in the types package before any
+    plugin build parses `items[]`, or a custom item bricks the plugin cache.
+  - *DB (migration 021):* `item_types` table (id uuid, user_id FK cascade, name slug
+    UNIQUE per user + CHECK not in ('task','habit'), label, label_plural, icon, color,
+    config jsonb default '{}', timestamps, RLS + updated_at trigger); DROP
+    items_type_check; RELAX items_status_check to: task vocab for task, habit vocab for
+    habit, task vocab (pending|completed|cancelled) for everything else.
+  - *Custom-type capability template (v1):* task statuses/doneStatus, defaultFrequency
+    'none', task frequency list, dateAnchored+dateAddressable true, orderable FALSE
+    (order writes are per-type; custom sorts by created_at), containerKind null,
+    counters none, schedule resizable + 60min, braindumpEligible true,
+    carryForwardEligible FALSE (morning-check rollover uses updateTask which type-guards
+    to no-op on non-tasks — flip only when the store gains generic updateItem),
+    webhookEvent 'tasks.updated'/payloadKey 'task' (trigger-only; plugin ignores
+    payloads and the context tasks[]/habits[] projections EXCLUDE custom types — locked
+    decision #6; custom items travel in items[] only).
+  - *Store:* item_types rows load with fetch; hydrated configs in a store slice; generic
+    `addItem(type, partial)`/`updateItem(id, type, updates)`/`deleteItem(id, type)`
+    actions for custom types (task/habit keep their named actions); db.ts itemFromRow/
+    itemToRow/updatesToRow gain a generic (task-shaped) branch for unknown types.
+  - *Beacon prompt:* becomes `buildBeaconSystemPrompt(types)` + the existing const for
+    the built-in default (pinned test unchanged); chat-store passes hydrated types.
+  - *Agent API:* custom types NOT exposed in v1 (routes stay task/habit; items[] serves
+    reads).
+  - *Slices:* 6a foundation (migration + types + db + registry hydration + store),
+    6b UI (manage-types UI, dynamic ItemDialog tabs, rows render custom items,
+    data-item-type), 6c commands/search (create.<type>, type:<name> grammar). Commit
+    per slice; adversarial review before each push.
 
 ## Phase 3 deliberate behavior changes (reviewed + documented 2026-07-27)
 

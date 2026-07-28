@@ -1,9 +1,19 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemType, TaskItem, HabitItem, Project, HabitGroupType } from './planner-types';
-import { ITEM_TYPES } from './item-registry';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType } from './planner-types';
+import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
+
+/**
+ * DB-level type value for an item: custom items store their user-defined slug
+ * in items.type; only the app layer sees the {type:'custom', customType}
+ * envelope. Every `type` param below takes this slug ('task', 'habit',
+ * 'goal', …), never the literal 'custom'.
+ */
+export function itemDbType(item: Item): string {
+  return item.type === 'custom' ? item.customType : item.type;
+}
 
 // ============================================================
 // Unified items (tasks + habits live in one table since migration 019).
@@ -47,6 +57,34 @@ interface ItemRow {
 }
 
 function itemFromRow(row: ItemRow): Item {
+  // Custom types (Phase 6): the DB stores the user-defined slug in items.type;
+  // app-side they travel under the closed {type:'custom', customType} envelope
+  // so discriminated narrowing keeps working. Shape is task-like (v1 template).
+  if (row.type !== 'task' && row.type !== 'habit') {
+    return {
+      type: 'custom',
+      customType: row.type,
+      id: row.id,
+      title: row.title,
+      priority: (row.priority ?? undefined) as Task['priority'],
+      project: row.project ?? undefined,
+      startDate: row.start_date ?? undefined,
+      status: row.status as Task['status'],
+      timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
+      startTime: row.start_time ?? undefined,
+      duration: row.duration ?? undefined,
+      isScheduled: row.is_scheduled ?? false,
+      repeatFrequency: (row.repeat_frequency ?? undefined) as Task['repeatFrequency'],
+      repeatDays: row.repeat_days ?? undefined,
+      repeatMonthDay: row.repeat_month_day ?? undefined,
+      completedDates: row.completed_dates ?? [],
+      order: row.order ?? 0,
+      inProjectBlock: row.in_project_block ?? undefined,
+      previousStartTime: row.previous_start_time ?? undefined,
+      previousStartDate: row.previous_start_date ?? undefined,
+      notes: row.notes ?? undefined,
+    };
+  }
   if (row.type === 'habit') {
     return {
       type: 'habit',
@@ -115,10 +153,12 @@ function itemToRow(userId: string, item: Item): ItemRow {
       notes: item.notes ?? null,
     };
   }
+  // task and custom items share the task-shaped column set; the DB type is
+  // the custom slug for envelope items.
   return {
     id: item.id,
     user_id: userId,
-    type: 'task',
+    type: item.type === 'custom' ? item.customType : 'task',
     title: item.title,
     priority: item.priority ?? null,
     project: item.project ?? null,
@@ -190,7 +230,7 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   return row;
 }
 
-export function updatesToRow(type: ItemType, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
+export function updatesToRow(type: string, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
   return type === 'habit'
     ? habitUpdatesToRow(updates as Partial<Habit>)
     : taskUpdatesToRow(updates as Partial<Task>);
@@ -201,10 +241,10 @@ export function updatesToRow(type: ItemType, updates: Partial<Task> | Partial<Ha
 // plugin installs see byte-identical events.
 function notifyItemChange(
   userId: string,
-  type: ItemType,
+  type: string,
   payload: Record<string, unknown>,
 ): void {
-  notifyPlugins(userId, ITEM_TYPES[type].webhookEvent, payload);
+  notifyPlugins(userId, getItemTypeConfig(type).webhookEvent, payload);
 }
 
 function legacyPayload(item: Item): Record<string, unknown> {
@@ -214,7 +254,7 @@ function legacyPayload(item: Item): Record<string, unknown> {
 
 // ---- Item CRUD ----
 
-export async function fetchItems(userId: string, type?: ItemType, client?: DbClient): Promise<Item[]> {
+export async function fetchItems(userId: string, type?: string, client?: DbClient): Promise<Item[]> {
   const supabase = client ?? createClient();
   let query = supabase
     .from('items')
@@ -233,15 +273,16 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
   const supabase = client ?? createClient();
   const { error } = await supabase.from('items').insert(itemToRow(userId, item));
   if (error) throw error;
-  notifyItemChange(userId, item.type, {
+  const dbType = itemDbType(item);
+  notifyItemChange(userId, dbType, {
     action: 'create',
-    [ITEM_TYPES[item.type].webhookPayloadKey]: legacyPayload(item),
+    [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
   });
 }
 
 export async function updateItem(
   id: string,
-  type: ItemType,
+  type: string,
   updates: Partial<Task> | Partial<Habit>,
   userId?: string,
   client?: DbClient,
@@ -254,7 +295,7 @@ export async function updateItem(
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
 }
 
-export async function deleteItem(id: string, type: ItemType, userId?: string, client?: DbClient): Promise<void> {
+export async function deleteItem(id: string, type: string, userId?: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase
     .from('items')
@@ -267,7 +308,7 @@ export async function deleteItem(id: string, type: ItemType, userId?: string, cl
 
 // No plugin notify, matching the legacy restoreTask/restoreHabit exactly — a
 // 'restore' webhook action would widen the pinned event contract (Phase 5).
-export async function restoreItem(id: string, type: ItemType, client?: DbClient): Promise<void> {
+export async function restoreItem(id: string, type: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase
     .from('items')
@@ -277,7 +318,7 @@ export async function restoreItem(id: string, type: ItemType, client?: DbClient)
   if (error) throw error;
 }
 
-export async function toggleItemCompletedDate(id: string, type: ItemType, dateStr: string, client?: DbClient): Promise<void> {
+export async function toggleItemCompletedDate(id: string, type: string, dateStr: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase.rpc('toggle_item_completed_date', {
     item_id: id,
@@ -296,7 +337,7 @@ export async function toggleItemCompletedDate(id: string, type: ItemType, dateSt
  */
 export async function setItemCompletion(
   id: string,
-  type: ItemType,
+  type: string,
   dateStr: string,
   completed: boolean,
   adjustStreak = true,
@@ -322,7 +363,7 @@ export async function setItemCompletion(
 export async function verifyItemOwnership(
   client: DbClient,
   id: string,
-  type: ItemType,
+  type: string,
   userId: string,
 ): Promise<boolean> {
   const { data } = await client
@@ -333,6 +374,91 @@ export async function verifyItemOwnership(
     .is('deleted_at', null)
     .single();
   return !!data && data.user_id === userId;
+}
+
+// ---- Item type definitions (user-defined types, migration 021) ----
+
+interface ItemTypeDefRow {
+  id: string;
+  name: string;
+  label: string;
+  label_plural: string;
+  icon?: string | null;
+  color?: string | null;
+  config?: Record<string, unknown> | null;
+}
+
+function itemTypeDefFromRow(row: ItemTypeDefRow): ItemTypeDef {
+  return {
+    id: row.id,
+    name: row.name,
+    label: row.label,
+    labelPlural: row.label_plural,
+    icon: row.icon ?? undefined,
+    color: row.color ?? undefined,
+    config: row.config ?? undefined,
+  };
+}
+
+/**
+ * Resilient on purpose: returns [] if the table doesn't exist yet (deploy
+ * raced ahead of migration 021) so the app degrades to built-in types
+ * instead of failing its whole data load.
+ */
+export async function fetchItemTypes(userId: string, client?: DbClient): Promise<ItemTypeDef[]> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_types')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) {
+    console.warn('fetchItemTypes failed (migration 021 applied?):', error.message);
+    return [];
+  }
+  return (data as ItemTypeDefRow[]).map(itemTypeDefFromRow);
+}
+
+export async function createItemType(userId: string, def: ItemTypeDef, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('item_types').insert({
+    id: def.id,
+    user_id: userId,
+    name: def.name,
+    label: def.label,
+    label_plural: def.labelPlural,
+    icon: def.icon ?? null,
+    color: def.color ?? null,
+    config: def.config ?? {},
+  });
+  if (error) throw error;
+}
+
+export async function updateItemType(
+  id: string,
+  updates: Partial<Omit<ItemTypeDef, 'id' | 'name'>>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('label' in updates) row.label = updates.label;
+  if ('labelPlural' in updates) row.label_plural = updates.labelPlural;
+  if ('icon' in updates) row.icon = updates.icon ?? null;
+  if ('color' in updates) row.color = updates.color ?? null;
+  if ('config' in updates) row.config = updates.config ?? {};
+  if (Object.keys(row).length === 0) return;
+  const { error } = await supabase.from('item_types').update(row).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Hard delete — item_types has no trash. Items of the type are NOT touched:
+ * they keep their slug and fall back to the registry's default template.
+ */
+export async function deleteItemType(id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('item_types').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ---- Legacy task-named projections ----

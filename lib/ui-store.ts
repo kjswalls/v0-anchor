@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, Habit, Item, ItemType, TimeBucket } from './planner-types';
+import type { Task, Habit, Item, KnownItemType, TimeBucket } from './planner-types';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -9,7 +9,8 @@ import type { Task, Habit, Item, ItemType, TimeBucket } from './planner-types';
  */
 
 export type ActiveDialog =
-  | { type: 'add'; tab: ItemType; bucket?: TimeBucket; date?: Date }
+  /** `tab` is the registry type name ('task', 'habit', or a custom slug). */
+  | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date }
   | { type: 'edit-item'; item: Item }
   | { type: 'manage-categories' }
   | { type: 'settings' }
@@ -58,7 +59,7 @@ export const useUIStore = create<UIStore>()((set, get) => ({
 
 /* Convenience helpers for common dialogs */
 export const openAddDialog = (
-  tab: ItemType = 'task',
+  tab: string = 'task',
   bucket?: TimeBucket,
   date?: Date
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date });
@@ -68,7 +69,7 @@ export const openAddDialog = (
  * the discriminator is stamped here. The item is a snapshot captured at open
  * time — the dialog deliberately does not re-resolve it from the store.
  */
-export const openEditFor = (item: Task | Habit, itemType: ItemType) =>
+export const openEditFor = (item: Task | Habit, itemType: KnownItemType) =>
   useUIStore
     .getState()
     .openDialog({ type: 'edit-item', item: { ...item, type: itemType } as Item });

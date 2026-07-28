@@ -18,12 +18,17 @@ import type {
   HabitStatus,
   Project,
   HabitGroupType,
+  ItemTypeDef,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import {
   fetchItems,
   fetchProjects,
   fetchHabitGroups,
+  fetchItemTypes,
+  createItemType as dbCreateItemType,
+  updateItemType as dbUpdateItemType,
+  deleteItemType as dbDeleteItemType,
   createItem as dbCreateItem,
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
@@ -38,7 +43,7 @@ import {
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
-import { ITEM_TYPES } from './item-registry';
+import { ITEM_TYPES, getItemTypeConfig, itemTypeName, hydrateCustomTypes } from './item-registry';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
@@ -133,6 +138,13 @@ interface PlannerStore {
   moveTaskToProjectBlock: (taskId: string) => void;
   moveTasksToProjectBlock: (taskIds: string[]) => void;
   moveTaskOutOfProjectBlock: (taskId: string) => void;
+
+  // Item type definitions (user-defined types, Phase 6). Hydrated into the
+  // capability registry on load; NOT part of undo/redo history.
+  itemTypes: ItemTypeDef[];
+  addItemType: (def: Omit<ItemTypeDef, 'id'>) => void;
+  updateItemType: (id: string, updates: Partial<Omit<ItemTypeDef, 'id' | 'name'>>) => void;
+  removeItemType: (id: string) => void;
 
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
@@ -262,7 +274,7 @@ const autoCorrectBucket = (
 // registry lists, so a new schema field can never silently drop out of sync.
 const diffItem = (from: Item, to: Item): Record<string, unknown> => {
   const patch: Record<string, unknown> = {};
-  for (const key of ITEM_TYPES[to.type].fields) {
+  for (const key of getItemTypeConfig(itemTypeName(to)).fields) {
     const a = (from as Record<string, unknown>)[key];
     const b = (to as Record<string, unknown>)[key];
     if (JSON.stringify(a) !== JSON.stringify(b)) patch[key] = b;
@@ -381,6 +393,34 @@ export const usePlannerStore = create<PlannerStore>()(
       isLoading: false,
       error: null,
 
+      // ── Item type definitions (Phase 6) ────────────────────────────────────
+      itemTypes: [],
+      addItemType: (def) => {
+        const userId = get().userId;
+        const name = def.name.trim().toLowerCase();
+        if (!name || ['task', 'habit', 'custom'].includes(name)) return;
+        if (get().itemTypes.some((t) => t.name === name)) return;
+        const full: ItemTypeDef = { ...def, name, id: crypto.randomUUID() };
+        const next = [...get().itemTypes, full];
+        hydrateCustomTypes(next);
+        set({ itemTypes: next });
+        if (userId) dbCreateItemType(userId, full).catch(console.error);
+      },
+      updateItemType: (id, updates) => {
+        const next = get().itemTypes.map((t) => (t.id === id ? { ...t, ...updates } : t));
+        hydrateCustomTypes(next);
+        set({ itemTypes: next });
+        dbUpdateItemType(id, updates).catch(console.error);
+      },
+      // Items of the type are NOT deleted — they fall back to the registry's
+      // default template (capitalized-name label).
+      removeItemType: (id) => {
+        const next = get().itemTypes.filter((t) => t.id !== id);
+        hydrateCustomTypes(next);
+        set({ itemTypes: next });
+        dbDeleteItemType(id).catch(console.error);
+      },
+
       initializeStore: async (userId: string) => {
         // Block subscriber during initialization to prevent poisoned history entries
         isUpdatingUndoRedo = true;
@@ -395,11 +435,15 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups] = await Promise.all([
+          const [items, projects, habitGroups, itemTypes] = await Promise.all([
             fetchItems(userId),
             fetchProjects(userId),
             fetchHabitGroups(userId),
+            fetchItemTypes(userId),
           ]);
+
+          // Custom types must be resolvable before any item renders.
+          hydrateCustomTypes(itemTypes);
 
           const snapshot = { items, projects, habitGroups };
 
@@ -420,6 +464,7 @@ export const usePlannerStore = create<PlannerStore>()(
             ...projectItems(items),
             projects,
             habitGroups,
+            itemTypes,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -442,12 +487,14 @@ export const usePlannerStore = create<PlannerStore>()(
         actionLog = [];
         prevStateJson = null;
 
+        hydrateCustomTypes([]);
         isUpdatingUndoRedo = true;
         set({
           userId: null,
           ...projectItems([]),
           projects: [],
           habitGroups: [],
+          itemTypes: [],
           isLoading: false,
           error: null,
           canUndo: false,

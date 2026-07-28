@@ -121,20 +121,49 @@ export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape) as (keyof z.infer
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape) as (keyof z.infer<typeof HabitGroupSchema>)[]
 
 // ── Unified Item ───────────────────────────────────────────────────────────────
-// One entity, discriminated by `type`. Branches are structurally identical to
-// Task/Habit so projections (item → legacy shape) are plain field subsets.
-// Future user-defined types (goal, …) will widen this union once the item_types
-// registry table lands.
+// One entity, discriminated by `type`. The task/habit branches are structurally
+// identical to Task/Habit so projections (item → legacy shape) are plain field
+// subsets. User-defined types (goal, …) travel under a CLOSED 'custom'
+// envelope with the type's machine name in `customType` — an open type: string
+// branch would destroy TypeScript's discriminated narrowing at every
+// `item.type === '…'` site in the app. The DB stores the slug itself in
+// items.type; the app maps slug ↔ envelope at the row boundary.
 
 const taskItemObject = z.object({ type: z.literal('task'), ...taskShape })
 const habitItemObject = z.object({ type: z.literal('habit'), ...habitShape })
+const customItemObject = z.object({
+  type: z.literal('custom'),
+  /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+  customType: z.string(),
+  ...taskShape,
+})
 
 export const TaskItemSchema = taskItemObject.superRefine(requireCustomDays)
 export const HabitItemSchema = habitItemObject.superRefine(requireCustomDays)
+export const CustomItemSchema = customItemObject.superRefine(requireCustomDays)
 
 export const ItemSchema = z
-  .discriminatedUnion('type', [taskItemObject, habitItemObject])
+  .discriminatedUnion('type', [taskItemObject, habitItemObject, customItemObject])
   .superRefine(requireCustomDays)
+
+// ── Item type definitions (user-defined types, migration 021) ─────────────────
+
+export const ItemTypeDefSchema = z.object({
+  id: z.string(),
+  /** Machine name used as items.type — lowercase slug; 'task'/'habit'/'custom' reserved. */
+  name: z
+    .string()
+    .regex(/^[a-z][a-z0-9_-]{0,31}$/)
+    .refine((n) => !['task', 'habit', 'custom'].includes(n), {
+      message: 'reserved type name',
+    }),
+  label: z.string().min(1),
+  labelPlural: z.string().min(1),
+  icon: z.string().optional(),
+  color: z.string().optional(),
+  /** Capability overrides of the app-side custom-type template. */
+  config: z.record(z.string(), z.unknown()).optional(),
+})
 
 // ── Agent API write-body schemas ───────────────────────────────────────────────
 // Validate POST/PATCH bodies at the route boundary so bad payloads get a 400

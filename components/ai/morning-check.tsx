@@ -8,7 +8,7 @@ import type { TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { ITEM_TYPES } from '@/lib/item-registry';
+import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 
 export function MorningCheck() {
   const { items, updateTask } = usePlannerStore();
@@ -26,7 +26,7 @@ export function MorningCheck() {
     // future non-task carry-forward type also needs the store's generic
     // update action (Phase 6) — the TaskItem narrowing holds until then.
     return items.filter((t): t is TaskItem => {
-      const config = ITEM_TYPES[t.type];
+      const config = getItemTypeConfig(itemTypeName(t));
       if (!config.carryForwardEligible || !config.dateAnchored) return false;
       if (t.status !== 'pending') return false;
       if (!('startDate' in t) || !t.startDate) return false;
