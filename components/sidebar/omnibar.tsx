@@ -14,7 +14,8 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
-import { searchItems } from '@/lib/search';
+import { groupResults, searchItems, type SearchGroup } from '@/lib/search';
+import { getItemTypeConfig } from '@/lib/item-registry';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,8 @@ import {
   matchArgOptions,
   matchCommands,
   matchEntityOptions,
+  itemContainer,
+  itemIcon,
   recentRows,
   resolveLabel,
   RECENT_HEADING,
@@ -177,12 +180,10 @@ export function Omnibar({
 
   /* ── rows ──────────────────────────────────────────────────────────── */
 
-  const results = useMemo(() => {
-    if (activeCommand || isCommandMode || isAddMode || isChatMode || !trimmed) {
-      return { tasks: [], habits: [] };
-    }
-    const r = searchItems(trimmed, tasks, habits);
-    return { tasks: r.tasks.slice(0, 6), habits: r.habits.slice(0, 4) };
+  /** Search hits as one section per item type; row caps live in groupResults. */
+  const results = useMemo<SearchGroup[]>(() => {
+    if (activeCommand || isCommandMode || isAddMode || isChatMode || !trimmed) return [];
+    return groupResults(searchItems(trimmed, tasks, habits));
   }, [trimmed, activeCommand, isCommandMode, isAddMode, isChatMode, tasks, habits]);
 
   /**
@@ -450,57 +451,55 @@ export function Omnibar({
                   </CommandGroup>
                 )}
 
-                {results.tasks.length > 0 && (
-                  <CommandGroup heading="Tasks">
-                    {results.tasks.map((task) => (
-                      <CommandItem
-                        key={task.id}
-                        value={`task-${task.id}`}
-                        onSelect={() => {
-                          openEditFor(task, 'task');
-                          closeAndClear();
-                        }}
-                      >
-                        <CheckCircle2
-                          className={cn(
-                            'h-4 w-4',
-                            task.status === 'completed' ? 'text-success' : 'text-muted-foreground/50'
-                          )}
-                        />
-                        {task.project && (
-                          <CategoryIcon glyph={getProjectEmoji(task.project)} name={task.project} />
-                        )}
-                        <span
-                          className={cn(
-                            'truncate font-content text-content',
-                            task.status === 'completed' && 'text-muted-foreground line-through'
-                          )}
+                {/* One section per item type, in registry order. A custom type
+                    gets its own heading and its own glyph instead of being
+                    filed under Tasks because it rides the task pipeline. */}
+                {results.map((group) => (
+                  <CommandGroup key={group.type} heading={group.heading}>
+                    {group.items.map((item) => {
+                      const Icon = itemIcon(item);
+                      const container = itemContainer(item);
+                      // Task-shaped only. A habit's completion is per-DATE
+                      // (completedDates), not the scalar status, and these rows
+                      // carry no date — so habits render undone, as before.
+                      const done =
+                        item.type !== 'habit' &&
+                        item.status === getItemTypeConfig(group.type).doneStatus;
+                      return (
+                        <CommandItem
+                          key={item.id}
+                          value={`${group.type}-${item.id}`}
+                          onSelect={() => {
+                            openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
+                            closeAndClear();
+                          }}
                         >
-                          {task.title}
-                        </span>
-                      </CommandItem>
-                    ))}
+                          <Icon
+                            className={cn(
+                              'h-4 w-4',
+                              group.type === 'habit'
+                                ? 'text-warning'
+                                : done
+                                  ? 'text-success'
+                                  : 'text-muted-foreground/50'
+                            )}
+                          />
+                          {container && (
+                            <CategoryIcon glyph={container.glyph} name={container.name} />
+                          )}
+                          <span
+                            className={cn(
+                              'truncate font-content text-content',
+                              done && 'text-muted-foreground line-through'
+                            )}
+                          >
+                            {item.title}
+                          </span>
+                        </CommandItem>
+                      );
+                    })}
                   </CommandGroup>
-                )}
-
-                {results.habits.length > 0 && (
-                  <CommandGroup heading="Habits">
-                    {results.habits.map((habit) => (
-                      <CommandItem
-                        key={habit.id}
-                        value={`habit-${habit.id}`}
-                        onSelect={() => {
-                          openEditFor(habit, 'habit');
-                          closeAndClear();
-                        }}
-                      >
-                        <Flame className="h-4 w-4 text-warning" />
-                        <CategoryIcon glyph={getHabitGroupEmoji(habit.group)} name={habit.group} />
-                        <span className="truncate font-content text-content">{habit.title}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
+                ))}
 
                 {isCommandMode && recentGroup}
 

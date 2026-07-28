@@ -140,33 +140,35 @@ function defaultDetail(item: Item, dateStr: string): string | undefined {
 }
 
 function toOption(item: Item, dateStr: string, detail: ItemCommandSpec['detail']): CommandEntityOption {
-  const { getProjectEmoji, getHabitGroupEmoji } = usePlannerStore.getState();
-  const typeName = itemTypeName(item);
-  const container =
-    item.type === 'habit'
-      ? item.group
-        ? { name: item.group, glyph: getHabitGroupEmoji(item.group) }
-        : undefined
-      : item.project
-        ? { name: item.project, glyph: getProjectEmoji(item.project) }
-        : undefined;
-
   return {
     value: item.id,
     label: item.title,
-    typeName,
+    typeName: itemTypeName(item),
     icon: itemIcon(item),
-    container,
+    container: itemContainer(item),
     detail: (detail ?? defaultDetail)(item, dateStr),
     done: isDoneOn(item, dateStr),
   };
 }
 
 /**
+ * Where the item lives, with its glyph resolved — a habit's group or a
+ * task-like item's project. Exported so the omnibar's search rows and the
+ * picker's rows stay one vocabulary rather than two that drift.
+ */
+export function itemContainer(item: Item): { name: string; glyph: string } | undefined {
+  const { getProjectEmoji, getHabitGroupEmoji } = usePlannerStore.getState();
+  if (item.type === 'habit') {
+    return item.group ? { name: item.group, glyph: getHabitGroupEmoji(item.group) } : undefined;
+  }
+  return item.project ? { name: item.project, glyph: getProjectEmoji(item.project) } : undefined;
+}
+
+/**
  * Row glyph. Custom types get the icon picked when the type was created, which
  * is the only thing distinguishing a "goal" row from a task row at a glance.
  */
-function itemIcon(item: Item): LucideIcon {
+export function itemIcon(item: Item): LucideIcon {
   const name = itemTypeName(item);
   if (name === 'habit') return Flame;
   if (name === 'task') return CheckCircle2;

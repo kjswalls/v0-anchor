@@ -1,4 +1,5 @@
-import type { Task, Habit } from './planner-types';
+import type { Item, Task, Habit } from './planner-types';
+import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
 
 /**
  * Pure search parsing + matching for the omnibar (and anything else that
@@ -65,6 +66,18 @@ export interface SearchResults {
   habits: Habit[];
 }
 
+/**
+ * The projections carry their runtime discriminator, so a row from `tasks` is
+ * an Item in all but declared type. `tasks` is task-LIKE — custom-type items
+ * ride it — which is why this resolves the registry name rather than assuming
+ * 'task'.
+ */
+function typeNameOf(row: Task | Habit | Item): string {
+  const r = row as { type?: string; customType?: string };
+  if (r.type === 'custom') return r.customType ?? 'custom';
+  return r.type ?? 'task';
+}
+
 export function searchItems(raw: string, tasks: Task[], habits: Habit[]): SearchResults {
   const query = parseSearchQuery(raw);
   const text = query.text.toLowerCase();
@@ -75,13 +88,6 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
     text.length === 0 ||
     title.toLowerCase().includes(text) ||
     (context?.toLowerCase().includes(text) ?? false);
-
-  // The tasks projection is task-LIKE (custom-type items included); resolve
-  // each row's registry name from its runtime discriminator.
-  const typeNameOf = (t: Task): string => {
-    const r = t as { type?: string; customType?: string };
-    return r.type === 'custom' ? (r.customType ?? 'custom') : 'task';
-  };
 
   const matchedTasks =
     query.type === 'habit'
@@ -101,4 +107,62 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
       : habits.filter((h) => matchText(h.title, h.group));
 
   return { tasks: matchedTasks, habits: matchedHabits };
+}
+
+export interface SearchGroup {
+  /** Registry type name — 'task', 'habit', or a custom slug. */
+  type: string;
+  /** Section heading: the type's plural label. */
+  heading: string;
+  items: Item[];
+}
+
+/**
+ * Rows per section. The built-ins keep the counts the omnibar shipped with, so
+ * a workspace with no custom types sees exactly what it saw before; a new type
+ * gets a section of its own rather than being filed under Tasks because it
+ * happens to ride the task pipeline.
+ */
+const GROUP_LIMITS: Record<string, number> = { task: 6, habit: 4 };
+const GROUP_LIMIT_DEFAULT = 4;
+/** Ceiling across all sections — five matching types must not fill the panel. */
+const TOTAL_LIMIT = 12;
+
+/**
+ * Splits a result set into one section per item type, in registry order
+ * (built-ins first, then custom types as the user ordered them).
+ *
+ * Items whose type is no longer in the registry — a type deleted while its
+ * items remain — keep their own section at the end rather than disappearing;
+ * getItemTypeConfig falls back to a template for the heading.
+ */
+export function groupResults(results: SearchResults): SearchGroup[] {
+  const byType = new Map<string, Item[]>();
+  for (const row of [...results.tasks, ...results.habits] as unknown as Item[]) {
+    const name = typeNameOf(row);
+    const bucket = byType.get(name);
+    if (bucket) bucket.push(row);
+    else byType.set(name, [row]);
+  }
+
+  const known = getAllItemTypeNames().filter((name) => byType.has(name));
+  const orphaned = [...byType.keys()].filter((name) => !known.includes(name));
+
+  const order = [...known, ...orphaned].filter((type) => (byType.get(type)?.length ?? 0) > 0);
+
+  const groups: SearchGroup[] = [];
+  let budget = TOTAL_LIMIT;
+  for (let i = 0; i < order.length; i++) {
+    const type = order[i];
+    // Hold back one row for each section still to come, so a matching type is
+    // never dropped outright — it shrinks to a single row first. (Past ~12
+    // matching types even that runs out, and the tail is cut.)
+    const reserved = order.length - i - 1;
+    const limit = Math.min(GROUP_LIMITS[type] ?? GROUP_LIMIT_DEFAULT, budget - reserved);
+    if (limit < 1) break;
+    const items = (byType.get(type) ?? []).slice(0, limit);
+    budget -= items.length;
+    groups.push({ type, heading: getItemTypeConfig(type).labelPlural, items });
+  }
+  return groups;
 }

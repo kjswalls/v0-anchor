@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { parseSearchQuery, searchItems } from '@/lib/search';
-import type { Task } from '@/lib/planner-types';
+import { describe, it, expect, afterEach } from 'vitest';
+import { groupResults, parseSearchQuery, searchItems } from '@/lib/search';
+import { hydrateCustomTypes } from '@/lib/item-registry';
+import type { ItemTypeDef, Task } from '@/lib/planner-types';
 
 describe('type:<name> grammar (Phase 6)', () => {
   it('type:goal sets the type filter to the slug', () => {
@@ -34,6 +35,96 @@ describe('type:<name> grammar (Phase 6)', () => {
 
     const byTask = searchItems('type:task run', [task, goal], [habit as never]);
     expect(byTask.tasks.map((t) => t.id)).toEqual(['t1']);
+  });
+});
+
+describe('groupResults', () => {
+  // The registry is module state; every test that hydrates must put it back.
+  afterEach(() => hydrateCustomTypes([]));
+
+  const mkTask = (id: string, title = 'Task') =>
+    ({ id, title, status: 'pending', isScheduled: false, order: 0 }) as Task;
+  const mkGoal = (id: string, title = 'Goal') =>
+    ({
+      id, title, status: 'pending', isScheduled: false, order: 0,
+      type: 'custom', customType: 'goal',
+    }) as unknown as Task;
+  const mkHabit = (id: string, title = 'Habit') =>
+    ({
+      id, title, group: 'Fitness', streak: 0, status: 'pending',
+      completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
+      type: 'habit',
+    }) as never;
+
+  const GOAL_DEF = {
+    id: 'd1', name: 'goal', label: 'Goal', labelPlural: 'Goals',
+  } as ItemTypeDef;
+
+  it('splits built-ins into their own sections, in registry order', () => {
+    const groups = groupResults({ tasks: [mkTask('t1')], habits: [mkHabit('h1')] });
+    expect(groups.map((g) => [g.type, g.heading])).toEqual([
+      ['task', 'Tasks'],
+      ['habit', 'Habits'],
+    ]);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['t1']);
+  });
+
+  it('gives a hydrated custom type its own section instead of filing it under Tasks', () => {
+    hydrateCustomTypes([GOAL_DEF]);
+    const groups = groupResults({ tasks: [mkTask('t1'), mkGoal('g1')], habits: [] });
+    expect(groups.map((g) => g.type)).toEqual(['task', 'goal']);
+    expect(groups[1].heading).toBe('Goals');
+    expect(groups[1].items.map((i) => i.id)).toEqual(['g1']);
+  });
+
+  it('keeps items whose type was deleted, in a trailing section', () => {
+    // No hydration: 'goal' is not a registry name any more, but the items exist.
+    const groups = groupResults({ tasks: [mkTask('t1'), mkGoal('g1')], habits: [] });
+    expect(groups.map((g) => g.type)).toEqual(['task', 'goal']);
+    expect(groups[1].items.map((i) => i.id)).toEqual(['g1']);
+  });
+
+  it('omits empty sections', () => {
+    expect(groupResults({ tasks: [], habits: [mkHabit('h1')] }).map((g) => g.type)).toEqual([
+      'habit',
+    ]);
+    expect(groupResults({ tasks: [], habits: [] })).toEqual([]);
+  });
+
+  it('caps built-in sections at the counts the omnibar shipped with', () => {
+    const groups = groupResults({
+      tasks: Array.from({ length: 9 }, (_, i) => mkTask(`t${i}`)),
+      habits: Array.from({ length: 9 }, (_, i) => mkHabit(`h${i}`)),
+    });
+    expect(groups[0].items).toHaveLength(6);
+    expect(groups[1].items).toHaveLength(4);
+  });
+
+  it('holds a total ceiling across sections', () => {
+    hydrateCustomTypes([
+      GOAL_DEF,
+      { id: 'd2', name: 'errand', label: 'Errand', labelPlural: 'Errands' } as ItemTypeDef,
+    ]);
+    const custom = (slug: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `${slug}${i}`, title: slug, status: 'pending', isScheduled: false, order: 0,
+        type: 'custom', customType: slug,
+      })) as unknown as Task[];
+
+    const groups = groupResults({
+      tasks: [...Array.from({ length: 9 }, (_, i) => mkTask(`t${i}`)), ...custom('goal', 9), ...custom('errand', 9)],
+      habits: Array.from({ length: 9 }, (_, i) => mkHabit(`h${i}`)),
+    });
+
+    const total = groups.reduce((n, g) => n + g.items.length, 0);
+    expect(total).toBeLessThanOrEqual(12);
+    // Every matching type survives: later sections shrink rather than vanish.
+    expect(groups.map((g) => [g.type, g.items.length])).toEqual([
+      ['task', 6],
+      ['habit', 4],
+      ['goal', 1],
+      ['errand', 1],
+    ]);
   });
 });
 
