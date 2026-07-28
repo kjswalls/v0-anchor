@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Trash2, FolderKanban, Tag, Settings2 } from 'lucide-react';
+import { Trash2, FolderKanban, Tag, Settings2, Shapes } from 'lucide-react';
 import { EditProjectDialog } from './edit-project-dialog';
 import type { Project } from '@/lib/planner-types';
 import { Button } from '@/components/ui/button';
@@ -34,14 +34,45 @@ interface ManageCategoriesDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/** 'Goal' → 'goal', 'Side Quest' → 'side-quest' (items.type slug). */
+const slugForLabel = (label: string) =>
+  label.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+
+const RESERVED_TYPE_NAMES = ['task', 'habit', 'custom'];
+
 export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesDialogProps) {
-  const { projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup } = usePlannerStore();
+  const {
+    projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup,
+    itemTypes, addItemType, removeItemType,
+  } = usePlannerStore();
   const [newProject, setNewProject] = useState('');
   const [newProjectEmoji, setNewProjectEmoji] = useState(makeIconToken('Briefcase'));
   const [newGroup, setNewGroup] = useState('');
   const [newGroupEmoji, setNewGroupEmoji] = useState(makeIconToken('Star'));
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group'; name: string; id: string } | null>(null);
+  const [newType, setNewType] = useState('');
+  const [newTypeIcon, setNewTypeIcon] = useState(makeIconToken('Target'));
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'project' | 'group' | 'itemType'; name: string; id: string } | null>(null);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  const newTypeSlug = slugForLabel(newType);
+  const newTypeValid =
+    !!newTypeSlug &&
+    /^[a-z][a-z0-9_-]{0,31}$/.test(newTypeSlug) &&
+    !RESERVED_TYPE_NAMES.includes(newTypeSlug) &&
+    !itemTypes.some((t) => t.name === newTypeSlug);
+
+  const handleAddType = () => {
+    if (!newTypeValid) return;
+    const label = newType.trim();
+    addItemType({
+      name: newTypeSlug,
+      label,
+      labelPlural: `${label}s`,
+      icon: newTypeIcon,
+    });
+    setNewType('');
+    setNewTypeIcon(makeIconToken('Target'));
+  };
 
   const handleAddProject = () => {
     if (newProject.trim()) {
@@ -63,8 +94,10 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
     if (deleteConfirm) {
       if (deleteConfirm.type === 'project') {
         removeProject(deleteConfirm.id);
-      } else {
+      } else if (deleteConfirm.type === 'group') {
         removeHabitGroup(deleteConfirm.id);
+      } else {
+        removeItemType(deleteConfirm.id);
       }
       setDeleteConfirm(null);
     }
@@ -82,14 +115,18 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
           </DialogHeader>
 
           <Tabs defaultValue="projects" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-secondary">
+            <TabsList className="grid w-full grid-cols-3 bg-secondary">
               <TabsTrigger value="projects" className="data-[state=active]:bg-card">
-                <FolderKanban className="h-4 w-4 mr-2" />
+                <FolderKanban className="h-4 w-4 mr-1.5" />
                 Projects
               </TabsTrigger>
               <TabsTrigger value="groups" className="data-[state=active]:bg-card">
-                <Tag className="h-4 w-4 mr-2" />
-                Habit Groups
+                <Tag className="h-4 w-4 mr-1.5" />
+                Groups
+              </TabsTrigger>
+              <TabsTrigger value="types" className="data-[state=active]:bg-card">
+                <Shapes className="h-4 w-4 mr-1.5" />
+                Types
               </TabsTrigger>
             </TabsList>
 
@@ -193,6 +230,53 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                 )}
               </div>
             </TabsContent>
+
+            <TabsContent value="types" className="mt-4 space-y-4">
+              <div className="flex gap-2">
+                <IconPicker value={newTypeIcon} name={newType} onSelect={setNewTypeIcon} />
+                <Input
+                  placeholder="New item type… (e.g. Goal)"
+                  value={newType}
+                  onChange={(e) => setNewType(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddType()}
+                  className="bg-background border-border flex-1"
+                />
+                <AddIconButton size="input" onClick={handleAddType} disabled={!newTypeValid} aria-label="Add item type" />
+              </div>
+              <p className="text-[10px] text-muted-foreground -mt-2">
+                Custom types work like tasks — they get their own tab in the add
+                dialog and their own section in Beacon&apos;s context.
+              </p>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {itemTypes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No custom types yet. Add one above.
+                  </p>
+                ) : (
+                  itemTypes.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
+                    >
+                      <span className="flex items-center gap-1.5 text-sm text-foreground">
+                        <CategoryIcon glyph={t.icon} name={t.label} />
+                        {t.label}
+                        <span className="text-[10px] text-muted-foreground font-mono">{t.name}</span>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteConfirm({ type: 'itemType', name: t.label, id: t.id })}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
           </Tabs>
         </DialogContent>
       </Dialog>
@@ -200,9 +284,13 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteConfirm?.type === 'project' ? 'Project' : 'Group'}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete {deleteConfirm?.type === 'project' ? 'Project' : deleteConfirm?.type === 'group' ? 'Group' : 'Item Type'}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove &quot;{deleteConfirm?.name}&quot; and unassign it from all {deleteConfirm?.type === 'project' ? 'tasks' : 'habits'}. This action cannot be undone.
+              {deleteConfirm?.type === 'itemType'
+                ? `This removes the "${deleteConfirm?.name}" type. Existing items of this type are kept and keep working with a generic label.`
+                : `This will remove "${deleteConfirm?.name}" and unassign it from all ${deleteConfirm?.type === 'project' ? 'tasks' : 'habits'}. This action cannot be undone.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
