@@ -197,6 +197,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       {...listeners}
       suppressHydrationWarning
       data-testid={isTask ? 'task-card' : 'habit-card'}
+      // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
+      // selector policy; per-kind testids above stay until the e2e migration.
+      data-item-type={(() => {
+        const r = item as { type?: string; customType?: string };
+        return r.type === 'custom' ? r.customType : itemType;
+      })()}
       className={cn(
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps

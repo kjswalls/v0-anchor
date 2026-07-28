@@ -167,10 +167,16 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     the built-in default (pinned test unchanged); chat-store passes hydrated types.
   - *Agent API:* custom types NOT exposed in v1 (routes stay task/habit; items[] serves
     reads).
-  - *Slices:* 6a foundation SHIPPED (d88f242) — migration 021 file exists but is NOT
-    yet applied (classifier blocked the prod write; needs Kirby's retry; the app is
-    deploy-safe pre-migration because fetchItemTypes degrades to []). 6b UI, 6c
-    commands/search. Adversarial review before each push.
+  - *Slices:* 6a foundation SHIPPED (d88f242); 6b SHIPPED (106c2e8 task-pipeline ride +
+    a2c015a manage-types UI); 6c search grammar (`type:<name>`) + `data-item-type` row
+    attrs SHIPPED. Migration 021 file exists but is NOT yet applied (classifier blocked
+    the prod write; needs Kirby's retry; the app is deploy-safe pre-migration because
+    fetchItemTypes degrades to []). DEFERRED from 6c: dynamic `create.<type>` palette
+    commands — the command registry is a static array by design and dynamic commands
+    belong with command-palette round 2's registry work (custom types are fully
+    creatable via the add-dialog tabs meanwhile). A Phase-6-wide adversarial review
+    pass is the outstanding QA step (phases 4/5 got theirs pre-push; 6a/6b/6c shipped
+    on typecheck+unit-suite green only).
 
   **Phase 6b settled scope (decided during 6a):** custom items ride the TASK pipeline
   instead of a parallel one. (1) planner-store generalizes the task action set to

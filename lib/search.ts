@@ -8,6 +8,8 @@ import type { Task, Habit } from './planner-types';
  * Keyword grammar:
  *   task:foo      → type filter 'task', "foo" becomes search text
  *   habit:foo     → type filter 'habit', "foo" becomes search text
+ *   type:goal     → type filter by registry name (custom types; also accepts
+ *                   type:task / type:habit)
  *   priority:high → priority filter (low|medium|high), value consumed
  *   project:Name  → project filter, value consumed
  * Unknown "word:value" tokens are treated as plain text.
@@ -15,7 +17,8 @@ import type { Task, Habit } from './planner-types';
 
 export interface ParsedSearchQuery {
   text: string;
-  type: 'task' | 'habit' | null;
+  /** 'task' | 'habit' | a custom type slug. */
+  type: string | null;
   priority: 'low' | 'medium' | 'high' | null;
   project: string | null;
 }
@@ -35,6 +38,10 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
       if (keyword === 'task' || keyword === 'habit') {
         result.type = keyword;
         if (value) textParts.push(value);
+        continue;
+      }
+      if (keyword === 'type' && value) {
+        result.type = value.toLowerCase();
         continue;
       }
       if (keyword === 'priority' && (PRIORITIES as readonly string[]).includes(value.toLowerCase())) {
@@ -69,11 +76,19 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
     title.toLowerCase().includes(text) ||
     (context?.toLowerCase().includes(text) ?? false);
 
+  // The tasks projection is task-LIKE (custom-type items included); resolve
+  // each row's registry name from its runtime discriminator.
+  const typeNameOf = (t: Task): string => {
+    const r = t as { type?: string; customType?: string };
+    return r.type === 'custom' ? (r.customType ?? 'custom') : 'task';
+  };
+
   const matchedTasks =
     query.type === 'habit'
       ? []
       : tasks.filter(
           (t) =>
+            (query.type === null || typeNameOf(t) === query.type) &&
             matchText(t.title, t.project) &&
             (query.priority === null || t.priority === query.priority) &&
             (query.project === null ||
@@ -81,7 +96,7 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
         );
 
   const matchedHabits =
-    query.type === 'task' || query.priority !== null || query.project !== null
+    (query.type !== null && query.type !== 'habit') || query.priority !== null || query.project !== null
       ? []
       : habits.filter((h) => matchText(h.title, h.group));
 
