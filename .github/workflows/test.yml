@@ -43,6 +43,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The app and the OpenClaw plugin consume @anchor-app/types via its
+      # COMMITTED dist/ — a src edit without a rebuild ships stale schemas
+      # silently. Rebuild and fail on any drift (including untracked emits).
+      - name: Check @anchor-app/types dist matches src
+        run: |
+          rm -rf packages/types/dist
+          pnpm --filter @anchor-app/types build
+          git add -A packages/types/dist
+          git diff --cached --exit-code -- packages/types/dist || {
+            echo '::error::packages/types/dist is stale — run `pnpm --filter @anchor-app/types build` and commit the result'
+            exit 1
+          }
+
       - name: Run unit tests
         run: pnpm run test:unit
 

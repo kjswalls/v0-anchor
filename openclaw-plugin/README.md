@@ -1,4 +1,4 @@
-# @anchor-app/openclaw-context
+# @anchor-app/anchor-context
 
 > OpenClaw plugin — brings your [Anchor](https://github.com/kjswalls/v0-anchor) tasks, habits, and projects into every AI conversation.
 
@@ -13,7 +13,7 @@ Once installed, your OpenClaw agent automatically knows what's on your plate —
 ## Install
 
 ```bash
-openclaw plugins install @anchor-app/openclaw-context
+openclaw plugins install @anchor-app/anchor-context
 ```
 
 ## Setup

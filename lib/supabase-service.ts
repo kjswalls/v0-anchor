@@ -23,9 +23,13 @@ export function createServiceClient() {
 /**
  * Resolve a userId from an OpenClaw API key.
  * Returns null if the key doesn't exist.
+ * Pass an existing service client to avoid creating a second one per request.
  */
-export async function resolveUserIdFromApiKey(apiKey: string): Promise<string | null> {
-  const service = createServiceClient()
+export async function resolveUserIdFromApiKey(
+  apiKey: string,
+  client?: ReturnType<typeof createServiceClient>
+): Promise<string | null> {
+  const service = client ?? createServiceClient()
   const { data } = await service
     .from('user_settings')
     .select('user_id')

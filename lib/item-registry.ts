@@ -10,8 +10,16 @@
  * product decision, not a refactor step. See memory/plans/unified-items.md.
  */
 
+import { format, isBefore, startOfDay } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
-import type { ItemType, RepeatFrequency, TimeBucket } from '@anchor-app/types'
+import type {
+  HabitItem,
+  Item,
+  ItemType,
+  RepeatFrequency,
+  TaskItem,
+  TimeBucket,
+} from '@anchor-app/types'
 
 export interface ItemTypeConfig {
   type: ItemType
@@ -80,6 +88,18 @@ export interface ItemTypeConfig {
     /** Body copy for the delete-confirm dialog. */
     deleteDescription: (title: string) => string
   }
+  ai: {
+    /**
+     * Renders this type's section of the Beacon chat context (markdown lines,
+     * no trailing blank). Pinned presentation — byte-identical to the
+     * pre-unification builder: tasks are date-scoped with an Overdue block,
+     * habits are date-blind and streak-annotated in store order.
+     */
+    renderContextSection: (
+      items: readonly Item[],
+      ctx: { today: Date; todayStr: string }
+    ) => string[]
+  }
 }
 
 export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
@@ -115,6 +135,64 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
       deleteDescription: (title) =>
         `This will permanently delete "${title}". This action cannot be undone.`,
     },
+    ai: {
+      renderContextSection: (items, { today, todayStr }) => {
+        const tasks = items.filter((i): i is TaskItem => i.type === 'task')
+        const lines: string[] = []
+        lines.push("### Today's Tasks")
+
+        const todayTasks = tasks.filter(
+          (t) => t.startDate === todayStr && t.status !== 'cancelled'
+        )
+
+        const overdueTasks = tasks.filter((t) => {
+          if (!t.startDate || t.status === 'completed' || t.status === 'cancelled') return false
+          return isBefore(startOfDay(new Date(t.startDate + 'T00:00:00')), startOfDay(today))
+        })
+
+        const pendingTasks = todayTasks.filter((t) => t.status === 'pending')
+        const completedTasks = todayTasks.filter((t) => t.status === 'completed')
+
+        function formatTask(t: TaskItem): string {
+          const parts: string[] = []
+          if (t.project) parts.push(`Project: ${t.project}`)
+          if (t.timeBucket) {
+            parts.push(t.timeBucket.charAt(0).toUpperCase() + t.timeBucket.slice(1))
+          }
+          if (t.priority) {
+            parts.push(`${t.priority.charAt(0).toUpperCase() + t.priority.slice(1)} priority`)
+          }
+          return parts.length > 0 ? `- ${t.title} (${parts.join(', ')})` : `- ${t.title}`
+        }
+
+        if (pendingTasks.length > 0) {
+          lines.push('**Pending**')
+          pendingTasks.forEach((t) => lines.push(formatTask(t)))
+        }
+
+        if (completedTasks.length > 0) {
+          lines.push('**Completed today**')
+          completedTasks.forEach((t) => lines.push(`- ${t.title} ✓`))
+        }
+
+        if (overdueTasks.length > 0) {
+          lines.push('**Overdue**')
+          overdueTasks.forEach((t) => {
+            const dateLabel = `was ${format(new Date(t.startDate! + 'T00:00:00'), 'MMM d')}`
+            const priority = t.priority
+              ? `, ${t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}`
+              : ''
+            lines.push(`- ${t.title} (${dateLabel}${priority})`)
+          })
+        }
+
+        if (pendingTasks.length === 0 && completedTasks.length === 0 && overdueTasks.length === 0) {
+          lines.push('No tasks scheduled for today.')
+        }
+
+        return lines
+      },
+    },
   },
   habit: {
     type: 'habit',
@@ -148,6 +226,29 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
       deleteDescription: (title) =>
         `This will permanently delete "${title}" and all its history. This action cannot be undone.`,
     },
+    ai: {
+      renderContextSection: (items, { todayStr }) => {
+        const habits = items.filter((i): i is HabitItem => i.type === 'habit')
+        const lines: string[] = []
+        lines.push('### Habits')
+
+        if (habits.length === 0) {
+          lines.push('No habits tracked.')
+        } else {
+          habits.forEach((h) => {
+            const todayStatus = h.completedDates.includes(todayStr)
+              ? '✓ done today'
+              : h.skippedDates.includes(todayStr)
+              ? 'skipped today'
+              : 'pending today'
+            const streakStr = h.streak > 0 ? `🔥 ${h.streak} day streak` : 'no streak'
+            lines.push(`- ${h.title} — ${streakStr} — ${todayStatus}`)
+          })
+        }
+
+        return lines
+      },
+    },
   },
 }
 
@@ -155,4 +256,10 @@ export function getItemTypeConfig(type: ItemType): ItemTypeConfig {
   return ITEM_TYPES[type]
 }
 
+/**
+ * Key order of ITEM_TYPES is presentation-load-bearing: the Beacon context
+ * sections and the system-prompt noun lists iterate this array, and their
+ * output is pinned byte-for-byte (tests/unit/ai-context.test.ts). Insert new
+ * types at the end.
+ */
 export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as ItemType[]

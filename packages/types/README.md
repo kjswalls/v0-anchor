@@ -4,7 +4,31 @@ Shared Zod schemas and TypeScript types for [Anchor](https://github.com/kjswalls
 
 Used by:
 - The Anchor Next.js app (`lib/planner-types.ts` imports from here)
-- The `@anchor-app/openclaw-context` plugin (validates API responses at runtime)
+- The `@anchor-app/anchor-context` OpenClaw plugin (validates API responses at runtime)
+
+## Building (dist/ is committed)
+
+Both consumers resolve this package through its **committed `dist/`** — the
+`exports` map never points at `src/`. After any `src/` edit:
+
+```bash
+pnpm --filter @anchor-app/types build
+git add packages/types/dist
+```
+
+CI (`.github/workflows/test.yml`, unit-tests job) rebuilds and fails the
+build if `dist/` drifts from `src/`. A TypeScript upgrade in the lockfile can
+change emitted output — regenerate and commit when that happens.
+
+## Publishing
+
+No automation exists yet; publishing is manual and **order matters**:
+
+1. `pnpm publish` **this package first** (`prepublishOnly` rebuilds dist).
+2. Then `pnpm publish` the `openclaw-plugin/` package. Use **pnpm**, not npm —
+   the plugin depends on `@anchor-app/types` via `workspace:*`, which pnpm
+   rewrites to the released version at publish time and npm would ship
+   verbatim (breaking installs).
 
 ## Install
 

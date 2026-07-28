@@ -340,12 +340,12 @@ export async function verifyItemOwnership(
 // The `type` discriminator is stripped at runtime, not just in the type system:
 // these objects flow into the pinned GET /api/agent/context response, which
 // must stay byte-shape-identical to the pre-unification contract.
-function toLegacyTask(item: TaskItem): Task {
+export function toLegacyTask(item: TaskItem): Task {
   const { type: _type, ...task } = item;
   return task;
 }
 
-function toLegacyHabit(item: HabitItem): Habit {
+export function toLegacyHabit(item: HabitItem): Habit {
   const { type: _type, ...habit } = item;
   return habit;
 }

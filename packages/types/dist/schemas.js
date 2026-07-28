@@ -112,6 +112,103 @@ export const HabitItemSchema = habitItemObject.superRefine(requireCustomDays);
 export const ItemSchema = z
     .discriminatedUnion('type', [taskItemObject, habitItemObject])
     .superRefine(requireCustomDays);
+// ── Agent API write-body schemas ───────────────────────────────────────────────
+// Validate POST/PATCH bodies at the route boundary so bad payloads get a 400
+// instead of surfacing as Postgres CHECK-constraint 500s. Unknown keys are
+// stripped (Zod default — matches the old field-pick/allowlist behavior).
+//
+// Update schemas: `null` is accepted only on fields whose DB column is
+// nullable, where it means "clear the field" (the db-layer allowlists pass it
+// through as a NULL write). Fields with legacy NOT-NULL semantics (title,
+// status, habit group/streak/arrays/repeatFrequency) reject null — the old
+// routes let those reach Postgres and 500.
+const clearable = (schema) => schema.nullable().optional();
+// id: null falls through to a server-generated UUID (legacy route behavior).
+const OptionalIdSchema = z
+    .string()
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? undefined);
+export const TaskCreateSchema = z
+    .object({
+    ...taskShape,
+    id: OptionalIdSchema,
+    title: z.string().min(1),
+    status: TaskStatusSchema.optional(),
+    isScheduled: z.boolean().optional(),
+    order: z.number().int().optional(),
+    duration: z.number().int().optional(),
+    repeatDays: z.array(z.number().int()).optional(),
+    repeatMonthDay: z.number().int().optional(),
+})
+    .superRefine(requireCustomDays);
+export const HabitCreateSchema = z
+    .object({
+    ...habitShape,
+    id: OptionalIdSchema,
+    title: z.string().min(1),
+    group: z.string().optional(),
+    streak: z.number().int().optional(),
+    status: HabitStatusSchema.optional(),
+    completedDates: z.array(z.string()).optional(),
+    skippedDates: z.array(z.string()).optional(),
+    dailyCounts: z.record(z.string(), z.number()).optional(),
+    repeatFrequency: RepeatFrequencySchema
+        .or(z.literal('weekly'))
+        .transform((v) => (v === 'weekly' ? 'custom' : v))
+        .optional(),
+    repeatDays: z.array(z.number().int()).optional(),
+    repeatMonthDay: z.number().int().optional(),
+    timesPerDay: z.number().int().optional(),
+    currentDayCount: z.number().int().optional(),
+})
+    .superRefine(requireCustomDays);
+// Update schemas keep requireCustomDays too: a PATCH that sets
+// repeatFrequency 'custom' (or legacy 'weekly') without non-empty repeatDays
+// would store an item the plugin's context safeParse rejects — one bad item
+// bricks the WHOLE cached context. The refine can't see stored state, so a
+// "switch back to custom, days already stored" patch must resend repeatDays.
+export const TaskUpdateSchema = z
+    .object({
+    title: z.string().min(1).optional(),
+    status: TaskStatusSchema.optional(),
+    priority: clearable(PrioritySchema),
+    project: clearable(z.string()),
+    startDate: clearable(z.string()),
+    timeBucket: clearable(TimeBucketSchema),
+    startTime: clearable(z.string()),
+    duration: clearable(z.number().int()),
+    isScheduled: z.boolean().optional(),
+    order: z.number().int().optional(),
+    inProjectBlock: clearable(z.boolean()),
+    previousStartTime: clearable(z.string()),
+    previousStartDate: clearable(z.string()),
+    notes: clearable(z.string()),
+    repeatFrequency: clearable(z.preprocess(normalizeWeekly, RepeatFrequencySchema)),
+    repeatDays: clearable(z.array(z.number().int())),
+    repeatMonthDay: clearable(z.number().int()),
+    completedDates: clearable(z.array(z.string())),
+})
+    .superRefine(requireCustomDays);
+export const HabitUpdateSchema = z
+    .object({
+    title: z.string().min(1).optional(),
+    status: HabitStatusSchema.optional(),
+    group: z.string().optional(),
+    streak: z.number().int().optional(),
+    completedDates: z.array(z.string()).optional(),
+    skippedDates: z.array(z.string()).optional(),
+    dailyCounts: z.record(z.string(), z.number()).optional(),
+    timeBucket: clearable(TimeBucketSchema),
+    startTime: clearable(z.string()),
+    repeatFrequency: z.preprocess(normalizeWeekly, RepeatFrequencySchema).optional(),
+    repeatDays: clearable(z.array(z.number().int())),
+    repeatMonthDay: clearable(z.number().int()),
+    timesPerDay: clearable(z.number().int()),
+    currentDayCount: clearable(z.number().int()),
+    notes: clearable(z.string()),
+})
+    .superRefine(requireCustomDays);
 // ── API response schemas ───────────────────────────────────────────────────────
 export const AnchorContextResponseSchema = z.object({
     userId: z.string(),
@@ -121,8 +218,12 @@ export const AnchorContextResponseSchema = z.object({
     habits: z.array(HabitSchema),
     projects: z.array(ProjectSchema),
     habitGroups: z.array(HabitGroupSchema),
-    // Additive (old clients strip unknown keys): bump when the response gains
-    // shapes beyond the legacy arrays, e.g. the unified items[] in a later phase.
+    // Unified items (schemaVersion 3+). MUST stay optional: plugin builds parse
+    // the whole response with one safeParse and would brick the cache against an
+    // older server if this were required. Old builds strip it as an unknown key.
+    items: z.array(ItemSchema).optional(),
+    // Additive (old clients strip unknown keys). 2 = tasks/habits are
+    // projections of the unified items table; 3 = items[] present.
     schemaVersion: z.number().optional(),
 });
 export const AnchorChangeEventSchema = z.object({

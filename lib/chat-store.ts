@@ -144,8 +144,8 @@ export const useChatStore = create<ChatStore>()((set, get) => {
       setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
       try {
-        const { tasks, habits, projects, habitGroups } = usePlannerStore.getState();
-        const context = buildAnchorContext({ tasks, habits, projects, habitGroups });
+        const { items, projects, habitGroups } = usePlannerStore.getState();
+        const context = buildAnchorContext({ items, projects, habitGroups });
         // Fresh values via getState() to avoid stale closures.
         const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();
         const effectiveSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT;

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
+import { ITEM_TYPES } from '@/lib/item-registry';
 import type { TimeBucket } from '@/lib/planner-types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -291,10 +292,10 @@ export function EODReview() {
                     <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
                       {habit.title}
                     </span>
-                    {habit.streak > 1 && (
+                    {ITEM_TYPES.habit.counters.streak && habit.streak > 1 && (
                       <span className="text-xs text-ai">🔥 {habit.streak}</span>
                     )}
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">Habit</span>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{ITEM_TYPES.habit.label}</span>
                   </li>
                 ))}
               </ul>

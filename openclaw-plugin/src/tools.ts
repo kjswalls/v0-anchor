@@ -39,7 +39,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       title: Type.String({ description: 'Task title' }),
       startDate: Type.Optional(Type.String({ description: 'YYYY-MM-DD' })),
       startTime: Type.Optional(Type.String({ description: 'HH:MM' })),
-      timeBucket: Type.Optional(Type.String({ description: 'morning | afternoon | evening' })),
+      timeBucket: Type.Optional(Type.String({ description: 'anytime | morning | afternoon | evening' })),
       priority: Type.Optional(Type.String({ description: 'low | medium | high' })),
       project: Type.Optional(Type.String({ description: 'Project name' })),
     }),

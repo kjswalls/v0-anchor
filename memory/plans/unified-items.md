@@ -4,16 +4,18 @@
 (`task`, `habit`, and later user-defined types like `goal`), with per-type behavior driven
 by a **type-capability registry** instead of parallel code paths.
 
-**Status (2026-07-27):** Phases 0–4 shipped. Migrations 019 + 020 are APPLIED to the
+**Status (2026-07-27):** Phases 0–5 shipped. Migrations 019 + 020 are APPLIED to the
 live Supabase DB (backfill verified: 1,466 tasks + 231 habits); store rewritten on
 `items[]` with `tasks`/`habits` projections (commit `3afc527`); Phase 4 replaced the
-three dialogs with one registry-driven ItemDialog (`components/planner/item-dialog.tsx`,
-ui-store `edit-item` union member, `form` presentation metadata on the registry).
-Verification items deliberately deferred: agent-route body validation returning 400s
-instead of CHECK-constraint 500s (Phase 5); types-package publish CI + dist-matches-src
-check (Phase 5); mixed-type `order` interleaving policy for `fetchItems` with no type
-filter (`order` is currently only meaningful within a type); a dated deadline for the
-frozen-table drop (cleanup migration). Next: Phase 5.
+three dialogs with one registry-driven ItemDialog; Phase 5 put the agent routes behind
+one Zod-validated handler (`lib/agent-api.ts`), added `items[]` + schemaVersion 3 to the
+context response, moved the Beacon context/prompt onto registry renderers, and added the
+dist-matches-src CI gate. Deliberately deferred: mixed-type `order` interleaving policy
+for unfiltered `fetchItems` (`order` only meaningful within a type — items[] consumers
+must not assume cross-type ordering); a dated deadline for the frozen-table drop
+(cleanup migration); EOD/morning full genericization (they use registry capabilities and
+constants, but their section logic still enumerates task/habit — Phase 6 work if custom
+types should appear there). Next: Phase 6.
 
 ---
 
@@ -112,12 +114,17 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
   guard, now in `item-dialog.tsx` `draftFromItem`); `ui-store` single `edit-item` dialog;
   edit-habit's legacy emoji grid migrated to IconPicker; rows keep per-kind testids for
   now. See "Phase 4 deliberate behavior changes" below.
-- **Phase 5 — external/AI:** context endpoint adds `items[]` + `schemaVersion` additively
-  (Zod strips unknown keys — safe for deployed plugins); `/api/agent/tasks|habits` become
-  facades over one handler with one shared ownership-check helper; AI context/EOD/morning
-  become per-type renderers on the registry with today's presentation preserved verbatim
-  (task section date-scoped w/ overdue; habit section streak-ranked, date-blind);
-  types→plugin publish ordering.
+- **Phase 5 — external/AI (SHIPPED):** context endpoint adds `items[]` + schemaVersion 3
+  additively (optional in the schema — a required key would brick old-plugin safeParse);
+  `/api/agent/tasks|habits` are facades over `lib/agent-api.ts` (shared auth, Zod
+  write-body schemas in packages/types, 400s at the boundary); Beacon chat context +
+  system prompt render per-type via `ITEM_TYPES[type].ai.renderContextSection` /
+  labelPlural (byte-parity locked by tests/unit/ai-context.test.ts — NOTE the original
+  plan said "streak-ranked" but no surface ever sorted by streak; habits are
+  streak-ANNOTATED in store order, preserved verbatim); morning-check gates on
+  carryForwardEligible+dateAnchored over items[]; EOD uses registry label/streak
+  constants; dist-matches-src CI gate + publish-ordering docs in packages/types/README.
+  See "Phase 5 deliberate behavior changes" below.
 - **Phase 6 — extensibility:** `item_types` table + CRUD + manage-types UI (create
   "goal" etc.); drop the type CHECK; registry hydrated from DB; dynamic `TYPE_OPTIONS`,
   `create.<type>` palette commands, `type:<name>` search grammar (keep `task:`/`habit:`);
@@ -193,6 +200,37 @@ Old add-dialog dead code (unreachable project/group delete AlertDialog,
 'What needs to be done?', 'Add Task'/'Add Habit', 'Edit Task'/'Edit Habit',
 'Save Changes', input ids `task-title`/`habit-title`/`edit-task-title`/
 `edit-habit-title`, `data-sub-input` Enter routing, `__new__` sentinels.
+
+## Phase 5 deliberate behavior changes (reviewed + documented 2026-07-27)
+
+Agent-route behavior is preserved for every payload the deployed OpenClaw
+plugin's tools actually send (verified against openclaw-plugin/src/tools.ts),
+EXCEPT these conscious changes (4-lens adversarial review; 13 findings
+verified, 2 blockers fixed pre-commit):
+
+1. **Invalid write bodies 400 instead of 500** — malformed JSON, junk
+   status/repeatFrequency (used to 500 on DB CHECKs), null on NOT-NULL
+   fields, non-uuid ids, fractional values on integer columns.
+2. **Junk priority/timeBucket 400 instead of being silently STORED** (these
+   two columns have no CHECK — the old routes stored e.g. 'urgent' verbatim).
+3. **Legacy 'weekly' frequency normalizes to 'custom'** instead of 500ing;
+   custom-frequency writes (create AND update) require non-empty repeatDays
+   in the same body — a stored custom-without-days item fails the plugin's
+   whole-context safeParse and bricks its cache. Consequence: a "switch back
+   to custom" PATCH must resend repeatDays. (Pre-existing residual hazard: a
+   PATCH nulling repeatDays while the stored frequency is already custom
+   still reaches the bad state — existed identically before.)
+4. **Create title is required non-empty**; notes + the schedule-internal
+   fields (completedDates/inProjectBlock/previousStart*) are now accepted on
+   task create (PATCH always accepted them; create silently dropped them).
+5. **Habit create defaults (streak 0, empty arrays/counts) are seeded by the
+   shared handler** (AGENT_API createDefaults) — items.streak has no column
+   default and the completion RPC skips NULL streaks, so this is
+   load-bearing, not cosmetic. 201 echo shape matches the legacy routes.
+6. **Update webhooks broadcast the VALIDATED body** (unknown keys stripped)
+   instead of the raw request body. The plugin ignores webhook payloads
+   (full refetch on any event), so this is unobservable today.
+7. schemaVersion 2 → 3; `items[]` served (optional in the schema).
 
 ## Behavioral invariants to preserve (regression traps)
 

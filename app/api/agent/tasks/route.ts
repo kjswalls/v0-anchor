@@ -1,7 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { createTask } from '@/lib/db'
-import type { Task } from '@/lib/planner-types'
+import { makeAgentCreateHandler } from '@/lib/agent-api'
 
 /**
  * POST /api/agent/tasks
@@ -10,49 +7,10 @@ import type { Task } from '@/lib/planner-types'
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
- * Body:
- *   Required: title (string), status ("pending"|"completed"|"cancelled"), isScheduled (boolean), order (number)
- *   Optional: id (UUID, generated if not provided), priority, project, startDate, timeBucket,
- *             startTime, duration, repeatFrequency, repeatDays, repeatMonthDay
+ * Body: validated against TaskCreateSchema (@anchor-app/types) — title
+ * required, everything else optional with server-side defaults. Invalid
+ * bodies return 400 with field-level details.
  *
  * Response: { task } with 201 status
  */
-export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-  const userId = await resolveUserIdFromApiKey(authHeader.slice(7))
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  try {
-    const serviceClient = createServiceClient()
-    const body = await req.json()
-
-    const task: Task = {
-      id: body.id ?? crypto.randomUUID(),
-      title: body.title,
-      status: body.status,
-      isScheduled: body.isScheduled,
-      order: body.order,
-      priority: body.priority,
-      project: body.project,
-      startDate: body.startDate,
-      timeBucket: body.timeBucket,
-      startTime: body.startTime,
-      duration: body.duration,
-      repeatFrequency: body.repeatFrequency,
-      repeatDays: body.repeatDays,
-      repeatMonthDay: body.repeatMonthDay,
-    }
-
-    await createTask(userId, task, serviceClient)
-
-    return NextResponse.json({ task }, { status: 201 })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Internal server error'
-    return NextResponse.json({ error: msg }, { status: 500 })
-  }
-}
+export const POST = makeAgentCreateHandler('task')

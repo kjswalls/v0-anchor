@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { HabitItem, TaskItem } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchTasks, fetchHabits, fetchProjects, fetchHabitGroups } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchHabitGroups, toLegacyTask, toLegacyHabit } from '@/lib/db'
 
 /**
  * GET /api/agent/context
@@ -25,9 +26,8 @@ export async function GET(req: NextRequest) {
   const dbClient = isBearer ? createServiceClient() : undefined
 
   const serviceClient = createServiceClient()
-  const [tasks, habits, projects, habitGroups, settingsResult] = await Promise.all([
-    fetchTasks(userId, dbClient),
-    fetchHabits(userId, dbClient),
+  const [items, projects, habitGroups, settingsResult] = await Promise.all([
+    fetchItems(userId, undefined, dbClient),
     fetchProjects(userId, dbClient),
     fetchHabitGroups(userId, dbClient),
     serviceClient
@@ -36,6 +36,13 @@ export async function GET(req: NextRequest) {
       .eq('user_id', userId)
       .single(),
   ])
+
+  // The pinned tasks[]/habits[] arrays are projections of the same items
+  // fetch — filtering preserves the per-type relative order the old
+  // fetchTasks/fetchHabits queries produced. Future custom types appear in
+  // items[] only.
+  const tasks = items.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
+  const habits = items.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
 
   // Timezone priority: stored user setting → X-Timezone header fallback → UTC
   // The client syncs the browser timezone to user_settings on every app load,
@@ -54,8 +61,10 @@ export async function GET(req: NextRequest) {
     projects,
     habitGroups,
     // Additive — old plugin builds strip unknown keys. Version 2 = tasks/habits
-    // are projections of the unified items table (migration 019).
-    schemaVersion: 2,
+    // are projections of the unified items table (migration 019); version 3 =
+    // unified items[] included alongside the legacy projections.
+    items,
+    schemaVersion: 3,
   })
 }
 

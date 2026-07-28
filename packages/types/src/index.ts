@@ -13,6 +13,10 @@ export {
   TaskItemSchema,
   HabitItemSchema,
   ItemSchema,
+  TaskCreateSchema,
+  HabitCreateSchema,
+  TaskUpdateSchema,
+  HabitUpdateSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'

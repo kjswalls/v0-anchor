@@ -4,12 +4,14 @@ import { useState, useMemo } from 'react';
 import { format, isAfter, parseISO, startOfDay } from 'date-fns';
 import { Sun, ChevronDown, ChevronUp, ArrowRight, X, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { ITEM_TYPES } from '@/lib/item-registry';
 
 export function MorningCheck() {
-  const { tasks, updateTask } = usePlannerStore();
+  const { items, updateTask } = usePlannerStore();
   const { morningCheckEnabled, dismiss, isDismissedToday } = useMorningStore();
   const [expanded, setExpanded] = useState(true);
   const [handledIds, setHandledIds] = useState<Set<string>>(new Set());
@@ -18,15 +20,22 @@ export function MorningCheck() {
 
   const overdueTask = useMemo(() => {
     const todayStart = startOfDay(new Date());
-    return tasks.filter((t) => {
+    // Carry-forward is a registry capability: habits are date-blind and never
+    // roll over (carryForwardEligible: false), which is why they don't appear
+    // here. Note: the rollover actions below go through updateTask, so a
+    // future non-task carry-forward type also needs the store's generic
+    // update action (Phase 6) — the TaskItem narrowing holds until then.
+    return items.filter((t): t is TaskItem => {
+      const config = ITEM_TYPES[t.type];
+      if (!config.carryForwardEligible || !config.dateAnchored) return false;
       if (t.status !== 'pending') return false;
-      if (!t.startDate) return false;
+      if (!('startDate' in t) || !t.startDate) return false;
       if (handledIds.has(t.id)) return false;
       // startDate is before today
       const taskDate = parseISO(t.startDate);
       return isAfter(todayStart, taskDate);
     });
-  }, [tasks, handledIds]);
+  }, [items, handledIds]);
 
   // Visibility: enabled + not yet dismissed today (first open of the day)
   if (!morningCheckEnabled) return null;
