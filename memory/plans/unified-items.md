@@ -169,9 +169,9 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     reads).
   - *Slices:* 6a foundation SHIPPED (d88f242); 6b SHIPPED (106c2e8 task-pipeline ride +
     a2c015a manage-types UI); 6c search grammar (`type:<name>`) + `data-item-type` row
-    attrs SHIPPED. Migration 021 file exists but is NOT yet applied (classifier blocked
-    the prod write; needs Kirby's retry; the app is deploy-safe pre-migration because
-    fetchItemTypes degrades to []). DEFERRED from 6c: dynamic `create.<type>` palette
+    attrs SHIPPED. Migration 021 APPLIED to prod 2026-07-27 and verified (item_types +
+    RLS live, items_type_check dropped, status CHECK carries the custom else-branch).
+    DEFERRED from 6c: dynamic `create.<type>` palette
     commands — the command registry is a static array by design and dynamic commands
     belong with command-palette round 2's registry work (custom types are fully
     creatable via the add-dialog tabs meanwhile). The Phase-6-wide adversarial review
