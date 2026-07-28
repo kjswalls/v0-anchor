@@ -85,6 +85,18 @@
   --ring: var(--lime-solid);
 
   /* ── 3b. Anchor semantics ────────────────────────────────────────────── */
+  /* The plane every modal stands on — dialogs, alert dialogs, mobile sheets.
+     Deliberately NOT --card. Card is the top of the ramp (dark 0.278L), sized
+     for pills and popovers; a 460px surface up there reads as a lamp rather
+     than a lifted plate, and it leaves nothing above it — which is why the
+     controls inside dialogs had to fall back to --background (0.173L), DARKER
+     than the app's own window backdrop, to look recessed at all.
+     At canvas the modal gets its own ramp back: modal 0.21 → secondary well
+     0.245 → card/popover 0.278, matching how the shell stacks backdrop →
+     canvas → well → card. Light is unaffected in practice (canvas 0.996 vs
+     card 1.0). Retune here, not at the call sites. */
+  --modal: var(--canvas);
+
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
@@ -370,6 +382,7 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-canvas: var(--canvas);
+  --color-modal: var(--modal);
 
   /* Anchor semantics */
   --color-success: var(--success);
@@ -522,6 +535,43 @@
      between elev-sm and elev-md in weight, since each capsule already frames a
      shadowed elev-sm pill and two competing drops read muddy. */
   --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
+
+  /* ── Schedule blocks — "the rail is the lamp" ──────────────────────────────
+     A block is tinted glass standing beside a 12px lane. The lane carries a
+     hairline rail; the accent swells it to 2px for exactly as long as the event
+     runs, and a bead pins the start. The pane itself is lit from the rail side —
+     a light inset edge facing the lane, a shaded far edge — so the accent reads
+     as a light source rather than as a colour-coded container.
+
+     The elev-md drop stays: a schedule block is still a card floating above the
+     backdrop, same family as the canvas panel and the header pills, and hover
+     lifts it to elev-lg instead of changing its hue.
+
+     Plain custom properties for the same reason the elev family is: a Tailwind
+     arbitrary value like `shadow-[inset_1px_0_0_...]` compiles the LIGHT numbers
+     straight into the class and never sees the .dark re-tune. The var() form
+     keeps the reference live.
+
+     The pane is mixed from surface-3, NOT surface-2 — surface-2 is the near-white
+     raised layer, so a surface-2 pane on the 0.996 canvas is a sub-1% step and
+     is effectively invisible. */
+  --sched-lit: inset 1px 0 0 oklch(1 0 0 / 55%), inset -1px -1px 0 oklch(0 0 0 / 5%);
+  --sched-pane: color-mix(in oklab, var(--surface-3) 72%, transparent);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-3) 88%, transparent);
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 32%, transparent);
+  --sched-shadow: var(--sched-lit), var(--shadow-elev-md);
+  --sched-shadow-hover: var(--sched-lit), var(--shadow-elev-lg);
+  /* Done: the lamp goes out (lit edge dropped) but the card keeps floating. */
+  --sched-shadow-done: var(--shadow-elev-md);
+
+  /* The accent emission wash rides its own layer so week columns and done blocks
+     can dial it to zero without touching the plate underneath. */
+  --sched-wash: 0.42;
+  --sched-wash-hover: 0.6;
+
+  /* The unlit rail down the lane. Deliberately BELOW hairline contrast: it
+     carries no information of its own and must not out-shout the hour grid. */
+  --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
 }
 
 /* Dark mode: on navy a black drop shadow barely registers, so elevation is
@@ -580,6 +630,27 @@
   --shadow-elev-bar:
     inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%),
     0 6px 18px -4px oklch(0 0 0 / 45%);
+
+  /* Schedule blocks, dark. Only the leaf values are re-declared — --sched-shadow
+     and friends compose from these with var(), and a custom property is
+     substituted per element, so the composed ones pick the dark leaves up
+     automatically.
+
+     Dark builds the pane on surface-2 (the raised layer here) rather than
+     surface-3, and the lit edge becomes a white light-catch on the rail-facing
+     and top lips, matching how the elev family carries elevation on a dark
+     ground. */
+  --sched-lit: inset 1px 0 0 oklch(1 0 0 / 10%), inset 0 1px 0 oklch(1 0 0 / 9%);
+  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  /* Floors at a real step above the canvas: surface-3/32 resolves to ~0.224 over
+     a 0.21 ground, which is vanishing rather than receding. */
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+
+  --sched-wash: 0.55;
+  --sched-wash-hover: 0.78;
+
+  --sched-rail: oklch(1 0 0 / 7%);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the

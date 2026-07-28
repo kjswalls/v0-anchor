@@ -204,7 +204,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl bg-card border-border max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-2xl border-border max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Settings className="h-5 w-5" />

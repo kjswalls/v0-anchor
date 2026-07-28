@@ -106,7 +106,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[400px] bg-card">
+        <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle className="text-foreground">Manage Categories</DialogTitle>
             <DialogDescription className="sr-only">

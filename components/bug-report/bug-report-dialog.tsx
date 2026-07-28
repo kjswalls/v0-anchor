@@ -75,7 +75,7 @@ export function BugReportDialog({ open, onOpenChange }: BugReportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md bg-card border-border">
+      <DialogContent className="sm:max-w-md border-border">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <MessageSquarePlus className="h-5 w-5" />

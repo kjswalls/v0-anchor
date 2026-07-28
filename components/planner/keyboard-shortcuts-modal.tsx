@@ -167,7 +167,7 @@ export function KeyboardShortcutsModal({ open, onOpenChange }: KeyboardShortcuts
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden border-border bg-card sm:max-w-lg">
+      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden border-border sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <Keyboard className="h-5 w-5" />

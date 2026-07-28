@@ -235,7 +235,7 @@ export function EODReview() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="sm:max-w-lg bg-card border-border max-h-[85vh] overflow-hidden flex flex-col gap-0">
+      <DialogContent className="sm:max-w-lg border-border max-h-[85vh] overflow-hidden flex flex-col gap-0">
         {/* Header */}
         <DialogHeader className="pb-4">
           <DialogTitle className="text-foreground flex items-center gap-2 text-base">

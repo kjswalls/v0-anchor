@@ -748,7 +748,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     <>
       <ResponsiveModal open={open} onOpenChange={onOpenChange}>
         <ResponsiveModalContent
-          className="w-[calc(100vw-2rem)] max-w-[425px] bg-card max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          className="w-[calc(100vw-2rem)] max-w-[425px] max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
               e.preventDefault();
