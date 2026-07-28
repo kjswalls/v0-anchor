@@ -1,6 +1,13 @@
 import { COMMAND_GROUPS, isAvailable, isHidden, resolveLabel } from './types';
-import type { Command, CommandArgOption, CommandContext, CommandGroupId } from './types';
-import { COMMANDS, COMMAND_ORDER } from './registry';
+import type {
+  Command,
+  CommandArgOption,
+  CommandContext,
+  CommandEntityOption,
+  CommandGroupId,
+} from './types';
+import { resolveCommands } from './registry';
+import { NO_MATCH, scoreAliases, scoreKeywords, scoreText } from './score';
 import {
   frequencyBoost,
   recentCommandIds,
@@ -37,47 +44,6 @@ export interface CommandRow {
   score: number;
 }
 
-const NO_MATCH = -1;
-
-/** Higher is better; NO_MATCH means the query does not apply to this text. */
-function scoreText(query: string, text: string): number {
-  if (!query) return 0;
-  const t = text.toLowerCase();
-  if (t === query) return 1000;
-  if (t.startsWith(query)) return 800;
-
-  const words = t.split(/[\s/&–—-]+/);
-  // Word-boundary prefix: "com" hits "Toggle completed tasks".
-  if (words.some((word) => word.startsWith(query))) return 600;
-  if (t.includes(query)) return 400;
-  // The reverse: the QUERY starts with one of the words. People type plurals
-  // for singular labels — "habits" would otherwise miss "Add habit" entirely.
-  // Guarded on length so three-letter words ("Set theme" vs "settings") don't
-  // drag in half the registry.
-  if (words.some((word) => word.length >= 4 && query.startsWith(word))) return 350;
-
-  return NO_MATCH;
-}
-
-/**
- * Aliases outrank every other signal. `/dark` has to land on Dark, not on
- * whichever command happens to have "dark" earlier in its label.
- */
-function scoreAliases(query: string, aliases: string[] | undefined): number {
-  if (!query || !aliases?.length) return NO_MATCH;
-  if (aliases.some((alias) => alias === query)) return 1200;
-  if (aliases.some((alias) => alias.startsWith(query))) return 700;
-  return NO_MATCH;
-}
-
-function scoreKeywords(query: string, keywords: string | undefined): number {
-  if (!query || !keywords) return NO_MATCH;
-  const words = keywords.toLowerCase().split(/\s+/);
-  if (words.some((w) => w === query)) return 300;
-  if (words.some((w) => w.startsWith(query))) return 250;
-  return keywords.toLowerCase().includes(query) ? 200 : NO_MATCH;
-}
-
 /**
  * Flattened option rows sit one notch below a plain command at the same
  * textual score, so a built-in always wins a tie against a value nested
@@ -100,7 +66,12 @@ export function matchCommands(
   const usage = options.usage ?? {};
   const rows: CommandRow[] = [];
 
-  for (const command of COMMANDS) {
+  // Resolved, not static: dynamic commands (one per custom item type) are
+  // ordinary rows, and their index here is their tie-break rank.
+  const commands = resolveCommands(ctx);
+  const order = new Map(commands.map((command, i) => [command.id, i]));
+
+  for (const command of commands) {
     if (isHidden(command, ctx)) continue;
 
     const label = resolveLabel(command, ctx);
@@ -155,8 +126,8 @@ export function matchCommands(
 
   rows.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    const ai = COMMAND_ORDER.get(a.command.id) ?? 0;
-    const bi = COMMAND_ORDER.get(b.command.id) ?? 0;
+    const ai = order.get(a.command.id) ?? 0;
+    const bi = order.get(b.command.id) ?? 0;
     if (ai !== bi) return ai - bi;
     // Same command: the plain row before its flattened options.
     return (a.arg ? 1 : 0) - (b.arg ? 1 : 0);
@@ -175,8 +146,11 @@ export function recentRows(
   limit = 4
 ): CommandRow[] {
   const rows: CommandRow[] = [];
+  const commands = resolveCommands(ctx);
   for (const id of recentCommandIds(usage, limit * 2)) {
-    const command = COMMANDS.find((c) => c.id === id);
+    // Misses when a recently used command no longer exists — you deleted the
+    // custom type it created items for. Skipping is the whole handling needed.
+    const command = commands.find((c) => c.id === id);
     if (!command || isHidden(command, ctx)) continue;
     rows.push({
       // Prefixed so it never collides with the same command's row in its own
@@ -199,6 +173,24 @@ export function groupRows(rows: CommandRow[]): { id: CommandGroupId; heading: st
     ...group,
     rows: rows.filter((row) => row.group === group.id),
   })).filter((group) => group.rows.length > 0);
+}
+
+/**
+ * Rows for a command waiting on an ENTITY argument.
+ *
+ * Unlike the enum path, the filtering happens inside the argument itself: the
+ * candidate set is the planner store, not a fixed option list, so ranking it
+ * here would mean teaching the matcher about items. An empty query is a real
+ * state with real rows (the items nearest the day you are looking at), not a
+ * "show everything" fallback.
+ */
+export function matchEntityOptions(
+  command: Command,
+  query: string,
+  ctx: CommandContext
+): CommandEntityOption[] {
+  const arg = command.argument;
+  return arg?.kind === 'entity' ? arg.search(query, ctx) : [];
 }
 
 /** Options for a command in argument mode, filtered by the typed value. */

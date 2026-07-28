@@ -24,11 +24,13 @@ import {
   isAvailable,
   matchArgOptions,
   matchCommands,
+  matchEntityOptions,
   recentRows,
   resolveLabel,
   RECENT_HEADING,
   type Command as AnchorCommand,
   type CommandArgOption,
+  type CommandEntityOption,
   type CommandRow,
 } from '@/lib/commands';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
@@ -153,6 +155,20 @@ export function Omnibar({
     if (!activeCommand || argument?.kind !== 'enum') return [];
     return matchArgOptions(activeCommand, query, ctx);
   }, [activeCommand, argument, query, ctx]);
+
+  /**
+   * Entity picker rows. `tasks`/`habits` are in the deps because the search
+   * reads them off the store non-reactively — without them, completing an item
+   * would leave it sitting in the list for the next pick.
+   */
+  const entityOptions = useMemo(() => {
+    if (!activeCommand || argument?.kind !== 'entity') return [];
+    return matchEntityOptions(activeCommand, query, ctx);
+    // tasks/habits look unused to the linter and are not: the search reads the
+    // store non-reactively, so these are what re-run it after a mutation.
+    // Without them, completing an item leaves it in the list for the next pick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCommand, argument, query, ctx, tasks, habits]);
 
   const argError = useMemo(() => {
     if (argument?.kind !== 'text' || !query.trim()) return null;
@@ -318,6 +334,38 @@ export function Omnibar({
       </CommandGroup>
     ) : null;
 
+  /**
+   * An item row inside the picker. Deliberately shaped like the search results
+   * further down — same glyphs, same strikethrough for done, same container
+   * icon — so picking "which item" looks the same wherever you are doing it.
+   */
+  const renderEntityOption = (option: CommandEntityOption) => {
+    const Icon = option.icon;
+    return (
+      <CommandItem
+        key={option.value}
+        value={`arg:${option.value}`}
+        onSelect={() => activeCommand && runCommand(activeCommand, option.value)}
+      >
+        <Icon
+          className={cn('h-4 w-4', option.done ? 'text-success' : 'text-muted-foreground/50')}
+        />
+        {option.container && (
+          <CategoryIcon glyph={option.container.glyph} name={option.container.name} />
+        )}
+        <span
+          className={cn(
+            'truncate font-content text-content',
+            option.done && 'text-muted-foreground line-through'
+          )}
+        >
+          {option.label}
+        </span>
+        {option.detail && <CommandShortcut>{option.detail}</CommandShortcut>}
+      </CommandItem>
+    );
+  };
+
   const renderArgOption = (option: CommandArgOption) => {
     const Icon = option.icon;
     return (
@@ -363,6 +411,18 @@ export function Omnibar({
                       )}
                     </span>
                   </CommandItem>
+                ) : argument?.kind === 'entity' ? (
+                  entityOptions.length > 0 ? (
+                    entityOptions.map(renderEntityOption)
+                  ) : (
+                    // The command's own copy, not "No match": the picker is
+                    // pre-filtered to what this command can act on, so an empty
+                    // list usually means nothing QUALIFIES, not that the query
+                    // was wrong.
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      {argument.emptyLabel}
+                    </div>
+                  )
                 ) : argOptions.length > 0 ? (
                   argOptions.map(renderArgOption)
                 ) : (
@@ -643,13 +703,14 @@ export function Omnibar({
               }
               aria-label="Omnibar"
               // Identifiers typed as an argument (a project name is the key
-              // every task references) must not be autocapitalised.
+              // every task references) must not be autocapitalised, and neither
+              // should an item title you are searching for.
               //
               // Only autoCapitalize is set here: cmdk's Input spreads its own
               // autoComplete/autoCorrect/spellCheck AFTER the caller's props,
               // so passing those would look like it worked and do nothing.
               // cmdk already pins autoCorrect and spellCheck off for us.
-              autoCapitalize={argument?.kind === 'text' ? 'off' : 'sentences'}
+              autoCapitalize={argument && argument.kind !== 'enum' ? 'off' : 'sentences'}
               // self-stretch, not the flex row's default centring: it makes the
               // input as tall as the pill so a click anywhere down its column
               // lands in the text and places the caret, rather than hitting the

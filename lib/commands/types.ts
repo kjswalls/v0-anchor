@@ -10,6 +10,7 @@ import type { LucideIcon } from 'lucide-react';
 export type CommandGroupId =
   | 'recent'
   | 'create'
+  | 'items'
   | 'goto'
   | 'view'
   | 'rituals'
@@ -28,6 +29,7 @@ export const RECENT_HEADING = 'Recently used';
 
 export const COMMAND_GROUPS: { id: CommandGroupId; heading: string }[] = [
   { id: 'create', heading: 'Create' },
+  { id: 'items', heading: 'Items' },
   { id: 'goto', heading: 'Go to' },
   { id: 'view', heading: 'View' },
   { id: 'rituals', heading: 'Rituals & Beacon' },
@@ -68,7 +70,48 @@ export interface CommandArgOption {
   active?: boolean;
 }
 
+/**
+ * A row in the entity picker — one item from the planner store, resolved for
+ * display so the omnibar never has to know how an item is shaped.
+ *
+ * `value` is the item id, which is what the command's run() receives. It is an
+ * id and not the item itself on purpose: the row was painted from a snapshot,
+ * and the command re-reads the store when it actually runs.
+ */
+export interface CommandEntityOption {
+  /** The item id. */
+  value: string;
+  /** The item's title. */
+  label: string;
+  /** Registry type name ('task', 'habit', 'goal') — for the row's a11y label. */
+  typeName: string;
+  icon: LucideIcon;
+  /** Project / habit group, with its glyph already resolved. */
+  container?: { name: string; glyph: string };
+  /** Muted right-hand detail: a date for dated items, a streak for habits. */
+  detail?: string;
+  /** Renders the title struck through. */
+  done?: boolean;
+}
+
 export type CommandArgument =
+  | {
+      /**
+       * Pick an ITEM. The selection model round 1 did not have: the argument
+       * is resolved against the planner store rather than a fixed option set,
+       * which is what lets one command ("Complete") target any of hundreds of
+       * items instead of shipping as hundreds of rows.
+       *
+       * Never flattened, for the same reason a data-derived enum is not: titles
+       * are free text and would outrank built-in commands of the same name.
+       */
+      kind: 'entity';
+      placeholder: string;
+      /** Shown when the query matches nothing this command can act on. */
+      emptyLabel: string;
+      /** Candidates for the typed query, already filtered to what is eligible. */
+      search: (query: string, ctx: CommandContext) => CommandEntityOption[];
+    }
   | {
       kind: 'enum';
       placeholder: string;
@@ -150,8 +193,24 @@ export interface Command {
    * is `w-0` on an `overflow-hidden` container).
    */
   hidden?: boolean | ((ctx: CommandContext) => boolean);
+  /**
+   * `arg` is the enum option's value, the typed text, or — for an entity
+   * argument — the chosen item's id.
+   */
   run: (ctx: CommandContext, arg?: string) => void;
 }
+
+/**
+ * Commands derived from live app data rather than authored by hand: one
+ * "Add ‹type›" per hydrated custom item type, appearing and disappearing as
+ * types are created and deleted.
+ *
+ * A provider must be cheap and synchronous — it runs on every keystroke — and
+ * it must never emit a `shortcut`. Bindings are persisted by id
+ * (lib/keyboard-shortcuts-store.ts), so a binding owned by a command that can
+ * vanish would leave an unreachable override behind.
+ */
+export type CommandProvider = (ctx: CommandContext) => Command[];
 
 export function resolveLabel(command: Command, ctx: CommandContext): string {
   return command.dynamicLabel?.(ctx) ?? command.label;

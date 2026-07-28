@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
+import { STATIC_COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
 import { COMMAND_GROUPS } from './commands/types';
 
 export interface ShortcutBinding {
@@ -27,10 +27,12 @@ const GROUP_HEADINGS = new Map(COMMAND_GROUPS.map((g) => [g.id, g.heading]));
  * act on the item under the mouse and need state that only the shell has.
  *
  * The ids are load-bearing: they are the keys a user's rebinding is stored
- * under. Never rename one.
+ * under. Never rename one — which is also why this reads STATIC_COMMANDS and
+ * not resolveCommands(): a dynamically derived command can disappear, and a
+ * persisted binding whose owner is gone is an override nothing can reach.
  */
 export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
-  ...COMMANDS.filter((command) => command.shortcut).map((command) => ({
+  ...STATIC_COMMANDS.filter((command) => command.shortcut).map((command) => ({
     id: command.shortcut!.id,
     label: command.label,
     description: command.description ?? '',

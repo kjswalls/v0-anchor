@@ -1,19 +1,26 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  COMMANDS,
+  STATIC_COMMANDS,
+  findCommand,
   formatKeys,
   matchCommands,
+  matchEntityOptions,
   matchesBinding,
   normalizeBinding,
   pressedKeys,
+  resolveCommands,
+  type Command,
   type CommandContext,
 } from '@/lib/commands';
 import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import type { Item, ItemTypeDef } from '@/lib/planner-types';
 
 /**
- * The palette's two load-bearing invariants: every rendered row has a unique
- * cmdk value (duplicates silently collapse selection), and a keypress maps to
- * exactly one command on both platforms.
+ * The palette's load-bearing invariants: every rendered row has a unique cmdk
+ * value (duplicates silently collapse selection), a keypress maps to exactly
+ * one command on both platforms, and — since round 2 — an item command never
+ * offers you a target it would no-op on.
  */
 
 const ctx: CommandContext = {
@@ -22,6 +29,59 @@ const ctx: CommandContext = {
   userId: 'test-user',
   isMobile: false,
 };
+
+/** The day the fixtures are written against; every date assertion is relative. */
+const TODAY = '2026-03-10';
+
+function seedStore(items: Item[], itemTypes: ItemTypeDef[] = []) {
+  usePlannerStore.setState({
+    items,
+    // The projections the store derives; custom types ride the task one.
+    tasks: items.filter((i) => i.type !== 'habit') as never,
+    habits: items.filter((i) => i.type === 'habit') as never,
+    itemTypes,
+    selectedDate: new Date(`${TODAY}T12:00:00Z`),
+    userTimezone: 'UTC',
+  });
+}
+
+const task = (over: Partial<Item> & { id: string; title: string }) =>
+  ({
+    type: 'task',
+    status: 'pending',
+    isScheduled: false,
+    order: 0,
+    completedDates: [],
+    ...over,
+  }) as Item;
+
+const habit = (over: Partial<Item> & { id: string; title: string }) =>
+  ({
+    type: 'habit',
+    group: 'Wellness',
+    streak: 0,
+    status: 'pending',
+    completedDates: [],
+    skippedDates: [],
+    dailyCounts: {},
+    repeatFrequency: 'daily',
+    ...over,
+  }) as Item;
+
+/** Item ids the given command would offer for a query. */
+function picks(id: string, query = ''): string[] {
+  const command = findCommand(id, ctx);
+  if (!command) throw new Error(`no such command: ${id}`);
+  return matchEntityOptions(command, query, ctx).map((option) => option.value);
+}
+
+function commandById(id: string): Command {
+  const command = findCommand(id, ctx);
+  if (!command) throw new Error(`no such command: ${id}`);
+  return command;
+}
+
+beforeEach(() => seedStore([]));
 
 /** Minimal stand-in — pressedKeys only reads these five fields. */
 function keyEvent(
@@ -39,8 +99,19 @@ function keyEvent(
 
 describe('command registry', () => {
   it('has no duplicate command ids', () => {
-    const ids = COMMANDS.map((c) => c.id);
+    const ids = resolveCommands(ctx).map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('lets no dynamically derived command own a keyboard shortcut', () => {
+    // Bindings are persisted by shortcut id. A command that can disappear
+    // (a custom type, deleted) would strand the user's override behind it.
+    seedStore([], [typeDef('goal')]);
+    const dynamic = resolveCommands(ctx).filter(
+      (command) => !STATIC_COMMANDS.includes(command)
+    );
+    expect(dynamic.length).toBeGreaterThan(0);
+    expect(dynamic.every((command) => !command.shortcut)).toBe(true);
   });
 
   it('has no duplicate shortcut ids', () => {
@@ -85,7 +156,7 @@ describe('aliases', () => {
   /** Every alias in the registry, including those on flattened enum options. */
   function allAliases() {
     const found: { alias: string; owner: string }[] = [];
-    for (const command of COMMANDS) {
+    for (const command of resolveCommands(ctx)) {
       for (const alias of command.aliases ?? []) found.push({ alias, owner: command.id });
       const arg = command.argument;
       if (arg?.kind !== 'enum') continue;
@@ -196,6 +267,154 @@ describe('matchCommands', () => {
   });
 });
 
+describe('entity arguments', () => {
+  it('offers only the items the command can actually act on', () => {
+    seedStore([
+      task({ id: 't1', title: 'Write spec', startDate: TODAY }),
+      task({ id: 't2', title: 'Ship it', status: 'completed', startDate: TODAY }),
+      task({ id: 't3', title: 'Old news', status: 'cancelled', startDate: TODAY }),
+    ]);
+    // Completing a completed item would un-complete it — the picker must not
+    // present that as "Complete".
+    expect(picks('items.complete')).toEqual(['t1']);
+    // Delete is the one command with no eligibility rule beyond existing.
+    expect(picks('items.delete').sort()).toEqual(['t1', 't2', 't3']);
+  });
+
+  it('greys the command out when nothing qualifies, rather than opening an empty picker', () => {
+    seedStore([task({ id: 't1', title: 'Ship it', status: 'completed' })]);
+    expect(commandById('items.complete').availableWhen?.(ctx)).toBe(false);
+    expect(commandById('items.delete').availableWhen?.(ctx)).toBe(true);
+
+    seedStore([task({ id: 't1', title: 'Ship it' })]);
+    expect(commandById('items.complete').availableWhen?.(ctx)).toBe(true);
+  });
+
+  it('resolves against the day on screen, not today', () => {
+    seedStore([habit({ id: 'h1', title: 'Stretch', completedDates: [TODAY] })]);
+    expect(picks('items.complete')).toEqual([]);
+
+    // Same habit, previous day: not done then, so it is completable there.
+    usePlannerStore.setState({ selectedDate: new Date('2026-03-09T12:00:00Z') });
+    expect(picks('items.complete')).toEqual(['h1']);
+  });
+
+  it('ranks the selected day above other dates, and the backlog below both', () => {
+    seedStore([
+      task({ id: 'backlog', title: 'Someday thing' }),
+      task({ id: 'next-week', title: 'Later thing', startDate: '2026-03-17' }),
+      task({ id: 'today', title: 'Now thing', startDate: TODAY }),
+      task({ id: 'tomorrow', title: 'Soon thing', startDate: '2026-03-11' }),
+    ]);
+    expect(picks('items.complete')).toEqual(['today', 'tomorrow', 'next-week', 'backlog']);
+  });
+
+  it('scores a title match above mere proximity', () => {
+    seedStore([
+      task({ id: 'today', title: 'Unrelated', startDate: TODAY }),
+      task({ id: 'match', title: 'Write the spec' }),
+    ]);
+    expect(picks('items.complete', 'write')[0]).toBe('match');
+  });
+
+  it('inherits the omnibar search grammar', () => {
+    seedStore([
+      task({ id: 'work', title: 'Standup', project: 'Work', startDate: TODAY }),
+      task({ id: 'home', title: 'Standup notes', project: 'Personal', startDate: TODAY }),
+    ]);
+    // project: is consumed as a filter, not matched as title text.
+    expect(picks('items.complete', 'project:Work')).toEqual(['work']);
+    expect(picks('items.complete', 'standup').sort()).toEqual(['home', 'work']);
+  });
+
+  it('still ranks by title when the query also carries a keyword token', () => {
+    seedStore([
+      task({ id: 'notes', title: 'Standup notes', project: 'Work', startDate: TODAY }),
+      task({ id: 'exact', title: 'Standup', project: 'Work', startDate: TODAY }),
+    ]);
+    // Both survive the filter and both sit on the selected day, so the exact
+    // title has to win on score — which it only does if "project:Work" was
+    // stripped before scoring. Left in, no title matches the phrase, every row
+    // scores zero, and the tie falls back to store order.
+    expect(picks('items.complete', 'standup project:Work')[0]).toBe('exact');
+    expect(picks('items.complete', 'standup')[0]).toBe('exact');
+  });
+
+  it('confines habit-only commands to habits', () => {
+    seedStore([
+      task({ id: 't1', title: 'Write spec', startDate: TODAY }),
+      habit({ id: 'h1', title: 'Stretch', streak: 4 }),
+      habit({ id: 'h2', title: 'Read', streak: 0 }),
+    ]);
+    expect(picks('items.skip').sort()).toEqual(['h1', 'h2']);
+    // Nothing to reset on a streak of zero.
+    expect(picks('items.resetStreak')).toEqual(['h1']);
+    // Habits are date-blind, so there is no date on them to snooze.
+    expect(picks('items.snooze')).toEqual(['t1']);
+  });
+
+  it('does not offer a value the item already has', () => {
+    seedStore([
+      task({ id: 'high', title: 'Urgent', priority: 'high', timeBucket: 'morning' }),
+      task({ id: 'low', title: 'Whenever', priority: 'low', timeBucket: 'evening' }),
+    ]);
+    expect(picks('items.priority.high')).toEqual(['low']);
+    expect(picks('items.bucket.morning')).toEqual(['low']);
+  });
+
+  it('re-reads the item at run time instead of trusting the painted row', () => {
+    seedStore([task({ id: 't1', title: 'Write spec', startDate: TODAY })]);
+    const complete = commandById('items.complete');
+
+    // Completed (or deleted) between painting the row and pressing Enter.
+    seedStore([task({ id: 't1', title: 'Write spec', status: 'completed', startDate: TODAY })]);
+    complete.run(ctx, 't1');
+    expect(usePlannerStore.getState().items[0].status).toBe('completed');
+
+    seedStore([]);
+    expect(() => complete.run(ctx, 't1')).not.toThrow();
+  });
+});
+
+describe('dynamic commands', () => {
+  it('adds one Add ‹type› per hydrated custom type, and drops it on delete', () => {
+    expect(resolveCommands(ctx).some((c) => c.id === 'create.type.goal')).toBe(false);
+
+    seedStore([], [typeDef('goal')]);
+    const goal = findCommand('create.type.goal', ctx);
+    expect(goal?.label).toBe('Add goal');
+    expect(goal?.group).toBe('create');
+    expect(matchCommands('goal', ctx)[0].command.id).toBe('create.type.goal');
+
+    seedStore([], []);
+    expect(findCommand('create.type.goal', ctx)).toBeUndefined();
+  });
+
+  it('does not let a user-named type steal an alias another command promised', () => {
+    // "review" is the end-of-day ritual's alias. A type of that name gets a
+    // row and keywords, but not the token.
+    seedStore([], [typeDef('review')]);
+    expect(findCommand('create.type.review', ctx)?.aliases).toBeUndefined();
+    expect(matchCommands('review', ctx)[0].command.id).toBe('rituals.eod');
+
+    seedStore([], [typeDef('goal')]);
+    expect(findCommand('create.type.goal', ctx)?.aliases).toEqual(['goal']);
+  });
+
+  it('keeps row values unique once dynamic commands and items are in play', () => {
+    seedStore([task({ id: 't1', title: 'Write spec' })], [typeDef('goal'), typeDef('idea')]);
+    for (const query of ['', 'a', 'add', 'goal', 'complete', 'set']) {
+      const values = matchCommands(query, ctx).map((r) => r.value);
+      expect(new Set(values).size, `duplicate row value for query "${query}"`).toBe(values.length);
+    }
+  });
+});
+
+function typeDef(name: string): ItemTypeDef {
+  const label = name.charAt(0).toUpperCase() + name.slice(1);
+  return { id: `type-${name}`, name, label, labelPlural: `${label}s` };
+}
+
 const MAC = true;
 const PC = false;
 
@@ -251,7 +470,9 @@ describe('key matching', () => {
   });
 
   it('lets undo and redo repeat on key auto-repeat, and nothing else', () => {
-    const repeatable = COMMANDS.filter((c) => c.shortcut?.repeatable).map((c) => c.shortcut!.id);
+    const repeatable = STATIC_COMMANDS.filter((c) => c.shortcut?.repeatable).map(
+      (c) => c.shortcut!.id
+    );
     expect(repeatable.sort()).toEqual(['redo', 'undo']);
   });
 

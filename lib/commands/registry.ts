@@ -28,10 +28,16 @@ import {
   Sunrise,
   Sunset,
   Bug,
+  AlarmClock,
   CheckCircle2,
   Clock,
+  Flag,
+  Flame,
+  SkipForward,
+  Trash2,
   Type,
   Undo2,
+  Unlink,
   Wand2,
   Zap,
 } from 'lucide-react';
@@ -47,22 +53,49 @@ import { useEODStore } from '../eod-store';
 import { useChatStore } from '../chat-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
+import { getItemTypeConfig, itemTypeName } from '../item-registry';
+import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import {
   CANVAS_GROUP_BY_OPTIONS,
   LAYOUT_OPTIONS,
   TYPE_OPTIONS,
   type CanvasGroupBy,
 } from '../view-options';
-import type { Command, CommandArgOption } from './types';
+import {
+  assignBucket,
+  isCancelled,
+  isDoneOn,
+  isHabit,
+  isSkippedOn,
+  isTaskLike,
+  itemCommand,
+  nextDayStr,
+} from './entities';
+import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
+import type { Priority, TimeBucket } from '../planner-types';
 
 /**
- * Round 1 of the command palette.
+ * The command registry.
  *
- * The organising rule: a command is in here only if it is GLOBAL (needs no
- * target item — there is no selection model yet, see lib/hovered-item.ts for
- * why hover is not one) and VERIFIED (its hook has a live consumer). Anything
- * that needs "this task" waits for the entity-picker argument kind.
+ * Round 1 shipped one rule: a command was in here only if it was GLOBAL (it
+ * needed no target item, because there was no selection model — see
+ * lib/hovered-item.ts for why hover is not one) and VERIFIED (its hook has a
+ * live consumer). The second half still holds; the first is now lifted.
+ *
+ * Round 2 added the missing primitive — the `entity` argument
+ * (lib/commands/entities.ts), which resolves "which item did you mean" against
+ * the planner store. That is what the Items group below is built on, and it is
+ * why this file is no longer a flat array: `resolveCommands(ctx)` is the
+ * registry as the palette sees it, and it is the static list PLUS whatever the
+ * providers derive from live data (today, one "Add ‹type›" per hydrated custom
+ * item type). STATIC_COMMANDS remains the only thing that may own a keyboard
+ * shortcut, because bindings are persisted by id and a command that can vanish
+ * cannot own one.
+ *
+ * Still parked, and not for want of machinery: renaming a project or group.
+ * Items reference their container BY NAME, so a rename orphans every child —
+ * that is a data-model fix (stable container ids) before it is a command.
  *
  * Several app settings are deliberately absent rather than dead: compact mode,
  * chill mode, the current-time indicator, default view, morning-check time,
@@ -79,6 +112,59 @@ import type { TypeFilter, ViewLayout } from '../view-store';
 const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 
+/**
+ * "Set priority" and "Move to bucket" want TWO values — an item and a level.
+ * The argument model holds one, and rather than grow a multi-chip flow for two
+ * commands, each value gets its own command: "Set priority: High" then pick the
+ * item. Same trade the flattened enums make (types.ts, `flatten`) — a known
+ * value costs one keystroke instead of a second browse — and the same reason
+ * these are generated rather than typed out seven times: the levels are data
+ * the app already owns.
+ */
+function priorityCommands(): Command[] {
+  return (Object.keys(PRIORITY_LABELS) as Priority[]).map((priority) =>
+    itemCommand({
+      id: `items.priority.${priority}`,
+      label: `Set priority: ${PRIORITY_LABELS[priority]}`,
+      icon: Flag,
+      keywords: `priority ${priority} importance urgent level set`,
+      aliases: [priority],
+      placeholder: 'Which task?',
+      emptyLabel: `Nothing left to set to ${PRIORITY_LABELS[priority].toLowerCase()}`,
+      // Habits carry no priority field.
+      eligible: (item) => isTaskLike(item) && item.priority !== priority && !isCancelled(item),
+      detail: (item) =>
+        isTaskLike(item) && item.priority ? PRIORITY_LABELS[item.priority] : undefined,
+      run: (item) => planner().updateTask(item.id, { priority }),
+    })
+  );
+}
+
+function bucketCommands(): Command[] {
+  return (Object.keys(TIME_BUCKET_RANGES) as TimeBucket[]).map((bucket) =>
+    itemCommand({
+      id: `items.bucket.${bucket}`,
+      label: `Move to ${TIME_BUCKET_RANGES[bucket].label}`,
+      icon: BUCKET_ICONS[bucket],
+      keywords: `move bucket ${bucket} time when reschedule`,
+      aliases: [bucket],
+      emptyLabel: `Nothing left to move to ${TIME_BUCKET_RANGES[bucket].label.toLowerCase()}`,
+      eligible: (item, dateStr) =>
+        item.timeBucket !== bucket && !isDoneOn(item, dateStr) && !isCancelled(item),
+      detail: (item) =>
+        item.timeBucket ? TIME_BUCKET_RANGES[item.timeBucket].label : undefined,
+      run: (item) => assignBucket(item, bucket),
+    })
+  );
+}
+
+const BUCKET_ICONS: Record<TimeBucket, Command['icon']> = {
+  anytime: Clock,
+  morning: Sunrise,
+  afternoon: Sun,
+  evening: Sunset,
+};
+
 function optionsFrom<T extends string>(
   list: { value: T; label: string; icon: CommandArgOption['icon'] }[],
   current: T
@@ -91,9 +177,9 @@ function optionsFrom<T extends string>(
   }));
 }
 
-/* ── the registry ──────────────────────────────────────────────────────── */
+/* ── the static registry ───────────────────────────────────────────────── */
 
-export const COMMANDS: Command[] = [
+export const STATIC_COMMANDS: Command[] = [
   /* ── Create ─────────────────────────────────────────────────────────── */
   {
     id: 'create.task',
@@ -141,6 +227,105 @@ export const COMMANDS: Command[] = [
     // palette-created project the same wrong icon.
     run: (_ctx, arg) => planner().addProject((arg ?? '').trim(), ''),
   },
+
+  /* ── Items ──────────────────────────────────────────────────────────────
+     Everything here takes an entity argument: you pick the command, then the
+     item. Eligibility is declared once per command and drives both the picker
+     and the greyed-out state — see lib/commands/entities.ts. */
+  itemCommand({
+    id: 'items.complete',
+    label: 'Complete',
+    description: 'Tick off a task or habit on the day you are looking at',
+    icon: CheckCircle2,
+    keywords: 'complete done finish tick check off mark',
+    aliases: ['complete', 'done'],
+    emptyLabel: 'Nothing left to complete',
+    eligible: (item, dateStr) => !isDoneOn(item, dateStr) && !isCancelled(item),
+    run: (item) =>
+      isHabit(item)
+        ? planner().toggleHabitStatus(item.id, 'done')
+        : planner().toggleTaskStatus(item.id, 'completed'),
+  }),
+  itemCommand({
+    id: 'items.delete',
+    label: 'Delete',
+    icon: Trash2,
+    keywords: 'delete remove destroy trash',
+    aliases: ['delete'],
+    emptyLabel: 'Nothing to delete',
+    // The one command here with no eligibility rule beyond existing: you can
+    // always delete anything, including something already completed.
+    eligible: () => true,
+    run: (item) => {
+      const config = getItemTypeConfig(itemTypeName(item));
+      // Confirmed, not immediate. Every other item command is a single undo
+      // away; this one destroys a habit's whole history with it, so it goes
+      // through the same prompt the item dialog uses, with that type's copy.
+      useUIStore.getState().confirm({
+        title: `Delete ${config.label.toLowerCase()}?`,
+        description: config.form.deleteDescription(item.title),
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: () =>
+          isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id),
+      });
+    },
+  }),
+  itemCommand({
+    id: 'items.snooze',
+    label: 'Snooze to tomorrow',
+    description: 'Push an item forward one day',
+    icon: AlarmClock,
+    keywords: 'snooze postpone defer later push tomorrow delay',
+    aliases: ['snooze'],
+    emptyLabel: 'Nothing to snooze',
+    // Habits are date-blind by construction (dateAnchored: false) — there is
+    // no date on them to move.
+    eligible: (item, dateStr) => isTaskLike(item) && !isDoneOn(item, dateStr) && !isCancelled(item),
+    run: (item, dateStr) => planner().updateTask(item.id, { startDate: nextDayStr(item, dateStr) }),
+  }),
+  itemCommand({
+    id: 'items.skip',
+    label: 'Skip habit today',
+    description: 'Marks the day skipped without breaking the streak',
+    icon: SkipForward,
+    keywords: 'skip habit rest day pass miss',
+    aliases: ['skip'],
+    placeholder: 'Which habit?',
+    emptyLabel: 'No habit left to skip today',
+    eligible: (item, dateStr) =>
+      isHabit(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
+    run: (item) => planner().toggleHabitStatus(item.id, 'skipped'),
+  }),
+  itemCommand({
+    id: 'items.resetStreak',
+    label: 'Reset streak',
+    description: 'Zeroes the counter; completion history is kept',
+    icon: Flame,
+    keywords: 'reset streak counter zero habit start over',
+    aliases: ['streak'],
+    placeholder: 'Which habit?',
+    emptyLabel: 'No habit has a streak to reset',
+    eligible: (item) => isHabit(item) && item.streak > 0,
+    detail: (item) => (isHabit(item) ? `🔥 ${item.streak}` : undefined),
+    run: (item) => planner().resetHabitStreak(item.id),
+  }),
+  itemCommand({
+    id: 'items.leaveProjectBlock',
+    label: 'Move out of project block',
+    description: 'Returns the task to the time it had before the block claimed it',
+    icon: Unlink,
+    keywords: 'project block remove out release detach unblock',
+    aliases: ['unblock'],
+    placeholder: 'Which task?',
+    emptyLabel: 'No task is in a project block',
+    // moveTaskOutOfProjectBlock resolves against type 'task' specifically, so
+    // custom types are out even though they are otherwise task-shaped.
+    eligible: (item) => item.type === 'task' && !!item.inProjectBlock,
+    run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
+  }),
+  ...priorityCommands(),
+  ...bucketCommands(),
 
   /* ── Go to ──────────────────────────────────────────────────────────── */
   {
@@ -660,11 +845,69 @@ export const SHELL_SHORTCUTS = [
   },
 ] as const;
 
-const BY_ID = new Map(COMMANDS.map((c) => [c.id, c]));
+/* ── dynamic commands ──────────────────────────────────────────────────── */
 
-export function findCommand(id: string): Command | undefined {
-  return BY_ID.get(id);
+/**
+ * One "Add ‹type›" per hydrated custom item type, so a type you created ten
+ * seconds ago is a first-class palette row rather than a tab you have to go
+ * find inside the add dialog.
+ *
+ * Memoised on the identity of the type list: this runs on every keystroke, and
+ * a fresh Command object each time would hand the omnibar a new `activeCommand`
+ * identity mid-argument.
+ */
+let cachedTypeDefs: unknown = null;
+let cachedTypeCommands: Command[] = [];
+
+const customTypeCommands: CommandProvider = () => {
+  // The store's copy, not the item-registry module's, because this must track
+  // creates and deletes; hydration into the registry happens on load and CRUD.
+  const defs = planner().itemTypes;
+  if (defs === cachedTypeDefs) return cachedTypeCommands;
+
+  // Aliases already claimed by a hand-authored command, or by another type.
+  const taken = new Set(STATIC_COMMANDS.flatMap((c) => c.aliases ?? []));
+
+  cachedTypeDefs = defs;
+  cachedTypeCommands = defs.map((def) => {
+    const config = getItemTypeConfig(def.name);
+    const noun = config.label.toLowerCase();
+    // An alias is a promise that typing it lands in exactly one place, and
+    // type names are user input — a type called "review" must not quietly
+    // steal /review from the end-of-day ritual.
+    const alias = taken.has(def.name) ? undefined : def.name;
+    if (alias) taken.add(alias);
+
+    return {
+      id: `create.type.${def.name}`,
+      label: `Add ${noun}`,
+      group: 'create',
+      icon: resolveCategoryIcon(def.icon, def.label),
+      keywords: `new create ${def.name} ${config.labelPlural.toLowerCase()}`,
+      aliases: alias ? [alias] : undefined,
+      run: () => openAddDialog(def.name),
+    } satisfies Command;
+  });
+  return cachedTypeCommands;
+};
+
+/**
+ * Sources of commands that are not known until runtime. Order matters only for
+ * ties — provider output is appended after the static list, so a generated row
+ * never outranks a hand-authored one at the same score.
+ */
+const PROVIDERS: CommandProvider[] = [customTypeCommands];
+
+/**
+ * The registry as every palette surface sees it. Call this rather than reading
+ * STATIC_COMMANDS: the static list is the subset that may own a keyboard
+ * shortcut, not the set of commands that exist.
+ */
+export function resolveCommands(ctx: CommandContext): Command[] {
+  const dynamic = PROVIDERS.flatMap((provider) => provider(ctx));
+  return dynamic.length === 0 ? STATIC_COMMANDS : [...STATIC_COMMANDS, ...dynamic];
 }
 
-/** Declaration order, used as the matcher's final tie-break. */
-export const COMMAND_ORDER = new Map(COMMANDS.map((c, i) => [c.id, i]));
+export function findCommand(id: string, ctx: CommandContext): Command | undefined {
+  return resolveCommands(ctx).find((command) => command.id === id);
+}

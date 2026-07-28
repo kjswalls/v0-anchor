@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { getShortcutBindings, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
-import { COMMANDS, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
+import { STATIC_COMMANDS, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import type { CommandContext } from '@/lib/commands';
 
@@ -51,8 +51,11 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
   });
 
   useEffect(() => {
+    // Static only, and complete: a shortcut can only belong to a command that
+    // always exists (see keyboard-shortcuts-store), so there is nothing a
+    // dynamic command could contribute to this map.
     const commandByShortcutId = new Map(
-      COMMANDS.filter((c) => c.shortcut).map((c) => [c.shortcut!.id, c])
+      STATIC_COMMANDS.filter((c) => c.shortcut).map((c) => [c.shortcut!.id, c])
     );
 
     const handleKeyDown = (event: KeyboardEvent) => {
