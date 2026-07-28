@@ -12,7 +12,8 @@ export type ActiveDialog =
   /** `tab` is the registry type name ('task', 'habit', or a custom slug). */
   | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date }
   | { type: 'edit-item'; item: Item }
-  | { type: 'manage-categories' }
+  /** `tab` opens a specific panel — 'projects' | 'groups' | 'types'. */
+  | { type: 'manage-categories'; tab?: string }
   | { type: 'settings' }
   | { type: 'keyboard-shortcuts' }
   | { type: 'bug-report' };

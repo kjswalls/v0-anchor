@@ -201,11 +201,82 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     Nothing custom-type-shaped is outstanding except the manage-types rename gap
     above and the e2e suite, which is its own effort.
 
-  **Follow-up (Kirby, 2026-07-27): ItemDialog type selector redesign.** Tabs don't
-  scale past ~3-4 types — replace with a type dropdown (or Task/Habit segmented +
-  overflow Select). Product/design decision: mock against the Anchor Redesign Figma
-  (design source of truth) before building; also decide whether per-type draft
-  preservation survives the switch (tabs currently keep one draft per type).
+  **Follow-up (Kirby, 2026-07-27): ItemDialog type selector redesign — SHIPPED
+  2026-07-28 as a full dialog redesign.** No Figma frame existed, so the design was
+  settled in two artifacts (four type-selector studies, then a full redesign with
+  every state + spec + build plan) and built from those. What landed:
+    - `components/primitives/property-chip.tsx` — the load-bearing primitive.
+      Chip + Popover, `children` is a render prop taking `close`. The rule the
+      layout rests on: an UNSET chip shows the noun ("Priority"), a SET chip shows
+      the value ("High"). That is what let the labels go without hiding meaning.
+    - item-dialog render replaced: type chip (add) / type badge (edit) in the
+      header, borderless title, ONE wrapping chip row, hairline footer. Which
+      chips exist is capability config — a new custom type needs no dialog work.
+      Duration folded into the Time chip; the weekday cards and the 31-day grid
+      moved INTO the repeat popover (they used to push Save 60px down the page).
+    - Delete + reset-streak moved to a `...` overflow menu; the streak gradient
+      panel became a honey strip carrying 14 days of history in the row's own
+      `--day-on`/`--day-off` dot vocabulary.
+    - Weekday toggles are the project dialog's 36px `rounded-md` cards wearing
+      the omnibar's `--shadow-key-rest`/`-pressed` pair: off raised, on pressed.
+    - DECIDED: per-type drafts do NOT survive a type switch as isolated forms.
+      `switchType()` carries the draft across (title, priority, dates, buckets,
+      repeat), deliberately NOT the container (projects and habit groups are
+      different namespaces), and clamps a frequency the target type forbids to
+      its default. With one form and a switcher, losing the title you just typed
+      reads as a bug — which it did not with tabs.
+    - DECIDED: edit mode shows the type as a BADGE, not a switcher. Converting an
+      item is a data decision (streaks, completion history), not a control.
+    - State layer untouched: latch, per-type draft map, render-phase edit
+      seeding, and both save adapters are byte-identical.
+    - Preserved on purpose so the e2e suite does not rot further: the `Add Task`
+      / `Add Habit` button labels, `Save Changes`, the `${type}-title` /
+      `edit-${type}-title` input ids, the `What needs to be done?` placeholder,
+      `data-sub-input`, and the sr-only `Add New` dialog title.
+    - Side change: `manage-categories` gained an optional `tab`, so the type
+      picker's "Manage types…" row lands on the Types panel. Keyed `<Tabs>`,
+      because the dialog stays mounted and `defaultValue` only applies once.
+
+    ADVERSARIAL REVIEW (6 dimensions x refute-pass, 10 of 32 claims confirmed),
+    all fixed before commit. The instructive ones:
+      - `switchType` was copying fields the SOURCE type never rendered, so its
+        defaults overwrote the target draft. A hop through Habit erased a task's
+        payload-seeded date (day-buckets "+" passes `selectedDate`) AND made the
+        next task `repeatFrequency: 'daily'` — a silently recurring task, from
+        two clicks that touched neither control. Now a field travels only if the
+        source type exposed it (`fromConfig.fields`), and a frequency travels
+        only if it differs from the source type's own default.
+      - Seeding `activeType` in an effect was a one-frame flicker with tabs and
+        a FUNCTIONAL bug with one form: the title input mounts once, `autoFocus`
+        only fires on mount, so opening Add Task right after Add Habit mounted
+        the input unfocused and React ignored the later prop flip — focus parked
+        on the type chip. Seeding moved render-phase (matches the edit path).
+      - Radix menu items `preventDefault` their Enter but do not stop
+        propagation, and portalled content still bubbles through React's tree:
+        Enter on "Delete" opened the confirm AND saved+closed the dialog, leaving
+        the confirm floating over nothing with an inert button (its handler bails
+        on the now-null `state`). The dialog's Enter handler now respects
+        `e.defaultPrevented`.
+      - Chip pickers are portalled outside the modal, so react-remove-scroll
+        preventDefaults wheel over them — a long project list could not be
+        scrolled. PropertyChip carries the same ref-callback wheel listener
+        IconPicker already documents.
+      - `--day-off` is a RING token (its 72%/50% per-theme alpha is tuned for a
+        1px hairline); as a 5px fill it made missed days the loudest marks in the
+        streak strip in light mode. Done beads are `bg-warning-text`, misses are
+        `border-day-off` rings — the row's own DayDots vocabulary.
+      - `max-w-[460px]` never applied (DialogContent ends in `sm:max-w-lg`;
+        tailwind-merge keeps both, later source order wins) — so the dialog had
+        silently been 512px, and the old 425 was equally dead. Now
+        `sm:max-w-[460px]`, which is the first time the chip row renders at the
+        width it was designed for.
+      - `dark:bg-input/30` on Input outranks `bg-transparent`; the borderless
+        title needed `dark:bg-transparent`. Same latent miss exists at
+        chat-conversation.tsx:287 on a Textarea — house-wide gap, not fixed here.
+    Deliberate consequence, claimed and refuted: duration is only reachable once
+    a date is set (it lives in the Time chip, which appears with the date). The
+    old form always showed a duration select for a date-anchored type. Undated
+    items keep the 30-minute default until they are scheduled.
 
   **Phase 6b settled scope (decided during 6a):** custom items ride the TASK pipeline
   instead of a parallel one. (1) planner-store generalizes the task action set to

@@ -1,8 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { format } from 'date-fns';
-import { CalendarIcon, Flame, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { addDays, format, startOfDay, subDays } from 'date-fns';
+import {
+  CalendarIcon,
+  Check,
+  CheckCircle2,
+  Clock,
+  Flag,
+  Flame,
+  Folder,
+  MoreHorizontal,
+  Plus,
+  Repeat,
+  Repeat2,
+  RotateCcw,
+  Trash2,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -11,7 +27,6 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
   ResponsiveModalDescription,
-  ResponsiveModalFooter,
 } from '@/components/ui/responsive-modal';
 import {
   AlertDialog,
@@ -24,23 +39,21 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import {
+  ChipOption,
+  ChipSectionLabel,
+  PropertyChip,
+} from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import type {
   HabitItem,
   Item,
@@ -50,7 +63,7 @@ import type {
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
 import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
+import { CategoryIcon, makeIconToken, resolveCategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 /**
@@ -60,6 +73,46 @@ import { cn } from '@/lib/utils';
  * at the bottom keep the store contract (schedule* second pass, explicit
  * `undefined` clears) byte-compatible with the pre-unification dialogs.
  */
+
+const PRIORITY_ORDER = ['none', 'low', 'medium', 'high'] as const;
+const PRIORITY_LABELS: Record<Priority | 'none', string> = {
+  none: 'None',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+
+const BUCKET_ORDER: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
+const BUCKET_LABELS: Record<TimeBucket, string> = {
+  anytime: 'Anytime',
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+};
+
+const DURATION_ORDER = ['15', '30', '45', '60', '90', '120'];
+const DURATION_LABELS: Record<string, string> = {
+  '15': '15 min',
+  '30': '30 min',
+  '45': '45 min',
+  '60': '1 hour',
+  '90': '1.5 hours',
+  '120': '2 hours',
+};
+
+const DATE_SHORTCUTS = [
+  { label: 'Today', days: 0 },
+  { label: 'Tomorrow', days: 1 },
+  { label: 'Next week', days: 7 },
+];
+
+/** Last 14 days of a habit's completion history, oldest first. */
+function recentStreakDays(habit: HabitItem): boolean[] {
+  const today = startOfDay(new Date());
+  return Array.from({ length: 14 }, (_, i) =>
+    habit.completedDates.includes(format(subDays(today, 13 - i), 'yyyy-MM-dd'))
+  );
+}
 
 /** `type` is the registry name ('task', 'habit', or a custom slug like 'goal'). */
 export type ItemDialogState =
@@ -178,6 +231,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     habitGroups,
     addProject,
     addHabitGroup,
+    itemTypesAvailable,
     defaultTimeBucket,
     itemTypes,
   } = usePlannerStore();
@@ -222,15 +276,25 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     setEditDraft(draftFromItem(editItem));
   }
 
-  // Add mode: each open re-seeds only the tab, buckets, and the anchored date.
+  // Add mode: each open re-seeds only the type, buckets, and the anchored date.
   // A cancelled dialog deliberately keeps its other draft fields (full reset
   // happens on successful save) — pre-unification behavior.
-  useEffect(() => {
-    if (!open || !addPayload) return;
+  //
+  // Render-phase, like the edit seeding above, and for a sharper reason than
+  // flicker: with one form instead of a tab per type, the title input mounts
+  // ONCE. `autoFocus` only fires on mount, so seeding the type in an effect
+  // committed the first frame with the previous open's type — and if that type
+  // wasn't 'task', the input mounted unfocused and React ignored the prop flip.
+  // Opening Add Task right after Add Habit left focus parked on the type chip.
+  const [seededAdd, setSeededAdd] = useState<ItemDialogState | null>(null);
+  if (addPayload && addPayload !== seededAdd) {
+    setSeededAdd(addPayload);
     setActiveType(addPayload.type);
     const bucket = addPayload.bucket ?? defaultTimeBucket ?? 'anytime';
     setAddDrafts((drafts) => {
       const next = { ...drafts };
+      // typeNames/habitGroups are read fresh here, which is safe now that this
+      // runs on a new payload identity rather than on an effect's dep list.
       for (const t of typeNames) {
         // Custom types hydrate after mount — seed a fresh draft on first sight.
         const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, habitGroups });
@@ -242,11 +306,67 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
       }
       return next;
     });
-    // typeNames/habitGroups are read fresh from the closure at fire time but
-    // must NOT re-trigger the effect: reseeding buckets/dates mid-open (e.g.
-    // after editing a group elsewhere) would clobber in-progress drafts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, addPayload, defaultTimeBucket]);
+  }
+
+  /**
+   * Switching type carries the draft across rather than swapping in whatever
+   * was last typed under the target type. With tabs, per-type drafts read as
+   * two parallel forms; with one form and a type switcher, losing the title you
+   * just typed reads as a bug.
+   *
+   * Container is deliberately NOT carried — projects and habit groups are
+   * different namespaces — and the target's own default (first group, for a
+   * type that requires one) is kept. Fields the target type has no use for ride
+   * along harmlessly: its save adapter never reads them.
+   */
+  const switchType = (next: string) => {
+    if (next === activeType) return;
+    const from = draftFor(activeType);
+    const fromConfig = getItemTypeConfig(activeType);
+    const config = getItemTypeConfig(next);
+
+    // Carry a field only if the SOURCE type actually exposed it. Copying a
+    // field the source never rendered means copying its default, which
+    // silently overwrites whatever the target draft already held — that is how
+    // a hop through Habit erased a task's seeded date and turned a one-shot
+    // task into a daily one.
+    const exposed = (field: string) => fromConfig.fields.includes(field);
+    // Likewise a frequency: only a value the user actually chose travels. A
+    // habit sitting at its 'daily' default must not make the next task daily.
+    const chosenFrequency =
+      from.repeatFrequency !== fromConfig.defaultFrequency &&
+      (config.allowedFrequencies as readonly string[]).includes(from.repeatFrequency);
+
+    setAddDrafts((drafts) => {
+      const base = drafts[next] ?? makeAddDraft(next, { defaultTimeBucket, habitGroups });
+      return {
+        ...drafts,
+        [next]: {
+          ...base,
+          title: from.title,
+          priority: exposed('priority') ? from.priority : base.priority,
+          startDate:
+            config.dateAnchored && fromConfig.dateAnchored ? from.startDate : base.startDate,
+          timeBucket: from.timeBucket,
+          startTime: from.startTime,
+          duration: exposed('duration') ? from.duration : base.duration,
+          timesPerDay: fromConfig.counters.dailyCounts ? from.timesPerDay : base.timesPerDay,
+          repeatFrequency: chosenFrequency ? from.repeatFrequency : base.repeatFrequency,
+          repeatDays: chosenFrequency ? from.repeatDays : base.repeatDays,
+          repeatMonthDay: chosenFrequency ? from.repeatMonthDay : base.repeatMonthDay,
+        },
+      };
+    });
+    setActiveType(next);
+  };
+
+  /** Row/header glyph for a type — custom types use the icon set at creation. */
+  const typeIcon = (name: string): LucideIcon => {
+    if (name === 'habit') return Flame;
+    if (name === 'task') return CheckCircle2;
+    const def = itemTypes.find((t) => t.name === name);
+    return resolveCategoryIcon(def?.icon, def?.label ?? name);
+  };
 
   /** Draft for a type, with a default for custom types not yet seeded. */
   const draftFor = (type: string): ItemDraft =>
@@ -395,13 +515,22 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     setShowResetConfirm(false);
   };
 
-  // ── Registry-driven form body ─────────────────────────────────────────────
+  // ── Registry-driven chips ─────────────────────────────────────────────────
 
-  const renderForm = (type: string, d: ItemDraft) => {
+  /**
+   * Every optional property of an item, as one wrapping row of chips. Which
+   * chips exist is the type's capability config — a new custom type gets a
+   * correct dialog with no work here.
+   *
+   * Unset chips carry the noun ("Priority"), set chips carry the value
+   * ("High"), which is what replaced the old label-above-every-control layout
+   * without hiding what a control is for.
+   */
+  const renderChips = (type: string, d: ItemDraft) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     const containers = config.containerKind === 'projects' ? projects : habitGroups;
-    const titleId = mode === 'add' ? `${type}-title` : `edit-${type}-title`;
+    const containerGlyph = containers.find((c) => c.name === d.container)?.emoji;
 
     const toggleDay = (day: number) => {
       patch({
@@ -426,426 +555,617 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
       });
     };
 
+    // A dated item with no bucket still lands somewhere — 'anytime' — which is
+    // what the save adapters write. The chip says so rather than reading unset.
+    const effectiveBucket: TimeBucket | 'none' =
+      config.dateAnchored && d.startDate && d.timeBucket === 'none' ? 'anytime' : d.timeBucket;
+    const showTime = !config.dateAnchored || !!d.startDate;
+    const hasDuration = config.dateAnchored && config.fields.includes('duration');
+    const timeParts = [
+      effectiveBucket === 'none' ? null : BUCKET_LABELS[effectiveBucket],
+      effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && d.startTime
+        ? d.startTime
+        : null,
+      hasDuration ? DURATION_LABELS[d.duration] ?? `${d.duration} min` : null,
+    ].filter(Boolean);
+
+    const repeatValue = () => {
+      if (d.repeatFrequency === 'none') return undefined;
+      if (d.repeatFrequency === 'custom') {
+        return d.repeatDays.length > 0
+          ? d.repeatDays.map((i) => WEEKDAY_LABELS[i]).join(' ')
+          : REPEAT_FREQUENCY_LABELS.custom;
+      }
+      if (d.repeatFrequency === 'monthly') return `Day ${d.repeatMonthDay}`;
+      return REPEAT_FREQUENCY_LABELS[d.repeatFrequency];
+    };
+
     return (
-      <>
-        {/* Title */}
-        <div className="space-y-1.5 mb-5">
-          <Label htmlFor={titleId} className="text-xs text-muted-foreground">Title</Label>
-          <Input
-            id={titleId}
-            placeholder={config.form.titlePlaceholder}
-            value={d.title}
-            onChange={(e) => patch({ title: e.target.value })}
-            className="bg-background border-border text-base h-11"
-            autoFocus={mode === 'edit' || type === 'task'}
-          />
-        </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {config.fields.includes('priority') && (
+          <PropertyChip
+            icon={Flag}
+            label="Priority"
+            value={d.priority === 'none' ? undefined : PRIORITY_LABELS[d.priority]}
+            swatch={d.priority === 'none' ? undefined : `var(--priority-${d.priority})`}
+            contentClassName="w-48"
+          >
+            {(close) =>
+              PRIORITY_ORDER.map((p) => (
+                <ChipOption
+                  key={p}
+                  selected={d.priority === p}
+                  onSelect={() => {
+                    patch({ priority: p });
+                    close();
+                  }}
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{
+                      background:
+                        p === 'none' ? 'var(--muted-foreground)' : `var(--priority-${p})`,
+                    }}
+                  />
+                  {PRIORITY_LABELS[p]}
+                  {d.priority === p && <Check className="ml-auto size-3.5" />}
+                </ChipOption>
+              ))
+            }
+          </PropertyChip>
+        )}
 
-        {/* Organization Section */}
-        <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
-          <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Organization</p>
-          <div className="flex gap-3">
-            {config.fields.includes('priority') && (
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Priority</Label>
-                <Select value={d.priority} onValueChange={(v) => patch({ priority: v as Priority | 'none' })}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {config.containerKind && (
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <Label className="text-xs text-muted-foreground">{config.form.containerLabel}</Label>
-                {d.newContainer.show ? (
-                  <div className="flex gap-1">
-                    <IconPicker
-                      value={d.newContainer.icon}
-                      name={d.newContainer.name}
-                      onSelect={(icon) => patch({ newContainer: { ...d.newContainer, icon } })}
-                    />
-                    <Input
-                      placeholder="Name"
-                      value={d.newContainer.name}
-                      onChange={(e) => patch({ newContainer: { ...d.newContainer, name: e.target.value } })}
-                      className="bg-background border-border flex-1 h-9 text-sm"
-                      onKeyDown={(e) => e.key === 'Enter' && createContainer()}
-                      data-sub-input
-                    />
-                    <AddIconButton
-                      size="input"
-                      onClick={createContainer}
-                      aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
-                    />
-                  </div>
-                ) : (
-                  <Select value={d.container} onValueChange={(v) => {
-                    if (v === '__new__') {
-                      patch({ newContainer: { ...d.newContainer, show: true } });
-                    } else {
-                      patch({ container: v });
+        {config.containerKind && (
+          <PropertyChip
+            icon={Folder}
+            glyph={
+              d.container !== 'none' ? (
+                <CategoryIcon glyph={containerGlyph} name={d.container} />
+              ) : undefined
+            }
+            label={config.form.containerLabel}
+            value={d.container === 'none' ? undefined : d.container}
+            className={config.containerKind === 'habitGroups' ? 'capitalize' : undefined}
+            contentClassName="w-64"
+          >
+            {(close) =>
+              d.newContainer.show ? (
+                <div className="flex gap-1 p-1">
+                  <IconPicker
+                    value={d.newContainer.icon}
+                    name={d.newContainer.name}
+                    onSelect={(icon) => patch({ newContainer: { ...d.newContainer, icon } })}
+                  />
+                  <Input
+                    autoFocus
+                    placeholder="Name"
+                    value={d.newContainer.name}
+                    onChange={(e) =>
+                      patch({ newContainer: { ...d.newContainer, name: e.target.value } })
                     }
-                  }}>
-                    <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
-                      <SelectValue placeholder="None" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!config.containerRequired && <SelectItem value="none">None</SelectItem>}
-                      {containers.map((c) => (
-                        <SelectItem key={c.name} value={c.name}>
-                          <span className="flex items-center gap-1.5">
-                            <CategoryIcon glyph={c.emoji} name={c.name} />
-                            <span className={config.containerKind === 'habitGroups' ? 'capitalize' : undefined}>
-                              {c.name}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="__new__" className="text-primary">
-                        <Plus className="h-3 w-3 inline mr-1" />
-                        {config.form.newContainerLabel}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            )}
-
-            {config.counters.dailyCounts && (
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Times per day</Label>
-                <Select value={d.timesPerDay} onValueChange={(v) => patch({ timesPerDay: v })}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}x</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Scheduling Section */}
-        <div className="space-y-3 pb-4 mb-4 border-b border-border/50">
-          <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Scheduling</p>
-          {config.dateAnchored ? (
-            <>
-              <div className="flex gap-2">
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Date</Label>
-                  <div className="relative">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            'w-full justify-start text-left font-normal bg-background border-border h-9 text-sm px-2 pr-7',
-                            !d.startDate && 'text-muted-foreground'
-                          )}
-                        >
-                          <CalendarIcon className="mr-1 h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{d.startDate ? format(d.startDate, 'MMM d') : 'None'}</span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={d.startDate}
-                          onSelect={(date) => patch({ startDate: date })}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    {d.startDate && (
-                      <button
-                        type="button"
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-muted-foreground hover:text-foreground hover:bg-accent"
-                        onClick={(e) => { e.stopPropagation(); patch({ startDate: undefined }); }}
+                    className="h-9 flex-1 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      createContainer();
+                      close();
+                    }}
+                    data-sub-input
+                  />
+                  <AddIconButton
+                    size="input"
+                    onClick={() => {
+                      createContainer();
+                      close();
+                    }}
+                    aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
+                  />
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+                  {!config.containerRequired && (
+                    <ChipOption
+                      selected={d.container === 'none'}
+                      onSelect={() => {
+                        patch({ container: 'none' });
+                        close();
+                      }}
+                      tone="muted"
+                    >
+                      No {config.form.containerLabel.toLowerCase()}
+                    </ChipOption>
+                  )}
+                  {containers.map((c) => (
+                    <ChipOption
+                      key={c.name}
+                      selected={d.container === c.name}
+                      onSelect={() => {
+                        patch({ container: c.name });
+                        close();
+                      }}
+                    >
+                      <CategoryIcon glyph={c.emoji} name={c.name} />
+                      <span
+                        className={cn(
+                          'truncate',
+                          config.containerKind === 'habitGroups' && 'capitalize'
+                        )}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Time</Label>
-                  <Select
-                    value={d.startDate ? (d.timeBucket === 'none' ? 'anytime' : d.timeBucket) : ''}
-                    onValueChange={(v) => patch({ timeBucket: v as TimeBucket })}
-                    disabled={!d.startDate}
+                        {c.name}
+                      </span>
+                      {d.container === c.name && <Check className="ml-auto size-3.5 shrink-0" />}
+                    </ChipOption>
+                  ))}
+                  <ChipOption
+                    tone="primary"
+                    onSelect={() => patch({ newContainer: { ...d.newContainer, show: true } })}
                   >
-                    <SelectTrigger className={cn(
-                      'w-full bg-background border-border h-9 text-sm truncate',
-                      !d.startDate && 'opacity-50'
-                    )}>
-                      <SelectValue placeholder="--" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="anytime">Anytime</SelectItem>
-                      <SelectItem value="morning">Morning</SelectItem>
-                      <SelectItem value="afternoon">Afternoon</SelectItem>
-                      <SelectItem value="evening">Evening</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Plus className="size-3.5" />
+                    {config.form.newContainerLabel}
+                  </ChipOption>
                 </div>
+              )
+            }
+          </PropertyChip>
+        )}
 
-                {config.fields.includes('duration') && (
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Duration</Label>
-                    <Select value={d.duration} onValueChange={(v) => patch({ duration: v })}>
-                      <SelectTrigger className="w-full bg-background border-border h-9 text-sm truncate">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="15">15 min</SelectItem>
-                        <SelectItem value="30">30 min</SelectItem>
-                        <SelectItem value="45">45 min</SelectItem>
-                        <SelectItem value="60">1 hour</SelectItem>
-                        <SelectItem value="90">1.5 hours</SelectItem>
-                        <SelectItem value="120">2 hours</SelectItem>
-                      </SelectContent>
-                    </Select>
+        {config.dateAnchored && (
+          <PropertyChip
+            icon={CalendarIcon}
+            label="Date"
+            value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
+            contentClassName="w-auto p-0"
+          >
+            {(close) => (
+              <div>
+                <div className="p-1">
+                  {DATE_SHORTCUTS.map(({ label, days }) => {
+                    const date = addDays(startOfDay(new Date()), days);
+                    return (
+                      <ChipOption
+                        key={label}
+                        onSelect={() => {
+                          patch({ startDate: date });
+                          close();
+                        }}
+                      >
+                        {label}
+                        <span className="text-muted-foreground ml-auto text-xs">
+                          {format(date, 'MMM d')}
+                        </span>
+                      </ChipOption>
+                    );
+                  })}
+                </div>
+                <div className="border-t">
+                  <Calendar
+                    mode="single"
+                    selected={d.startDate}
+                    onSelect={(date) => {
+                      patch({ startDate: date });
+                      close();
+                    }}
+                    initialFocus
+                  />
+                </div>
+                {d.startDate && (
+                  <div className="border-t p-1">
+                    <ChipOption
+                      tone="muted"
+                      onSelect={() => {
+                        patch({ startDate: undefined });
+                        close();
+                      }}
+                    >
+                      <X className="size-3.5" />
+                      No date
+                    </ChipOption>
                   </div>
                 )}
               </div>
+            )}
+          </PropertyChip>
+        )}
 
-              {d.startDate && d.timeBucket !== 'anytime' && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Specific Time (optional)</Label>
-                  <Input
-                    type="time"
-                    value={d.startTime}
-                    onChange={(e) => patch({ startTime: e.target.value })}
-                    className="bg-background border-border h-9 text-sm w-32"
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex gap-3">
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Time</Label>
-                <Select value={d.timeBucket} onValueChange={(v) => patch({ timeBucket: v as TimeBucket | 'none' })}>
-                  <SelectTrigger className="w-full bg-background border-border h-9 text-sm">
-                    <SelectValue placeholder="Anytime" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mode === 'edit' && <SelectItem value="none">No specific bucket</SelectItem>}
-                    <SelectItem value="anytime">Anytime</SelectItem>
-                    <SelectItem value="morning">Morning</SelectItem>
-                    <SelectItem value="afternoon">Afternoon</SelectItem>
-                    <SelectItem value="evening">Evening</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {d.timeBucket !== 'none' && d.timeBucket !== 'anytime' && (
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Specific Time</Label>
-                  <Input
-                    type="time"
-                    value={d.startTime}
-                    onChange={(e) => patch({ startTime: e.target.value })}
-                    className="w-full bg-background border-border h-9 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Repeat Section */}
-        <div className="space-y-3">
-          <p className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Repeat</p>
-          <Select value={d.repeatFrequency} onValueChange={(v) => patch({ repeatFrequency: v as RepeatFrequency })}>
-            <SelectTrigger className="bg-background border-border h-9 text-sm w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(REPEAT_FREQUENCY_LABELS)
-                .filter(([value]) =>
-                  (config.allowedFrequencies as readonly string[]).includes(value)
-                )
-                .map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-
-          {d.repeatFrequency === 'custom' && (
-            <div className="space-y-1">
-              <div className="flex gap-1">
-                {WEEKDAY_LABELS.map((day, index) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(index)}
-                    className={cn(
-                      'w-8 h-8 rounded-md text-xs font-medium transition-colors',
-                      d.repeatDays.includes(index)
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary/50 text-muted-foreground hover-wash'
-                    )}
+        {showTime && (
+          <PropertyChip
+            icon={Clock}
+            label="Time"
+            value={timeParts.length > 0 ? timeParts.join(' · ') : undefined}
+            contentClassName="w-56"
+          >
+            {(close) => (
+              <>
+                {mode === 'edit' && !config.dateAnchored && (
+                  <ChipOption
+                    tone="muted"
+                    selected={d.timeBucket === 'none'}
+                    onSelect={() => {
+                      patch({ timeBucket: 'none', startTime: '' });
+                      close();
+                    }}
                   >
-                    {day}
-                  </button>
-                ))}
-              </div>
-              {d.repeatDays.length === 0 && (
-                <p className="text-xs text-destructive">Select at least one day</p>
-              )}
-            </div>
-          )}
-
-          {d.repeatFrequency === 'monthly' && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => patch({ repeatMonthDay: day })}
-                    className={cn(
-                      'w-7 h-7 rounded text-xs font-medium transition-colors',
-                      d.repeatMonthDay === day
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-secondary/50 text-muted-foreground hover-wash'
-                    )}
+                    No specific bucket
+                  </ChipOption>
+                )}
+                {BUCKET_ORDER.map((b) => (
+                  <ChipOption
+                    key={b}
+                    selected={effectiveBucket === b}
+                    onSelect={() => patch({ timeBucket: b })}
                   >
-                    {day}
-                  </button>
+                    {BUCKET_LABELS[b]}
+                    {effectiveBucket === b && <Check className="ml-auto size-3.5" />}
+                  </ChipOption>
                 ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground">
-                For months with fewer days, it will occur on the last day.
-              </p>
-            </div>
-          )}
-        </div>
-      </>
+
+                {effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && (
+                  <>
+                    <ChipSectionLabel>Specific time</ChipSectionLabel>
+                    <div className="px-2 pb-2">
+                      <Input
+                        type="time"
+                        value={d.startTime}
+                        onChange={(e) => patch({ startTime: e.target.value })}
+                        className="h-9 text-sm"
+                        data-sub-input
+                      />
+                    </div>
+                  </>
+                )}
+
+                {hasDuration && (
+                  <>
+                    <ChipSectionLabel>Duration</ChipSectionLabel>
+                    <div className="pb-1">
+                      {DURATION_ORDER.map((value) => (
+                        <ChipOption
+                          key={value}
+                          selected={d.duration === value}
+                          onSelect={() => {
+                            patch({ duration: value });
+                            close();
+                          }}
+                        >
+                          {DURATION_LABELS[value]}
+                          {d.duration === value && <Check className="ml-auto size-3.5" />}
+                        </ChipOption>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </PropertyChip>
+        )}
+
+        {config.counters.dailyCounts && (
+          <PropertyChip
+            icon={Repeat2}
+            label="Times per day"
+            value={`${d.timesPerDay}×`}
+            contentClassName="w-40"
+          >
+            {(close) =>
+              ['1', '2', '3', '4', '5'].map((n) => (
+                <ChipOption
+                  key={n}
+                  selected={d.timesPerDay === n}
+                  onSelect={() => {
+                    patch({ timesPerDay: n });
+                    close();
+                  }}
+                >
+                  {n}× a day
+                  {d.timesPerDay === n && <Check className="ml-auto size-3.5" />}
+                </ChipOption>
+              ))
+            }
+          </PropertyChip>
+        )}
+
+        {config.allowedFrequencies.length > 1 && (
+          <PropertyChip
+            icon={Repeat}
+            label="Repeat"
+            value={repeatValue()}
+            contentClassName="w-[19rem]"
+          >
+            {(close) => (
+              <>
+                {Object.entries(REPEAT_FREQUENCY_LABELS)
+                  .filter(([value]) =>
+                    (config.allowedFrequencies as readonly string[]).includes(value)
+                  )
+                  .map(([value, label]) => (
+                    <div key={value}>
+                      <ChipOption
+                        selected={d.repeatFrequency === value}
+                        onSelect={() => {
+                          patch({ repeatFrequency: value as RepeatFrequency });
+                          // The detail pickers live in this popover; only the
+                          // frequencies that carry no detail dismiss it.
+                          if (value !== 'custom' && value !== 'monthly') close();
+                        }}
+                      >
+                        {label}
+                        {d.repeatFrequency === value && <Check className="ml-auto size-3.5" />}
+                      </ChipOption>
+
+                      {value === 'custom' && d.repeatFrequency === 'custom' && (
+                        <div className="px-2 pt-1 pb-2">
+                          <div className="flex gap-1">
+                            {WEEKDAY_LABELS.map((day, index) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => toggleDay(index)}
+                                aria-pressed={d.repeatDays.includes(index)}
+                                className={cn(
+                                  'size-9 rounded-md text-xs font-medium transition-all',
+                                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                                  d.repeatDays.includes(index)
+                                    ? 'bg-primary text-primary-foreground translate-y-px shadow-[var(--shadow-key-pressed)]'
+                                    : 'bg-secondary text-secondary-foreground shadow-[var(--shadow-key-rest)] hover-wash'
+                                )}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                          {d.repeatDays.length === 0 && (
+                            <p className="text-destructive mt-1.5 text-xs">
+                              Select at least one day
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {value === 'monthly' && d.repeatFrequency === 'monthly' && (
+                        <div className="px-2 pt-1 pb-2">
+                          <div className="grid grid-cols-7 gap-1">
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => patch({ repeatMonthDay: day })}
+                                className={cn(
+                                  'h-7 rounded-sm text-xs font-medium tabular-nums transition-colors',
+                                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                                  d.repeatMonthDay === day
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover-wash'
+                                )}
+                              >
+                                {day}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-muted-foreground mt-1.5 text-[10px]">
+                            For months with fewer days, it will occur on the last day.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </>
+            )}
+          </PropertyChip>
+        )}
+      </div>
     );
   };
 
+
   const invalidCustomDays = (d: ItemDraft | null) =>
     !!d && d.repeatFrequency === 'custom' && d.repeatDays.length === 0;
+
+  // One form renders at a time now: the active tab in add mode, the item's own
+  // type in edit mode (the registry NAME, not the envelope discriminant).
+  const activeTypeName = mode === 'add' ? activeType : editItem ? itemTypeName(editItem) : 'task';
+  const activeConfig = getItemTypeConfig(activeTypeName);
+  const activeDraft = mode === 'add' ? draftFor(activeTypeName) : editDraft;
+  const titleId = mode === 'add' ? `${activeTypeName}-title` : `edit-${activeTypeName}-title`;
+  const streakDays =
+    editItem && editItem.type === 'habit' ? recentStreakDays(editItem) : [];
 
   return (
     <>
       <ResponsiveModal open={open} onOpenChange={onOpenChange}>
         <ResponsiveModalContent
-          className="w-[calc(100vw-2rem)] max-w-[425px] max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          className="w-[calc(100vw-2rem)] sm:max-w-[460px] max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !(e.target as HTMLElement).closest('[data-sub-input]')) {
+            // defaultPrevented: Radix menu/select items preventDefault their own
+            // Enter. Those events still bubble through the portal in React's
+            // tree, so without this an Enter on "Delete" both opened the confirm
+            // AND saved-and-closed the dialog underneath it — leaving the
+            // confirm floating over nothing with an inert button, because
+            // handleDeleteConfirm bails on the now-null `state`.
+            if (
+              e.key === 'Enter' &&
+              !e.shiftKey &&
+              !e.defaultPrevented &&
+              !(e.target as HTMLElement).closest('[data-sub-input]')
+            ) {
               e.preventDefault();
               handleSubmit();
             }
           }}
         >
-          <ResponsiveModalHeader>
-            <ResponsiveModalTitle className="text-foreground">
+          {/* The visible heading is the title field itself; Radix still needs a
+              real title and description in the a11y tree. */}
+          <ResponsiveModalHeader className="sr-only">
+            <ResponsiveModalTitle>
               {mode === 'add' ? 'Add New' : `Edit ${editConfig?.label ?? 'Item'}`}
             </ResponsiveModalTitle>
-            <ResponsiveModalDescription className="sr-only">
+            <ResponsiveModalDescription>
               {mode === 'add'
                 ? 'Add a new task or habit to your daily planner.'
                 : editConfig?.form.editDescription}
             </ResponsiveModalDescription>
           </ResponsiveModalHeader>
 
-          {mode === 'add' ? (
-            <Tabs value={activeType} onValueChange={setActiveType}>
-              <TabsList
-                className="grid w-full bg-secondary"
-                style={{ gridTemplateColumns: `repeat(${typeNames.length}, minmax(0, 1fr))` }}
-              >
-                {typeNames.map((t) => (
-                  <TabsTrigger key={t} value={t} className="data-[state=active]:bg-card">
-                    {getItemTypeConfig(t).label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {typeNames.map((t) => (
-                <TabsContent key={t} value={t} className="mt-4">
-                  {renderForm(t, draftFor(t))}
-                  <Button
-                    onClick={() => handleAddSave(t)}
-                    className="w-full h-10 mt-6"
-                    disabled={invalidCustomDays(draftFor(t))}
+          {activeDraft && (
+            <div className="flex flex-col gap-4">
+              {/* Header: what this is, and — in add mode — what else it could be. */}
+              <div className="flex items-center gap-2 pr-8">
+                {mode === 'add' ? (
+                  <PropertyChip
+                    icon={typeIcon(activeTypeName)}
+                    label={activeConfig.label}
+                    value={activeConfig.label}
+                    alwaysChevron
+                    className="font-medium"
+                    contentClassName="w-56"
                   >
-                    Add {getItemTypeConfig(t).label}
-                  </Button>
-                </TabsContent>
-              ))}
-            </Tabs>
-          ) : (
-            editItem && editDraft && editConfig && (
-              <>
-                <div className="py-4 w-full overflow-hidden">
-                  {/* Streak display — reads the open-time snapshot, so it stays
-                      stale after a reset until reopen (pre-unification behavior). */}
-                  {editConfig.counters.streak && (
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-warning/10 to-warning/10 border border-warning/20 mb-5">
-                      <div className="flex items-center gap-2">
-                        <Flame className="h-5 w-5 text-warning" />
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground">Current Streak</p>
-                          <p className="text-xl font-bold text-warning-text">
-                            {(editItem as HabitItem).streak} days
-                          </p>
-                        </div>
-                      </div>
+                    {(close) => (
+                      <>
+                        {typeNames.map((t) => {
+                          const TypeIcon = typeIcon(t);
+                          return (
+                            <ChipOption
+                              key={t}
+                              selected={t === activeTypeName}
+                              onSelect={() => {
+                                switchType(t);
+                                close();
+                              }}
+                            >
+                              <TypeIcon className="size-3.5 shrink-0" />
+                              {getItemTypeConfig(t).label}
+                              {t === activeTypeName && <Check className="ml-auto size-3.5" />}
+                            </ChipOption>
+                          );
+                        })}
+                        {itemTypesAvailable && (
+                          <>
+                            <div className="bg-border -mx-1 my-1 h-px" />
+                            <ChipOption
+                              tone="muted"
+                              onSelect={() => {
+                                close();
+                                // Replaces this dialog rather than stacking on
+                                // it: openDialog swaps the single active slot.
+                                useUIStore
+                                  .getState()
+                                  .openDialog({ type: 'manage-categories', tab: 'types' });
+                              }}
+                            >
+                              <Plus className="size-3.5" />
+                              Manage types…
+                            </ChipOption>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </PropertyChip>
+                ) : (
+                  // Edit mode shows the type, it does not offer to change it:
+                  // converting an item is a data decision (streaks, completion
+                  // history), not a control.
+                  <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
+                    {(() => {
+                      const TypeIcon = typeIcon(activeTypeName);
+                      return <TypeIcon className="size-3" />;
+                    })()}
+                    {activeConfig.label}
+                  </span>
+                )}
+
+                <span className="text-muted-foreground text-xs">
+                  {mode === 'add' ? 'New item' : 'Edit'}
+                </span>
+
+                {mode === 'edit' && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive h-8 text-xs"
-                        onClick={() => setShowResetConfirm(true)}
+                        size="icon"
+                        className="text-muted-foreground ml-auto size-7"
                       >
-                        <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                        Reset
+                        <MoreHorizontal className="size-4" />
+                        <span className="sr-only">More actions</span>
                       </Button>
-                    </div>
-                  )}
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      {editConfig?.counters.streak && (
+                        <DropdownMenuItem onSelect={() => setShowResetConfirm(true)}>
+                          <RotateCcw className="size-3.5" />
+                          Reset streak
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setShowDeleteConfirm(true)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete {activeConfig.label.toLowerCase()}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
 
-                  {/* Registry NAME, not the envelope discriminant — a custom
-                      item must render with its own type's config. */}
-                  {renderForm(itemTypeName(editItem), editDraft)}
+              {/* Title — the only required field, so it carries the dialog. */}
+              <Input
+                id={titleId}
+                placeholder={activeConfig.form.titlePlaceholder}
+                value={activeDraft.title}
+                onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
+                autoFocus={mode === 'edit' || activeTypeName === 'task'}
+                // dark:bg-transparent is load-bearing: Input carries
+                // dark:bg-input/30, which tailwind-merge keeps (different
+                // modifier) and which outranks bg-transparent on specificity.
+                className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
+              />
+
+              {/* Streak — the habit's history in the row's own dot vocabulary,
+                  reading the open-time snapshot (stale after a reset until
+                  reopen, as before). */}
+              {editConfig?.counters.streak && editItem && (
+                <div className="bg-warning/10 flex items-center gap-2.5 rounded-md px-2.5 py-2">
+                  <Flame className="text-warning size-4 shrink-0" />
+                  <span className="text-warning-text text-xs font-semibold">
+                    {(editItem as HabitItem).streak} day streak
+                  </span>
+                  {/* Same vocabulary as the row's DayDots: a done day is a
+                      solid bead in the -text role (which flips bright in dark),
+                      a missed day is a 1px RING — which is what --day-off's
+                      per-theme alpha was tuned for. As a fill it made the
+                      misses the loudest marks in the strip in light mode. */}
+                  <span className="ml-auto flex items-center gap-[3px]">
+                    {streakDays.map((done, i) => (
+                      <span
+                        key={i}
+                        className={cn(
+                          'box-border size-[5px] rounded-full',
+                          done ? 'bg-warning-text' : 'border border-day-off'
+                        )}
+                      />
+                    ))}
+                  </span>
                 </div>
+              )}
 
-                <ResponsiveModalFooter className="flex flex-row justify-between items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Delete {editConfig.label.toLowerCase()}</span>
-                  </Button>
-                  <Button
-                    onClick={handleEditSave}
-                    className="flex-1 min-w-0"
-                    disabled={invalidCustomDays(editDraft)}
-                  >
-                    Save Changes
-                  </Button>
-                </ResponsiveModalFooter>
-              </>
-            )
+              {renderChips(activeTypeName, activeDraft)}
+
+              <div className="flex items-center justify-between gap-3 border-t pt-3">
+                <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
+                  <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
+                    ↵
+                  </kbd>
+                  to {mode === 'add' ? 'add' : 'save'}
+                </span>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
+                  className="h-9 max-sm:w-full"
+                >
+                  {mode === 'add' ? `Add ${activeConfig.label}` : 'Save Changes'}
+                </Button>
+              </div>
+            </div>
           )}
         </ResponsiveModalContent>
       </ResponsiveModal>

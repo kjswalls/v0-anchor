@@ -379,6 +379,7 @@ export function AppShell() {
 
       <ManageCategoriesDialog
         open={activeDialog?.type === 'manage-categories'}
+        defaultTab={activeDialog?.type === 'manage-categories' ? activeDialog.tab : undefined}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

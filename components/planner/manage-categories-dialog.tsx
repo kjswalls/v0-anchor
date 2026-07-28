@@ -32,6 +32,8 @@ import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
 interface ManageCategoriesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Panel to open on — 'projects' | 'groups' | 'types'. Defaults to projects. */
+  defaultTab?: string;
 }
 
 /** 'Goal' → 'goal', 'Side Quest' → 'side-quest' (items.type slug). */
@@ -40,7 +42,11 @@ const slugForLabel = (label: string) =>
 
 const RESERVED_TYPE_NAMES = ['task', 'habit', 'custom'];
 
-export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesDialogProps) {
+export function ManageCategoriesDialog({
+  open,
+  onOpenChange,
+  defaultTab,
+}: ManageCategoriesDialogProps) {
   const {
     projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup,
     itemTypes, itemTypesAvailable, addItemType, removeItemType,
@@ -114,7 +120,9 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="projects" className="w-full">
+          {/* Keyed so a later open with a different tab actually lands there —
+              the dialog stays mounted, and defaultValue only applies once. */}
+          <Tabs key={defaultTab ?? 'projects'} defaultValue={defaultTab ?? 'projects'} className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-secondary">
               <TabsTrigger value="projects" className="data-[state=active]:bg-card">
                 <FolderKanban className="h-4 w-4 mr-1.5" />
