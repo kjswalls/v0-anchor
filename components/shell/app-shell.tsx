@@ -43,6 +43,7 @@ import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
+import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
@@ -105,6 +106,11 @@ export function AppShell() {
 
   useUndoToast();
   useTimezoneSync();
+  // Opt-in past-due decay (off by default). Mounted here, above the
+  // desktop/mobile split, so the once-per-day sweep runs on every platform and
+  // survives view changes — and declared AFTER useUndoToast so the batched
+  // unschedule it fires is picked up by the already-mounted toast subscriber.
+  useOverdueSweep();
 
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);

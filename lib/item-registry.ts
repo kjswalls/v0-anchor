@@ -10,8 +10,9 @@
  * product decision, not a refactor step. See memory/plans/unified-items.md.
  */
 
-import { format, isBefore, startOfDay } from 'date-fns'
+import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
+import { selectOverdue, toDateOnly } from './overdue'
 import type {
   HabitItem,
   Item,
@@ -138,7 +139,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         `This will permanently delete "${title}". This action cannot be undone.`,
     },
     ai: {
-      renderContextSection: (items, { today, todayStr }) => {
+      renderContextSection: (items, { todayStr }) => {
         const tasks = items.filter((i): i is TaskItem => i.type === 'task')
         const lines: string[] = []
         lines.push("### Today's Tasks")
@@ -147,10 +148,13 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
           (t) => t.startDate === todayStr && t.status !== 'cancelled'
         )
 
-        const overdueTasks = tasks.filter((t) => {
-          if (!t.startDate || t.status === 'completed' || t.status === 'cancelled') return false
-          return isBefore(startOfDay(new Date(t.startDate + 'T00:00:00')), startOfDay(today))
-        })
+        // Past-due has exactly one definition (lib/overdue.ts). The copy that
+        // used to live here had no recurrence guard, so Beacon was told about
+        // phantom overdue items — a daily habit-shaped task anchored months ago
+        // is `status: 'pending'` forever by design. Passing the already-narrowed
+        // `tasks` keeps this section's task-only shape; ordering is now the
+        // selector's (recent newest-first, then the long-overdue tail).
+        const overdueTasks = selectOverdue(tasks, todayStr)
 
         const pendingTasks = todayTasks.filter((t) => t.status === 'pending')
         const completedTasks = todayTasks.filter((t) => t.status === 'completed')
@@ -180,7 +184,9 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         if (overdueTasks.length > 0) {
           lines.push('**Overdue**')
           overdueTasks.forEach((t) => {
-            const dateLabel = `was ${format(new Date(t.startDate! + 'T00:00:00'), 'MMM d')}`
+            // toDateOnly: the selector admits legacy full-ISO startDates, which
+            // `+ 'T00:00:00'` would turn into an Invalid Date.
+            const dateLabel = `was ${format(new Date(toDateOnly(t.startDate!) + 'T00:00:00'), 'MMM d')}`
             const priority = t.priority
               ? `, ${t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}`
               : ''

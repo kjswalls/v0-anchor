@@ -41,7 +41,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react';
-import { addDays, isAfter, parseISO, startOfDay, subDays } from 'date-fns';
+import { addDays, subDays } from 'date-fns';
 
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
@@ -54,6 +54,8 @@ import { useChatStore } from '../chat-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, itemTypeName } from '../item-registry';
+import { selectOverdue } from '../overdue';
+import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import {
   CANVAS_GROUP_BY_OPTIONS,
@@ -402,30 +404,53 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'goto.overdue',
     label: 'Show overdue tasks',
-    description: 'Reopens the morning check listing anything past its date',
+    description: 'Opens the past-due tray listing anything past its date',
     group: 'goto',
     icon: AlertTriangle,
-    keywords: 'overdue late missed morning check behind',
+    keywords: 'overdue past due late missed morning check behind',
     aliases: ['overdue'],
-    // The morning check IS the overdue surface, and it only mounts on desktop
-    // (components/shell/desktop-shell.tsx). It also self-destructs on dismissal
-    // and never comes back on its own, which is what makes this worth a row.
-    hidden: (ctx) => ctx.isMobile,
-    // Greyed rather than a no-op: the banner also self-hides when nothing is
+    // The past-due surface ships on BOTH platforms now, so there is no platform
+    // gate. It starts collapsed and can be dismissed for the day, neither of
+    // which reverses on its own — which is what makes this worth a row.
+    //
+    // Greyed rather than a no-op: the surface also self-hides when nothing is
     // overdue, so without this the command would silently do nothing on a day
-    // you happen to be caught up. Mirrors the visibility test in
-    // components/ai/morning-check.tsx.
+    // you happen to be caught up. Dismissal state deliberately does NOT gate
+    // availability — run() resets the dismissal AND opens the tray, so the
+    // command does something real in both states (before, when nothing was
+    // dismissed, resetDismissal() alone was the very no-op this guard exists to
+    // prevent). Predicate is the shared one (lib/overdue.ts): this copy had no
+    // recurrence guard, so it lit up for daily chores that are `pending`
+    // forever by design.
     availableWhen: () => {
       if (!useMorningStore.getState().morningCheckEnabled) return false;
-      const todayStart = startOfDay(new Date());
-      return planner().tasks.some(
-        (task) =>
-          task.status === 'pending' &&
-          !!task.startDate &&
-          isAfter(todayStart, parseISO(task.startDate))
+      // items, not the `tasks` projection: the selector resolves each item's
+      // registry config, and custom types are carry-forward eligible too.
+      //
+      // "Today" comes from the user's SAVED timezone (the app-wide `toDateStr`
+      // convention), matching the bar in components/ai/morning-check.tsx and
+      // the sweep in hooks/use-overdue-sweep.ts. Bare `format(new Date(), …)`
+      // would read the machine tz and could grey this row out on a day the bar
+      // is visibly showing overdue items.
+      const { items, userTimezone } = planner();
+      const todayStr = toDateStr(
+        new Date(),
+        userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
       );
+      return selectOverdue(items, todayStr).length > 0;
     },
-    run: () => useMorningStore.getState().resetDismissal(),
+    // Reveal the surface BEFORE poking its state — the same guard openChat,
+    // Open braindump and focusOmnibar already use. The past-due pill is
+    // Today-only on mobile (components/shell/mobile-shell.tsx:60) while the
+    // omnibar is mounted on Braindump too, so without the tab switch this
+    // command flips isOpen on a tab that renders nothing: it looks broken, and
+    // the drawer would then ambush the user the moment they swiped to Today.
+    run: (ctx) => {
+      if (ctx.isMobile) useMobileNavStore.getState().setActiveTab('today');
+      const store = useMorningStore.getState();
+      store.resetDismissal();
+      store.open();
+    },
   },
 
   /* ── View ───────────────────────────────────────────────────────────── */

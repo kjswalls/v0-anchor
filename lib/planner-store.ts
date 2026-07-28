@@ -112,6 +112,19 @@ interface PlannerStore {
   scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
+  /**
+   * Carry ONE task-like item to `dateStr` (yyyy-MM-dd), guaranteeing it stays
+   * visible on that day (see the timeBucket note at the implementation).
+   * Preserves startTime.
+   */
+  moveTaskToDate: (id: string, dateStr: string) => void;
+  /**
+   * Bulk carry: one set(), one history entry, one undo. Same visibility
+   * guarantee as moveTaskToDate, but deliberately drops startTime/isScheduled.
+   */
+  moveTasksToDate: (ids: string[], dateStr: string) => void;
+  /** Batched unscheduleTask — one set(), one history entry, one undo. */
+  unscheduleTasks: (ids: string[]) => void;
   reorderTasks: (taskIds: string[]) => void;
 
   // Habit actions
@@ -672,6 +685,113 @@ export const usePlannerStore = create<PlannerStore>()(
         if (!task) return; // habit ids no-op here by contract (sidebar drop)
         setNextActionLabel(`Unschedule task: ${task.title}`);
         updateItemAction(id, 'task', { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });
+      },
+
+      /**
+       * Carry one task-like item to `dateStr`.
+       *
+       * The timeBucket fallback is load-bearing, not cosmetic: lib/day-items.ts
+       * buckets (:98) and counts (:134) ONLY tasks that have a timeBucket, so a
+       * carry that wrote startDate alone would move the item to the target day
+       * and make it invisible in every day view.
+       *
+       * startTime is preserved on purpose — the user picked this one item, so
+       * its clock time is meaningful. (The bulk verb below drops it; see there.)
+       */
+      moveTaskToDate: (id, dateStr) => {
+        const task = findTaskLike(id);
+        if (!task) return; // habit ids no-op here by contract (see findTaskLike)
+        // 'Move task to' is the prefix hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS
+        // matches (shared with assignTaskToBucket) — keep it verbatim or the undo
+        // toast silently stops appearing.
+        setNextActionLabel(`Move task to ${dateStr}: ${task.title}`);
+        updateItemAction(id, 'task', {
+          startDate: dateStr,
+          timeBucket: task.timeBucket ?? 'anytime',
+        });
+      },
+
+      /**
+       * Bulk carry. Callers are responsible for excluding recurring items — a
+       * recurring task's startDate is its recurrence anchor, so carrying it
+       * rewrites the series rather than moving an occurrence.
+       */
+      moveTasksToDate: (ids, dateStr) => {
+        const idSet = new Set(ids);
+        // Resolved before the label is set: setNextActionLabel arms a pending
+        // label consumed by the NEXT history save, so labelling a no-op would
+        // mislabel whatever the user does next.
+        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        if (targets.length === 0) return;
+        // 'Move all tasks' is already in SIGNIFICANT_ACTIONS; this is its first producer.
+        setNextActionLabel(`Move all tasks to ${dateStr} (${targets.length})`);
+
+        const writes = targets.map((item) => ({
+          id: item.id,
+          dbType: dbTypeOf(item),
+          updates: {
+            startDate: dateStr,
+            // Same load-bearing visibility guarantee as moveTaskToDate.
+            timeBucket: item.timeBucket ?? 'anytime',
+            // Deliberately cleared, unlike the single-item verb: a bulk carry can
+            // drag 18 stale clock times (06:00, 22:30, …) onto today at once, and
+            // deriveGridRange widens the schedule window to cover them, which
+            // drives use-fit-hour-px to its MIN_HOUR_PX floor. The bulk verb would
+            // then destroy the very fit-to-height contract this feature exists to
+            // protect, so bulk-carried items land as untimed bucket rows.
+            startTime: undefined,
+            isScheduled: false,
+          } satisfies Partial<Task>,
+        }));
+
+        // ONE set() => ONE history entry (the subscriber at the bottom of this
+        // file snapshots per state change). A per-item loop would push N deep
+        // clones, evict the user's real history at MAX_HISTORY_SIZE, and need N
+        // presses of Cmd+Z to reverse a single user gesture.
+        const patchById = new Map(writes.map((w) => [w.id, w.updates]));
+        set((state) => projectItems(state.items.map((i) => {
+          const updates = i.type !== 'habit' ? patchById.get(i.id) : undefined;
+          return updates ? ({ ...i, ...updates } as Item) : i;
+        })));
+
+        // Every item persists — dbType per item, because a custom-type row is
+        // matched on .eq('type', slug) and 'task' would silently write nothing.
+        writes.forEach(({ id, dbType, updates }) =>
+          dbUpdateItem(id, dbType, updates).catch(console.error),
+        );
+      },
+
+      /** Batched unscheduleTask (bulk "move to Braindump", auto-age sweep). */
+      unscheduleTasks: (ids) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        if (targets.length === 0) return;
+        // The prefix must stay exactly 'Unschedule task:' — that is the string in
+        // hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS. A plural 'Unschedule tasks:'
+        // would NOT match its startsWith() test and the undo toast would never fire.
+        setNextActionLabel(
+          targets.length === 1
+            ? `Unschedule task: ${targets[0].title}`
+            : `Unschedule task: ${targets.length} items`,
+        );
+
+        // Field-for-field identical to unscheduleTask so the single and batched
+        // verbs can never drift apart.
+        const updates: Partial<Task> = {
+          isScheduled: false,
+          timeBucket: undefined,
+          startTime: undefined,
+          startDate: undefined,
+        };
+
+        // One set() => one history entry => one undo (see moveTasksToDate).
+        set((state) => projectItems(state.items.map((i) => (
+          i.type !== 'habit' && idSet.has(i.id) ? ({ ...i, ...updates } as Item) : i
+        ))));
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updates).catch(console.error),
+        );
       },
 
       reorderTasks: (taskIds) => {

@@ -30,6 +30,15 @@ import { cn } from '@/lib/utils';
  *   bucket    — full pills + unschedule/skip controls, date-aware completion
  * Draggable id = item id per lib/dnd/CONTRACT.md; habits are not drag
  * sources (parity with the old timeline).
+ *
+ * TODO(debt): components/ai/morning-triage-list.tsx ships a THIRD row shape.
+ * It couldn't reuse this one — it needs a date/age column this rail doesn't
+ * have, a fixed 30px height (this row's py-1.5 + line-clamp-2 is taller, and
+ * height is the entire point of that feature), no useDraggable (it renders in a
+ * portal), and title-only click-to-edit (whole-row click competes with the
+ * triage gesture). The convergence is a `context: 'triage'` variant here:
+ * optional age column, single-line title, drag opt-out, click target on the
+ * title. Owed, not done.
  */
 
 export type RowItem = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: Habit };

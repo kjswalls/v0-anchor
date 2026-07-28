@@ -19,6 +19,9 @@ export interface UserSettingsRow {
   morning_check_time?: string;
   /** null clears the dismissal so today's morning check shows again. */
   morning_check_dismissed_date?: string | null;
+  /** Opt-in: unschedule items past due by more than morning_auto_age_days. */
+  morning_auto_age_enabled?: boolean;
+  morning_auto_age_days?: number;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
 }
@@ -39,20 +42,108 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   right_sidebar_hover: false,
   morning_check_time: '08:00',
   morning_check_dismissed_date: undefined,
+  morning_auto_age_enabled: false,
+  morning_auto_age_days: 30,
   eod_review_time: '21:00',
   eod_review_enabled: false,
 };
 
-const SETTINGS_SELECT =
-  'theme,timezone,time_format,week_start_day,default_view,default_time_bucket,show_completed_tasks,animations_enabled,compact_mode,chill_mode,show_time_indicator,morning_check_enabled,left_sidebar_hover,right_sidebar_hover,morning_check_time,morning_check_dismissed_date,eod_review_time,eod_review_enabled';
+/**
+ * Columns that every deployed database is known to have.
+ *
+ * PostgREST rejects the ENTIRE select with 42703 if a single named column is
+ * missing, and loadSettings' error path returns DEFAULT_SETTINGS — so naming one
+ * column the database doesn't have yet silently resets every setting for every
+ * user (theme, timezone, dismissal dates, the lot) until someone notices the
+ * console error. That is why the column list is split rather than inlined.
+ */
+const STABLE_SETTINGS_COLUMNS = [
+  'theme',
+  'timezone',
+  'time_format',
+  'week_start_day',
+  'default_view',
+  'default_time_bucket',
+  'show_completed_tasks',
+  'animations_enabled',
+  'compact_mode',
+  'chill_mode',
+  'show_time_indicator',
+  'morning_check_enabled',
+  'left_sidebar_hover',
+  'right_sidebar_hover',
+  'morning_check_time',
+  'morning_check_dismissed_date',
+  'eod_review_time',
+  'eod_review_enabled',
+] as const;
+
+/**
+ * Columns whose migration may not have run yet on some database the client talks
+ * to (local dev, a preview branch, prod between deploy and migrate).
+ *
+ * WHEN YOU ADD A SETTINGS COLUMN: put it here, with the migration that adds it.
+ * Once that migration is applied everywhere — prod included — move it up into
+ * STABLE_SETTINGS_COLUMNS. A column left here too long costs one extra
+ * round-trip on databases that predate it and nothing else; a column moved up
+ * too early wipes everyone's settings, so err towards leaving it here.
+ *
+ * Currently: migration 022 (morning auto-age).
+ */
+const PENDING_SCHEMA_COLUMNS = ['morning_auto_age_enabled', 'morning_auto_age_days'] as const;
+
+const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');
+const STABLE_SETTINGS_SELECT = STABLE_SETTINGS_COLUMNS.join(',');
+
+/**
+ * True only for "the database doesn't have a column we asked for".
+ *
+ * Deliberately narrow. 42703 is Postgres' undefined_column; PGRST204 is
+ * PostgREST's own flavour of it (raised when a write names an unknown column).
+ * The message test is a belt-and-braces fallback for transports that forward the
+ * Postgres text without the SQLSTATE — its shape ("column user_settings.x does
+ * not exist") has been stable across PostgREST releases.
+ *
+ * The narrowness is the point: an offline/CORS/5xx failure arrives as a fetch
+ * error with no code and a message like "Failed to fetch", so it does NOT match
+ * and keeps taking the loud error path. Misclassifying a network blip as a stale
+ * schema would mean quietly discarding two real settings on every flaky load.
+ */
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703' || error.code === 'PGRST204') return true;
+  return /column\b.*\bdoes not exist/i.test(error.message ?? '');
+}
 
 export async function loadSettings(userId: string): Promise<UserSettingsRow> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from('user_settings')
-    .select(SETTINGS_SELECT)
-    .eq('user_id', userId)
-    .maybeSingle();
+
+  const read = async (columns: string) => {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select(columns)
+      .eq('user_id', userId)
+      .maybeSingle();
+    return { data: data as Partial<UserSettingsRow> | null, error };
+  };
+
+  // Happy path is a single round-trip: ask for everything, and only pay for a
+  // second request if the database turns out to be older than this build.
+  let result = await read(SETTINGS_SELECT);
+  let schemaIsBehind = false;
+
+  if (result.error && isMissingColumnError(result.error)) {
+    schemaIsBehind = true;
+    console.warn(
+      `[settings] user_settings is missing a column this build selects (${result.error.message}). ` +
+        'Re-reading without the not-yet-migrated columns — ' +
+        `${PENDING_SCHEMA_COLUMNS.join(', ')} will read as defaults. ` +
+        'Apply the pending migration in supabase/migrations to fix this.'
+    );
+    result = await read(STABLE_SETTINGS_SELECT);
+  }
+
+  const { data, error } = result;
 
   if (error) {
     console.error('[settings] loadSettings error:', error.message);
@@ -60,13 +151,20 @@ export async function loadSettings(userId: string): Promise<UserSettingsRow> {
   }
 
   if (!data) {
-    // First-time user — upsert defaults
-    await supabase
-      .from('user_settings')
-      .upsert({ user_id: userId, ...DEFAULT_SETTINGS }, { onConflict: 'user_id' });
+    // First-time user — upsert defaults. Same schema caveat as the select: an
+    // insert naming a column the database lacks fails outright, which would
+    // leave the new user with no settings row at all.
+    const seed: Record<string, unknown> = { user_id: userId, ...DEFAULT_SETTINGS };
+    if (schemaIsBehind) {
+      for (const column of PENDING_SCHEMA_COLUMNS) delete seed[column];
+    }
+    await supabase.from('user_settings').upsert(seed, { onConflict: 'user_id' });
     return DEFAULT_SETTINGS;
   }
 
+  // Columns dropped by the fallback are simply absent from `data`, so they land
+  // on their DEFAULT_SETTINGS value — the degradation is scoped to the settings
+  // the database can't store yet instead of all of them.
   return { ...DEFAULT_SETTINGS, ...data };
 }
 

@@ -8,6 +8,7 @@ import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
+import { MorningCheckMobile } from '@/components/ai/morning-check';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
@@ -51,6 +52,20 @@ export function MobileShell() {
       <MobileHeader onOpenSettings={() => openDialog({ type: 'settings' })} />
 
       {activeTab === 'today' && <MiniWeekNav />}
+
+      {/* Past-due pill — Today only, and fixed-height like the strip above it
+          (h-8 + mb-1) so it's safe inside the min-h-0 flex-1 column below. The
+          list is a portaled bottom Drawer, so it costs this column nothing.
+
+          Today-only means this mounts and unmounts on every tab change, and the
+          tray's open flag is a single global shared with the desktop popover —
+          so the drawer would inherit an isOpen set while it wasn't even on
+          screen (from `goto.overdue` run on Braindump, or from the desktop tray
+          when the window crosses the 768px breakpoint). morning-check.tsx owns
+          both halves of the fix: the surface closes the tray when it unmounts,
+          and the drawer refuses to open in the commit it mounts in. It opens
+          only when the user asks it to, on this tab, while it is visible. */}
+      {activeTab === 'today' && <MorningCheckMobile />}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled

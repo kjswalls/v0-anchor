@@ -63,9 +63,20 @@ export function DesktopShell() {
           <HeaderCapsule />
         </div>
 
+        {/* Past-due bar. CONTRACT: 50px in flow at every task count, forever —
+            the list lives in a portaled Popover and costs this column zero
+            layout pixels. lib/use-fit-hour-px.ts derives the schedule grid's
+            hour height from the space left below this element, so anything that
+            makes this bar's height depend on content (a list rendered in flow, a
+            height derived from line-height) drives hourPx to its MIN_HOUR_PX
+            floor and destroys the fit-to-height contract. Nothing else in the
+            tree says so, which is why it's said here. */}
         <MorningCheck />
 
-        <div data-tour="timeline" className="flex flex-1 flex-col overflow-hidden">
+        {/* min-h-0 is explicit rather than relying on overflow-hidden to zero the
+            automatic minimum size of a flex item: this column is what
+            use-fit-hour-px measures into. */}
+        <div data-tour="timeline" className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ViewRouter />
         </div>
 

@@ -1,0 +1,670 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { ArrowLeftToLine, ArrowRight, CalendarDays, Check, ChevronsRight } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { usePlannerStore } from '@/lib/planner-store';
+import { useMorningStore } from '@/lib/morning-store';
+import { OVERDUE_COHORT_LABELS, daysOverdue, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
+import { itemTypeName } from '@/lib/item-registry';
+import { openEditFor } from '@/lib/ui-store';
+import { cn } from '@/lib/utils';
+import type { Item, Task, TaskItem } from '@/lib/planner-types';
+
+/**
+ * The past-due triage list — the body shared by the desktop tray (a portaled
+ * Popover under the 50px bar) and the mobile bottom Drawer. One component, so
+ * the two platforms can never drift on what an exit does or what a receipt says.
+ *
+ * The list NEVER renders in flow on the canvas. That is the whole feature: the
+ * bar above it is 50px at every task count, and lib/use-fit-hour-px.ts derives
+ * the schedule's hour height from the space below the bar. A list that grew in
+ * flow drove hourPx to its MIN_HOUR_PX floor and destroyed the fit-to-height
+ * contract at ~18 overdue items.
+ *
+ * Deliberately NOT components/primitives/task-row.tsx: that row has no date
+ * column (the age stamp is the point here), its py-1.5 + line-clamp-2 body is
+ * taller than 30px so reusing it would worsen the exact problem this fixes, its
+ * useDraggable is meaningless inside a portal, and its whole-row click-to-edit
+ * competes with the triage gesture (in a triage list the primary click must be
+ * triage, so only the TITLE opens the editor here).
+ */
+
+/** Age at which the date stamp promotes to honey. */
+const ANCIENT_DAYS = 30;
+
+/**
+ * Group headers only earn their 24px when the list is long enough to need
+ * navigating AND both cohorts actually exist — two headers over a five-row list
+ * is chrome, not structure.
+ */
+const GROUP_HEADER_MIN_ROWS = 8;
+
+export type TriageVariant = 'tray' | 'sheet';
+
+/**
+ * What the user did to a row during this session. Rows do NOT vanish when
+ * actioned (see the snapshot note below) — they swap their control cluster for
+ * a receipt, exactly like components/ai/eod-review.tsx:349-357.
+ */
+type RowAction =
+  | { kind: 'done' }
+  | { kind: 'today' }
+  | { kind: 'date'; to: string }
+  | { kind: 'braindump' };
+
+/**
+ * Why a snapshot row can no longer be triaged. The list is frozen but the WORLD
+ * is not: the row title opens the modal edit dialog ON TOP of the tray (Radix
+ * disables outside pointer events for the layer below, so the tray survives and
+ * no pointerDownOutside fires), and the tray is deliberately non-modal, so the
+ * day underneath stays live the whole time it is open.
+ *
+ * Both store verbs behind the exits fail CLOSED on an id they can't resolve
+ * (planner-store.ts:703 and :725 return early), which is correct — but it left
+ * the receipt to be stamped unconditionally afterwards, i.e. the tray telling
+ * the user it had carried an item it had in fact not touched.
+ */
+type StaleReason = 'deleted' | 'completed';
+
+/**
+ * @param live the item as the store has it RIGHT NOW; `undefined` = gone.
+ *
+ * One rule, two call sites (the render pass reads a map, the click handlers
+ * re-read the store), so they can never drift on what "still actionable" means.
+ * A habit under a snapshot id counts as gone for the same reason findTaskLike
+ * refuses one (planner-store.ts:324): the task pipeline would no-op on it, so
+ * every exit here would too.
+ */
+function staleReasonFor(live: Item | undefined): StaleReason | null {
+  if (!live || live.type === 'habit') return 'deleted';
+  // 'pending' is the only status lib/overdue.ts:109 accepts, so anything else —
+  // completed in the day list behind the tray, or 'cancelled' via the agent API
+  // — means the item has left the pile for real and must not be carried.
+  return live.status === 'pending' ? null : 'completed';
+}
+
+interface MorningTriageListProps {
+  /** Live overdue list, in display order. Frozen at mount — see below. */
+  items: TaskItem[];
+  /** yyyy-MM-dd for "today", local — the same string the bar counts against. */
+  todayStr: string;
+  variant: TriageVariant;
+  /**
+   * Dismiss for the day. Owned by the parent rather than pulled from the store
+   * here: dismissal unmounts this whole surface mid-click, so the keyboard has
+   * to be moved somewhere deliberate first (morning-check.tsx useDismissWithFocus).
+   */
+  onDismiss: () => void;
+}
+
+export function MorningTriageList({
+  items,
+  todayStr,
+  variant,
+  onDismiss,
+}: MorningTriageListProps) {
+  const isSheet = variant === 'sheet';
+
+  const liveItems = usePlannerStore((s) => s.items);
+  const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
+  const moveTaskToDate = usePlannerStore((s) => s.moveTaskToDate);
+  const moveTasksToDate = usePlannerStore((s) => s.moveTasksToDate);
+  const unscheduleTask = usePlannerStore((s) => s.unscheduleTask);
+  const updateTask = usePlannerStore((s) => s.updateTask);
+  const closeTray = useMorningStore((s) => s.close);
+
+  /**
+   * SNAPSHOT FROZEN AT OPEN. Both surfaces unmount their content when closed
+   * (Radix Popover / vaul Drawer), so mounting IS opening and this lazy
+   * initializer runs exactly once per open.
+   *
+   * Eighteen rows disappearing one at a time under a stationary cursor slides
+   * the next row under the pointer — a misclick machine, and the reason EOD
+   * snapshots too (eod-review.tsx:106-124). The BAR's count stays live; only
+   * the list is frozen.
+   *
+   * It also removes the need for an undo stack: every row's pre-action field
+   * values are still right here in the snapshot, so `restoreFrom` can read them
+   * directly no matter how many times a row is actioned and undone.
+   *
+   * FROZEN IS NOT AUTHORITATIVE. A snapshot row is a record of what an item
+   * looked like when the tray opened, and nothing more — `liveById` below is
+   * what says whether it still describes anything. Freezing buys a stable
+   * layout; it must never buy the tray permission to act on a stale record.
+   */
+  const [snapshot] = useState<TaskItem[]>(() => items);
+
+  const [actions, setActions] = useState<Map<string, RowAction>>(new Map());
+  /** Which row's date-picker popover is open (desktop only). */
+  const [datePickerOpenId, setDatePickerOpenId] = useState<string | null>(null);
+
+  const { recent, long } = useMemo(
+    () => splitOverdueCohorts(snapshot, todayStr),
+    [snapshot, todayStr]
+  );
+
+  const showGroupHeaders =
+    recent.length > 0 && long.length > 0 && snapshot.length > GROUP_HEADER_MIN_ROWS;
+
+  /**
+   * The snapshot's rows, re-read against the LIVE store. This is the one place
+   * the frozen list is allowed to notice the world moved: rows still never
+   * disappear or reorder (that is the whole point of freezing them), they just
+   * stop pretending to be actionable once they aren't. See StaleReason above.
+   */
+  const liveById = useMemo(() => {
+    const ids = new Set(snapshot.map((t) => t.id));
+    const map = new Map<string, Item>();
+    for (const i of liveItems) if (ids.has(i.id)) map.set(i.id, i);
+    return map;
+  }, [liveItems, snapshot]);
+
+  /**
+   * Re-check at CLICK time, off the store rather than the render's map: the
+   * receipt is a claim about what just happened, so it has to be gated on the
+   * state the verb is about to see, not on the state the last paint saw.
+   */
+  const staleNow = (id: string): StaleReason | null =>
+    staleReasonFor(usePlannerStore.getState().items.find((i) => i.id === id));
+
+  /** Untouched this session AND still real — the only rows "Move all" may act on. */
+  const carryable = snapshot.filter(
+    (t) => !actions.has(t.id) && staleReasonFor(liveById.get(t.id)) === null
+  );
+
+  const setAction = (id: string, action: RowAction) =>
+    setActions((prev) => new Map(prev).set(id, action));
+
+  const clearAction = (id: string) =>
+    setActions((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+
+  /*
+   * Every exit below is guarded by staleNow() and stamps its receipt ONLY on the
+   * far side of that guard. A receipt is a statement of fact ("this item is on
+   * today now, here is the undo"), and the store verbs decline ids they cannot
+   * resolve, so an unguarded setAction is the tray inventing an outcome. The
+   * guard is also what keeps the receipt's Undo honest: restoreFrom reads the
+   * snapshot's pre-action fields, which only mean anything if a write happened.
+   */
+
+  const handleDone = (item: TaskItem) => {
+    if (staleNow(item.id)) return;
+    toggleTaskStatus(item.id, 'completed', new Date());
+    setAction(item.id, { kind: 'done' });
+  };
+
+  const handleMoveTo = (item: TaskItem, dateStr: string) => {
+    if (staleNow(item.id)) return;
+    moveTaskToDate(item.id, dateStr);
+    setAction(item.id, dateStr === todayStr ? { kind: 'today' } : { kind: 'date', to: dateStr });
+  };
+
+  const handleBraindump = (item: TaskItem) => {
+    if (staleNow(item.id)) return;
+    // unscheduleTask, NOT a hand-rolled updateTask of the same four fields: only
+    // 'Unschedule task:' is in SIGNIFICANT_ACTIONS (hooks/use-undo-toast.ts), so
+    // the hand-rolled version ("Edit task:") was silently excluded from the undo
+    // toast. That was the verified bug here.
+    unscheduleTask(item.id);
+    setAction(item.id, { kind: 'braindump' });
+  };
+
+  const handleMoveAll = () => {
+    // Re-filtered off the store at click time for the same reason the single-row
+    // verbs re-check: `carryable` is a render-time list, and the row that got
+    // deleted or ticked off between paint and click is exactly the one this bug
+    // was about. moveTasksToDate drops unresolvable ids on its own, so passing
+    // them would ALSO mislabel the history entry — it counts what it kept, while
+    // the receipts were stamped on what we sent.
+    const targets = carryable.filter((t) => !staleNow(t.id));
+    if (targets.length === 0) return;
+    // ONE store verb => one history entry => one Cmd+Z. The old loop pushed N
+    // snapshots, evicted the user's earlier history at MAX_HISTORY_SIZE=50, and
+    // needed N presses to reverse one gesture.
+    moveTasksToDate(
+      targets.map((t) => t.id),
+      todayStr
+    );
+    setActions((prev) => {
+      const next = new Map(prev);
+      // Only rows the user hasn't already handled — today's "Move all" re-stamps
+      // rows you just triaged, which is how a triage pass undoes itself.
+      targets.forEach((t) => next.set(t.id, { kind: 'today' }));
+      return next;
+    });
+  };
+
+  const handleUndo = (item: TaskItem, action: RowAction) => {
+    // Only 'deleted' blocks a reversal, not the whole staleness test: a row
+    // actioned 'done' is SUPPOSED to read as completed right now — that is our
+    // own write — and testing for stale-in-general here would refuse to undo it.
+    // A restore onto an id the store has dropped, though, writes nothing, and
+    // clearing the receipt afterwards would claim it had.
+    if (staleNow(item.id) === 'deleted') return;
+    if (action.kind === 'done') {
+      toggleTaskStatus(item.id, 'pending', new Date());
+    } else {
+      // All four scheduling fields, read off the frozen snapshot. Restoring all
+      // four (rather than just the ones a given verb wrote) is what makes one
+      // undo path correct for moveTaskToDate, the bulk moveTasksToDate — which
+      // additionally clears startTime/isScheduled — and unscheduleTask alike.
+      const restore: Partial<Task> = {
+        startDate: item.startDate,
+        timeBucket: item.timeBucket,
+        startTime: item.startTime,
+        isScheduled: item.isScheduled,
+      };
+      updateTask(item.id, restore);
+    }
+    clearAction(item.id);
+  };
+
+  const handleOpenEditor = (item: TaskItem) => {
+    // The mobile sheet closes first: stacking the edit dialog on top of a vaul
+    // drawer leaves two dismissable layers fighting over the back gesture.
+    if (isSheet) closeTray();
+    openEditFor(item, 'task');
+  };
+
+  const surfaceBg = isSheet ? 'bg-modal' : 'bg-popover';
+
+  const renderRows = (rows: TaskItem[]) =>
+    rows.map((item) => {
+      const action = actions.get(item.id);
+      const reason = staleReasonFor(liveById.get(item.id));
+      // A completion WE performed is the receipt, not staleness — otherwise
+      // ticking a row's checkbox would immediately overwrite its own "Done ·
+      // Undo" with "Completed elsewhere".
+      const stale = reason === 'completed' && action?.kind === 'done' ? null : reason;
+
+      return (
+      <TriageRow
+        key={item.id}
+        item={item}
+        todayStr={todayStr}
+        variant={variant}
+        action={action}
+        stale={stale}
+        datePickerOpen={datePickerOpenId === item.id}
+        onDatePickerOpenChange={(open) => setDatePickerOpenId(open ? item.id : null)}
+        onDone={handleDone}
+        onMoveTo={handleMoveTo}
+        onBraindump={handleBraindump}
+        onUndo={handleUndo}
+        onOpenEditor={handleOpenEditor}
+      />
+      );
+    });
+
+  return (
+    <>
+      {/*
+        PLAIN overflow, never a nested <ScrollArea>. components/ui/scroll-area.tsx
+        puts the caller's className on the Radix ROOT while the Viewport is
+        hardcoded `size-full`, so a max-h on it caps nothing — and worse,
+        lib/use-fit-hour-px.ts:35 resolves ITS viewport by walking up to the
+        nearest [data-slot="scroll-area-viewport"], so a second one in the
+        document is an actively bad idea. Every capped floating list in this repo
+        (omnibar, filter-popover, command, eod-review) uses plain overflow.
+
+        overscroll-contain is mandatory: without it a wheel past the end of this
+        list scroll-chains into the live schedule grid behind the tray.
+
+        Padding note: px-1/pb-1 rather than a flat p-1 so the sticky group
+        headers can sit flush against the top edge — a 4px pad above them would
+        let rows scroll through the gap.
+      */}
+      <div
+        className={cn(
+          'overflow-y-auto overscroll-contain px-1 pb-1',
+          !showGroupHeaders && 'pt-1',
+          isSheet
+            ? 'min-h-0 flex-1'
+            : // 320px ≈ 10 rows + an 8px sliver of the 11th; the half-cut row IS
+              // the scroll affordance. The dvh term keeps the tray off the
+              // bottom of a short window.
+              'max-h-[min(320px,calc(100dvh-340px))]'
+        )}
+      >
+        {showGroupHeaders ? (
+          <>
+            <GroupHeader label={OVERDUE_COHORT_LABELS.recent} surfaceBg={surfaceBg} />
+            {renderRows(recent)}
+            <GroupHeader label={OVERDUE_COHORT_LABELS.long} surfaceBg={surfaceBg} />
+            {renderRows(long)}
+          </>
+        ) : (
+          renderRows(snapshot)
+        )}
+      </div>
+
+      {/* Footer. "Dismiss for today" is deliberately GONE from here — dismissal
+          now lives on the bar's ✕ (desktop) and nowhere else, so the surface no
+          longer offers two buttons for one effect. On mobile there is no ✕, so
+          "Done for today" is the only dismissal and it lives here. */}
+      <div
+        className={cn(
+          'flex shrink-0 items-center justify-between border-t border-border px-2.5',
+          isSheet ? 'h-14 pb-2' : 'h-9'
+        )}
+      >
+        {/* Gated on `carryable`, not on "rows without a receipt": a tray whose
+            only remaining rows were deleted or completed elsewhere has nothing
+            left to carry, and offering the button there is offering a no-op. */}
+        {carryable.length > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="morning-move-all-btn"
+            onClick={handleMoveAll}
+            className={cn('gap-1.5 px-2 text-xs', isSheet ? 'h-8' : 'h-6')}
+          >
+            <ChevronsRight className="h-3 w-3" />
+            Move all to today
+          </Button>
+        ) : (
+          <span />
+        )}
+        <Button size="sm" onClick={onDismiss} className={isSheet ? 'h-8' : 'h-6'}>
+          Done for today
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Cohort heading. SENTENCE case with mono letterspacing — a deliberate
+ * divergence from EOD's uppercase section headings (eod-review.tsx:264): those
+ * label whole sections of a modal, these are quiet dividers inside one scroller
+ * and uppercase at 10px reads as a second competing bar.
+ */
+function GroupHeader({ label, surfaceBg }: { label: string; surfaceBg: string }) {
+  return (
+    <div
+      className={cn(
+        // -mx-1 cancels the scroller's px-1 so the sticky band spans the full
+        // tray width; px-3.5 puts the text back on the rows' text edge.
+        'sticky top-0 z-10 -mx-1 flex h-6 items-center px-3.5 font-num text-2xs tracking-[0.04em] text-muted-foreground',
+        surfaceBg
+      )}
+    >
+      {label}
+    </div>
+  );
+}
+
+interface TriageRowProps {
+  item: TaskItem;
+  todayStr: string;
+  variant: TriageVariant;
+  action: RowAction | undefined;
+  /** Set once the underlying item stopped matching the snapshot — see StaleReason. */
+  stale: StaleReason | null;
+  datePickerOpen: boolean;
+  onDatePickerOpenChange: (open: boolean) => void;
+  onDone: (item: TaskItem) => void;
+  onMoveTo: (item: TaskItem, dateStr: string) => void;
+  onBraindump: (item: TaskItem) => void;
+  onUndo: (item: TaskItem, action: RowAction) => void;
+  onOpenEditor: (item: TaskItem) => void;
+}
+
+/**
+ * One triage row — 30px fixed on desktop, 38px on touch.
+ *
+ *   [☐ 16px] [title flex-1 truncate] [date 52px] [cluster 112px]
+ *
+ * BOTH trailing columns reserve their width and the cluster fades IN FLOW rather
+ * than being absolutely positioned (which is what the dense day row does). A
+ * ~1030px tray row has slack a day list doesn't, and reserving those 164px buys
+ * a straight right edge down 60 rows with zero hover shift.
+ */
+function TriageRow({
+  item,
+  todayStr,
+  variant,
+  action,
+  stale,
+  datePickerOpen,
+  onDatePickerOpenChange,
+  onDone,
+  onMoveTo,
+  onBraindump,
+  onUndo,
+  onOpenEditor,
+}: TriageRowProps) {
+  const isSheet = variant === 'sheet';
+  const days = daysOverdue(item, todayStr);
+  const dateLabel = item.startDate ? format(parseISO(toDateOnly(item.startDate)), 'MMM d') : '';
+  // A stale row shows the world's truth, never ours: the item is finished or
+  // gone, so it renders complete-looking and offers nothing but the report.
+  // The row keeps its slot — the snapshot never re-flows, that is the point —
+  // it just stops claiming to be triageable.
+  const isDone = stale === 'completed' || (stale === null && action?.kind === 'done');
+  // Muted + struck through covers 'deleted' too: the title is the last trace of
+  // something that no longer exists, and it must not read as live text.
+  const isSpent = isDone || stale === 'deleted';
+  // A row that has already exited via a non-completion verb keeps its checkbox
+  // column (the leading edge must stay a straight line) but stops accepting
+  // clicks: its receipt's Undo is the single reversal path. Stale rows have no
+  // reversal path at all — there is nothing left to toggle.
+  const checkboxInert = stale !== null || (action !== undefined && !isDone);
+
+  return (
+    <div
+      data-testid={`morning-row-${item.id}`}
+      // Registry type name ('task' | custom slug) — the Phase 6 selector policy.
+      data-item-type={itemTypeName(item)}
+      className={cn(
+        'group flex items-center gap-2.5 rounded-[5px] px-2.5 hover:bg-accent',
+        isSheet ? 'h-[38px]' : 'h-[30px]'
+      )}
+    >
+      {/* Checkbox — the most important addition. Half of a three-month graveyard
+          is already done in real life, and before this the only row exits were
+          "carry it again" or "unschedule it", both of which GROW the pile.
+          Treatment copied verbatim from components/primitives/task-row.tsx so
+          the lime mark reads identically here and in the day list. */}
+      <button
+        type="button"
+        disabled={checkboxInert}
+        // Keyed off the ACTION, not off `isDone`: a row that reads as done
+        // because it was completed somewhere else has no action to reverse, and
+        // the old `action!` assertion would have handed undefined to onUndo.
+        onClick={() => (action?.kind === 'done' ? onUndo(item, action) : onDone(item))}
+        aria-label={isDone ? 'Mark incomplete' : 'Mark complete'}
+        className={cn(
+          'flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
+          isDone
+            ? 'border-primary bg-primary'
+            : 'border-muted-foreground/45 bg-surface-3 hover:border-primary',
+          checkboxInert && 'pointer-events-none opacity-40'
+        )}
+      >
+        {isDone && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+      </button>
+
+      {/* Title — ONLY the title opens the editor, not the whole row. font-content
+          + text-content always travel together in this codebase.
+
+          Disabled once the item is gone: this button is how the item got
+          deleted in the first place (title → edit dialog → delete), and
+          re-opening the editor on an id the store no longer has is the one
+          click that leads nowhere. */}
+      <button
+        type="button"
+        disabled={stale === 'deleted'}
+        onClick={() => onOpenEditor(item)}
+        className={cn(
+          'min-w-0 flex-1 truncate text-left font-content text-content',
+          isSpent ? 'text-muted-foreground line-through' : 'text-foreground'
+        )}
+      >
+        {item.title}
+      </button>
+
+      {/* Age stamp. Promotes to honey past a month overdue — --warning-text flips
+          BRIGHT in dark mode, so "ancient" is carried by the same hue that's
+          nagging from the bar. */}
+      <span
+        title={days === 1 ? '1 day ago' : `${days} days ago`}
+        className={cn(
+          'w-[52px] flex-shrink-0 text-right font-num text-2xs',
+          days >= ANCIENT_DAYS ? 'text-warning-text' : 'text-muted-foreground'
+        )}
+      >
+        {dateLabel}
+      </span>
+
+      {/* Trailing cluster: the controls, the receipt once the row is actioned,
+          or — when the item stopped existing under us — what became of it.
+          NO BARE ✕ HERE. Today's unlabeled ✕ meant *unschedule* while the
+          footer's "Dismiss for today" meant *hide the UI* — two
+          destructive-feeling affordances with different semantics, and that
+          collision is part of how 18 became 18. ✕ now means exactly one thing
+          (dismiss the bar until tomorrow) and lives only on the bar. */}
+      <div
+        className={cn(
+          'flex flex-shrink-0 items-center justify-end gap-0.5',
+          // Touch has no hover, so the sheet shows the cluster unconditionally —
+          // and its 28px targets need 12px more reserved width than the desktop
+          // 24px ones. Both numbers are FIXED, which is the part that matters:
+          // reserving the column is what keeps the right edge straight down 60
+          // rows with zero hover shift.
+          isSheet ? 'w-[124px] opacity-100' : 'w-[112px]',
+          // The stale marker is the one thing in this column that is not an
+          // affordance, so it does NOT hide behind hover the way the controls
+          // and the receipt do — a row silently refusing to be carried has to
+          // say why while the eye is still on the list.
+          !isSheet &&
+            (stale
+              ? 'opacity-100'
+              : 'opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100')
+        )}
+      >
+        {stale ? (
+          <span className="w-full truncate text-right text-2xs text-muted-foreground">
+            {stale === 'deleted' ? 'Deleted' : 'Completed'}
+          </span>
+        ) : action ? (
+          <button
+            type="button"
+            data-testid={`morning-undo-btn-${item.id}`}
+            onClick={() => onUndo(item, action)}
+            className="w-full truncate text-right text-2xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {receiptLabel(action)} · <span className="underline">Undo</span>
+          </button>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid={`morning-today-btn-${item.id}`}
+              onClick={() => onMoveTo(item, todayStr)}
+              className={cn('gap-1 px-1.5 text-xs', isSheet ? 'h-7' : 'h-6')}
+            >
+              <ArrowRight className="h-3 w-3" />
+              Today
+            </Button>
+
+            {/* Pick a date. Desktop gets Calendar in a nested Popover; touch gets
+                the sr-only native input pattern from eod-review.tsx:404-417 —
+                copied exactly, because that shape exists so the picker's
+                onChange doesn't fire while the wheel is being scrolled. */}
+            {isSheet ? (
+              <label
+                htmlFor={`morning-date-input-${item.id}`}
+                data-testid={`morning-date-btn-${item.id}`}
+                aria-label="Pick a date"
+                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground"
+              >
+                <CalendarDays className="h-3.5 w-3.5" />
+                <input
+                  id={`morning-date-input-${item.id}`}
+                  type="date"
+                  min={todayStr}
+                  className="sr-only"
+                  onBlur={(e) => {
+                    if (e.target.value) onMoveTo(item, e.target.value);
+                  }}
+                  aria-label="Move to date"
+                />
+              </label>
+            ) : (
+              <Popover open={datePickerOpen} onOpenChange={onDatePickerOpenChange}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Pick a date"
+                        data-testid={`morning-date-btn-${item.id}`}
+                        className="h-6 w-6 p-0"
+                      >
+                        <CalendarDays className="h-3.5 w-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>Pick a date</TooltipContent>
+                </Tooltip>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    fromDate={parseISO(todayStr)}
+                    onSelect={(date) => {
+                      if (!date) return;
+                      onMoveTo(item, format(date, 'yyyy-MM-dd'));
+                      onDatePickerOpenChange(false);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Move to Braindump"
+                  data-testid={`morning-backlog-btn-${item.id}`}
+                  onClick={() => onBraindump(item)}
+                  className={cn('p-0', isSheet ? 'h-7 w-7' : 'h-6 w-6')}
+                >
+                  <ArrowLeftToLine className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move to Braindump</TooltipContent>
+            </Tooltip>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function receiptLabel(action: RowAction): string {
+  switch (action.kind) {
+    case 'done':
+      return 'Done';
+    case 'today':
+      return 'Today';
+    case 'braindump':
+      return 'Braindump';
+    case 'date':
+      return format(parseISO(action.to), 'MMM d');
+  }
+}

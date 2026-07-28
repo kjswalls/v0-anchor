@@ -34,9 +34,34 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Skip if we've already hydrated for this user — prevents Supabase auth events
       // (TOKEN_REFRESHED, duplicate SIGNED_IN) from overwriting user's in-session theme changes
       if (hydratedUserId.current === userId) return;
+      const previousUserId = hydratedUserId.current;
       hydratedUserId.current = userId;
 
+      // Account switch with no intervening SIGNED_OUT (Supabase can deliver a
+      // bare SIGNED_IN for a different user). Drop the previous account's
+      // morning settings NOW, synchronously, so the window we are about to
+      // spend awaiting is spent at fail-closed defaults instead of on someone
+      // else's `morningAutoAgeEnabled: true` — the auto-age sweep is an
+      // unattended data mutation and that window is long enough for the
+      // planner load to finish inside it.
+      //
+      // Note this deliberately does NOT fire on a plain page load
+      // (previousUserId === null): the persisted values there are the same
+      // user's own, and wiping them would flash the morning banner before
+      // settings land. The sweep is protected in that case by
+      // `settingsHydratedUserId`, which is not persisted and so starts null.
+      if (previousUserId !== null && previousUserId !== userId) {
+        useMorningStore.getState().clearUserScopedState();
+      }
+
       const settings = await loadSettings(userId);
+
+      // A slower response for a PREVIOUS account must never land on the current
+      // one. If a sign-in raced us, `hydratedUserId.current` has already moved
+      // on, and everything below — theme, timezone, morning settings — belongs
+      // to the wrong person, so it is dropped wholesale rather than partially
+      // applied.
+      if (hydratedUserId.current !== userId) return;
 
       usePlannerStore.setState({
         compactMode: settings.compact_mode ?? false,
@@ -56,10 +81,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         leftSidebarHoverEnabled: settings.left_sidebar_hover ?? false,
       });
 
-      useMorningStore.setState({
+      // Via the action, not setState: applyServerSettings stamps
+      // `settingsHydratedUserId` in the same set(), which is the signal the
+      // auto-age sweep gates on. A bare setState here would leave the sweep
+      // unable to tell these values from the localStorage leftovers of whoever
+      // used this browser last.
+      useMorningStore.getState().applyServerSettings(userId, {
         morningCheckEnabled: settings.morning_check_enabled ?? true,
         morningCheckTime: settings.morning_check_time ?? '08:00',
         morningCheckDismissedDate: settings.morning_check_dismissed_date ?? null,
+        morningAutoAgeEnabled: settings.morning_auto_age_enabled ?? false,
+        morningAutoAgeDays: settings.morning_auto_age_days ?? 30,
+        // The auto-age last-run stamp is deliberately local-only and per-user
+        // (morningAutoAgeLastRunByUser) — not hydrated.
       });
 
       useEODStore.setState({
@@ -87,6 +121,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         clearStore();
+        // clearStore only resets the planner. The morning store holds
+        // account-owned settings too — including the auto-age switch, which
+        // drives an unattended mutation — and it persists them to a
+        // browser-global localStorage key, so leaving them behind hands the
+        // next person to sign in on this browser the previous person's decay
+        // policy.
+        useMorningStore.getState().clearUserScopedState();
       }
     });
 

@@ -113,7 +113,12 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const { theme, setTheme } = useTheme();
   const { typeMode, setTypeMode } = useViewStore();
   const isMobile = useIsMobile();
-  const { morningCheckEnabled, setMorningCheckEnabled, morningCheckTime, setMorningCheckTime } = useMorningStore();
+  const {
+    morningCheckEnabled, setMorningCheckEnabled,
+    morningCheckTime, setMorningCheckTime,
+    morningAutoAgeEnabled, setMorningAutoAgeEnabled,
+    morningAutoAgeDays, setMorningAutoAgeDays,
+  } = useMorningStore();
   const { eodReviewEnabled, setEodReviewEnabled, eodReviewTime, setEodReviewTime } = useEODStore();
 
   // Auto-subscribe to push when morning check is enabled
@@ -380,7 +385,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               icon={<Sun className="h-4 w-4" />}
             >
               <p className="text-xs text-muted-foreground -mt-1 mb-2">
-                Shows a banner on your first visit each day if you have leftover tasks.
+                Shows a single-line past due bar above your day when items are still waiting. Open it to see the list.
               </p>
               <SettingRow label="Morning task check" description="Remind me about unfinished tasks from yesterday">
                 <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
@@ -393,6 +398,33 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     onChange={(e) => setMorningCheckTime(e.target.value)}
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
                   />
+                </SettingRow>
+              )}
+              {morningCheckEnabled && (
+                <SettingRow
+                  label="Auto-clear stale items"
+                  description="Move items past due by more than the chosen number of days to your Braindump automatically"
+                >
+                  <Switch checked={morningAutoAgeEnabled} onCheckedChange={setMorningAutoAgeEnabled} />
+                </SettingRow>
+              )}
+              {morningCheckEnabled && morningAutoAgeEnabled && (
+                <SettingRow label="Clear after" description="How long an item can sit past due before it is cleared">
+                  <Select
+                    value={String(morningAutoAgeDays)}
+                    onValueChange={(v) => setMorningAutoAgeDays(Number(v))}
+                  >
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">7 days</SelectItem>
+                      <SelectItem value="14">14 days</SelectItem>
+                      <SelectItem value="30">30 days</SelectItem>
+                      <SelectItem value="60">60 days</SelectItem>
+                      <SelectItem value="90">90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </SettingRow>
               )}
               <SettingRow label="End of day review" description="Review what you accomplished at the end of the day">

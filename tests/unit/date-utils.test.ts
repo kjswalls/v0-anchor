@@ -51,7 +51,9 @@ describe('date / time-bucket utilities', () => {
   });
 
   it('isOverdue correctly compares task start_date to current date', () => {
-    // Mirrors the logic from components/ai/morning-check.tsx:
+    // The canonical past-due predicate now lives in lib/overdue.ts, which
+    // compares yyyy-MM-dd strings (tests/unit/overdue.test.ts covers it). This
+    // keeps the date-fns boundary behaviour it replaced under test:
     //   isAfter(startOfDay(new Date()), parseISO(task.startDate))
     // Use a fixed reference date for determinism — avoids midnight/timezone flakiness.
     const fixedNow = new Date(2025, 5, 15, 12, 0, 0); // Jun 15, 2025 noon (local)
