@@ -1,5 +1,41 @@
 import { describe, it, expect } from 'vitest';
-import { parseSearchQuery } from '@/lib/search';
+import { parseSearchQuery, searchItems } from '@/lib/search';
+import type { Task } from '@/lib/planner-types';
+
+describe('type:<name> grammar (Phase 6)', () => {
+  it('type:goal sets the type filter to the slug', () => {
+    expect(parseSearchQuery('type:goal run')).toEqual({
+      text: 'run',
+      type: 'goal',
+      priority: null,
+      project: null,
+    });
+  });
+
+  it('type:task / type:habit map onto the built-in filters', () => {
+    expect(parseSearchQuery('type:task').type).toBe('task');
+    expect(parseSearchQuery('type:HABIT').type).toBe('habit');
+  });
+
+  it('searchItems matches custom rows by slug and excludes habits', () => {
+    const task = { id: 't1', title: 'Run errands', status: 'pending', isScheduled: false, order: 0 } as Task;
+    const goal = {
+      id: 'g1', title: 'Run a 10k', status: 'pending', isScheduled: false, order: 0,
+      type: 'custom', customType: 'goal',
+    } as unknown as Task;
+    const habit = {
+      id: 'h1', title: 'Run daily', group: 'Fitness', streak: 0, status: 'pending',
+      completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
+    };
+
+    const bySlug = searchItems('type:goal', [task, goal], [habit as never]);
+    expect(bySlug.tasks.map((t) => t.id)).toEqual(['g1']);
+    expect(bySlug.habits).toEqual([]);
+
+    const byTask = searchItems('type:task run', [task, goal], [habit as never]);
+    expect(byTask.tasks.map((t) => t.id)).toEqual(['t1']);
+  });
+});
 
 describe('search keyword parser', () => {
   it('empty string returns no filters', () => {

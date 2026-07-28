@@ -145,6 +145,9 @@ interface PlannerStore {
   // Item type definitions (user-defined types, Phase 6). Hydrated into the
   // capability registry on load; NOT part of undo/redo history.
   itemTypes: ItemTypeDef[];
+  /** False when the item_types table is unreachable (migration 021 not yet
+   *  applied) — creation UI must gate on this or writes vanish on reload. */
+  itemTypesAvailable: boolean;
   addItemType: (def: Omit<ItemTypeDef, 'id'>) => void;
   updateItemType: (id: string, updates: Partial<Omit<ItemTypeDef, 'id' | 'name'>>) => void;
   removeItemType: (id: string) => void;
@@ -417,8 +420,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
       // ── Item type definitions (Phase 6) ────────────────────────────────────
       itemTypes: [],
+      itemTypesAvailable: true,
       addItemType: (def) => {
         const userId = get().userId;
+        if (!get().itemTypesAvailable) return;
         const name = def.name.trim().toLowerCase();
         if (!name || ['task', 'habit', 'custom'].includes(name)) return;
         if (get().itemTypes.some((t) => t.name === name)) return;
@@ -457,12 +462,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups, itemTypes] = await Promise.all([
+          const [items, projects, habitGroups, itemTypesResult] = await Promise.all([
             fetchItems(userId),
             fetchProjects(userId),
             fetchHabitGroups(userId),
             fetchItemTypes(userId),
           ]);
+          const itemTypes = itemTypesResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
@@ -487,6 +493,7 @@ export const usePlannerStore = create<PlannerStore>()(
             projects,
             habitGroups,
             itemTypes,
+            itemTypesAvailable: itemTypesResult !== null,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -529,6 +536,15 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addItem: (customType, itemData) => {
+        // Only hydrated custom slugs: 'task'/'habit' would write a corrupt
+        // row through the task-shaped mapper, 'custom' is the envelope
+        // discriminant, and unknown slugs shouldn't be minted by a typo.
+        if (
+          ['task', 'habit', 'custom'].includes(customType) ||
+          !get().itemTypes.some((t) => t.name === customType)
+        ) {
+          return;
+        }
         const config = getItemTypeConfig(customType);
         setNextActionLabel(`Add ${config.label.toLowerCase()}: ${itemData.title}`);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
@@ -1141,13 +1157,17 @@ function applyHistoryState(
   if (!userId) return;
 
   const key = (i: Item) => `${i.type}:${i.id}`;
+  // DB writes filter on the SLUG stored in items.type — the 'custom' envelope
+  // discriminant matches zero rows and every write would silently no-op
+  // (undoing a custom-item delete would "restore" it until the next reload).
+  const dbType = (i: Item) => (i.type === 'custom' ? i.customType : i.type);
   const currentById = new Map(currentState.items.map((i) => [key(i), i]));
   const restoredById = new Map(restoredItems.map((i) => [key(i), i]));
 
   restoredItems.forEach((item) => {
     const cur = currentById.get(key(item));
     if (!cur) {
-      dbRestoreItem(item.id, item.type).catch(console.error);
+      dbRestoreItem(item.id, dbType(item)).catch(console.error);
       return;
     }
     const patch = diffItem(cur, item);
@@ -1161,18 +1181,18 @@ function applyHistoryState(
       const curDates = new Set(cur.completedDates ?? []);
       const restoredDates = new Set(item.completedDates ?? []);
       restoredDates.forEach((d) => {
-        if (!curDates.has(d)) dbSetItemCompletion(item.id, item.type, d, true, false).catch(console.error);
+        if (!curDates.has(d)) dbSetItemCompletion(item.id, dbType(item), d, true, false).catch(console.error);
       });
       curDates.forEach((d) => {
-        if (!restoredDates.has(d)) dbSetItemCompletion(item.id, item.type, d, false, false).catch(console.error);
+        if (!restoredDates.has(d)) dbSetItemCompletion(item.id, dbType(item), d, false, false).catch(console.error);
       });
     }
     if (Object.keys(patch).length > 0) {
-      dbUpdateItem(item.id, item.type, patch).catch(console.error);
+      dbUpdateItem(item.id, dbType(item), patch).catch(console.error);
     }
   });
   currentState.items.forEach((item) => {
-    if (!restoredById.has(key(item))) dbDeleteItem(item.id, item.type).catch(console.error);
+    if (!restoredById.has(key(item))) dbDeleteItem(item.id, dbType(item)).catch(console.error);
   });
 
   // Containers diff by id, never by name — names are mutable, and a name-keyed

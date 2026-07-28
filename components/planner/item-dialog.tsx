@@ -242,7 +242,11 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
       }
       return next;
     });
-  }, [open, addPayload, defaultTimeBucket, typeNames, habitGroups]);
+    // typeNames/habitGroups are read fresh from the closure at fire time but
+    // must NOT re-trigger the effect: reseeding buckets/dates mid-open (e.g.
+    // after editing a group elsewhere) would clobber in-progress drafts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, addPayload, defaultTimeBucket]);
 
   /** Draft for a type, with a default for custom types not yet seeded. */
   const draftFor = (type: string): ItemDraft =>
@@ -817,7 +821,9 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                     </div>
                   )}
 
-                  {renderForm(editItem.type, editDraft)}
+                  {/* Registry NAME, not the envelope discriminant — a custom
+                      item must render with its own type's config. */}
+                  {renderForm(itemTypeName(editItem), editDraft)}
                 </div>
 
                 <ResponsiveModalFooter className="flex flex-row justify-between items-center gap-3">

@@ -174,9 +174,22 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     fetchItemTypes degrades to []). DEFERRED from 6c: dynamic `create.<type>` palette
     commands — the command registry is a static array by design and dynamic commands
     belong with command-palette round 2's registry work (custom types are fully
-    creatable via the add-dialog tabs meanwhile). A Phase-6-wide adversarial review
-    pass is the outstanding QA step (phases 4/5 got theirs pre-push; 6a/6b/6c shipped
-    on typecheck+unit-suite green only).
+    creatable via the add-dialog tabs meanwhile). The Phase-6-wide adversarial review
+    ran post-push (3 lenses, 16 confirmed findings): FIXED — applyHistoryState now
+    resolves the DB slug (blocker: every custom-item undo/redo write silently no-opped;
+    regression-tested), addItem rejects reserved/unhydrated slugs, edit-mode renderForm
+    resolves the registry name (was rendering the 'custom' fallback config), row
+    delete-confirm copy comes from the registry, add-reseed effect deps narrowed back
+    (typeNames/habitGroups re-fires were clobbering open drafts), pre-migration write
+    guard (fetchItemTypes null ⇒ itemTypesAvailable=false gates type creation — the
+    read-path-only "deploy-safe" claim was insufficient), type:<slug> parser +
+    custom-undo unit tests added. KNOWN/ACCEPTED v1 gaps (documented, not fixed):
+    omnibar groups custom rows under the "Tasks" heading; manage-types UI has no
+    label-rename or plural editing; buildBeaconSystemPrompt(types) not implemented
+    (prompt nouns stay built-ins-only); items of a deleted type keep working on the
+    fallback template (by design); a plugin built from the Phase-5 types (items[]
+    without the custom branch) would brick on the first custom item — always build
+    the plugin from current types.
 
   **Phase 6b settled scope (decided during 6a):** custom items ride the TASK pipeline
   instead of a parallel one. (1) planner-store generalizes the task action set to

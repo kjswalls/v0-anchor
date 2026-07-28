@@ -67,6 +67,45 @@ beforeEach(async () => {
   await store().initializeStore(USER);
 });
 
+describe('custom-type items (Phase 6 regression coverage)', () => {
+  const customFixtures = (): Item[] => [
+    ...fixtures(),
+    {
+      type: 'custom',
+      customType: 'goal',
+      id: 'goal-1',
+      title: 'Run a 10k',
+      status: 'pending',
+      isScheduled: false,
+      order: 0,
+      completedDates: [],
+    },
+  ];
+
+  beforeEach(async () => {
+    store().clearStore();
+    vi.clearAllMocks();
+    vi.mocked(db.fetchItems).mockResolvedValue(customFixtures());
+    await store().initializeStore(USER);
+  });
+
+  it('rides the task-like pipeline: tasks projection includes it, habits does not', () => {
+    expect(store().tasks).toHaveLength(2);
+    expect(store().habits).toHaveLength(1);
+  });
+
+  it('deleteTask resolves the DB slug, never the envelope discriminant', () => {
+    store().deleteTask('goal-1');
+    expect(db.deleteItem).toHaveBeenCalledWith('goal-1', 'goal');
+  });
+
+  it('undoing a custom-item delete restores via the DB slug (review blocker regression)', () => {
+    store().deleteTask('goal-1');
+    store().undo();
+    expect(db.restoreItem).toHaveBeenCalledWith('goal-1', 'goal');
+  });
+});
+
 describe('undo/redo store logic', () => {
   it('initial state has empty undo and redo stacks', () => {
     expect(store().canUndo).toBe(false);

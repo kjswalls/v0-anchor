@@ -43,7 +43,7 @@ const RESERVED_TYPE_NAMES = ['task', 'habit', 'custom'];
 export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesDialogProps) {
   const {
     projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup,
-    itemTypes, addItemType, removeItemType,
+    itemTypes, itemTypesAvailable, addItemType, removeItemType,
   } = usePlannerStore();
   const [newProject, setNewProject] = useState('');
   const [newProjectEmoji, setNewProjectEmoji] = useState(makeIconToken('Briefcase'));
@@ -232,6 +232,12 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
             </TabsContent>
 
             <TabsContent value="types" className="mt-4 space-y-4">
+              {!itemTypesAvailable && (
+                <p className="text-xs text-destructive">
+                  Custom types aren&apos;t available yet — the database migration
+                  hasn&apos;t been applied. Creation is disabled so nothing is lost.
+                </p>
+              )}
               <div className="flex gap-2">
                 <IconPicker value={newTypeIcon} name={newType} onSelect={setNewTypeIcon} />
                 <Input
@@ -241,7 +247,7 @@ export function ManageCategoriesDialog({ open, onOpenChange }: ManageCategoriesD
                   onKeyDown={(e) => e.key === 'Enter' && handleAddType()}
                   className="bg-background border-border flex-1"
                 />
-                <AddIconButton size="input" onClick={handleAddType} disabled={!newTypeValid} aria-label="Add item type" />
+                <AddIconButton size="input" onClick={handleAddType} disabled={!newTypeValid || !itemTypesAvailable} aria-label="Add item type" />
               </div>
               <p className="text-[10px] text-muted-foreground -mt-2">
                 Custom types work like tasks — they get their own tab in the add

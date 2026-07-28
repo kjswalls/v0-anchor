@@ -5,6 +5,7 @@ import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine,
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -149,14 +150,18 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     }
   };
 
-  const handleDelete = () =>
+  const handleDelete = () => {
+    // Registry copy so custom-type rows say "Delete Goal?", not "Delete Task?".
+    const r = item as { type?: string; customType?: string };
+    const config = getItemTypeConfig(r.type === 'custom' ? r.customType! : itemType);
     confirm({
-      title: `Delete ${isTask ? 'Task' : 'Habit'}?`,
-      description: `This will permanently delete "${item.title}"${isTask ? '' : ' and all its history'}. This action cannot be undone.`,
+      title: `Delete ${config.label}?`,
+      description: config.form.deleteDescription(item.title),
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => (isTask ? deleteTask(item.id) : deleteHabit(item.id)),
     });
+  };
 
   // Skipped habits render as a slim strip with undo
   if (habit && habitStatus === 'skipped' && !inBraindump) {

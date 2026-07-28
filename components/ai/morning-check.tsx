@@ -22,9 +22,9 @@ export function MorningCheck() {
     const todayStart = startOfDay(new Date());
     // Carry-forward is a registry capability: habits are date-blind and never
     // roll over (carryForwardEligible: false), which is why they don't appear
-    // here. Note: the rollover actions below go through updateTask, so a
-    // future non-task carry-forward type also needs the store's generic
-    // update action (Phase 6) — the TaskItem narrowing holds until then.
+    // here. Custom types ARE eligible — they're task-shaped and the task
+    // actions operate on any task-like item, so the TaskItem narrowing below
+    // is structural, not literal.
     return items.filter((t): t is TaskItem => {
       const config = getItemTypeConfig(itemTypeName(t));
       if (!config.carryForwardEligible || !config.dateAnchored) return false;

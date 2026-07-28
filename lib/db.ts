@@ -401,11 +401,13 @@ function itemTypeDefFromRow(row: ItemTypeDefRow): ItemTypeDef {
 }
 
 /**
- * Resilient on purpose: returns [] if the table doesn't exist yet (deploy
+ * Resilient on purpose: returns null if the table doesn't exist yet (deploy
  * raced ahead of migration 021) so the app degrades to built-in types
- * instead of failing its whole data load.
+ * instead of failing its whole data load. null (vs []) lets the store gate
+ * the WRITE path too — pre-migration, creating a type would optimistically
+ * succeed and then silently vanish on reload.
  */
-export async function fetchItemTypes(userId: string, client?: DbClient): Promise<ItemTypeDef[]> {
+export async function fetchItemTypes(userId: string, client?: DbClient): Promise<ItemTypeDef[] | null> {
   const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('item_types')
@@ -414,7 +416,7 @@ export async function fetchItemTypes(userId: string, client?: DbClient): Promise
     .order('created_at', { ascending: true });
   if (error) {
     console.warn('fetchItemTypes failed (migration 021 applied?):', error.message);
-    return [];
+    return null;
   }
   return (data as ItemTypeDefRow[]).map(itemTypeDefFromRow);
 }
