@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
 import {
   DndContext,
@@ -18,9 +18,7 @@ import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
-import { EditTaskDialog } from '@/components/planner/edit-task-dialog';
-import { EditHabitDialog } from '@/components/planner/edit-habit-dialog';
-import { AddTaskDialog } from '@/components/planner/add-task-dialog';
+import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
@@ -36,6 +34,7 @@ import { useEODStore } from '@/lib/eod-store';
 import { useChatStore } from '@/lib/chat-store';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
+import { ITEM_TYPES } from '@/lib/item-registry';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { hoveredItem } from '@/lib/hovered-item';
@@ -292,9 +291,10 @@ export function AppShell() {
         ? tasks.find((t) => t.id === id)
         : habits.find((h) => h.id === id);
     if (!item) return;
+    const config = ITEM_TYPES[type];
     confirm({
-      title: `Delete ${type === 'habit' ? 'Habit' : 'Task'}?`,
-      description: `This will permanently delete "${item.title}". This action cannot be undone.`,
+      title: `Delete ${config.label}?`,
+      description: config.form.deleteDescription(item.title),
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
@@ -309,12 +309,22 @@ export function AppShell() {
     delete_hovered: handleShortcutDelete,
   });
 
-  // Dialog state — keep the last add payload so close animations don't flicker
-  const addState = activeDialog?.type === 'add' ? activeDialog : null;
-  const [lastAdd, setLastAdd] = useState(addState);
-  if (addState && addState !== lastAdd) setLastAdd(addState);
-  const editingTask = activeDialog?.type === 'edit-task' ? activeDialog.task : null;
-  const editingHabit = activeDialog?.type === 'edit-habit' ? activeDialog.habit : null;
+  // Dialog state — memoized so ItemDialog's internal anti-flicker latch sees a
+  // stable reference per open (a fresh object per render would loop it).
+  const itemDialogState = useMemo<ItemDialogState | null>(() => {
+    if (activeDialog?.type === 'add') {
+      return {
+        mode: 'add',
+        type: activeDialog.tab,
+        bucket: activeDialog.bucket,
+        date: activeDialog.date,
+      };
+    }
+    if (activeDialog?.type === 'edit-item') {
+      return { mode: 'edit', item: activeDialog.item };
+    }
+    return null;
+  }, [activeDialog]);
 
   // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
   if (!mounted) {
@@ -356,23 +366,8 @@ export function AppShell() {
 
       <DragGhost />
 
-      <AddTaskDialog
-        open={!!addState}
-        onOpenChange={(open) => !open && closeDialog()}
-        defaultTab={lastAdd?.tab ?? 'task'}
-        defaultBucket={lastAdd?.bucket}
-        defaultDate={lastAdd?.date}
-      />
-
-      <EditTaskDialog
-        task={editingTask}
-        open={!!editingTask}
-        onOpenChange={(open) => !open && closeDialog()}
-      />
-
-      <EditHabitDialog
-        habit={editingHabit}
-        open={!!editingHabit}
+      <ItemDialog
+        state={itemDialogState}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Drawer,
@@ -91,10 +92,17 @@ function ResponsiveModalDescription({
   return <C className={className} {...props} />;
 }
 
+function ResponsiveModalFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  const isMobile = React.useContext(MobileCtx);
+  if (isMobile) return <div className={cn('mt-4 flex', className)} {...props} />;
+  return <DialogFooter className={className} {...props} />;
+}
+
 export {
   ResponsiveModal,
   ResponsiveModalContent,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
   ResponsiveModalDescription,
+  ResponsiveModalFooter,
 };

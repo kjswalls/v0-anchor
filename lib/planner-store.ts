@@ -711,7 +711,7 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Reset streak: ${habit?.title || 'Unknown'}`);
         // Streak counter only — completedDates/dailyCounts are completion
         // history on unified items and must survive a streak reset. The
-        // confirm dialog copy in edit-habit-dialog matches this wording.
+        // confirm dialog copy in item-dialog matches this wording.
         updateItemAction(id, 'habit', { streak: 0 });
       },
 

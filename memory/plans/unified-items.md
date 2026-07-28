@@ -4,17 +4,16 @@
 (`task`, `habit`, and later user-defined types like `goal`), with per-type behavior driven
 by a **type-capability registry** instead of parallel code paths.
 
-**Status (2026-07-26):** Phases 0–2 implemented and adversarially verified (4-reviewer
-pass; all blockers fixed). Shipped: migration 019, unified `lib/db.ts` behind legacy-named
-exports, `ItemSchema` + registry, agent routes on shared ownership check. **Migration 019
-is NOT yet applied to Supabase — the app breaks against the live DB until it is** (follow
-the runbook in the migration header). Verification items deliberately deferred:
-agent-route body validation returning 400s instead of CHECK-constraint 500s (Phase 5);
-types-package publish CI + dist-matches-src check (Phase 5); mixed-type `order`
-interleaving policy for `fetchItems` with no type filter (decide in Phase 3 — `order` is
-currently only meaningful within a type); a dated deadline for the frozen-table drop
-(cleanup migration). Phase 3 is unblocked; Phase 4 remains blocked on committing the
-command-palette working-tree changes.
+**Status (2026-07-27):** Phases 0–4 shipped. Migrations 019 + 020 are APPLIED to the
+live Supabase DB (backfill verified: 1,466 tasks + 231 habits); store rewritten on
+`items[]` with `tasks`/`habits` projections (commit `3afc527`); Phase 4 replaced the
+three dialogs with one registry-driven ItemDialog (`components/planner/item-dialog.tsx`,
+ui-store `edit-item` union member, `form` presentation metadata on the registry).
+Verification items deliberately deferred: agent-route body validation returning 400s
+instead of CHECK-constraint 500s (Phase 5); types-package publish CI + dist-matches-src
+check (Phase 5); mixed-type `order` interleaving policy for `fetchItems` with no type
+filter (`order` is currently only meaningful within a type); a dated deadline for the
+frozen-table drop (cleanup migration). Next: Phase 5.
 
 ---
 
@@ -108,12 +107,11 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
   `planner-store.ts:1043,1137` and the habit status-gate bug at `:1060-1075`); history
   reset at cutover; persisted `timelineItemFilter` migration; `deriveDayItems` keeps its
   `tasksByBucket`/`habitsByBucket` output shape as a projection.
-- **Phase 4 — UI:** one ItemDialog (add/edit) driven by the registry; unified sentinel
-  handling (`''` vs `'none'`); keep local-date parsing (`edit-task-dialog.tsx:78-89` —
-  off-by-one guard); `ui-store` single `edit-item` dialog; migrate edit-habit's legacy
-  emoji grid to IconPicker; rows keep per-kind testids for now. **NOTE: dialogs/omnibar/
-  braindump currently have UNCOMMITTED command-palette changes in the working tree — do
-  not start Phase 4 until that work is committed.**
+- **Phase 4 — UI (SHIPPED):** one ItemDialog (add/edit) driven by the registry; unified
+  sentinel handling (`''` vs `'none'`); local-date parsing kept verbatim (off-by-one
+  guard, now in `item-dialog.tsx` `draftFromItem`); `ui-store` single `edit-item` dialog;
+  edit-habit's legacy emoji grid migrated to IconPicker; rows keep per-kind testids for
+  now. See "Phase 4 deliberate behavior changes" below.
 - **Phase 5 — external/AI:** context endpoint adds `items[]` + `schemaVersion` additively
   (Zod strips unknown keys — safe for deployed plugins); `/api/agent/tasks|habits` become
   facades over one handler with one shared ownership-check helper; AI context/EOD/morning
@@ -159,6 +157,42 @@ Deferred, recorded here on purpose: persisted `timelineItemFilter` migration
 rebuilds both projection arrays per mutation (extra cross-kind re-renders,
 verified loop-free — memoize only if profiling ever demands it); db allowlist
 ↔ schema-fields drift is now guarded by tests/unit/db-allowlists.test.ts.
+
+## Phase 4 deliberate behavior changes (reviewed + documented 2026-07-27)
+
+One `ItemDialog` (add + edit) replaced AddTaskDialog/EditTaskDialog/
+EditHabitDialog; registry gained a `form` section (titlePlaceholder,
+editDescription, containerLabel, newContainerLabel, newContainerIcon,
+deleteDescription). Behavior-preserving EXCEPT these conscious changes
+(4-lens adversarial review, 15 findings verified, 2 should-fixes fixed):
+
+1. **Sentinels unified on `'none'` + explicit None items** — add mode can now
+   clear priority and unassign project (edit behavior won).
+2. **Edit dialogs are ResponsiveModal** — bottom drawer on mobile (desktop
+   unchanged). New `ResponsiveModalFooter` primitive.
+3. **edit-habit's legacy 30-emoji grid replaced by IconPicker** — new groups
+   store `icon:` tokens; legacy raw-emoji values still render via
+   CategoryIcon. Group select rows also render through CategoryIcon now.
+4. **Inline container creators in EDIT mode seed the default icon token**
+   (Briefcase/Star) instead of `''`.
+5. **Shell hovered-delete confirm copy comes from the registry** — habit
+   delete now warns "and all its history" (was task copy for both).
+6. Cosmetic: Calendar popover `align="start"` in add mode; a few class-level
+   unifications (`truncate`, `w-full overflow-hidden` wrapper, gap-3);
+   dateless edit-task Time select shows the `--` placeholder (was blank);
+   a successful add resets the uncommitted creator icon pick (was kept).
+7. **Latch hardening (regression fixes over the originals' semantics):**
+   save/delete/reset handlers guard on the LIVE dialog state so the close
+   animation can't re-fire a save (double-Enter), confirm flags disarm when
+   the dialog payload changes (stranded "Reset Streak?" could otherwise fire
+   on the wrong habit), and the edit draft seeds render-phase so switching
+   edit targets across types never paints a stale frame.
+
+Old add-dialog dead code (unreachable project/group delete AlertDialog,
+`EMOJI_OPTIONS`) dropped. E2E text contracts preserved: 'Add New',
+'What needs to be done?', 'Add Task'/'Add Habit', 'Edit Task'/'Edit Habit',
+'Save Changes', input ids `task-title`/`habit-title`/`edit-task-title`/
+`edit-habit-title`, `data-sub-input` Enter routing, `__new__` sentinels.
 
 ## Behavioral invariants to preserve (regression traps)
 

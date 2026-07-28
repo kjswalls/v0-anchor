@@ -65,6 +65,21 @@ export interface ItemTypeConfig {
   webhookPayloadKey: 'task' | 'habit'
   /** Schema-derived data fields for this type (excludes the discriminator). */
   fields: readonly string[]
+  /** Presentation metadata for the unified ItemDialog (add/edit form). */
+  form: {
+    /** Title-input placeholder. "What needs to be done?" is an e2e selector. */
+    titlePlaceholder: string
+    /** sr-only description for the edit dialog. */
+    editDescription: string
+    /** Label over the container select ("Project" / "Group"). */
+    containerLabel: string
+    /** Label of the create-new option inside the container select. */
+    newContainerLabel: string
+    /** Lucide icon name seeding the inline container creator (via makeIconToken). */
+    newContainerIcon: string
+    /** Body copy for the delete-confirm dialog. */
+    deleteDescription: (title: string) => string
+  }
 }
 
 export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
@@ -90,6 +105,16 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
     webhookEvent: 'tasks.updated',
     webhookPayloadKey: 'task',
     fields: TASK_FIELDS,
+    form: {
+      titlePlaceholder: 'What needs to be done?',
+      editDescription:
+        'Edit the details of your task including title, priority, project, and schedule.',
+      containerLabel: 'Project',
+      newContainerLabel: 'New Project',
+      newContainerIcon: 'Briefcase',
+      deleteDescription: (title) =>
+        `This will permanently delete "${title}". This action cannot be undone.`,
+    },
   },
   habit: {
     type: 'habit',
@@ -113,6 +138,16 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
     webhookEvent: 'habits.updated',
     webhookPayloadKey: 'habit',
     fields: HABIT_FIELDS,
+    form: {
+      titlePlaceholder: 'What habit to track?',
+      editDescription:
+        'Edit the details of your habit including title, group, and repeat schedule.',
+      containerLabel: 'Group',
+      newContainerLabel: 'New Group',
+      newContainerIcon: 'Star',
+      deleteDescription: (title) =>
+        `This will permanently delete "${title}" and all its history. This action cannot be undone.`,
+    },
   },
 }
 
