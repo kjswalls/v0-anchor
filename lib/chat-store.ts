@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { buildAnchorContext } from './ai-context';
-import { BEACON_SYSTEM_PROMPT } from './beacon-system-prompt';
+import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
 
 /**
@@ -144,11 +144,15 @@ export const useChatStore = create<ChatStore>()((set, get) => {
       setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
       try {
-        const { items, projects, habitGroups } = usePlannerStore.getState();
+        const { items, projects, habitGroups, itemTypes } = usePlannerStore.getState();
         const context = buildAnchorContext({ items, projects, habitGroups });
         // Fresh values via getState() to avoid stale closures.
         const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();
-        const effectiveSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT;
+        // Custom-type nouns reach the model through the default prompt; a
+        // user-customized prompt wins untouched.
+        const effectiveSystemPrompt =
+          systemPrompt ||
+          buildBeaconSystemPrompt(itemTypes.map((t) => t.labelPlural.toLowerCase()));
 
         if (provider === 'openclaw') {
           const { openclawChatUrl, openclawAnchorApiKey } = get();

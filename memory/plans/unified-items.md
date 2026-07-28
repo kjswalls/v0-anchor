@@ -185,11 +185,18 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     read-path-only "deploy-safe" claim was insufficient), type:<slug> parser +
     custom-undo unit tests added. KNOWN/ACCEPTED v1 gaps (documented, not fixed):
     omnibar groups custom rows under the "Tasks" heading; manage-types UI has no
-    label-rename or plural editing; buildBeaconSystemPrompt(types) not implemented
-    (prompt nouns stay built-ins-only); items of a deleted type keep working on the
+    label-rename or plural editing; items of a deleted type keep working on the
     fallback template (by design); a plugin built from the Phase-5 types (items[]
     without the custom branch) would brick on the first custom item — always build
-    the plugin from current types.
+    the plugin from current types. buildBeaconSystemPrompt(types) SHIPPED post-review:
+    the default prompt announces custom-type nouns from the hydrated store; a
+    user-customized prompt wins untouched.
+
+  **Follow-up (Kirby, 2026-07-27): ItemDialog type selector redesign.** Tabs don't
+  scale past ~3-4 types — replace with a type dropdown (or Task/Habit segmented +
+  overflow Select). Product/design decision: mock against the Anchor Redesign Figma
+  (design source of truth) before building; also decide whether per-type draft
+  preservation survives the switch (tabs currently keep one draft per type).
 
   **Phase 6b settled scope (decided during 6a):** custom items ride the TASK pipeline
   instead of a parallel one. (1) planner-store generalizes the task action set to

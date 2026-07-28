@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildAnchorContext } from '@/lib/ai-context';
-import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
+import { BEACON_SYSTEM_PROMPT, buildBeaconSystemPrompt } from '@/lib/beacon-system-prompt';
 import type { Item } from '@/lib/planner-types';
 
 /**
@@ -118,5 +118,15 @@ describe('BEACON_SYSTEM_PROMPT', () => {
         'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
         "Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they're working on."
     );
+  });
+
+  it('announces custom-type nouns when hydrated types are passed', () => {
+    const prompt = buildBeaconSystemPrompt(['goals']);
+    expect(prompt).toContain("current tasks, habits, goals, and projects.");
+    expect(prompt).toContain('reference their tasks, habits, or goals,');
+  });
+
+  it('with no custom types equals the exported default', () => {
+    expect(buildBeaconSystemPrompt([])).toBe(BEACON_SYSTEM_PROMPT);
   });
 });
