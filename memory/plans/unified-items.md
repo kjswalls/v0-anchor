@@ -184,13 +184,22 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     guard (fetchItemTypes null ⇒ itemTypesAvailable=false gates type creation — the
     read-path-only "deploy-safe" claim was insufficient), type:<slug> parser +
     custom-undo unit tests added. KNOWN/ACCEPTED v1 gaps (documented, not fixed):
-    omnibar groups custom rows under the "Tasks" heading; manage-types UI has no
+    manage-types UI has no
     label-rename or plural editing; items of a deleted type keep working on the
     fallback template (by design); a plugin built from the Phase-5 types (items[]
     without the custom branch) would brick on the first custom item — always build
     the plugin from current types. buildBeaconSystemPrompt(types) SHIPPED post-review:
     the default prompt announces custom-type nouns from the hydrated store; a
     user-customized prompt wins untouched.
+
+    **Deferred ledger CLOSED (2026-07-28).** All three custom-type follow-ups are
+    shipped: `create.<type>` palette commands landed with command-palette round 2
+    (`f73ebfa`, the `customTypeCommands` provider in lib/commands/registry.ts —
+    memoised on the type-list identity, alias guarded against static commands);
+    Beacon nouns in `ee1ec07`; omnibar per-type search sections in `1278432`
+    (lib/search.ts `groupResults`, rows sharing round 2's itemIcon/itemContainer).
+    Nothing custom-type-shaped is outstanding except the manage-types rename gap
+    above and the e2e suite, which is its own effort.
 
   **Follow-up (Kirby, 2026-07-27): ItemDialog type selector redesign.** Tabs don't
   scale past ~3-4 types — replace with a type dropdown (or Task/Habit segmented +
