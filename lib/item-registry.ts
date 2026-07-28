@@ -10,6 +10,7 @@
  * product decision, not a refactor step. See memory/plans/unified-items.md.
  */
 
+import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
 import type { ItemType, RepeatFrequency, TimeBucket } from '@anchor-app/types'
 
 export interface ItemTypeConfig {
@@ -62,6 +63,8 @@ export interface ItemTypeConfig {
    */
   webhookEvent: 'tasks.updated' | 'habits.updated'
   webhookPayloadKey: 'task' | 'habit'
+  /** Schema-derived data fields for this type (excludes the discriminator). */
+  fields: readonly string[]
 }
 
 export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
@@ -86,6 +89,7 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
     defaultTimeBucket: null,
     webhookEvent: 'tasks.updated',
     webhookPayloadKey: 'task',
+    fields: TASK_FIELDS,
   },
   habit: {
     type: 'habit',
@@ -108,6 +112,7 @@ export const ITEM_TYPES: Record<ItemType, ItemTypeConfig> = {
     defaultTimeBucket: null,
     webhookEvent: 'habits.updated',
     webhookPayloadKey: 'habit',
+    fields: HABIT_FIELDS,
   },
 }
 

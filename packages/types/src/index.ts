@@ -17,6 +17,9 @@ export {
   AnchorChangeEventSchema,
 } from './schemas.js'
 
+// Schema-derived field lists (values, not types)
+export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS } from './schemas.js'
+
 // Types (inferred from schemas — no duplication)
 import { z } from 'zod'
 import {

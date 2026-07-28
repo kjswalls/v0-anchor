@@ -126,6 +126,40 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
   testid policy `item-card` + `data-item-type` migrating all e2e selectors in one PR;
   after bake: drop legacy tables, retire RPC wrapper.
 
+## Phase 3 deliberate behavior changes (reviewed + documented 2026-07-27)
+
+The store rewrite is behavior-preserving EXCEPT these conscious changes:
+
+1. **Completion writes are intent-based + atomic** (migration 020
+   `set_item_completion(id, type, date, completed, adjust_streak)`): one
+   statement sets the desired end state and moves streak only when the date
+   array actually changes. Fixes the old read-modify-write races, the
+   parity-toggle intent inversion under stale clients, and streak/date desync
+   under partial failure. Streak is server-owned on live toggles; the store's
+   companion habit update excludes completedDates AND streak. Undo/redo
+   replays completion diffs as per-date intents with adjust_streak=false and
+   restores streak via the normal patch.
+2. **`updateTask`/`updateHabit` persist the auto-corrected timeBucket** (old
+   code corrected only local state, so the correction vanished on reload).
+3. **Store-miss = full no-op**: actions on ids absent from the store no longer
+   issue blind DB writes (old code could mutate soft-deleted trash rows).
+4. **`resetHabitStreak` sends `{streak: 0}` only** — completedDates AND
+   dailyCounts survive (history, not counters). Confirm-dialog copy updated
+   to match.
+5. **Undo/redo diffs ALL fields for both types** (old habit sync fired only on
+   status change — title/group edits never persisted their undo) and
+   **containers diff by id, not name** (a name-keyed diff turned rename-undo
+   into soft-deleting the only copy). `restoreProject`/`restoreHabitGroup`
+   are id-based now; a restore also re-pushes the full snapshot shape.
+6. Action labels added for scheduleHabit/moveTask*ProjectBlock (previously
+   inherited stale labels).
+
+Deferred, recorded here on purpose: persisted `timelineItemFilter` migration
+(needed only when the filter vocabulary opens up in Phase 6); `projectItems`
+rebuilds both projection arrays per mutation (extra cross-kind re-renders,
+verified loop-free — memoize only if profiling ever demands it); db allowlist
+↔ schema-fields drift is now guarded by tests/unit/db-allowlists.test.ts.
+
 ## Behavioral invariants to preserve (regression traps)
 
 - Priority/project filters hide ALL habits (day-items, search, braindump) — once habits

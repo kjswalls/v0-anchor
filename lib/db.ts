@@ -190,7 +190,7 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   return row;
 }
 
-function updatesToRow(type: ItemType, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
+export function updatesToRow(type: ItemType, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
   return type === 'habit'
     ? habitUpdatesToRow(updates as Partial<Habit>)
     : taskUpdatesToRow(updates as Partial<Task>);
@@ -283,6 +283,32 @@ export async function toggleItemCompletedDate(id: string, type: ItemType, dateSt
     item_id: id,
     item_type: type,
     date_str: dateStr,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Declare the desired completion state for one date — idempotent under
+ * retries, stale clients, and request reordering (unlike a parity toggle).
+ * The RPC also owns the streak transition (moves only when the date array
+ * actually changes); pass adjustStreak=false when restoring an absolute
+ * snapshot (undo/redo) that patches streak separately.
+ */
+export async function setItemCompletion(
+  id: string,
+  type: ItemType,
+  dateStr: string,
+  completed: boolean,
+  adjustStreak = true,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.rpc('set_item_completion', {
+    item_id: id,
+    item_type: type,
+    date_str: dateStr,
+    completed,
+    adjust_streak: adjustStreak,
   });
   if (error) throw error;
 }
@@ -462,13 +488,15 @@ export async function deleteProject(userId: string, id: string, client?: DbClien
   notifyPlugins(userId, 'projects.updated', { action: 'delete', id });
 }
 
-export async function restoreProject(userId: string, name: string): Promise<void> {
+// Restore by id, not name — names are mutable (rename) so a name-keyed
+// restore silently no-ops against a renamed row.
+export async function restoreProject(userId: string, id: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
     .from('projects')
     .update({ deleted_at: null })
     .eq('user_id', userId)
-    .eq('name', name);
+    .eq('id', id);
   if (error) throw error;
 }
 
@@ -542,12 +570,12 @@ export async function deleteHabitGroup(userId: string, id: string, client?: DbCl
   notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', id });
 }
 
-export async function restoreHabitGroup(userId: string, name: string): Promise<void> {
+export async function restoreHabitGroup(userId: string, id: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
     .from('habit_groups')
     .update({ deleted_at: null })
     .eq('user_id', userId)
-    .eq('name', name);
+    .eq('id', id);
   if (error) throw error;
 }

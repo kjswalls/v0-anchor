@@ -255,6 +255,10 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
+export declare const TASK_FIELDS: (keyof z.infer<typeof TaskSchema>)[];
+export declare const HABIT_FIELDS: (keyof z.infer<typeof HabitSchema>)[];
+export declare const PROJECT_FIELDS: (keyof z.infer<typeof ProjectSchema>)[];
+export declare const HABIT_GROUP_FIELDS: (keyof z.infer<typeof HabitGroupSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;

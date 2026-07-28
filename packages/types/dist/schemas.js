@@ -94,6 +94,12 @@ const habitShape = {
 };
 export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays);
 export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays);
+// Canonical field lists (schema-derived, so they can never drift from the
+// shapes) — used for per-type diffing/patching, e.g. undo/redo sync.
+export const TASK_FIELDS = Object.keys(taskShape);
+export const HABIT_FIELDS = Object.keys(habitShape);
+export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape);
+export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
 // One entity, discriminated by `type`. Branches are structurally identical to
 // Task/Habit so projections (item → legacy shape) are plain field subsets.

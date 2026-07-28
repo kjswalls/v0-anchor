@@ -6,31 +6,29 @@ import { format } from 'date-fns';
 import type {
   Task,
   Habit,
+  Item,
+  TaskItem,
+  HabitItem,
+  ItemType,
   ViewMode,
   GroupBy,
   FilterState,
   TimeBucket,
   TaskStatus,
   HabitStatus,
-  RepeatFrequency,
   Project,
   HabitGroupType,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import {
-  fetchTasks,
-  fetchHabits,
+  fetchItems,
   fetchProjects,
   fetchHabitGroups,
-  createTask as dbCreateTask,
-  updateTask as dbUpdateTask,
-  deleteTask as dbDeleteTask,
-  restoreTask as dbRestoreTask,
-  dbToggleTaskCompletedDate,
-  createHabit as dbCreateHabit,
-  updateHabit as dbUpdateHabit,
-  deleteHabit as dbDeleteHabit,
-  restoreHabit as dbRestoreHabit,
+  createItem as dbCreateItem,
+  updateItem as dbUpdateItem,
+  deleteItem as dbDeleteItem,
+  restoreItem as dbRestoreItem,
+  setItemCompletion as dbSetItemCompletion,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
@@ -40,11 +38,19 @@ import {
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
+import { ITEM_TYPES } from './item-registry';
+import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
 
 interface PlannerStore {
+  /**
+   * Source of truth: every task and habit as a unified Item. `tasks` and
+   * `habits` are projections kept in sync on every mutation so existing
+   * consumers keep working unchanged; new code should prefer `items`.
+   */
+  items: Item[];
   tasks: Task[];
   habits: Habit[];
   selectedDate: Date;
@@ -150,12 +156,18 @@ interface PlannerStore {
   refreshActionLog: () => void;
 }
 
-const getDateString = (date: Date) => date.toISOString().split('T')[0];
+// Projections: keep `tasks`/`habits` derived from `items` in the same set()
+// so every consumer sees a consistent snapshot. TaskItem/HabitItem are
+// structurally assignable to Task/Habit (the extra `type` key is inert).
+const projectItems = (items: Item[]) => ({
+  items,
+  tasks: items.filter((i): i is TaskItem => i.type === 'task'),
+  habits: items.filter((i): i is HabitItem => i.type === 'habit'),
+});
 
 // History management for undo/redo
 interface HistoryState {
-  tasks: Task[];
-  habits: Habit[];
+  items: Item[];
   projects: Project[];
   habitGroups: HabitGroupType[];
 }
@@ -201,8 +213,7 @@ const saveToHistory = (state: HistoryState) => {
 
   // Deep clone the state to avoid reference issues
   const snapshot: HistoryState = {
-    tasks: JSON.parse(JSON.stringify(state.tasks)),
-    habits: JSON.parse(JSON.stringify(state.habits)),
+    items: JSON.parse(JSON.stringify(state.items)),
     projects: JSON.parse(JSON.stringify(state.projects)),
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
   };
@@ -239,11 +250,58 @@ const getBucketForTime = (time: string): TimeBucket => {
   return 'anytime';
 };
 
+// A concrete start time overrides a mismatched bucket ('anytime' is exempt).
+// Single home for the auto-correct rule that used to be copied six times.
+const autoCorrectBucket = (
+  time: string | undefined,
+  bucket: TimeBucket | undefined,
+): TimeBucket | undefined =>
+  time && bucket && bucket !== 'anytime' ? getBucketForTime(time) : bucket;
+
+// Per-type diff for undo/redo db sync — fields come from the schema-derived
+// registry lists, so a new schema field can never silently drop out of sync.
+const diffItem = (from: Item, to: Item): Record<string, unknown> => {
+  const patch: Record<string, unknown> = {};
+  for (const key of ITEM_TYPES[to.type].fields) {
+    const a = (from as Record<string, unknown>)[key];
+    const b = (to as Record<string, unknown>)[key];
+    if (JSON.stringify(a) !== JSON.stringify(b)) patch[key] = b;
+  }
+  return patch;
+};
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
-    (set, get) => ({
-      tasks: [],
-      habits: [],
+    (set, get) => {
+      // ── Unified item engine (private) ──────────────────────────────────────
+      const findItem = (id: string, type: ItemType): Item | undefined =>
+        get().items.find((i) => i.id === id && i.type === type);
+
+      /**
+       * Optimistically apply `updates` to one item and persist. The type guard
+       * is load-bearing: task actions called with a habit id (e.g. the sidebar
+       * drop calling unscheduleTask for a habit) must stay a complete no-op,
+       * exactly as when the kinds lived in separate arrays.
+       *
+       * Deliberate change from the pre-unification store: a store miss also
+       * suppresses the DB write (old code issued it blindly, which could touch
+       * soft-deleted trash rows).
+       */
+      const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
+        if (!findItem(id, type)) return;
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id && i.type === type ? { ...i, ...updates } as Item : i)),
+        ));
+        dbUpdateItem(id, type, updates).catch(console.error);
+      };
+
+      const resolveDateStr = (date?: Date): string => {
+        const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return toDateStr(date ?? get().selectedDate, userTimezone);
+      };
+
+      return {
+      ...projectItems([]),
       selectedDate: new Date(),
       viewMode: 'day',
       groupBy: 'none',
@@ -337,14 +395,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [tasks, habits, projects, habitGroups] = await Promise.all([
-            fetchTasks(userId),
-            fetchHabits(userId),
+          const [items, projects, habitGroups] = await Promise.all([
+            fetchItems(userId),
             fetchProjects(userId),
             fetchHabitGroups(userId),
           ]);
 
-          const snapshot = { tasks, habits, projects, habitGroups };
+          const snapshot = { items, projects, habitGroups };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -360,8 +417,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
           isUpdatingUndoRedo = true;
           set({
-            tasks,
-            habits,
+            ...projectItems(items),
             projects,
             habitGroups,
             isLoading: false,
@@ -389,8 +445,7 @@ export const usePlannerStore = create<PlannerStore>()(
         isUpdatingUndoRedo = true;
         set({
           userId: null,
-          tasks: [],
-          habits: [],
+          ...projectItems([]),
           projects: [],
           habitGroups: [],
           isLoading: false,
@@ -406,109 +461,76 @@ export const usePlannerStore = create<PlannerStore>()(
 
       addTask: (taskData) => {
         setNextActionLabel(`Add task: ${taskData.title}`);
-        // Auto-correct bucket based on start time
-        let timeBucket = taskData.timeBucket;
-        if (taskData.startTime && timeBucket && timeBucket !== 'anytime') {
-          const correctBucket = getBucketForTime(taskData.startTime);
-          if (correctBucket !== timeBucket) {
-            timeBucket = correctBucket;
-          }
-        }
+        const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
-        const task: Task = {
+        const task: TaskItem = {
           ...taskData,
+          type: 'task',
           timeBucket,
           id: crypto.randomUUID(),
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
         };
-        set((state) => ({ tasks: [...state.tasks, task] }));
+        set((state) => projectItems([...state.items, task]));
 
         const userId = get().userId;
-        if (userId) dbCreateTask(userId, task).catch(console.error);
+        if (userId) dbCreateItem(userId, task).catch(console.error);
       },
 
       updateTask: (id, updates) => {
-        const task = get().tasks.find((t) => t.id === id);
+        const task = findItem(id, 'task');
         setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            if (t.id !== id) return t;
 
-            const newUpdates = { ...updates };
+        const newUpdates = { ...updates };
+        // Auto-correct bucket if start time changes
+        if (updates.startTime && task) {
+          const bucket = updates.timeBucket || task.timeBucket;
+          const corrected = autoCorrectBucket(updates.startTime, bucket);
+          if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
 
-            // Auto-correct bucket if start time changes
-            if (updates.startTime && (t.timeBucket || updates.timeBucket)) {
-              const bucket = updates.timeBucket || t.timeBucket;
-              if (bucket && bucket !== 'anytime') {
-                const correctBucket = getBucketForTime(updates.startTime);
-                if (correctBucket !== bucket) {
-                  newUpdates.timeBucket = correctBucket;
-                }
-              }
-            }
-
-            return { ...t, ...newUpdates };
-          }),
-        }));
-
-        dbUpdateTask(id, updates).catch(console.error);
+        updateItemAction(id, 'task', newUpdates);
       },
 
       deleteTask: (id) => {
-        const task = get().tasks.find((t) => t.id === id);
+        const task = findItem(id, 'task');
         setNextActionLabel(`Delete task: ${task?.title || 'Unknown'}`);
-        set((state) => ({
-          tasks: state.tasks.filter((t) => t.id !== id),
-        }));
+        if (!task) return;
+        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === 'task'))));
 
-        dbDeleteTask(id).catch(console.error);
+        dbDeleteItem(id, 'task').catch(console.error);
       },
 
       toggleTaskStatus: (id, status?, date?) => {
-        const task = get().tasks.find((t) => t.id === id);
+        const task = findItem(id, 'task') as TaskItem | undefined;
         if (!task) return;
 
         if (isRecurring(task)) {
           // Per-date completion tracking — never change global status
-          const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-          const dateStr = toDateStr(date ?? get().selectedDate, userTimezone);
+          const dateStr = resolveDateStr(date);
           const alreadyDone = isCompletedOnDate(task, dateStr);
           const newCompletedDates = alreadyDone
             ? (task.completedDates ?? []).filter(d => d !== dateStr)
             : [...(task.completedDates ?? []), dateStr];
 
           setNextActionLabel(`${alreadyDone ? 'Uncomplete' : 'Complete'} task on ${dateStr}: ${task.title}`);
-          const updatedTask = { ...task, completedDates: newCompletedDates };
-          set((state) => ({
-            tasks: state.tasks.map(t => t.id === id ? updatedTask : t),
-          }));
-          dbToggleTaskCompletedDate(id, dateStr).catch(console.error);
+          set((state) => projectItems(
+            state.items.map(i => i.id === id && i.type === 'task' ? { ...i, completedDates: newCompletedDates } : i),
+          ));
+          dbSetItemCompletion(id, 'task', dateStr, !alreadyDone).catch(console.error);
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
           setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task.title}`);
-          set((state) => ({
-            tasks: state.tasks.map((t) =>
-              t.id === id ? { ...t, status: newStatus } : t
-            ),
-          }));
-          dbUpdateTask(id, { status: newStatus }).catch(console.error);
+          updateItemAction(id, 'task', { status: newStatus });
         }
       },
 
       scheduleTask: (id, bucket, time, date) => {
-        const task = get().tasks.find((t) => t.id === id);
+        const task = findItem(id, 'task');
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
-        // Auto-correct bucket based on time
-        let finalBucket = bucket;
-        if (time && bucket !== 'anytime') {
-          const correctBucket = getBucketForTime(time);
-          if (correctBucket !== bucket) {
-            finalBucket = correctBucket;
-          }
-        }
+        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
 
         const updates: Partial<Task> = {
           isScheduled: true,
@@ -520,17 +542,11 @@ export const usePlannerStore = create<PlannerStore>()(
           ...(date ? { startDate: date } : {}),
         };
 
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-          ),
-        }));
-
-        dbUpdateTask(id, updates).catch(console.error);
+        updateItemAction(id, 'task', updates);
       },
 
       assignTaskToBucket: (id, bucket) => {
-        const task = get().tasks.find((t) => t.id === id);
+        const task = findItem(id, 'task');
         setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
         const updates: Partial<Task> = {
           isScheduled: false,
@@ -541,27 +557,14 @@ export const usePlannerStore = create<PlannerStore>()(
           previousStartDate: undefined,
         };
 
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-          ),
-        }));
-
-        dbUpdateTask(id, updates).catch(console.error);
+        updateItemAction(id, 'task', updates);
       },
 
       unscheduleTask: (id) => {
-        const task = get().tasks.find((t) => t.id === id);
-        setNextActionLabel(`Unschedule task: ${task?.title || 'Unknown'}`);
-        const updates: Partial<Task> = { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined };
-
-        set((state) => ({
-          tasks: state.tasks.map((t) =>
-            t.id === id ? { ...t, ...updates } : t
-          ),
-        }));
-
-        dbUpdateTask(id, updates).catch(console.error);
+        const task = findItem(id, 'task');
+        if (!task) return; // habit ids no-op here by contract (sidebar drop)
+        setNextActionLabel(`Unschedule task: ${task.title}`);
+        updateItemAction(id, 'task', { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });
       },
 
       reorderTasks: (taskIds) => {
@@ -569,36 +572,31 @@ export const usePlannerStore = create<PlannerStore>()(
         // Tasks absent from taskIds keep their current order — a partial list
         // (e.g. one filtered view) must never drop the rest of the store.
         const orderById = new Map(taskIds.map((id, index) => [id, index]));
-        const changed: Task[] = [];
+        const changed: TaskItem[] = [];
 
-        set((state) => ({
-          tasks: state.tasks.map((t) => {
-            const order = orderById.get(t.id);
-            if (order === undefined || order === t.order) return t;
-            const updated = { ...t, order };
+        set((state) => projectItems(
+          state.items.map((i) => {
+            if (i.type !== 'task') return i;
+            const order = orderById.get(i.id);
+            if (order === undefined || order === i.order) return i;
+            const updated = { ...i, order };
             changed.push(updated);
             return updated;
           }),
-        }));
+        ));
 
         changed.forEach((t) =>
-          dbUpdateTask(t.id, { order: t.order }).catch(console.error)
+          dbUpdateItem(t.id, 'task', { order: t.order }).catch(console.error)
         );
       },
 
       addHabit: (habitData) => {
         setNextActionLabel(`Add habit: ${habitData.title}`);
-        // Auto-correct bucket based on start time
-        let timeBucket = habitData.timeBucket;
-        if (habitData.startTime && timeBucket && timeBucket !== 'anytime') {
-          const correctBucket = getBucketForTime(habitData.startTime);
-          if (correctBucket !== timeBucket) {
-            timeBucket = correctBucket;
-          }
-        }
+        const timeBucket = autoCorrectBucket(habitData.startTime, habitData.timeBucket);
 
-        const habit: Habit = {
+        const habit: HabitItem = {
           ...habitData,
+          type: 'habit',
           timeBucket,
           id: crypto.randomUUID(),
           streak: 0,
@@ -608,162 +606,113 @@ export const usePlannerStore = create<PlannerStore>()(
           dailyCounts: {},
           currentDayCount: 0,
         };
-        set((state) => ({ habits: [...state.habits, habit] }));
+        set((state) => projectItems([...state.items, habit]));
 
         const userId = get().userId;
-        if (userId) dbCreateHabit(userId, habit).catch(console.error);
+        if (userId) dbCreateItem(userId, habit).catch(console.error);
       },
 
       updateHabit: (id, updates) => {
-        const habit = get().habits.find((h) => h.id === id);
+        const habit = findItem(id, 'habit');
         setNextActionLabel(`Edit habit: ${habit?.title || 'Unknown'}`);
-        set((state) => ({
-          habits: state.habits.map((h) => {
-            if (h.id !== id) return h;
 
-            const newUpdates = { ...updates };
+        const newUpdates = { ...updates };
+        // Auto-correct bucket if start time changes
+        if (updates.startTime && habit) {
+          const bucket = updates.timeBucket || habit.timeBucket;
+          const corrected = autoCorrectBucket(updates.startTime, bucket);
+          if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
 
-            // Auto-correct bucket if start time changes
-            if (updates.startTime && (h.timeBucket || updates.timeBucket)) {
-              const bucket = updates.timeBucket || h.timeBucket;
-              if (bucket && bucket !== 'anytime') {
-                const correctBucket = getBucketForTime(updates.startTime);
-                if (correctBucket !== bucket) {
-                  newUpdates.timeBucket = correctBucket;
-                }
-              }
-            }
-
-            return { ...h, ...newUpdates };
-          }),
-        }));
-
-        dbUpdateHabit(id, updates).catch(console.error);
+        updateItemAction(id, 'habit', newUpdates);
       },
 
       deleteHabit: (id) => {
-        const habit = get().habits.find((h) => h.id === id);
+        const habit = findItem(id, 'habit');
         setNextActionLabel(`Delete habit: ${habit?.title || 'Unknown'}`);
-        set((state) => ({
-          habits: state.habits.filter((h) => h.id !== id),
-        }));
+        if (!habit) return;
+        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === 'habit'))));
 
-        dbDeleteHabit(id).catch(console.error);
+        dbDeleteItem(id, 'habit').catch(console.error);
       },
 
       toggleHabitStatus: (id, status, count, date) => {
-        const habit = get().habits.find((h) => h.id === id);
+        const habit = findItem(id, 'habit') as HabitItem | undefined;
+        if (!habit) return;
         const statusLabel = status === 'done' ? 'Complete' : status === 'skipped' ? 'Skip' : 'Reset';
-        setNextActionLabel(`${statusLabel} habit: ${habit?.title || 'Unknown'}`);
-        const userTimezone = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const dateStr = toDateStr(date ?? get().selectedDate, userTimezone);
+        setNextActionLabel(`${statusLabel} habit: ${habit.title}`);
+        const dateStr = resolveDateStr(date);
 
-        let updatedHabit: Habit | null = null;
+        const wasCompleted = habit.completedDates.includes(dateStr);
+        const wasSkipped = (habit.skippedDates ?? []).includes(dateStr);
+        let newCompletedDates = [...habit.completedDates];
+        let newSkippedDates = [...(habit.skippedDates ?? [])];
+        const newDailyCounts = { ...(habit.dailyCounts ?? {}) };
+        let newStreak = habit.streak;
 
-        set((state) => ({
-          habits: state.habits.map((h) => {
-            if (h.id !== id) return h;
-
-            const wasCompleted = h.completedDates.includes(dateStr);
-            const wasSkipped = (h.skippedDates ?? []).includes(dateStr);
-            let newCompletedDates = [...h.completedDates];
-            let newSkippedDates = [...(h.skippedDates ?? [])];
-            const newDailyCounts = { ...(h.dailyCounts ?? {}) };
-            let newStreak = h.streak;
-
-            // Update completedDates
-            if (status === 'done' && !wasCompleted) {
-              newCompletedDates.push(dateStr);
-              newStreak += 1;
-            } else if (status !== 'done' && wasCompleted) {
-              newCompletedDates = newCompletedDates.filter((d) => d !== dateStr);
-              newStreak = Math.max(0, newStreak - 1);
-            }
-
-            // Update skippedDates
-            if (status === 'skipped' && !wasSkipped) {
-              newSkippedDates.push(dateStr);
-            } else if (status !== 'skipped' && wasSkipped) {
-              newSkippedDates = newSkippedDates.filter((d) => d !== dateStr);
-            }
-
-            // Update dailyCounts for multi-complete habits
-            if (count !== undefined) {
-              newDailyCounts[dateStr] = count;
-            }
-
-            updatedHabit = {
-              ...h,
-              status,
-              completedDates: newCompletedDates,
-              skippedDates: newSkippedDates,
-              dailyCounts: newDailyCounts,
-              currentDayCount: count !== undefined ? count : h.currentDayCount || 0,
-              streak: newStreak,
-            };
-            return updatedHabit;
-          }),
-        }));
-
-        if (updatedHabit) {
-          dbUpdateHabit(id, {
-            status: (updatedHabit as Habit).status,
-            completedDates: (updatedHabit as Habit).completedDates,
-            skippedDates: (updatedHabit as Habit).skippedDates,
-            dailyCounts: (updatedHabit as Habit).dailyCounts,
-            currentDayCount: (updatedHabit as Habit).currentDayCount,
-            streak: (updatedHabit as Habit).streak,
-          }).catch(console.error);
+        // Completion goes through the intent-based atomic RPC: it sets the
+        // desired end state for the date and owns the streak transition
+        // server-side (streak moves only if the array actually changes), so
+        // streak and completion history can't desync under partial failure,
+        // stale clients, or rapid double-toggles. The optimistic values below
+        // are UI-only; the companion update deliberately excludes
+        // completedDates AND streak.
+        if (status === 'done' && !wasCompleted) {
+          newCompletedDates.push(dateStr);
+          newStreak += 1;
+        } else if (status !== 'done' && wasCompleted) {
+          newCompletedDates = newCompletedDates.filter((d) => d !== dateStr);
+          newStreak = Math.max(0, newStreak - 1);
         }
+
+        if (status === 'skipped' && !wasSkipped) {
+          newSkippedDates.push(dateStr);
+        } else if (status !== 'skipped' && wasSkipped) {
+          newSkippedDates = newSkippedDates.filter((d) => d !== dateStr);
+        }
+
+        if (count !== undefined) {
+          newDailyCounts[dateStr] = count;
+        }
+
+        const optimistic: Partial<Habit> = {
+          status,
+          completedDates: newCompletedDates,
+          skippedDates: newSkippedDates,
+          dailyCounts: newDailyCounts,
+          currentDayCount: count !== undefined ? count : habit.currentDayCount || 0,
+          streak: newStreak,
+        };
+
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id && i.type === 'habit' ? { ...i, ...optimistic } as Item : i)),
+        ));
+
+        dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
+        const { completedDates: _cd, streak: _st, ...rest } = optimistic;
+        dbUpdateItem(id, 'habit', rest).catch(console.error);
       },
 
       scheduleHabit: (id, bucket, time) => {
-        // Auto-correct bucket based on time
-        let finalBucket = bucket;
-        if (time && bucket !== 'anytime') {
-          const correctBucket = getBucketForTime(time);
-          if (correctBucket !== bucket) {
-            finalBucket = correctBucket;
-          }
-        }
-
-        const updates: Partial<Habit> = { timeBucket: finalBucket, startTime: time };
-
-        set((state) => ({
-          habits: state.habits.map((h) =>
-            h.id === id ? { ...h, ...updates } : h
-          ),
-        }));
-
-        dbUpdateHabit(id, updates).catch(console.error);
+        const habit = findItem(id, 'habit');
+        setNextActionLabel(`Schedule habit: ${habit?.title || 'Unknown'}`);
+        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
+        updateItemAction(id, 'habit', { timeBucket: finalBucket, startTime: time });
       },
 
       assignHabitToBucket: (id, bucket) => {
-        const habit = get().habits.find((h) => h.id === id);
+        const habit = findItem(id, 'habit');
         setNextActionLabel(`Move habit to ${bucket}: ${habit?.title || 'Unknown'}`);
-        const updates: Partial<Habit> = { timeBucket: bucket, startTime: undefined };
-
-        set((state) => ({
-          habits: state.habits.map((h) =>
-            h.id === id ? { ...h, ...updates } : h
-          ),
-        }));
-
-        dbUpdateHabit(id, updates).catch(console.error);
+        updateItemAction(id, 'habit', { timeBucket: bucket, startTime: undefined });
       },
 
       resetHabitStreak: (id) => {
-        const habit = get().habits.find((h) => h.id === id);
+        const habit = findItem(id, 'habit');
         setNextActionLabel(`Reset streak: ${habit?.title || 'Unknown'}`);
-        const updates: Partial<Habit> = { streak: 0, completedDates: [] };
-
-        set((state) => ({
-          habits: state.habits.map((h) =>
-            h.id === id ? { ...h, ...updates } : h
-          ),
-        }));
-
-        dbUpdateHabit(id, updates).catch(console.error);
+        // Streak counter only — completedDates/dailyCounts are completion
+        // history on unified items and must survive a streak reset. The
+        // confirm dialog copy in edit-habit-dialog matches this wording.
+        updateItemAction(id, 'habit', { streak: 0 });
       },
 
       setSelectedDate: (date) => set({ selectedDate: date }),
@@ -807,9 +756,9 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Delete project: ${project?.name || 'Unknown'}`);
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
-          tasks: state.tasks.map((t) =>
-            t.project === project?.name ? { ...t, project: undefined } : t
-          ),
+          ...projectItems(state.items.map((i) =>
+            i.type === 'task' && i.project === project?.name ? { ...i, project: undefined } : i
+          )),
         }));
 
         const userId = get().userId;
@@ -828,12 +777,14 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       moveTaskToProjectBlock: (taskId) => {
+        const moved = findItem(taskId, 'task');
+        setNextActionLabel(`Move task into project block: ${moved?.title || 'Unknown'}`);
         const selectedDate = get().selectedDate;
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         let taskUpdates: Partial<Task> | null = null;
 
         set((state) => {
-          const task = state.tasks.find((t) => t.id === taskId);
+          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
           if (!task || !task.project) return state;
 
           const project = state.projects.find((p) => p.name === task.project);
@@ -849,56 +800,57 @@ export const usePlannerStore = create<PlannerStore>()(
             startDate: selectedDateStr,
           };
 
-          return {
-            tasks: state.tasks.map((t) =>
-              t.id === taskId ? { ...t, ...taskUpdates! } : t
-            ),
-          };
+          return projectItems(state.items.map((i) =>
+            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+          ));
         });
 
-        if (taskUpdates) dbUpdateTask(taskId, taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
       },
 
       moveTasksToProjectBlock: (taskIds) => {
+        setNextActionLabel(`Move ${taskIds.length} tasks into project block`);
         const selectedDate = get().selectedDate;
         const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
         const updatesMap = new Map<string, Partial<Task>>();
 
         set((state) => {
-          const firstTask = state.tasks.find(t => taskIds.includes(t.id));
+          const firstTask = state.items.find(
+            (i): i is TaskItem => i.type === 'task' && taskIds.includes(i.id)
+          );
           if (!firstTask || !firstTask.project) return state;
 
           const project = state.projects.find((p) => p.name === firstTask.project);
           if (!project || !project.startTime || !project.timeBucket) return state;
 
-          return {
-            tasks: state.tasks.map((t) => {
-              if (!taskIds.includes(t.id)) return t;
-              const updates: Partial<Task> = {
-                inProjectBlock: true,
-                previousStartTime: t.startTime,
-                previousStartDate: t.startDate,
-                startTime: undefined,
-                timeBucket: project.timeBucket,
-                isScheduled: true,
-                startDate: selectedDateStr,
-              };
-              updatesMap.set(t.id, updates);
-              return { ...t, ...updates };
-            }),
-          };
+          return projectItems(state.items.map((i) => {
+            if (i.type !== 'task' || !taskIds.includes(i.id)) return i;
+            const updates: Partial<Task> = {
+              inProjectBlock: true,
+              previousStartTime: i.startTime,
+              previousStartDate: i.startDate,
+              startTime: undefined,
+              timeBucket: project.timeBucket,
+              isScheduled: true,
+              startDate: selectedDateStr,
+            };
+            updatesMap.set(i.id, updates);
+            return { ...i, ...updates } as Item;
+          }));
         });
 
         updatesMap.forEach((updates, id) =>
-          dbUpdateTask(id, updates).catch(console.error)
+          dbUpdateItem(id, 'task', updates).catch(console.error)
         );
       },
 
       moveTaskOutOfProjectBlock: (taskId) => {
+        const moved = findItem(taskId, 'task');
+        setNextActionLabel(`Move task out of project block: ${moved?.title || 'Unknown'}`);
         let taskUpdates: Partial<Task> | null = null;
 
         set((state) => {
-          const task = state.tasks.find(t => t.id === taskId);
+          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
           if (!task) return state;
           taskUpdates = {
             inProjectBlock: false,
@@ -907,14 +859,12 @@ export const usePlannerStore = create<PlannerStore>()(
             previousStartTime: undefined,
             previousStartDate: undefined,
           };
-          return {
-            tasks: state.tasks.map((t) =>
-              t.id === taskId ? { ...t, ...taskUpdates! } : t
-            ),
-          };
+          return projectItems(state.items.map((i) =>
+            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+          ));
         });
 
-        if (taskUpdates) dbUpdateTask(taskId, taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
       },
 
       addHabitGroup: (name, emoji, color) => {
@@ -944,11 +894,11 @@ export const usePlannerStore = create<PlannerStore>()(
         const group = get().habitGroups.find((g) => g.id === id);
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
-          habits: state.habits.map((h) =>
-            h.group === group?.name
-              ? { ...h, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
-              : h
-          ),
+          ...projectItems(state.items.map((i) =>
+            i.type === 'habit' && i.group === group?.name
+              ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
+              : i
+          )),
         }));
 
         const userId = get().userId;
@@ -983,18 +933,15 @@ export const usePlannerStore = create<PlannerStore>()(
         const projectNames = new Set(state.projects.map(p => p.name));
         const groupNames = new Set(state.habitGroups.map(g => g.name));
 
-        set({
-          tasks: state.tasks.map(t =>
-            t.project && !projectNames.has(t.project)
-              ? { ...t, project: undefined }
-              : t
-          ),
-          habits: state.habits.map(h =>
-            !groupNames.has(h.group)
-              ? { ...h, group: state.habitGroups[0]?.name || 'Personal' }
-              : h
-          ),
-        });
+        set(projectItems(state.items.map((i) => {
+          if (i.type === 'task' && i.project && !projectNames.has(i.project)) {
+            return { ...i, project: undefined };
+          }
+          if (i.type === 'habit' && !groupNames.has(i.group)) {
+            return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
+          }
+          return i;
+        })));
       },
 
       // Undo/Redo
@@ -1017,82 +964,12 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
-        const restoredTasks = JSON.parse(JSON.stringify(prevState.tasks));
-        const restoredHabits = JSON.parse(JSON.stringify(prevState.habits));
-        const restoredProjects = JSON.parse(JSON.stringify(prevState.projects));
-        const restoredGroups = JSON.parse(JSON.stringify(prevState.habitGroups));
-
-        const info = getHistoryInfo();
-        set({
-          tasks: restoredTasks,
-          habits: restoredHabits,
-          projects: restoredProjects,
-          habitGroups: restoredGroups,
+        applyHistoryState(prevState, currentState, {
           canUndo: historyIndex > 0,
           canRedo: true,
-          actionLog: info.actionLog,
-          historyIndex: info.currentIndex,
-        });
-
-        updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
+        }, userId, set);
 
         isUndoRedoAction = false;
-
-        if (userId) {
-          const currentTaskIds = new Set(currentState.tasks.map((t) => t.id));
-          const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
-          restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
-          currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Full diff: sync all changed fields for tasks present in both states
-          restoredTasks.forEach((t: Task) => {
-            if (currentTaskIds.has(t.id)) {
-              const cur = currentState.tasks.find((ct) => ct.id === t.id);
-              if (cur) {
-                const patch: Partial<Task> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
-                for (const key of taskKeys) {
-                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
-                    (patch as Record<string, unknown>)[key] = t[key];
-                  }
-                }
-                if (Object.keys(patch).length > 0) {
-                  dbUpdateTask(t.id, patch).catch(console.error);
-                }
-              }
-            }
-          });
-
-          const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
-          const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
-          restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
-          currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
-          // Sync status changes for habits present in both states
-          restoredHabits.forEach((h: Habit) => {
-            if (currentHabitIds.has(h.id)) {
-              const cur = currentState.habits.find((ch) => ch.id === h.id);
-              if (cur && cur.status !== h.status) {
-                dbUpdateHabit(h.id, {
-                  status: h.status,
-                  completedDates: h.completedDates,
-                  skippedDates: h.skippedDates,
-                  dailyCounts: h.dailyCounts,
-                  currentDayCount: h.currentDayCount,
-                  streak: h.streak,
-                }).catch(console.error);
-              }
-            }
-          });
-
-          const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
-          const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
-          restoredProjects.forEach((p: Project) => { if (!currentProjectNames.has(p.name)) dbRestoreProject(userId, p.name).catch(console.error); });
-          currentState.projects.forEach((p) => { if (!restoredProjectNames.has(p.name)) dbDeleteProject(userId, p.name).catch(console.error); });
-
-          const currentGroupNames = new Set(currentState.habitGroups.map((g) => g.name));
-          const restoredGroupNames = new Set((restoredGroups as HabitGroupType[]).map((g) => g.name));
-          restoredGroups.forEach((g: HabitGroupType) => { if (!currentGroupNames.has(g.name)) dbRestoreHabitGroup(userId, g.name).catch(console.error); });
-          currentState.habitGroups.forEach((g) => { if (!restoredGroupNames.has(g.name)) dbDeleteHabitGroup(userId, g.name).catch(console.error); });
-        }
       },
 
       redo: () => {
@@ -1111,84 +988,15 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
 
-        const restoredTasks = JSON.parse(JSON.stringify(nextState.tasks));
-        const restoredHabits = JSON.parse(JSON.stringify(nextState.habits));
-        const restoredProjects = JSON.parse(JSON.stringify(nextState.projects));
-        const restoredGroups = JSON.parse(JSON.stringify(nextState.habitGroups));
-
-        const info = getHistoryInfo();
-        set({
-          tasks: restoredTasks,
-          habits: restoredHabits,
-          projects: restoredProjects,
-          habitGroups: restoredGroups,
+        applyHistoryState(nextState, currentState, {
           canUndo: true,
           canRedo: historyIndex < historyStack.length - 1,
-          actionLog: info.actionLog,
-          historyIndex: info.currentIndex,
-        });
-
-        updatePrevStateBaseline({ tasks: restoredTasks, habits: restoredHabits, projects: restoredProjects, habitGroups: restoredGroups });
+        }, userId, set);
 
         isUndoRedoAction = false;
-
-        if (userId) {
-          const currentTaskIds = new Set(currentState.tasks.map((t) => t.id));
-          const restoredTaskIds = new Set((restoredTasks as Task[]).map((t) => t.id));
-          restoredTasks.forEach((t: Task) => { if (!currentTaskIds.has(t.id)) dbRestoreTask(t.id).catch(console.error); });
-          currentState.tasks.forEach((t) => { if (!restoredTaskIds.has(t.id)) dbDeleteTask(t.id).catch(console.error); });
-          // Full diff: sync all changed fields for tasks present in both states
-          restoredTasks.forEach((t: Task) => {
-            if (currentTaskIds.has(t.id)) {
-              const cur = currentState.tasks.find((ct) => ct.id === t.id);
-              if (cur) {
-                const patch: Partial<Task> = {};
-                const taskKeys: (keyof Task)[] = ['status', 'completedDates', 'startDate', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'title', 'notes', 'priority', 'startTime', 'duration', 'isScheduled', 'order', 'project', 'inProjectBlock', 'previousStartTime', 'previousStartDate'];
-                for (const key of taskKeys) {
-                  if (JSON.stringify(cur[key]) !== JSON.stringify(t[key])) {
-                    (patch as Record<string, unknown>)[key] = t[key];
-                  }
-                }
-                if (Object.keys(patch).length > 0) {
-                  dbUpdateTask(t.id, patch).catch(console.error);
-                }
-              }
-            }
-          });
-
-          const currentHabitIds = new Set(currentState.habits.map((h) => h.id));
-          const restoredHabitIds = new Set((restoredHabits as Habit[]).map((h) => h.id));
-          restoredHabits.forEach((h: Habit) => { if (!currentHabitIds.has(h.id)) dbRestoreHabit(h.id).catch(console.error); });
-          currentState.habits.forEach((h) => { if (!restoredHabitIds.has(h.id)) dbDeleteHabit(h.id).catch(console.error); });
-          // Sync status changes for habits present in both states
-          restoredHabits.forEach((h: Habit) => {
-            if (currentHabitIds.has(h.id)) {
-              const cur = currentState.habits.find((ch) => ch.id === h.id);
-              if (cur && cur.status !== h.status) {
-                dbUpdateHabit(h.id, {
-                  status: h.status,
-                  completedDates: h.completedDates,
-                  skippedDates: h.skippedDates,
-                  dailyCounts: h.dailyCounts,
-                  currentDayCount: h.currentDayCount,
-                  streak: h.streak,
-                }).catch(console.error);
-              }
-            }
-          });
-
-          const currentProjectNames = new Set(currentState.projects.map((p) => p.name));
-          const restoredProjectNames = new Set((restoredProjects as Project[]).map((p) => p.name));
-          restoredProjects.forEach((p: Project) => { if (!currentProjectNames.has(p.name)) dbRestoreProject(userId, p.name).catch(console.error); });
-          currentState.projects.forEach((p) => { if (!restoredProjectNames.has(p.name)) dbDeleteProject(userId, p.name).catch(console.error); });
-
-          const currentGroupNames = new Set(currentState.habitGroups.map((g) => g.name));
-          const restoredGroupNames = new Set((restoredGroups as HabitGroupType[]).map((g) => g.name));
-          restoredGroups.forEach((g: HabitGroupType) => { if (!currentGroupNames.has(g.name)) dbRestoreHabitGroup(userId, g.name).catch(console.error); });
-          currentState.habitGroups.forEach((g) => { if (!restoredGroupNames.has(g.name)) dbDeleteHabitGroup(userId, g.name).catch(console.error); });
-        }
       },
-    }),
+      };
+    },
     {
       name: 'planner-storage',
       partialize: (state) => ({
@@ -1209,6 +1017,123 @@ export const usePlannerStore = create<PlannerStore>()(
   )
 );
 
+/**
+ * Restore a history snapshot into the store and sync the delta to the DB.
+ * One generic path for both kinds (the old per-kind version synced habit
+ * edits only when status changed — undoing a habit title edit never
+ * persisted); items missing from one side restore or soft-delete.
+ */
+function applyHistoryState(
+  target: HistoryState,
+  currentState: { items: Item[]; projects: Project[]; habitGroups: HabitGroupType[] },
+  flags: { canUndo: boolean; canRedo: boolean },
+  userId: string | null,
+  set: (partial: Partial<PlannerStore>) => void,
+) {
+  const restoredItems: Item[] = JSON.parse(JSON.stringify(target.items));
+  const restoredProjects: Project[] = JSON.parse(JSON.stringify(target.projects));
+  const restoredGroups: HabitGroupType[] = JSON.parse(JSON.stringify(target.habitGroups));
+
+  const info = getHistoryInfo();
+  set({
+    ...projectItems(restoredItems),
+    projects: restoredProjects,
+    habitGroups: restoredGroups,
+    canUndo: flags.canUndo,
+    canRedo: flags.canRedo,
+    actionLog: info.actionLog,
+    historyIndex: info.currentIndex,
+  });
+
+  updatePrevStateBaseline({ items: restoredItems, projects: restoredProjects, habitGroups: restoredGroups });
+
+  if (!userId) return;
+
+  const key = (i: Item) => `${i.type}:${i.id}`;
+  const currentById = new Map(currentState.items.map((i) => [key(i), i]));
+  const restoredById = new Map(restoredItems.map((i) => [key(i), i]));
+
+  restoredItems.forEach((item) => {
+    const cur = currentById.get(key(item));
+    if (!cur) {
+      dbRestoreItem(item.id, item.type).catch(console.error);
+      return;
+    }
+    const patch = diffItem(cur, item);
+    // completedDates must never be written as an absolute array from a
+    // snapshot — the live flow's set_item_completion RPC owns that column, and
+    // a clobber here would race an in-flight completion. Replay the delta as
+    // per-date intents instead (adjustStreak=false: the patch below restores
+    // streak absolutely).
+    if ('completedDates' in patch) {
+      delete patch.completedDates;
+      const curDates = new Set(cur.completedDates ?? []);
+      const restoredDates = new Set(item.completedDates ?? []);
+      restoredDates.forEach((d) => {
+        if (!curDates.has(d)) dbSetItemCompletion(item.id, item.type, d, true, false).catch(console.error);
+      });
+      curDates.forEach((d) => {
+        if (!restoredDates.has(d)) dbSetItemCompletion(item.id, item.type, d, false, false).catch(console.error);
+      });
+    }
+    if (Object.keys(patch).length > 0) {
+      dbUpdateItem(item.id, item.type, patch).catch(console.error);
+    }
+  });
+  currentState.items.forEach((item) => {
+    if (!restoredById.has(key(item))) dbDeleteItem(item.id, item.type).catch(console.error);
+  });
+
+  // Containers diff by id, never by name — names are mutable, and a name-keyed
+  // set-diff turns a rename undo into a bogus restore/delete pair (the delete
+  // half would soft-delete the only copy of the row).
+  syncContainers(
+    currentState.projects, restoredProjects, PROJECT_FIELDS,
+    (id) => dbRestoreProject(userId, id),
+    (id, patch) => dbUpdateProject(userId, id, patch),
+    (id) => dbDeleteProject(userId, id),
+  );
+  syncContainers(
+    currentState.habitGroups, restoredGroups, HABIT_GROUP_FIELDS,
+    (id) => dbRestoreHabitGroup(userId, id),
+    (id, patch) => dbUpdateHabitGroup(userId, id, patch),
+    (id) => dbDeleteHabitGroup(userId, id),
+  );
+}
+
+function syncContainers<T extends { id: string }>(
+  current: T[],
+  restored: T[],
+  fields: readonly (keyof T & string)[],
+  restore: (id: string) => Promise<void>,
+  update: (id: string, patch: Partial<T>) => Promise<void>,
+  remove: (id: string) => Promise<void>,
+) {
+  const currentById = new Map(current.map((c) => [c.id, c]));
+  const restoredById = new Map(restored.map((c) => [c.id, c]));
+
+  restored.forEach((r) => {
+    const cur = currentById.get(r.id);
+    if (!cur) {
+      // The trashed row may have drifted from the snapshot (e.g. renamed
+      // before deletion) — push the full restored shape after undeleting.
+      restore(r.id).catch(console.error);
+      const { id: _id, ...fullPatch } = r;
+      update(r.id, fullPatch as Partial<T>).catch(console.error);
+      return;
+    }
+    const patch: Partial<T> = {};
+    for (const field of fields) {
+      if (field === 'id') continue;
+      if (JSON.stringify(cur[field]) !== JSON.stringify(r[field])) patch[field] = r[field];
+    }
+    if (Object.keys(patch).length > 0) update(r.id, patch).catch(console.error);
+  });
+  current.forEach((c) => {
+    if (!restoredById.has(c.id)) remove(c.id).catch(console.error);
+  });
+}
+
 // Subscribe to changes and save to history
 let isUpdatingUndoRedo = false;
 let hasInitializedHistory = false;
@@ -1217,14 +1142,13 @@ let hasInitializedHistory = false;
 // This captures the "before" state so we can properly undo the first action
 const initialStoreState = usePlannerStore.getState();
 let prevStateJson: string | null = JSON.stringify({
-  tasks: initialStoreState.tasks,
-  habits: initialStoreState.habits,
+  items: initialStoreState.items,
   projects: initialStoreState.projects,
   habitGroups: initialStoreState.habitGroups,
 });
 
 // Function to update baseline from undo/redo actions
-const updatePrevStateBaseline = (state: { tasks: Task[]; habits: Habit[]; projects: Project[]; habitGroups: HabitGroupType[] }) => {
+const updatePrevStateBaseline = (state: HistoryState) => {
   prevStateJson = JSON.stringify(state);
 };
 
@@ -1232,8 +1156,7 @@ usePlannerStore.subscribe((state) => {
   if (isUndoRedoAction || isUpdatingUndoRedo) return;
 
   const currentState = {
-    tasks: state.tasks,
-    habits: state.habits,
+    items: state.items,
     projects: state.projects,
     habitGroups: state.habitGroups,
   };

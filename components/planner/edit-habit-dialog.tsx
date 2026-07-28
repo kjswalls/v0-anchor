@@ -412,7 +412,7 @@ export function EditHabitDialog({ habit, open, onOpenChange }: EditHabitDialogPr
           <AlertDialogHeader>
             <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will reset your streak to 0 days and clear all completion history. This action cannot be undone.
+              This will reset your streak counter to 0 days. Your completion history stays — days you already checked off remain checked.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
