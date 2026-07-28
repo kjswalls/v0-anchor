@@ -167,10 +167,34 @@ confirm copy. Custom types later = rows in an `item_types` table hydrated into t
     the built-in default (pinned test unchanged); chat-store passes hydrated types.
   - *Agent API:* custom types NOT exposed in v1 (routes stay task/habit; items[] serves
     reads).
-  - *Slices:* 6a foundation (migration + types + db + registry hydration + store),
-    6b UI (manage-types UI, dynamic ItemDialog tabs, rows render custom items,
-    data-item-type), 6c commands/search (create.<type>, type:<name> grammar). Commit
-    per slice; adversarial review before each push.
+  - *Slices:* 6a foundation SHIPPED (d88f242) — migration 021 file exists but is NOT
+    yet applied (classifier blocked the prod write; needs Kirby's retry; the app is
+    deploy-safe pre-migration because fetchItemTypes degrades to []). 6b UI, 6c
+    commands/search. Adversarial review before each push.
+
+  **Phase 6b settled scope (decided during 6a):** custom items ride the TASK pipeline
+  instead of a parallel one. (1) planner-store generalizes the task action set to
+  "task-like" items (`findTaskLike(id)` = non-habit): updateTask / deleteTask /
+  toggleTaskStatus / scheduleTask / assignTaskToBucket / unscheduleTask resolve the DB
+  slug via `itemDbType(found)` (updateItemAction's dbUpdateItem call must switch off the
+  literal action-type too, or custom writes no-op against .eq('type','custom')); adds
+  `addItem(customType, draft)`. (2) The store's `tasks` projection widens to non-habit
+  items (runtime objects keep type/customType since projections are filters, not maps)
+  so every view/DnD/EOD surface renders customs with zero churn — the app-internal
+  projection is NOT the pinned API projection (db.ts fetchTasks stays type==='task').
+  (3) Registry template flips carryForwardEligible to TRUE — its false value existed
+  only because updateTask used to no-op on non-tasks; with generalized actions,
+  morning/EOD carry-forward of dated customs is correct behavior. reorderTasks stays
+  task-only (orderable false). moveTask*ProjectBlock stays task-only (no containers).
+  (4) ItemDialog: tabs render from the hydrated type list (store `itemTypes`
+  subscription; TabsList grid-cols via inline style for n>2), add-mode dispatches
+  `addItem` for custom slugs, edit-mode already flows the generalized task path.
+  Add-drafts rebuild when the type list changes. (5) Manage-types UI lives in
+  ManageCategoriesDialog (natural home next to projects/groups): create (name slug +
+  label + plural + IconPicker), rename label, delete (items fall back to default
+  template — copy must say so). (6) 6c: `create.<type>` palette commands from hydrated
+  types, `type:<name>` search grammar keeping task:/habit:, data-item-type attrs on
+  TaskRow (e2e selector migration stays with the separate e2e-repair effort).
 
 ## Phase 3 deliberate behavior changes (reviewed + documented 2026-07-27)
 

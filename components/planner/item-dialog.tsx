@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon, Flame, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -163,6 +163,7 @@ function draftFromItem(item: Item): ItemDraft {
 
 export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   const {
+    addItem,
     addTask,
     addHabit,
     updateTask,
@@ -178,7 +179,14 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     addProject,
     addHabitGroup,
     defaultTimeBucket,
+    itemTypes,
   } = usePlannerStore();
+
+  // Tab order: built-ins first (pinned), then user-defined types.
+  const typeNames = useMemo(
+    () => [...ALL_ITEM_TYPES, ...itemTypes.map((t) => t.name)],
+    [itemTypes]
+  );
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -223,28 +231,38 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     const bucket = addPayload.bucket ?? defaultTimeBucket ?? 'anytime';
     setAddDrafts((drafts) => {
       const next = { ...drafts };
-      for (const t of ALL_ITEM_TYPES) {
+      for (const t of typeNames) {
+        // Custom types hydrate after mount — seed a fresh draft on first sight.
+        const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, habitGroups });
         next[t] = {
-          ...drafts[t],
+          ...base,
           timeBucket: bucket,
           ...(getItemTypeConfig(t).dateAnchored ? { startDate: addPayload.date } : null),
         };
       }
       return next;
     });
-  }, [open, addPayload, defaultTimeBucket]);
+  }, [open, addPayload, defaultTimeBucket, typeNames, habitGroups]);
+
+  /** Draft for a type, with a default for custom types not yet seeded. */
+  const draftFor = (type: string): ItemDraft =>
+    addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups });
 
   const patchDraft = (type: string, updates: Partial<ItemDraft>) => {
     if (last?.mode === 'edit') {
       setEditDraft((d) => (d ? { ...d, ...updates } : d));
     } else {
-      setAddDrafts((d) => ({ ...d, [type]: { ...d[type], ...updates } }));
+      setAddDrafts((d) => ({
+        ...d,
+        [type]: { ...(d[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups })), ...updates },
+      }));
     }
   };
 
   const resetAddDrafts = () => {
+    const seed = { bucket: addPayload?.bucket, defaultTimeBucket, habitGroups };
     setAddDrafts(
-      buildAddDrafts({ bucket: addPayload?.bucket, defaultTimeBucket, habitGroups })
+      Object.fromEntries(typeNames.map((t) => [t, makeAddDraft(t, seed)]))
     );
   };
 
@@ -255,16 +273,18 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     // through the close animation and must never re-arm a save (the old
     // dialogs disarmed instantly when their item prop went null).
     if (!state || state.mode !== 'add') return;
-    const d = addDrafts[type];
+    const d = draftFor(type);
     if (!d.title.trim()) return;
 
-    if (type === 'task') {
+    if (type !== 'habit') {
       const effectiveTimeBucket = d.startDate
         ? d.timeBucket === 'none'
           ? 'anytime'
           : d.timeBucket
         : undefined;
-      addTask({
+      // Task-shaped payload; custom types dispatch to the generic addItem.
+      const create = type === 'task' ? addTask : addItem.bind(null, type);
+      create({
         title: d.title.trim(),
         priority: d.priority === 'none' ? undefined : d.priority,
         project: d.container === 'none' ? undefined : d.container,
@@ -298,9 +318,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     if (!editItem || !editDraft || !editDraft.title.trim()) return;
     const d = editDraft;
 
-    // Habit first; task and custom items share the task-shaped save path.
-    // (Custom edits aren't reachable until 6b wires rows + a generic update —
-    // updateTask type-guards to a no-op for non-task ids.)
+    // Habit first; task and custom items share the task-shaped save path
+    // (the store's task actions operate on any task-like item).
     if (editItem.type !== 'habit') {
       // Save date as yyyy-MM-dd string to avoid timezone issues
       const startDateStr = d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined;
@@ -746,20 +765,23 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
           {mode === 'add' ? (
             <Tabs value={activeType} onValueChange={setActiveType}>
-              <TabsList className="grid w-full grid-cols-2 bg-secondary">
-                {ALL_ITEM_TYPES.map((t) => (
+              <TabsList
+                className="grid w-full bg-secondary"
+                style={{ gridTemplateColumns: `repeat(${typeNames.length}, minmax(0, 1fr))` }}
+              >
+                {typeNames.map((t) => (
                   <TabsTrigger key={t} value={t} className="data-[state=active]:bg-card">
                     {getItemTypeConfig(t).label}
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {ALL_ITEM_TYPES.map((t) => (
+              {typeNames.map((t) => (
                 <TabsContent key={t} value={t} className="mt-4">
-                  {renderForm(t, addDrafts[t])}
+                  {renderForm(t, draftFor(t))}
                   <Button
                     onClick={() => handleAddSave(t)}
                     className="w-full h-10 mt-6"
-                    disabled={invalidCustomDays(addDrafts[t])}
+                    disabled={invalidCustomDays(draftFor(t))}
                   >
                     Add {getItemTypeConfig(t).label}
                   </Button>

@@ -68,8 +68,14 @@ export const openAddDialog = (
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so
  * the discriminator is stamped here. The item is a snapshot captured at open
  * time — the dialog deliberately does not re-resolve it from the store.
+ *
+ * Custom-type items ride the tasks projection (Phase 6b), so their runtime
+ * discriminator must survive: stamping 'task' over a {type:'custom'} object
+ * would open it with the wrong config and labels.
  */
-export const openEditFor = (item: Task | Habit, itemType: KnownItemType) =>
-  useUIStore
-    .getState()
-    .openDialog({ type: 'edit-item', item: { ...item, type: itemType } as Item });
+export const openEditFor = (item: Task | Habit, itemType: KnownItemType) => {
+  const runtime = item as { type?: string };
+  const stamped =
+    runtime.type === 'custom' ? (item as unknown as Item) : ({ ...item, type: itemType } as Item);
+  useUIStore.getState().openDialog({ type: 'edit-item', item: stamped });
+};

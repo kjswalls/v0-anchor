@@ -101,7 +101,10 @@ interface PlannerStore {
   initializeStore: (userId: string) => Promise<void>;
   clearStore: () => void;
 
-  // Task actions
+  // Task actions ('task' actions operate on any task-LIKE item — custom types
+  // are task-shaped and ride this pipeline; only habits are excluded)
+  /** Create an item of a user-defined type (task-shaped). */
+  addItem: (customType: string, item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -171,9 +174,15 @@ interface PlannerStore {
 // Projections: keep `tasks`/`habits` derived from `items` in the same set()
 // so every consumer sees a consistent snapshot. TaskItem/HabitItem are
 // structurally assignable to Task/Habit (the extra `type` key is inert).
+//
+// Phase 6b: the app-internal `tasks` projection is task-LIKE (custom-type
+// items included — they're task-shaped and ride the task pipeline in every
+// view). This is NOT the pinned external projection: db.ts fetchTasks and the
+// context response keep type === 'task' exactly. Runtime objects retain their
+// type/customType keys (projections filter, never map).
 const projectItems = (items: Item[]) => ({
   items,
-  tasks: items.filter((i): i is TaskItem => i.type === 'task'),
+  tasks: items.filter((i): i is TaskItem => i.type !== 'habit') as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
 });
 
@@ -290,21 +299,34 @@ export const usePlannerStore = create<PlannerStore>()(
         get().items.find((i) => i.id === id && i.type === type);
 
       /**
+       * Custom types are task-shaped and ride the task action pipeline
+       * (Phase 6b): "task" actions operate on any non-habit item. The
+       * habit/task boundary stays hard — a task-like lookup never returns a
+       * habit, so e.g. the sidebar drop calling unscheduleTask with a habit
+       * id remains a complete no-op.
+       */
+      const findTaskLike = (id: string): Item | undefined =>
+        get().items.find((i) => i.id === id && i.type !== 'habit');
+
+      /** DB slug for an item ('task' | 'habit' | custom slug). */
+      const dbTypeOf = (item: Item): string =>
+        item.type === 'custom' ? item.customType : item.type;
+
+      /**
        * Optimistically apply `updates` to one item and persist. The type guard
-       * is load-bearing: task actions called with a habit id (e.g. the sidebar
-       * drop calling unscheduleTask for a habit) must stay a complete no-op,
-       * exactly as when the kinds lived in separate arrays.
+       * is load-bearing (see findTaskLike); 'task' here means "task-like".
        *
        * Deliberate change from the pre-unification store: a store miss also
        * suppresses the DB write (old code issued it blindly, which could touch
        * soft-deleted trash rows).
        */
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
-        if (!findItem(id, type)) return;
+        const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
+        if (!found) return;
         set((state) => projectItems(
-          state.items.map((i) => (i.id === id && i.type === type ? { ...i, ...updates } as Item : i)),
+          state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
         ));
-        dbUpdateItem(id, type, updates).catch(console.error);
+        dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
       };
 
       const resolveDateStr = (date?: Date): string => {
@@ -506,6 +528,27 @@ export const usePlannerStore = create<PlannerStore>()(
         isUpdatingUndoRedo = false;
       },
 
+      addItem: (customType, itemData) => {
+        const config = getItemTypeConfig(customType);
+        setNextActionLabel(`Add ${config.label.toLowerCase()}: ${itemData.title}`);
+        const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
+
+        const item: Item = {
+          ...itemData,
+          type: 'custom',
+          customType,
+          timeBucket,
+          id: crypto.randomUUID(),
+          status: 'pending',
+          isScheduled: !!timeBucket,
+          order: 0, // custom types aren't manually orderable (created_at sorts)
+        };
+        set((state) => projectItems([...state.items, item]));
+
+        const userId = get().userId;
+        if (userId) dbCreateItem(userId, item).catch(console.error);
+      },
+
       addTask: (taskData) => {
         setNextActionLabel(`Add task: ${taskData.title}`);
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
@@ -526,7 +569,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       updateTask: (id, updates) => {
-        const task = findItem(id, 'task');
+        const task = findTaskLike(id);
         setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
 
         const newUpdates = { ...updates };
@@ -541,17 +584,18 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       deleteTask: (id) => {
-        const task = findItem(id, 'task');
-        setNextActionLabel(`Delete task: ${task?.title || 'Unknown'}`);
-        if (!task) return;
-        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === 'task'))));
+        const found = findTaskLike(id);
+        setNextActionLabel(`Delete task: ${found?.title || 'Unknown'}`);
+        if (!found) return;
+        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === found.type))));
 
-        dbDeleteItem(id, 'task').catch(console.error);
+        dbDeleteItem(id, dbTypeOf(found)).catch(console.error);
       },
 
       toggleTaskStatus: (id, status?, date?) => {
-        const task = findItem(id, 'task') as TaskItem | undefined;
-        if (!task) return;
+        const found = findTaskLike(id);
+        const task = found as TaskItem | undefined;
+        if (!task || !found) return;
 
         if (isRecurring(task)) {
           // Per-date completion tracking — never change global status
@@ -563,9 +607,9 @@ export const usePlannerStore = create<PlannerStore>()(
 
           setNextActionLabel(`${alreadyDone ? 'Uncomplete' : 'Complete'} task on ${dateStr}: ${task.title}`);
           set((state) => projectItems(
-            state.items.map(i => i.id === id && i.type === 'task' ? { ...i, completedDates: newCompletedDates } : i),
+            state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
-          dbSetItemCompletion(id, 'task', dateStr, !alreadyDone).catch(console.error);
+          dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
@@ -575,7 +619,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       scheduleTask: (id, bucket, time, date) => {
-        const task = findItem(id, 'task');
+        const task = findTaskLike(id);
         setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
         const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
 
@@ -593,7 +637,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       assignTaskToBucket: (id, bucket) => {
-        const task = findItem(id, 'task');
+        const task = findTaskLike(id);
         setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
         const updates: Partial<Task> = {
           isScheduled: false,
@@ -608,7 +652,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       unscheduleTask: (id) => {
-        const task = findItem(id, 'task');
+        const task = findTaskLike(id);
         if (!task) return; // habit ids no-op here by contract (sidebar drop)
         setNextActionLabel(`Unschedule task: ${task.title}`);
         updateItemAction(id, 'task', { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });

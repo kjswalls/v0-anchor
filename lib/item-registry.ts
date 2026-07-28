@@ -295,10 +295,9 @@ export function buildCustomTypeConfig(
     counters: { streak: false, dailyCounts: false },
     schedule: { resizable: true, defaultBlockMinutes: 60 },
     braindumpEligible: true,
-    // Morning-check rollover runs through updateTask, which type-guards to a
-    // no-op for non-tasks — flip this only when the store grows a generic
-    // update path for carry-forward.
-    carryForwardEligible: false,
+    // The store's task actions operate on any task-like item (Phase 6b), so
+    // dated custom items roll forward in morning check / EOD like tasks do.
+    carryForwardEligible: true,
     defaultTimeBucket: null,
     // Trigger-only for the plugin: it refetches context on any event and its
     // tasks[]/habits[] projections exclude custom types (items[] carries them).
