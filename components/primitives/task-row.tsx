@@ -425,12 +425,21 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         )}
 
         {/* Braindump (sidebar) delete — inline, since braindump rows carry no
-            tag or pills to sit beside. */}
+            tag or pills to sit beside.
+            -my-1.5 is a height neutralizer, not spacing: this 24px button was
+            the tallest thing in a braindump row (the rail it would otherwise
+            sit beside is gated off here), so it set the line box and made every
+            sidebar row 36px against the body's 29px — the same list at a looser
+            pitch. Flexbox sizes the line from items' OUTER hypothetical heights,
+            so cancelling the row's own py-1.5 drops this to 12px and the 17px
+            title takes the measurement back, exactly as it does in the body.
+            The button still draws at its full 24px and overhangs the padding.
+            Coupled to the row's py-1.5 above, like DAY_DOTS_HIT in pills.tsx. */}
         {inBraindump && !isMobile && (
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+            className="-my-1.5 h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
             onClick={handleDelete}
             aria-label="Delete"
           >
