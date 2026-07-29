@@ -27,7 +27,16 @@ export function useFitHourPx(rowCount: number, freeze = false) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const [hourPx, setHourPx] = useState(HOUR_PX);
   const freezeRef = useRef(freeze);
-  freezeRef.current = freeze;
+  // Latest-ref sync for `freeze`. It lives in a ref (not a `measure` dep) so a
+  // freeze toggle doesn't tear down and re-create the ResizeObserver mid-drag.
+  // Assigning during render trips react-hooks/refs, so it syncs in a LAYOUT
+  // effect declared ABOVE the measure effect: React runs effects in declaration
+  // order within a commit, and ResizeObserver callbacks are always async, so
+  // the ref is guaranteed current before any measure() call can read it. The
+  // useRef seed keeps the first render correct.
+  useLayoutEffect(() => {
+    freezeRef.current = freeze;
+  }, [freeze]);
 
   const measure = useCallback(() => {
     const anchor = anchorRef.current;
