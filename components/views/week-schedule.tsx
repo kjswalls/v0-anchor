@@ -6,10 +6,16 @@ import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import {
+  DAY_FIELD_LEFT,
+  DAY_GUTTER_INSET,
+  ECLIPSE_PX,
+  LANE_PX,
+  NowMarker,
   ScheduleBlock,
   deriveGridRange,
   deriveTimedEntries,
   deriveUntimedRows,
+  formatClock,
   formatHourLabel,
   FULL_DAY_RANGE,
   type TimedEntry,
@@ -17,6 +23,7 @@ import {
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useViewStore } from '@/lib/view-store';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
@@ -52,9 +59,19 @@ function WeekHourCell({
     <div
       ref={setNodeRef}
       data-dnd-id={`weekhour:${dateStr}:${hour}`}
-      className={cn('border-b border-l border-border/25 transition-colors', isOver && 'bg-primary/10')}
+      className={cn('relative transition-colors', isOver && 'bg-primary/10')}
       style={{ height: hourPx }}
-    />
+    >
+      {/* The hairline starts at the pane, leaving the lane an unbroken channel —
+          which is also what now separates one column from the next. The old
+          per-cell left border would have run a second vertical line 5px from the
+          rail, and two near-parallel rules per column read as noise. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 right-0 border-b border-border/25"
+        style={{ left: LANE_PX }}
+      />
+    </div>
   );
 }
 
@@ -73,6 +90,7 @@ function WeekScheduleColumn({
   activeId,
   selected,
   today,
+  nowY,
 }: {
   col: ColumnData;
   hours: number[];
@@ -81,6 +99,9 @@ function WeekScheduleColumn({
   activeId: string | null;
   selected: boolean;
   today: boolean;
+  /** Y of the live-time marker, or null when this column isn't today (or the
+   *  clock falls outside the visible window). */
+  nowY: number | null;
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const dragging = !!activeId;
@@ -142,17 +163,30 @@ function WeekScheduleColumn({
         )}
       </div>
 
-      {/* Hour grid */}
+      {/* Hour grid. Every column carries its own lane: rail, beads, and — on
+          today — the now-marker. */}
       <div className="relative mt-2">
         <div>
           {hours.map((h) => (
             <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} hourPx={hourPx} />
           ))}
         </div>
-        <div className="absolute inset-0">
+        <div className="pointer-events-none absolute inset-0">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-[5px] top-0 w-px bg-[var(--sched-rail)]"
+          />
           {col.timed.map((entry) => (
-            <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartMin} date={col.date} hourPx={hourPx} />
+            <ScheduleBlock
+              key={entry.item.id}
+              entry={entry}
+              gridStartMin={gridStartMin}
+              date={col.date}
+              hourPx={hourPx}
+              variant="week"
+            />
           ))}
+          {nowY !== null && <NowMarker top={nowY} />}
         </div>
       </div>
     </div>
@@ -160,12 +194,22 @@ function WeekScheduleColumn({
 }
 
 export function WeekSchedule({ activeId }: { activeId: string | null }) {
-  const { selectedDate, weekStartDay, navDirection, tasks, habits, projects, showCompletedTasks, userTimezone } =
-    usePlannerStore();
+  const {
+    selectedDate,
+    weekStartDay,
+    navDirection,
+    tasks,
+    habits,
+    projects,
+    showCompletedTasks,
+    userTimezone,
+    showCurrentTimeIndicator,
+  } = usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
   const canvasFilters = useViewStore((s) => s.canvasFilters);
   const timeFormatStr = useTimeFormat();
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const nowMin = useNowMinutes(timezone);
 
   const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
   const weekDays = useMemo(() => {
@@ -200,13 +244,29 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
   // the full day while dragging (every hour a drop target) or resizing (see/reach
   // any target time); rows shrink to fit the pane, except during resize where the
   // scale is frozen and the grid auto-scrolls instead.
+  // One clock reading for the whole week: the diamond lands in today's column,
+  // the reading of it goes in the shared gutter — so seven columns don't print
+  // the same time seven times. Only weeks that contain today have a marker at
+  // all, and only then does the window widen to make room for it.
+  const todayStr = toDateStr(new Date(), timezone);
+  const weekHasToday = weekDays.some((d) => toDateStr(d, timezone) === todayStr);
+  const markerMin = showCurrentTimeIndicator && weekHasToday ? nowMin : null;
+
   const resizing = useScheduleResizeStore((s) => s.resizing);
   const allTimed = perDay.flatMap((c) => c.timed);
-  const contentRange = useMemo(() => deriveGridRange(allTimed), [allTimed]);
+  const contentRange = useMemo(() => deriveGridRange(allTimed, markerMin), [allTimed, markerMin]);
   const { gridStartHour, gridEndHour } = activeId || resizing ? FULL_DAY_RANGE : contentRange;
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
   const { hourPx, anchorRef } = useFitHourPx(hours.length, resizing);
   useResizeScrollCompensation(gridStartHour, hourPx, resizing, anchorRef);
+
+  const showNow = markerMin !== null && markerMin >= gridStartHour * 60 && markerMin < gridEndHour * 60;
+  const nowMinShown = showNow ? markerMin! : null;
+  const nowY = showNow ? ((markerMin! - gridStartHour * 60) / 60) * hourPx : null;
+  const eclipsedHour =
+    nowMinShown !== null && ((nowMinShown % 60) / 60) * hourPx < ECLIPSE_PX
+      ? Math.floor(nowMinShown / 60)
+      : null;
 
   return (
     <ScrollArea className="h-full flex-1">
@@ -217,20 +277,41 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* Hour gutter — same top offsets as the columns so labels line up */}
-        <div className="flex w-[72px] flex-shrink-0 flex-col">
+        {/* Hour gutter — same top offsets as the columns so labels line up, and
+            the same bare left-aligned mono marks the day view uses. Week has no
+            Anytime rows of its own beside the gutter to answer to (its strips
+            live inside the day columns), but the marks match day's inset anyway:
+            switching scope shouldn't make the hour column change alignment under
+            you. Narrowed to day's width for the same reason. */}
+        <div className="flex flex-shrink-0 flex-col" style={{ width: DAY_FIELD_LEFT }}>
           <div style={{ height: HEADER_H }} />
           <div style={{ height: ANYTIME_H }} className="mt-2" />
-          <div ref={anchorRef} className="mt-2">
+          <div ref={anchorRef} className="relative mt-2">
             {hours.map((h) => (
               <div
                 key={h}
                 style={{ height: hourPx }}
-                className="pl-1 pt-1 text-xs font-medium text-muted-foreground"
+                className={cn(
+                  'pt-[3px] font-num text-2xs text-muted-foreground',
+                  DAY_GUTTER_INSET,
+                  // The live time is sitting on this label — it yields the column.
+                  eclipsedHour === h && 'opacity-0'
+                )}
               >
                 {formatHourLabel(h, timeFormatStr)}
               </div>
             ))}
+            {nowY !== null && (
+              <span
+                className={cn(
+                  'pointer-events-none absolute left-0 z-[6] -translate-y-1/2 font-num text-2xs font-medium text-success-text',
+                  DAY_GUTTER_INSET
+                )}
+                style={{ top: nowY }}
+              >
+                {formatClock(nowMinShown!, timeFormatStr)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -244,6 +325,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             activeId={activeId}
             selected={isSameDay(col.date, selectedDate)}
             today={isToday(col.date)}
+            nowY={col.dateStr === todayStr ? nowY : null}
           />
         ))}
       </div>
