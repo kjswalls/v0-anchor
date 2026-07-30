@@ -385,9 +385,17 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
               icon={<Sun className="h-4 w-4" />}
             >
               <p className="text-xs text-muted-foreground -mt-1 mb-2">
-                Shows a single-line past due bar above your day when items are still waiting. Open it to see the list.
+                Shows a single quiet line above your day when items are still waiting from an earlier
+                date. Open it to see the list.
               </p>
-              <SettingRow label="Morning task check" description="Remind me about unfinished tasks from yesterday">
+              {/* NOT "unfinished tasks from yesterday": the predicate has no lower
+                  bound (lib/overdue.ts), so "yesterday" was never true of most of
+                  what the bar shows, and this setting doesn't "remind" anybody —
+                  it decides whether a line appears. */}
+              <SettingRow
+                label="Morning task check"
+                description="Show what is still waiting from earlier days"
+              >
                 <Switch checked={morningCheckEnabled} onCheckedChange={setMorningCheckEnabled} />
               </SettingRow>
               {morningCheckEnabled && (

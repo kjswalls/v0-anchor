@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   RECENT_OVERDUE_DAYS,
   daysOverdue,
-  oldestOverdueDate,
   selectOverdue,
   splitOverdueCohorts,
   summarizeOverdue,
@@ -88,7 +87,6 @@ describe('selectOverdue', () => {
     expect(summary.count).toBe(0);
     expect(summary.recent).toEqual([]);
     expect(summary.long).toEqual([]);
-    expect(summary.oldestStartDate).toBeUndefined();
   });
 
   it('takes only dates strictly before today', () => {
@@ -136,7 +134,7 @@ describe('selectOverdue', () => {
       'legacy',
     ]);
     expect(daysOverdue(legacy as { startDate?: string }, TODAY)).toBe(1);
-    expect(oldestOverdueDate(selectOverdue([legacy], TODAY))).toBe('2026-07-14');
+    expect(toDateOnly(selectOverdue([legacy], TODAY)[0].startDate!)).toBe('2026-07-14');
   });
 
   it('excludes completed and cancelled items', () => {
@@ -254,29 +252,23 @@ describe('age cohorts', () => {
   });
 });
 
-describe('oldestOverdueDate', () => {
-  it('finds the earliest date regardless of which cohort holds it', () => {
-    // Recent-only: the oldest is the LAST element, not the first.
-    const recentOnly = selectOverdue(
-      [task({ startDate: D.d1 }), task({ startDate: D.d5 })],
-      TODAY
-    );
-    expect(oldestOverdueDate(recentOnly)).toBe(D.d5);
-
-    // With a long cohort the oldest leads that slice.
-    const mixed = selectOverdue(
-      [task({ startDate: D.d1 }), task({ startDate: D.d100 }), task({ startDate: D.d10 })],
-      TODAY
-    );
-    expect(oldestOverdueDate(mixed)).toBe(D.d100);
-    expect(summarizeOverdue(
+describe('the summary is deliberately count-only', () => {
+  /**
+   * There was an `oldestOverdueDate` here, and a `summary.oldestStartDate`, and
+   * this block used to assert them. Both are gone: their only consumer was the
+   * "· oldest Apr 9" tail of the bar copy, and an aggregate minimum age has
+   * exactly one reading — how far behind the user is — printed somewhere they
+   * cannot avoid it. The per-row date stamps carry all of the useful part.
+   *
+   * This test is the guard, not a relic: it fails if the field comes back.
+   */
+  it('exposes nothing about the pile beyond its size and its order', () => {
+    const summary = summarizeOverdue(
       [task({ startDate: D.d1 }), task({ startDate: D.d100 })],
       TODAY
-    ).oldestStartDate).toBe(D.d100);
-  });
-
-  it('is undefined when there is nothing overdue', () => {
-    expect(oldestOverdueDate([])).toBeUndefined();
+    );
+    expect(Object.keys(summary).sort()).toEqual(['count', 'items', 'long', 'recent']);
+    expect(summary.count).toBe(2);
   });
 });
 

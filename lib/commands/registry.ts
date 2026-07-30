@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   CalendarCheck,
   CalendarDays,
   CalendarMinus,
@@ -403,11 +402,17 @@ export const STATIC_COMMANDS: Command[] = [
   },
   {
     id: 'goto.overdue',
-    label: 'Show overdue tasks',
-    description: 'Opens the past-due tray listing anything past its date',
+    label: 'Show items waiting',
+    description: 'Opens the tray listing anything still waiting from an earlier day',
     group: 'goto',
-    icon: AlertTriangle,
-    keywords: 'overdue past due late missed morning check behind',
+    // Sunrise, not AlertTriangle. The surface this opens is deliberately not an
+    // alert (see the copy contract on BarCopy in components/ai/morning-check.tsx)
+    // and a warning triangle in the palette undoes that before the tray even
+    // opens. Same glyph as settings.morningCheck below, so the two rows that
+    // touch this feature look related. Every old search term is kept in
+    // `keywords` — the vocabulary changed, the ways in didn't.
+    icon: Sunrise,
+    keywords: 'overdue past due late missed behind morning check waiting carried',
     aliases: ['overdue'],
     // The past-due surface ships on BOTH platforms now, so there is no platform
     // gate. It starts collapsed and can be dismissed for the day, neither of

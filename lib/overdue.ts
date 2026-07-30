@@ -21,15 +21,26 @@ import { isRecurring } from './recurrence';
 import type { Item, TaskItem } from './planner-types';
 
 /**
- * Cohort boundary, in whole calendar days. `<=` is "recently missed", `>` is
- * "long overdue" — so 7 days is still recent and 8 is long.
+ * Cohort boundary, in whole calendar days. `<=` is the recent slice, `>` is the
+ * earlier one — so 7 days is still recent and 8 is earlier.
  */
 export const RECENT_OVERDUE_DAYS = 7;
 
-/** Section headings for the two cohorts, so the tray and mobile sheet agree. */
+/**
+ * Section headings for the two cohorts, so the tray and mobile sheet agree.
+ *
+ * "Recent" / "Earlier", NOT "Recently missed" / "Long overdue". These headings
+ * exist to make a long list navigable, and the old pair did that by ranking the
+ * user's failures — every row below the second one was labelled as rotting, and
+ * the heading was the first thing the eye landed on. The replacements say
+ * exactly as much about CHRONOLOGY and nothing at all about the person, which
+ * is the posture the whole surface is built on (see the copy contract at the
+ * top of components/ai/morning-check.tsx). Sort order is unchanged; only the
+ * words are.
+ */
 export const OVERDUE_COHORT_LABELS = {
-  recent: 'Recently missed',
-  long: 'Long overdue',
+  recent: 'Recent',
+  long: 'Earlier',
 } as const;
 
 const DAY_MS = 86_400_000;
@@ -81,10 +92,10 @@ export function daysOverdue(item: { startDate?: string }, todayStr: string): num
  *    completed.
  *  - it has a startDate strictly before `todayStr`.
  *
- * Sort: recently-missed items first, newest first (what you most plausibly
- * still care about), then the long-overdue tail oldest first (the stuff that
- * has been rotting longest, so the honest worst case is at the bottom rather
- * than buried mid-list). Ties keep store order — Array#sort is stable.
+ * Sort: the recent cohort first, newest first (what you most plausibly still
+ * care about), then the earlier tail oldest first, which puts the deepest end of
+ * the list at the bottom rather than buried in the middle of it. Ties keep store
+ * order — Array#sort is stable.
  *
  * Return type note: custom-type items are date-anchored and carry-forward
  * eligible, so they DO come back from here, narrowed to `TaskItem`. That
@@ -146,33 +157,29 @@ export function splitOverdueCohorts(overdue: TaskItem[], todayStr: string): Over
 }
 
 /**
- * The earliest startDate in an already-selected list, as yyyy-MM-dd — the "·
- * oldest Apr 9" half of the bar copy. `undefined` when the list is empty.
- * Computed by min rather than read off an end of the array, because which end
- * holds the oldest depends on whether the long cohort is populated.
+ * NO `oldestOverdueDate` HERE, deliberately, and please don't add one back.
+ *
+ * There used to be one, and its only consumer was the "· oldest Apr 9" tail of
+ * the bar copy. A per-row date is orientation — it tells you what a line is
+ * about. The MINIMUM of those dates is not: it is a single aggregate whose only
+ * possible reading is how far behind you are, printed on a bar you cannot help
+ * seeing every time you open the app. It answered a question nobody asked and
+ * the answer was always an accusation.
+ *
+ * The count stays (it is a fact, and it sizes the job), the per-row stamps stay,
+ * and the summary below is deliberately the whole of what a surface may know
+ * about the pile in aggregate.
  */
-export function oldestOverdueDate(overdue: TaskItem[]): string | undefined {
-  let oldest: string | undefined;
-  for (const item of overdue) {
-    if (!item.startDate) continue;
-    const d = toDateOnly(item.startDate);
-    if (oldest === undefined || d < oldest) oldest = d;
-  }
-  return oldest;
-}
-
 export interface OverdueSummary extends OverdueCohorts {
-  /** All overdue items in display order (recent cohort, then long cohort). */
+  /** All overdue items in display order (recent cohort, then earlier cohort). */
   items: TaskItem[];
   /** `items.length` — the number the bar counts. */
   count: number;
-  /** Earliest startDate present, yyyy-MM-dd, or undefined when count is 0. */
-  oldestStartDate: string | undefined;
 }
 
 /**
  * One call for everything the past-due surfaces render: the ordered list, the
- * two cohorts, the count and the oldest date. Runs the predicate exactly once.
+ * two cohorts and the count. Runs the predicate exactly once.
  */
 export function summarizeOverdue(items: readonly Item[], todayStr: string): OverdueSummary {
   const overdue = selectOverdue(items, todayStr);
@@ -180,6 +187,5 @@ export function summarizeOverdue(items: readonly Item[], todayStr: string): Over
     items: overdue,
     ...splitOverdueCohorts(overdue, todayStr),
     count: overdue.length,
-    oldestStartDate: oldestOverdueDate(overdue),
   };
 }

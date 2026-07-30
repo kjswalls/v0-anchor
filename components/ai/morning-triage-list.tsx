@@ -2,15 +2,21 @@
 
 import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
-import { ArrowLeftToLine, ArrowRight, CalendarDays, Check, ChevronsRight } from 'lucide-react';
+import {
+  ArrowLeftToLine,
+  ArrowRight,
+  CalendarDays,
+  Check,
+  ChevronsRight,
+  type LucideIcon,
+} from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { OVERDUE_COHORT_LABELS, daysOverdue, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
+import { OVERDUE_COHORT_LABELS, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
 import { itemTypeName } from '@/lib/item-registry';
 import { openEditFor } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
@@ -35,8 +41,16 @@ import type { Item, Task, TaskItem } from '@/lib/planner-types';
  * triage, so only the TITLE opens the editor here).
  */
 
-/** Age at which the date stamp promotes to honey. */
-const ANCIENT_DAYS = 30;
+/**
+ * NOTHING IN THIS LIST ESCALATES WITH AGE. There was an ANCIENT_DAYS = 30
+ * threshold here that promoted the date stamp to --warning-text, a token that
+ * flips BRIGHT in dark mode — so the oldest rows were the loudest thing on the
+ * surface and the list read as a severity ranking. Age is orientation, not a
+ * grade: every stamp is muted, every row is the same weight, and the only thing
+ * that ever changes a row's appearance is something the USER did to it (a
+ * receipt) or something that happened to the item (a stale marker). See the copy
+ * contract on BarCopy in components/ai/morning-check.tsx.
+ */
 
 /**
  * Group headers only earn their 24px when the list is long enough to need
@@ -44,6 +58,98 @@ const ANCIENT_DAYS = 30;
  * is chrome, not structure.
  */
 const GROUP_HEADER_MIN_ROWS = 8;
+
+/**
+ * The one class string every exit on this surface shares.
+ *
+ * Before this there were three different buttons in a 112px column — a shadcn
+ * ghost `Button` with an icon and a word at h-6, and two icon-only ghost h-6 w-6
+ * squares — plus two more shapes in the footer, one of them a filled lime
+ * primary. Five treatments for five sibling actions, none of them the language
+ * the rest of the app had moved to.
+ *
+ * They are now one boxed hairline control: the day list's own row-action box
+ * (RowControl in components/primitives/task-row.tsx — same rounded-[5px], same
+ * border-border / bg-surface-3 / hover-wash token set, so a triage row's cluster
+ * and a day row's cluster are the same object) at the compact proportions of the
+ * item dialog's chips (components/primitives/property-chip.tsx).
+ *
+ * hover-wash, not hover:bg-accent, for RowControl's reason: these sit ON the
+ * well (bg-surface-3), and swapping the background would make the button LIGHTEN
+ * on hover while the row behind it darkens.
+ *
+ * A function rather than only a component, because two exits can't route through
+ * TriageAction below: the sheet's picker has to BE a <label> wrapping an sr-only
+ * <input type="date">, and the desktop picker has to be the element
+ * PopoverTrigger clones. They wear the string directly. One string, so the
+ * cluster cannot drift back into five boxes.
+ *
+ * @param labeled a control that shows its word; icon-only ones stay square so
+ *                the cluster reads as one group rather than three loose glyphs.
+ */
+function actionClass(isSheet: boolean, labeled = false): string {
+  return cn(
+    'inline-flex flex-shrink-0 items-center justify-center rounded-[5px] border border-border bg-surface-3',
+    'text-muted-foreground transition-colors hover-wash hover:border-muted-foreground hover:text-foreground',
+    // No ring-offset — --tw-ring-offset-color defaults to #fff and would paint a
+    // white hairline over the lime ring in dark mode. Same as PropertyChip.
+    'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+    isSheet ? 'h-7' : 'h-[22px]',
+    // text-xs on BOTH surfaces, not the text-2xs the date stamp uses: 10px is
+    // the register for metadata you read only if you want it, and these are the
+    // things the surface exists to let you press.
+    labeled ? 'gap-1 px-1.5 font-medium text-xs' : isSheet ? 'w-7' : 'w-[22px]'
+  );
+}
+
+/**
+ * One exit, in the shared box.
+ *
+ * `label` is always the accessible name. `text` renders it visibly for the exits
+ * that earn a word; the rest get a real Tooltip, which exists precisely BECAUSE
+ * the name is missing from the box — so a control never carries both.
+ */
+function TriageAction({
+  icon: Icon,
+  label,
+  text,
+  isSheet,
+  onClick,
+  testId,
+  className,
+}: {
+  icon?: LucideIcon;
+  label: string;
+  text?: string;
+  isSheet: boolean;
+  onClick: () => void;
+  testId?: string;
+  className?: string;
+}) {
+  const button = (
+    <button
+      type="button"
+      aria-label={text ? undefined : label}
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(actionClass(isSheet, !!text), className)}
+    >
+      {/* 14px on every variant — RowControl's proportion inside a 22px box, and
+          the standard pairing with text-xs elsewhere in the app. */}
+      {Icon && <Icon className="h-3.5 w-3.5" />}
+      {text && <span className="truncate">{text}</span>}
+    </button>
+  );
+
+  if (text) return button;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 export type TriageVariant = 'tray' | 'sheet';
 
@@ -348,10 +454,23 @@ export function MorningTriageList({
         )}
       </div>
 
-      {/* Footer. "Dismiss for today" is deliberately GONE from here — dismissal
-          now lives on the bar's ✕ (desktop) and nowhere else, so the surface no
-          longer offers two buttons for one effect. On mobile there is no ✕, so
-          "Done for today" is the only dismissal and it lives here. */}
+      {/*
+        Footer: two peers, and deliberately no primary.
+
+        The dismissal used to be a filled lime `Button` — the loudest element on
+        the surface, and the app's affirmative accent — sitting under a list of
+        things you hadn't done. That composition has a reading whether or not
+        anyone intended it: getting to zero is the goal, and the button is the
+        reward for it. It isn't. Looking at the list IS the whole obligation, so
+        both controls are the same quiet box (see actionClass) and the user can
+        leave from either one without having cleared anything.
+
+        "Hide until tomorrow", not "Done for today": it is the honest description
+        of what dismiss() does (lib/morning-store.ts writes today's date and the
+        bar returns in the morning), it matches the bar ✕'s aria-label word for
+        word, and it doesn't tell someone they are finished with work they can
+        see they haven't finished.
+      */}
       <div
         className={cn(
           'flex shrink-0 items-center justify-between border-t border-border px-2.5',
@@ -362,22 +481,24 @@ export function MorningTriageList({
             only remaining rows were deleted or completed elsewhere has nothing
             left to carry, and offering the button there is offering a no-op. */}
         {carryable.length > 0 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="morning-move-all-btn"
+          <TriageAction
+            icon={ChevronsRight}
+            label="Move all to today"
+            text="Move all to today"
+            isSheet={isSheet}
+            testId="morning-move-all-btn"
             onClick={handleMoveAll}
-            className={cn('gap-1.5 px-2 text-xs', isSheet ? 'h-8' : 'h-6')}
-          >
-            <ChevronsRight className="h-3 w-3" />
-            Move all to today
-          </Button>
+          />
         ) : (
           <span />
         )}
-        <Button size="sm" onClick={onDismiss} className={isSheet ? 'h-8' : 'h-6'}>
-          Done for today
-        </Button>
+        <TriageAction
+          label="Hide until tomorrow"
+          text="Hide until tomorrow"
+          isSheet={isSheet}
+          testId="morning-dismiss-btn"
+          onClick={onDismiss}
+        />
       </div>
     </>
   );
@@ -423,12 +544,18 @@ interface TriageRowProps {
 /**
  * One triage row — 30px fixed on desktop, 38px on touch.
  *
- *   [☐ 16px] [title flex-1 truncate] [date 52px] [cluster 112px]
+ *   [☐ 16px] [title flex-1 truncate] [date 52px] [cluster 124px / 136px]
  *
  * BOTH trailing columns reserve their width and the cluster fades IN FLOW rather
  * than being absolutely positioned (which is what the dense day row does). A
- * ~1030px tray row has slack a day list doesn't, and reserving those 164px buys
+ * ~1030px tray row has slack a day list doesn't, and reserving those 176px buys
  * a straight right edge down 60 rows with zero hover shift.
+ *
+ * EVERY ROW LOOKS THE SAME. Not "similar" — the same: same title weight, same
+ * muted stamp, same three exits, whether the date on it is yesterday's or from
+ * three months ago. The only two things that may ever change a row's appearance
+ * are a receipt (the user acted on it) and a stale marker (the item changed under
+ * the tray). Age is not one of them.
  */
 function TriageRow({
   item,
@@ -445,8 +572,17 @@ function TriageRow({
   onOpenEditor,
 }: TriageRowProps) {
   const isSheet = variant === 'sheet';
-  const days = daysOverdue(item, todayStr);
-  const dateLabel = item.startDate ? format(parseISO(toDateOnly(item.startDate)), 'MMM d') : '';
+  const startDate = item.startDate ? parseISO(toDateOnly(item.startDate)) : null;
+  const dateLabel = startDate ? format(startDate, 'MMM d') : '';
+  /**
+   * Hover gives the FULL date, not "18 days ago".
+   *
+   * A day count is the aggregate the bar just stopped printing, restated one row
+   * at a time — and it was strictly less useful than what it displaced: "May 2"
+   * doesn't tell you which weekday that was or which year it belongs to, and a
+   * stamp from last year is otherwise indistinguishable from one from this May.
+   */
+  const dateTitle = startDate ? format(startDate, 'EEEE, MMMM d, yyyy') : undefined;
   // A stale row shows the world's truth, never ours: the item is finished or
   // gone, so it renders complete-looking and offers nothing but the report.
   // The row keeps its slot — the snapshot never re-flows, that is the point —
@@ -514,15 +650,13 @@ function TriageRow({
         {item.title}
       </button>
 
-      {/* Age stamp. Promotes to honey past a month overdue — --warning-text flips
-          BRIGHT in dark mode, so "ancient" is carried by the same hue that's
-          nagging from the bar. */}
+      {/* Date stamp. Muted at every age, forever — this is the row's orientation
+          ("which day was this line about?"), not its severity. It used to promote
+          to --warning-text past 30 days, which in dark mode is a BRIGHT honey:
+          the rows you'd been avoiding longest were the ones that glowed. */}
       <span
-        title={days === 1 ? '1 day ago' : `${days} days ago`}
-        className={cn(
-          'w-[52px] flex-shrink-0 text-right font-num text-2xs',
-          days >= ANCIENT_DAYS ? 'text-warning-text' : 'text-muted-foreground'
-        )}
+        title={dateTitle}
+        className="w-[52px] flex-shrink-0 text-right font-num text-2xs text-muted-foreground"
       >
         {dateLabel}
       </span>
@@ -536,13 +670,23 @@ function TriageRow({
           (dismiss the bar until tomorrow) and lives only on the bar. */}
       <div
         className={cn(
-          'flex flex-shrink-0 items-center justify-end gap-0.5',
+          // gap-1, not gap-0.5: the exits carry hairline borders now (see
+          // actionClass), and at a 2px gap three adjacent 1px edges read as one
+          // segmented control rather than three separate targets.
+          'flex flex-shrink-0 items-center justify-end gap-1',
           // Touch has no hover, so the sheet shows the cluster unconditionally —
           // and its 28px targets need 12px more reserved width than the desktop
-          // 24px ones. Both numbers are FIXED, which is the part that matters:
+          // 22px ones. Both numbers are FIXED, which is the part that matters:
           // reserving the column is what keeps the right edge straight down 60
-          // rows with zero hover shift.
-          isSheet ? 'w-[124px] opacity-100' : 'w-[112px]',
+          // rows with zero hover shift, and it is also what makes the receipt and
+          // the controls occupy exactly the same slot.
+          //
+          // Both carry ~8px of slack over the measured content (≈116px / ≈128px:
+          // a ~64px "Today" chip, two 22/28px squares, two 4px gaps). That slack
+          // is a guard, not padding — this box has no overflow rule and it is
+          // justify-end, so a cluster wider than its reservation spills LEFT, over
+          // the date stamp. Text metrics move with the font; leave the margin in.
+          isSheet ? 'w-[136px] opacity-100' : 'w-[124px]',
           // The stale marker is the one thing in this column that is not an
           // affordance, so it does NOT hide behind hover the way the controls
           // and the receipt do — a row silently refusing to be carried has to
@@ -568,27 +712,35 @@ function TriageRow({
           </button>
         ) : (
           <>
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid={`morning-today-btn-${item.id}`}
+            {/* "Today" is the only exit that keeps its word: it is the one people
+                reach for without reading, and an unlabelled → is the least
+                legible glyph in the set. The other two are the same box with the
+                name in a tooltip. */}
+            <TriageAction
+              icon={ArrowRight}
+              label="Move to today"
+              text="Today"
+              isSheet={isSheet}
+              testId={`morning-today-btn-${item.id}`}
               onClick={() => onMoveTo(item, todayStr)}
-              className={cn('gap-1 px-1.5 text-xs', isSheet ? 'h-7' : 'h-6')}
-            >
-              <ArrowRight className="h-3 w-3" />
-              Today
-            </Button>
+            />
 
             {/* Pick a date. Desktop gets Calendar in a nested Popover; touch gets
                 the sr-only native input pattern from eod-review.tsx:404-417 —
                 copied exactly, because that shape exists so the picker's
-                onChange doesn't fire while the wheel is being scrolled. */}
+                onChange doesn't fire while the wheel is being scrolled.
+
+                Both wear actionClass() directly rather than going through
+                TriageAction: this one has to be a <label> so the sr-only input
+                stays clickable, and the desktop one has to be the element
+                PopoverTrigger clones. They are the two reasons the shared style
+                is a function and not just a component. */}
             {isSheet ? (
               <label
                 htmlFor={`morning-date-input-${item.id}`}
                 data-testid={`morning-date-btn-${item.id}`}
                 aria-label="Pick a date"
-                className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground"
+                className={cn(actionClass(true), 'cursor-pointer')}
               >
                 <CalendarDays className="h-3.5 w-3.5" />
                 <input
@@ -607,15 +759,14 @@ function TriageRow({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
+                        type="button"
                         aria-label="Pick a date"
                         data-testid={`morning-date-btn-${item.id}`}
-                        className="h-6 w-6 p-0"
+                        className={actionClass(false)}
                       >
                         <CalendarDays className="h-3.5 w-3.5" />
-                      </Button>
+                      </button>
                     </PopoverTrigger>
                   </TooltipTrigger>
                   <TooltipContent>Pick a date</TooltipContent>
@@ -634,21 +785,13 @@ function TriageRow({
               </Popover>
             )}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Move to Braindump"
-                  data-testid={`morning-backlog-btn-${item.id}`}
-                  onClick={() => onBraindump(item)}
-                  className={cn('p-0', isSheet ? 'h-7 w-7' : 'h-6 w-6')}
-                >
-                  <ArrowLeftToLine className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Move to Braindump</TooltipContent>
-            </Tooltip>
+            <TriageAction
+              icon={ArrowLeftToLine}
+              label="Move to Braindump"
+              isSheet={isSheet}
+              testId={`morning-backlog-btn-${item.id}`}
+              onClick={() => onBraindump(item)}
+            />
           </>
         )}
       </div>

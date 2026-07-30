@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { format, parseISO } from 'date-fns';
 import { ChevronDown, ChevronUp, Sun, X } from 'lucide-react';
 
 import {
@@ -15,11 +14,17 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/compon
 import { MorningTriageList } from '@/components/ai/morning-triage-list';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { summarizeOverdue, toDateOnly, type OverdueSummary } from '@/lib/overdue';
+import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
 import { toDateStr } from '@/lib/recurrence';
 
 /**
- * "Past due" — a single-line bar above the day, with the list in a portal.
+ * The waiting bar — a single line above the day, with the list in a portal.
+ *
+ * "Waiting" to the reader, "past due" in the code: the predicate, the store, the
+ * settings keys and the auto-age sweep all still use the internal name, because
+ * that is what they compute. See the copy contract on BarCopy below for why the
+ * visible word is different, and treat that contract as covering this file and
+ * components/ai/morning-triage-list.tsx together.
  *
  * THE CONTRACT: the bar's in-flow height is 50px at EVERY task count, forever.
  *   wrapper mt-3 + mb-1 (16) + border ×2 (2) + bar row h-8 (32) = 50
@@ -130,8 +135,8 @@ function usePastDue() {
  * dismiss() writes morningCheckDismissedDate AND isOpen:false in one set
  * (lib/morning-store.ts:56), so `visible` flips false in the SAME render as the
  * click: the Popover root — the trigger Radix would restore focus to included —
- * unmounts before onCloseAutoFocus can run, and so does the ✕ / "Done for
- * today" button the user just pressed. Focus falls to <body> and the next Tab
+ * unmounts before onCloseAutoFocus can run, and so does the ✕ / "Hide until
+ * tomorrow" button the user just pressed. Focus falls to <body> and the next Tab
  * restarts at the top of the document.
  *
  * Neither surface has a survivor of its own to hand focus to (every control
@@ -170,28 +175,44 @@ function useDismissWithFocus() {
 }
 
 /**
- * Bar copy. Three deletions from the old string, each justified by the code:
- *  - "from yesterday" was a LIE — the predicate has no lower bound, which is
- *    exactly why April items sit in a list titled "yesterday".
+ * THE COPY CONTRACT FOR THIS WHOLE SURFACE.
+ *
+ * This bar is the first thing the user sees, every day, before they have done
+ * anything. So it gets exactly one job: say how much is waiting, and open. It
+ * does not grade the pile, it does not date the pile, and it never implies the
+ * user owes anyone an explanation. If a future edit here needs a sentence to
+ * justify itself, that is the signal it belongs somewhere else.
+ *
+ * What that rules out, and why each one was actually here:
+ *  - "· oldest May 2". An aggregate age has one reading and it is "this is how
+ *    far behind you are". The per-row stamps in the tray carry every bit of the
+ *    USEFUL information (which day is this line about?) without summing it into
+ *    a verdict. lib/overdue.ts has a longer note where the helper used to live.
+ *  - "past due", as the visible noun. It is still the internal name of the
+ *    predicate (lib/overdue.ts, useMorningStore, the auto-age sweep) because
+ *    that is what it computes — but a bill is past due, and a bill has a
+ *    penalty. "Waiting" is the same set of items with the blame taken out, and
+ *    it is the word the drawer's own description has always used.
+ *  - "from yesterday" was also a LIE: the predicate has no lower bound, which is
+ *    exactly why April items once sat in a list titled "yesterday".
  *  - an unconditional "Good morning!" was a LIE — visibility gates on
- *    enabled && !dismissed && n > 0, never on the clock, so it greeted you at 3pm.
+ *    enabled && !dismissed && n > 0, never on the clock, so it greeted you at
+ *    3pm. Conditioned on the hour it stays, because a greeting is the one thing
+ *    on this bar that costs the reader nothing.
  *  - "carry forward or clear them out?" is a question a collapsed bar can't answer.
  */
 function BarCopy({ summary }: { summary: OverdueSummary }) {
   const n = summary.count;
-  if (n === 0) return <>All clear — nothing past due</>;
+  if (n === 0) return <>All clear — nothing waiting</>;
 
   const beforeNoon = new Date().getHours() < 12;
-  const oldest = summary.oldestStartDate
-    ? format(parseISO(toDateOnly(summary.oldestStartDate)), 'MMM d')
-    : null;
 
   return (
     <>
       {beforeNoon && 'Good morning — '}
-      <span className="font-semibold">{n} past due</span>
-      {/* "oldest" only earns its word when there is more than one date in play. */}
-      {oldest && ` · ${n > 1 ? 'oldest ' : ''}${oldest}`}
+      <span className="font-semibold">
+        {n === 1 ? '1 item' : `${n} items`} waiting
+      </span>
     </>
   );
 }
@@ -215,11 +236,15 @@ function BarRow({
     <div className="flex h-8 items-center">
       {trigger(
         <>
-          <Sun className="h-3.5 w-3.5 flex-shrink-0 text-ai" />
-          <span className="min-w-0 flex-1 truncate font-num text-xs tracking-[0.04em] text-ai-text">
+          {/* The ONE coloured thing on this bar. Everything else — the count, the
+              affordance, the ✕ — is plain body ink, because honey in a container
+              edge and honey in body text is what made a planning surface read as
+              a caution strip. See the --sunrise-* note in app/globals.css. */}
+          <Sun className="h-3.5 w-3.5 flex-shrink-0 text-sunrise-glyph" />
+          <span className="min-w-0 flex-1 truncate font-num text-xs tracking-[0.04em] text-foreground">
             <BarCopy summary={summary} />
           </span>
-          <span className="flex flex-shrink-0 items-center gap-1 font-num text-xs tracking-[0.04em] text-ai-text/80">
+          <span className="flex flex-shrink-0 items-center gap-1 font-num text-xs tracking-[0.04em] text-muted-foreground">
             {isOpen ? 'Close' : 'Review'}
             <Chevron className="h-3.5 w-3.5" />
           </span>
@@ -228,16 +253,17 @@ function BarRow({
 
       {onDismiss && (
         <>
-          <span aria-hidden className="h-4 w-px flex-shrink-0 bg-ai/35" />
+          <span aria-hidden className="h-4 w-px flex-shrink-0 bg-sunrise-border" />
           {/* hover-wash, not hover:bg-accent: these controls sit ON a filled
-              bg-ai/10 target, and hover:bg-accent REPLACES background-color —
-              it would drop the tint and make the button lighten on hover. */}
+              bg-sunrise-bg target, and hover:bg-accent REPLACES
+              background-color — it would drop the tint and make the button
+              lighten on hover. */}
           <button
             type="button"
             onClick={onDismiss}
             aria-label="Dismiss until tomorrow"
             title="Dismiss until tomorrow"
-            className="hover-wash flex h-8 w-6 flex-shrink-0 items-center justify-center text-ai-text/80 hover:text-ai-text"
+            className="hover-wash flex h-8 w-6 flex-shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
           >
             <X className="h-3 w-3" />
           </button>
@@ -272,7 +298,7 @@ export function MorningCheck() {
             from the ANCHOR when one is present, so anchoring the whole box makes
             the tray inherit the canvas-container gutter with zero measurement. */}
         <PopoverAnchor asChild>
-          <div className="overflow-hidden rounded-[6px] border border-ai/35 bg-ai/10">
+          <div className="overflow-hidden rounded-[6px] border border-sunrise-border bg-sunrise-bg">
             <BarRow
               summary={summary}
               isOpen={trayOpen}
@@ -333,12 +359,12 @@ export function MorningCheck() {
 }
 
 /**
- * Mobile: 36px pill + bottom Drawer. Phones had no past-due surface at all
+ * Mobile: 36px pill + bottom Drawer. Phones had no waiting surface at all
  * before this.
  *
  * No ✕ here — touch has no hover, and a 24px destructive target pressed up
  * against a 300px tap target is a mis-tap generator. Dismissal lives in the
- * drawer footer's "Done for today" only.
+ * drawer footer's "Hide until tomorrow" only.
  *
  * The drawer NEVER auto-opens — see `armed` below for what makes that true
  * rather than merely intended.
@@ -364,7 +390,7 @@ export function MorningCheckMobile() {
           h-8 + mb-1 keeps the in-flow cost fixed inside the min-h-0 column. */}
       <div
         ref={barRef}
-        className="mx-3 mb-1 flex-shrink-0 overflow-hidden rounded-[16px] border border-ai/35 bg-ai/10"
+        className="mx-3 mb-1 flex-shrink-0 overflow-hidden rounded-[16px] border border-sunrise-border bg-sunrise-bg"
         data-testid="morning-bar"
       >
         <BarRow
@@ -386,7 +412,7 @@ export function MorningCheckMobile() {
         {/* max-h-[80vh] comes free from components/ui/drawer.tsx:61. */}
         <DrawerContent data-testid="morning-tray">
           <DrawerHeader className="pb-2">
-            <DrawerTitle className="text-left text-base">Past due</DrawerTitle>
+            <DrawerTitle className="text-left text-base">Still waiting</DrawerTitle>
             <DrawerDescription className="sr-only">
               Items still waiting from earlier days. Complete them, carry them to today, pick a new
               date, or move them to your Braindump.

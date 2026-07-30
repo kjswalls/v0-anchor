@@ -89,8 +89,13 @@ describe('buildAnchorContext', () => {
         '- Write report (Project: Work, Morning, High priority)',
         '**Completed today**',
         '- Done thing ✓',
-        '**Overdue**',
-        '- Old thing (was Jul 10, Low)',
+        // "Still waiting" / "from", not "Overdue" / "was" — a deliberate tone
+        // change to Beacon's prompt, made with the guilt-free pass over the
+        // sunrise review. See the note at the push site in lib/item-registry.ts.
+        // Everything else in this string is still the frozen pre-unification
+        // presentation, and this assertion is still here to catch drift in it.
+        '**Still waiting**',
+        '- Old thing (from Jul 10, Low)',
         '',
         '### Habits',
         '- Stretch — 🔥 4 day streak — ✓ done today',

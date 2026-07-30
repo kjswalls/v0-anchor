@@ -95,8 +95,9 @@ export interface ItemTypeConfig {
     /**
      * Renders this type's section of the Beacon chat context (markdown lines,
      * no trailing blank). Pinned presentation — byte-identical to the
-     * pre-unification builder: tasks are date-scoped with an Overdue block,
-     * habits are date-blind and streak-annotated in store order.
+     * pre-unification builder except for the past-due heading's wording (see the
+     * push site): tasks are date-scoped with a "Still waiting" block, habits are
+     * date-blind and streak-annotated in store order.
      */
     renderContextSection: (
       items: readonly Item[],
@@ -182,11 +183,25 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         }
 
         if (overdueTasks.length > 0) {
-          lines.push('**Overdue**')
+          // "Still waiting", not "Overdue" — and this one IS a deliberate tone
+          // decision, not a copy tidy-up. These lines are Beacon's prompt, so the
+          // heading is the frame it answers in: handed a section called Overdue,
+          // it opens by telling the user what they are behind on, which is the one
+          // thing every other surface here has just stopped doing (see the copy
+          // contract on BarCopy in components/ai/morning-check.tsx).
+          //
+          // No information is withheld from the model: same items, same order,
+          // same dates, and "from Jul 10" carries the age exactly as well as "was
+          // Jul 10" did. tests/unit/ai-context.test.ts pins this whole string as
+          // the frozen pre-unification presentation and was updated in the same
+          // commit — the freeze is there to catch DRIFT, and an intentional
+          // rewording is not drift, so if this line changes again the test should
+          // fail again and be re-read, not loosened.
+          lines.push('**Still waiting**')
           overdueTasks.forEach((t) => {
             // toDateOnly: the selector admits legacy full-ISO startDates, which
             // `+ 'T00:00:00'` would turn into an Invalid Date.
-            const dateLabel = `was ${format(new Date(toDateOnly(t.startDate!) + 'T00:00:00'), 'MMM d')}`
+            const dateLabel = `from ${format(new Date(toDateOnly(t.startDate!) + 'T00:00:00'), 'MMM d')}`
             const priority = t.priority
               ? `, ${t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}`
               : ''
