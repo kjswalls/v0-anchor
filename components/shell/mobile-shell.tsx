@@ -49,7 +49,10 @@ export function MobileShell() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background md:hidden">
-      <MobileHeader onOpenSettings={() => openDialog({ type: 'settings' })} />
+      <MobileHeader
+        onOpenSettings={() => openDialog({ type: 'settings' })}
+        onOpenBugReport={() => openDialog({ type: 'bug-report' })}
+      />
 
       {activeTab === 'today' && <MiniWeekNav />}
 

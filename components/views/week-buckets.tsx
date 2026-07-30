@@ -9,6 +9,7 @@ import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -45,7 +46,10 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
             {activeId ? 'Drop here' : '·'}
           </div>
         ) : (
-          <div className="space-y-0">
+          // Issue #193: a bucket stacked with rows caps out and scrolls its own
+          // content, rather than pushing the rest of the day column down. Plain
+          // overflow-y-auto, not <ScrollArea> — Radix silently drops max-h.
+          <div className="space-y-0 overflow-y-auto" style={{ maxHeight: WEEK_BUCKET_MAX_H }}>
             {habits.map((habit) => (
               <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} density="compact" date={date} />
             ))}

@@ -7,6 +7,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import type { Task, Project } from '@/lib/planner-types';
 import { CategoryIcon } from '@/lib/category-icons';
+import { WEEK_PROJECT_BLOCK_MAX_H } from '@/lib/schedule-constants';
 import { cn } from '@/lib/utils';
 
 /**
@@ -76,9 +77,15 @@ interface ProjectBlockProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   activeId?: string | null;
+  /** Day view sizes nothing here — the block just grows with its content.
+   *  Week × Buckets (issue #193) is a ~240px mini column stacked four buckets
+   *  deep, where an unbounded block can push the rest of the day column off
+   *  screen, so 'week' caps the body and scrolls it instead. Defaults to
+   *  'day' so the shared day-buckets usage is untouched. */
+  variant?: 'day' | 'week';
 }
 
-export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectBlockProps) {
+export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 'day' }: ProjectBlockProps) {
   const { getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } =
     usePlannerStore();
 
@@ -118,77 +125,85 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
         </span>
       </div>
 
-      {tasksInBlock.length > 0 && (
-        <div className="mb-3 space-y-1.5">
-          {tasksInBlock.map((task) => (
-            <BlockTask key={task.id} task={task} onClick={() => onTaskClick(task)} />
-          ))}
-        </div>
-      )}
-
-      {availableTasks.length > 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 p-2">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-success-text hover:text-success-text"
-              onClick={() => moveTasksToProjectBlock(availableTasks.map((t) => t.id))}
-            >
-              <ChevronsRight className="mr-1 h-3 w-3" />
-              Move all
-            </Button>
-          </div>
-          <div className="space-y-1.5">
-            {availableTasks.slice(0, 5).map((task) => (
-              <div
-                key={task.id}
-                onClick={() => onTaskClick(task)}
-                className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover-wash"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-content text-content text-foreground">{task.title}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 flex-shrink-0 p-0 text-muted-foreground opacity-0 hover:text-success-text group-hover/preview:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveTaskToProjectBlock(task.id);
-                  }}
-                  title="Move to block"
-                >
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+      {/* Week caps the body and scrolls it — see the `variant` doc above. Day
+          stays unbounded, exactly as before. Plain overflow-y-auto, not
+          <ScrollArea> — the Radix wrapper silently drops max-h. */}
+      <div
+        className={cn(variant === 'week' && 'overflow-y-auto')}
+        style={variant === 'week' ? { maxHeight: WEEK_PROJECT_BLOCK_MAX_H } : undefined}
+      >
+        {tasksInBlock.length > 0 && (
+          <div className="mb-3 space-y-1.5">
+            {tasksInBlock.map((task) => (
+              <BlockTask key={task.id} task={task} onClick={() => onTaskClick(task)} />
             ))}
-            {availableTasks.length > 5 && (
-              <p className="py-1 text-center text-xs text-muted-foreground/70">
-                +{availableTasks.length - 5} more
-              </p>
+          </div>
+        )}
+
+        {availableTasks.length > 0 ? (
+          <div className="rounded-lg border border-dashed border-border/50 p-2">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-success-text hover:text-success-text"
+                onClick={() => moveTasksToProjectBlock(availableTasks.map((t) => t.id))}
+              >
+                <ChevronsRight className="mr-1 h-3 w-3" />
+                Move all
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {availableTasks.slice(0, 5).map((task) => (
+                <div
+                  key={task.id}
+                  onClick={() => onTaskClick(task)}
+                  className="group/preview flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2.5 py-2 transition-colors hover-wash"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-content text-content text-foreground">{task.title}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 flex-shrink-0 p-0 text-muted-foreground opacity-0 hover:text-success-text group-hover/preview:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveTaskToProjectBlock(task.id);
+                    }}
+                    title="Move to block"
+                  >
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              {availableTasks.length > 5 && (
+                <p className="py-1 text-center text-xs text-muted-foreground/70">
+                  +{availableTasks.length - 5} more
+                </p>
+              )}
+            </div>
+          </div>
+        ) : tasksInBlock.length === 0 ? (
+          <div
+            className={cn(
+              'rounded-lg border border-dashed border-border/50 py-3 text-center text-xs text-muted-foreground',
+              isOver && canAcceptDrop && 'border-primary bg-primary/5'
+            )}
+          >
+            {isOver && canAcceptDrop ? (
+              <span className="text-success-text">Drop to add to block</span>
+            ) : isOver && !canAcceptDrop ? (
+              <span className="text-destructive/70">Only {project.name} tasks allowed</span>
+            ) : (
+              <span>No tasks for this project yet</span>
             )}
           </div>
-        </div>
-      ) : tasksInBlock.length === 0 ? (
-        <div
-          className={cn(
-            'rounded-lg border border-dashed border-border/50 py-3 text-center text-xs text-muted-foreground',
-            isOver && canAcceptDrop && 'border-primary bg-primary/5'
-          )}
-        >
-          {isOver && canAcceptDrop ? (
-            <span className="text-success-text">Drop to add to block</span>
-          ) : isOver && !canAcceptDrop ? (
-            <span className="text-destructive/70">Only {project.name} tasks allowed</span>
-          ) : (
-            <span>No tasks for this project yet</span>
-          )}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

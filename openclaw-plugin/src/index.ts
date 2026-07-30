@@ -80,7 +80,7 @@ export default definePluginEntry({
       path: '/plugins/anchor/webhook',
       auth: 'plugin',
       async handler(req: IncomingMessage, res: ServerResponse) {
-        const { body, eventName } = await parseWebhookBody(req, cfg)
+        const { body, eventName } = await parseWebhookBody(req)
 
         if (cfg.webhookSecret) {
           const sig = (req.headers['x-anchor-signature'] as string) ?? ''

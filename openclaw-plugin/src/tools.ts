@@ -1,24 +1,32 @@
 import { Type } from '@sinclair/typebox'
+import type { OpenClawPluginApi } from 'openclaw/plugin-sdk/plugin-entry'
 import type { PluginConfig } from './plugin-types.js'
 import { fetchContext, shouldRefreshCache, shouldSkipInjection, markCacheDirty, markContextInjected, getLastInjectedAt } from './cache.js'
 import { buildFullContext } from './context.js'
 
-function errorResult(status: number, text: string) {
-  return { content: [{ type: 'text', text: `Error ${status}: ${text}` }] }
+/** AgentTool requires `details` on every result; we have no structured payload
+ *  to report, so it is always an empty object. */
+function textResult(text: string) {
+  return { content: [{ type: 'text' as const, text }], details: {} }
 }
 
-export function registerTools(api: any, cfg: PluginConfig): void {
+function errorResult(status: number, text: string) {
+  return textResult(`Error ${status}: ${text}`)
+}
+
+export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── anchor_get_context ────────────────────────────────────────────────────
   api.registerTool((ctx: { sessionId?: string }) => ({
     name: 'anchor_get_context',
+    label: 'Anchor: Get Context',
     description: 'Retrieve current tasks, habits, and projects from Anchor. Call this before responding to any task or habit management request, when the user asks about their schedule or what they need to do today, or when you need fresh context after making changes. Returns a short acknowledgement if context is already fresh in this session.',
     parameters: Type.Object({}),
-    async execute() {
+    async execute(_toolCallId: string) {
       const ttlMs = cfg.cacheTtlMs ?? 5 * 60 * 1000
       const conversationId = ctx.sessionId ?? 'default'
       if (shouldSkipInjection(ttlMs, conversationId)) {
         const ago = Math.round((Date.now() - getLastInjectedAt(conversationId)!) / 1000)
-        return { content: [{ type: 'text', text: `Context unchanged (injected ${ago}s ago) — use what is already in your context window.` }] }
+        return textResult(`Context unchanged (injected ${ago}s ago) — use what is already in your context window.`)
       }
       if (shouldRefreshCache(ttlMs)) {
         try { await fetchContext(cfg) } catch (err) {
@@ -27,13 +35,14 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       }
       const context = buildFullContext()
       markContextInjected(conversationId)
-      return { content: [{ type: 'text', text: context || 'No context available.' }] }
+      return textResult(context || 'No context available.')
     },
   }))
 
   // ── anchor_create_task ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_create_task',
+    label: 'Anchor: Create Task',
     description: 'Create a new task in Anchor.',
     parameters: Type.Object({
       title: Type.String({ description: 'Task title' }),
@@ -43,7 +52,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       priority: Type.Optional(Type.String({ description: 'low | medium | high' })),
       project: Type.Optional(Type.String({ description: 'Project name' })),
     }),
-    async execute(params: {
+    async execute(_toolCallId: string, params: {
       title: string
       startDate?: string
       startTime?: string
@@ -74,13 +83,14 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Task created: ${text}` }] }
+      return textResult(`Task created: ${text}`)
     },
   })
 
   // ── anchor_update_task ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_update_task',
+    label: 'Anchor: Update Task',
     description: 'Update an existing task in Anchor. For one-off tasks, set status to complete them. For recurring tasks, use completedDates instead of status to record per-date completions.',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
@@ -92,7 +102,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       project: Type.Optional(Type.String({ description: 'Project name' })),
       completedDates: Type.Optional(Type.Array(Type.String(), { description: '(recurring tasks only) full set of ISO date strings YYYY-MM-DD in user\'s timezone representing all completion dates' })),
     }),
-    async execute(params: {
+    async execute(_toolCallId: string, params: {
       id: string
       title?: string
       status?: string
@@ -123,18 +133,19 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Task updated: ${text}` }] }
+      return textResult(`Task updated: ${text}`)
     },
   })
 
   // ── anchor_delete_task ────────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_delete_task',
+    label: 'Anchor: Delete Task',
     description: 'Soft-delete a task in Anchor (recoverable from trash for 30 days).',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
     }),
-    async execute(params: { id: string }) {
+    async execute(_toolCallId: string, params: { id: string }) {
       const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
@@ -142,20 +153,21 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Task deleted.` }] }
+      return textResult(`Task deleted.`)
     },
   })
 
   // ── anchor_create_habit ───────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_create_habit',
+    label: 'Anchor: Create Habit',
     description: 'Create a new habit in Anchor.',
     parameters: Type.Object({
       title: Type.String({ description: 'Habit title' }),
       repeatFrequency: Type.Optional(Type.String({ description: 'daily | weekly | weekdays | weekends | monthly | custom' })),
       repeatDays: Type.Optional(Type.Array(Type.Number(), { description: 'Days of week (0=Sun … 6=Sat)' })),
     }),
-    async execute(params: {
+    async execute(_toolCallId: string, params: {
       title: string
       repeatFrequency?: string
       repeatDays?: number[]
@@ -175,13 +187,14 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Habit created: ${text}` }] }
+      return textResult(`Habit created: ${text}`)
     },
   })
 
   // ── anchor_update_habit ───────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_update_habit',
+    label: 'Anchor: Update Habit',
     description: 'Update an existing habit in Anchor.',
     parameters: Type.Object({
       id: Type.String({ description: 'Habit UUID' }),
@@ -189,7 +202,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       repeatFrequency: Type.Optional(Type.String({ description: "none | daily | weekly | weekdays | weekends | monthly | custom" })),
       repeatDays: Type.Optional(Type.Array(Type.Number(), { description: "Day indices (0=Sun) for custom/weekly recurrence" })),
     }),
-    async execute(params: { id: string; title?: string; repeatFrequency?: string; repeatDays?: number[] }) {
+    async execute(_toolCallId: string, params: { id: string; title?: string; repeatFrequency?: string; repeatDays?: number[] }) {
       const body: Record<string, unknown> = {}
       if (params.title !== undefined) body.title = params.title
       if (params.repeatFrequency !== undefined) body.repeatFrequency = params.repeatFrequency
@@ -206,18 +219,19 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Habit updated: ${text}` }] }
+      return textResult(`Habit updated: ${text}`)
     },
   })
 
   // ── anchor_delete_habit ───────────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_delete_habit',
+    label: 'Anchor: Delete Habit',
     description: 'Soft-delete a habit in Anchor.',
     parameters: Type.Object({
       id: Type.String({ description: 'Habit UUID' }),
     }),
-    async execute(params: { id: string }) {
+    async execute(_toolCallId: string, params: { id: string }) {
       const res = await fetch(`${cfg.anchorUrl}/api/agent/habits/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
@@ -225,7 +239,7 @@ export function registerTools(api: any, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return { content: [{ type: 'text', text: `Habit deleted.` }] }
+      return textResult(`Habit deleted.`)
     },
   })
 }

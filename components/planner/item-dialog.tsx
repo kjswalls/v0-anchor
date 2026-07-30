@@ -61,6 +61,7 @@ import type {
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
 import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { currentDayOfWeek } from '@/lib/recurrence';
 import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -253,6 +254,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     itemTypesAvailable,
     defaultTimeBucket,
     itemTypes,
+    userTimezone,
   } = usePlannerStore();
 
   // Tab order: built-ins first (pinned), then user-defined types.
@@ -904,7 +906,22 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                       <ChipOption
                         selected={d.repeatFrequency === value}
                         onSelect={() => {
-                          patch({ repeatFrequency: value as RepeatFrequency });
+                          patch({
+                            repeatFrequency: value as RepeatFrequency,
+                            // Newly switching into Custom days with nothing
+                            // chosen yet pre-selects today — but an item that
+                            // already has custom days saved (or that the user
+                            // already started picking) keeps them untouched.
+                            ...(value === 'custom' && d.repeatDays.length === 0
+                              ? {
+                                  repeatDays: [
+                                    currentDayOfWeek(
+                                      userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+                                    ),
+                                  ],
+                                }
+                              : null),
+                          });
                           // The detail pickers live in this popover; only the
                           // frequencies that carry no detail dismiss it.
                           if (value !== 'custom' && value !== 'monthly') close();

@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CalendarMinus,
   CalendarPlus,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
   Contrast,
@@ -579,6 +580,22 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['week'],
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope('week'),
+  },
+  {
+    id: 'view.toggleScope',
+    label: 'Toggle Day/Week view',
+    dynamicLabel: () => (view().scope === 'week' ? 'Switch to Day view' : 'Switch to Week view'),
+    description: 'Flips between the two, same as picking one directly',
+    group: 'view',
+    icon: CalendarRange,
+    keywords: 'day week scope toggle switch flip view',
+    aliases: ['toggle'],
+    shortcut: { id: 'toggle_view_scope', keys: ['v'] },
+    // Same reason as the two commands above: mobile is day-only by
+    // construction, so this would silently write default_view with no
+    // visible effect.
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
   },
 
   /* ── Rituals & Beacon ───────────────────────────────────────────────── */

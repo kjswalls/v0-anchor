@@ -96,6 +96,19 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const habitStatus: HabitStatus = habitSkipped ? 'skipped' : habitDoneOnDate ? 'done' : 'pending';
   const habitEffectiveCount = habitDoneOnDate ? habitCount || habit?.timesPerDay || 1 : habitCount;
   const completed = isTask ? taskDone : habitStatus === 'done';
+  // Recurrence, not type — a recurring TASK reaches the braindump the same
+  // way a recurring HABIT would (registry: habit.braindumpEligible is
+  // false, so habits don't reach this list today, but tasks can and do
+  // recur). `completed` above is already correctly per-date (completedDates,
+  // never scalar status — see the CLAUDE.md note on recurring items), so
+  // this isn't a data bug; it's that the braindump has no date column of its
+  // own, so a recurring item's title going gray-and-struck-through there
+  // reads as "permanently done" instead of "done today" (issue #181). The
+  // grid views (context 'bucket') render each row under an explicit date,
+  // where that same signal is unambiguous, so the suppression is scoped to
+  // the sidebar only.
+  const itemRecurring = isTask ? taskRecurring : habit ? isRecurring(habit) : false;
+  const suppressCompletedLook = inBraindump && itemRecurring;
 
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
@@ -333,7 +346,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           // rows and the day view default ones, and a title that changed size
           // between the two would break the token's whole purpose.
           compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-          completed && 'text-muted-foreground line-through opacity-60'
+          completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
         )}
       >
         {item.title}
@@ -381,7 +394,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           between items the run ran straight into its neighbour. 12px is wide
           enough that the between-item gap clearly outranks the within-item one. */}
       <div
-        className={cn('relative z-10 flex flex-shrink-0 items-center gap-3', completed && 'opacity-60')}
+        className={cn(
+          'relative z-10 flex flex-shrink-0 items-center gap-3',
+          completed && !suppressCompletedLook && 'opacity-60'
+        )}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
