@@ -45,7 +45,46 @@ export function shouldRefreshCache(ttlMs: number): boolean {
   return false
 }
 
-export async function fetchContext(cfg: PluginConfig): Promise<void> {
+let inFlight: Promise<void> | null = null
+let queued: Promise<void> | null = null
+
+/**
+ * Single-flight wrapper around the context fetch (issue #140).
+ *
+ * Anchor can deliver webhooks back-to-back, and each one calls this. Without a
+ * guard, two overlapping fetches both write `cache` and the *last to resolve*
+ * wins — which may be the older snapshot.
+ *
+ * A caller that arrives mid-flight is not simply dropped: the running request
+ * may predate the change that triggered this call, so it chains one follow-up
+ * fetch instead. At most one follow-up is ever queued, so a webhook burst
+ * collapses to two requests rather than N.
+ */
+export function fetchContext(cfg: PluginConfig): Promise<void> {
+  if (inFlight) {
+    if (!queued) {
+      queued = inFlight
+        // A failed in-flight fetch must not cancel the follow-up — the queued
+        // caller still has a change to pick up.
+        .catch(() => {})
+        .then(() => {
+          queued = null
+          return startFetch(cfg)
+        })
+    }
+    return queued
+  }
+  return startFetch(cfg)
+}
+
+function startFetch(cfg: PluginConfig): Promise<void> {
+  inFlight = doFetch(cfg).finally(() => {
+    inFlight = null
+  })
+  return inFlight
+}
+
+async function doFetch(cfg: PluginConfig): Promise<void> {
   const res = await fetch(`${cfg.anchorUrl}/api/agent/context`, {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   })
@@ -77,4 +116,6 @@ export function resetCacheState(): void {
   cache = null
   lastInjectedAt.clear()
   lastModifiedAt = null
+  inFlight = null
+  queued = null
 }

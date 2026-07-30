@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline/promises'
 import { readConfigFileSnapshotForWrite, writeConfigFile } from 'openclaw/plugin-sdk/config-runtime'
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/config-runtime'
 
@@ -7,6 +8,36 @@ const MAX_WAIT_MS = 15 * 60 * 1000 // 15 minutes
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Ask for the gateway's public URL (issue #146). Without it the plugin runs in
+ * pull-only mode — no webhook push, no sidebar chat — and the old wizard never
+ * mentioned it, so users had to discover the key by reading a startup warning.
+ *
+ * Returns undefined when skipped, or when there's no TTY to prompt on (the
+ * wizard can be driven from a non-interactive shell).
+ */
+async function promptPublicUrl(): Promise<string | undefined> {
+  if (!process.stdin.isTTY) return undefined
+
+  console.log('\n  Gateway public URL — lets Anchor push changes to the plugin and')
+  console.log('  powers the Anchor sidebar chat. Example:')
+  console.log('    https://midgar-1b4eaa3.turkey-rockhopper.ts.net')
+  console.log('  Leave blank for pull-only mode (no webhooks, no chat).\n')
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = (await rl.question('  Public URL (optional): ')).trim()
+    if (!answer) return undefined
+    if (!/^https?:\/\//i.test(answer)) {
+      console.log('  ⚠️  Not a http(s) URL — skipping. Add publicUrl to openclaw.json later.')
+      return undefined
+    }
+    return answer.replace(/\/$/, '')
+  } finally {
+    rl.close()
+  }
 }
 
 export async function runSetup(): Promise<void> {
@@ -84,9 +115,14 @@ export async function runSetup(): Promise<void> {
         process.exit(1)
       }
 
-      // 5. Write config
-      await writePluginConfig(poll.anchorUrl ?? ANCHOR_URL, poll.apiKey)
-      console.log('Config saved. Restart the gateway: openclaw gateway restart\n')
+      // 5. Collect the gateway public URL, then write config
+      const publicUrl = await promptPublicUrl()
+      await writePluginConfig(poll.anchorUrl ?? ANCHOR_URL, poll.apiKey, publicUrl)
+      if (!publicUrl) {
+        console.log('\n  Pull-only mode — webhook push and sidebar chat are off.')
+        console.log('  Add publicUrl to the anchor-context config in openclaw.json to enable them.')
+      }
+      console.log('\nConfig saved. Restart the gateway: openclaw gateway restart\n')
       return
     }
 
@@ -112,7 +148,11 @@ export async function runSetup(): Promise<void> {
   process.exit(1)
 }
 
-async function writePluginConfig(anchorUrl: string, apiKey: string): Promise<void> {
+async function writePluginConfig(
+  anchorUrl: string,
+  apiKey: string,
+  publicUrl?: string
+): Promise<void> {
   const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite()
 
   const config = snapshot.config as OpenClawConfig & Record<string, unknown>
@@ -128,11 +168,24 @@ async function writePluginConfig(anchorUrl: string, apiKey: string): Promise<voi
   const entries = ((plugins.entries ?? {}) as Record<string, unknown>)
   const existing = ((entries['anchor-context'] ?? {}) as Record<string, unknown>)
 
+  // Merge into the existing plugin config rather than replacing it — re-running
+  // setup used to silently drop hand-added keys like webhookSecret, agentId,
+  // and cacheTtlMs. publicUrl is only overwritten when the wizard collected one,
+  // so skipping the prompt keeps whatever is already configured.
+  const existingConfig = ((existing.config ?? {}) as Record<string, unknown>)
+  const existingAnchorConfig = ((existingConfig['anchor-context'] ?? {}) as Record<string, unknown>)
+
   entries['anchor-context'] = {
     ...existing,
     enabled: true,
     config: {
-      'anchor-context': { anchorUrl, apiKey },
+      ...existingConfig,
+      'anchor-context': {
+        ...existingAnchorConfig,
+        anchorUrl,
+        apiKey,
+        ...(publicUrl ? { publicUrl } : {}),
+      },
     },
   }
   plugins.entries = entries
