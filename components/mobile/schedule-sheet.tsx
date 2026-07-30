@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Trash2 } from 'lucide-react';
+import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, SkipForward, Trash2, Undo2 } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -13,8 +13,9 @@ import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
+import { getItemTypeConfig } from '@/lib/item-registry';
 import { BUCKET_ORDER } from '@/lib/day-items';
-import { toDateStr } from '@/lib/recurrence';
+import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import type { TimeBucket, Task } from '@/lib/planner-types';
 
 const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
@@ -28,18 +29,37 @@ const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
  * Mobile tap-to-schedule sheet. A row's ellipsis opens it; picking a bucket
  * schedules the item for the currently selected day (tasks) or assigns its
  * bucket (habits) — the same store commands a drop emits, so undo works. Also
- * offers unschedule (scheduled tasks) and delete.
+ * offers skip/unskip (recurring items of a skippable type), unschedule
+ * (scheduled tasks) and delete.
  */
 export function ScheduleSheet() {
   const row = useScheduleSheet((s) => s.row);
   const close = useScheduleSheet((s) => s.close);
-  const { scheduleTask, assignHabitToBucket, unscheduleTask, deleteTask, deleteHabit, selectedDate, userTimezone } =
-    usePlannerStore();
+  const {
+    scheduleTask,
+    assignHabitToBucket,
+    unscheduleTask,
+    setItemSkipped,
+    deleteTask,
+    deleteHabit,
+    selectedDate,
+    userTimezone,
+  } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const task = row?.itemType === 'task' ? (row.item as Task) : null;
   const taskScheduled = !!task && (task.isScheduled || !!task.timeBucket);
+
+  // Skip/unskip lives here because touch has no hover: the row's control
+  // cluster is desktop-only, so without this the capability simply does not
+  // exist on mobile (#195). Same registry gate the row uses.
+  const dateStr = toDateStr(selectedDate, tz);
+  const projected = row?.item as { type?: string; customType?: string } | undefined;
+  const typeName = projected?.type === 'custom' ? projected.customType! : row?.itemType;
+  const canSkip =
+    !!row && !!typeName && getItemTypeConfig(typeName).skippable && isRecurring(row.item);
+  const isSkipped = canSkip && isSkippedOnDate(row.item, dateStr);
 
   const schedule = (bucket: TimeBucket) => {
     if (!row) return;
@@ -87,6 +107,27 @@ export function ScheduleSheet() {
         </div>
 
         <DrawerFooter>
+          {canSkip && (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid={isSkipped ? 'sheet-unskip-button' : 'sheet-skip-button'}
+              onClick={() => {
+                if (row) setItemSkipped(row.item.id, !isSkipped, selectedDate);
+                close();
+              }}
+            >
+              {isSkipped ? (
+                <>
+                  <Undo2 className="mr-2 h-4 w-4" /> Unskip today
+                </>
+              ) : (
+                <>
+                  <SkipForward className="mr-2 h-4 w-4" /> Skip today
+                </>
+              )}
+            </Button>
+          )}
           {taskScheduled && (
             <Button
               variant="ghost"

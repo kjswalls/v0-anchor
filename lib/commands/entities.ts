@@ -81,8 +81,13 @@ export function isDoneOn(item: Item, dateStr: string): boolean {
   return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
 }
 
+/**
+ * Skipping is per-DATE for every type that supports it (`skippedDates`), so
+ * this reads the same array on a habit, a recurring task and a recurring
+ * custom type. Whether the item may be skipped at all is `isSkippable`.
+ */
 export function isSkippedOn(item: Item, dateStr: string): boolean {
-  return item.type === 'habit' && (item.skippedDates ?? []).includes(dateStr);
+  return (item.skippedDates ?? []).includes(dateStr);
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */

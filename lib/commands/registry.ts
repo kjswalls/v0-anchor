@@ -53,7 +53,7 @@ import { useEODStore } from '../eod-store';
 import { useChatStore } from '../chat-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig, itemTypeName } from '../item-registry';
+import { getItemTypeConfig, isSkippable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
@@ -288,16 +288,21 @@ export const STATIC_COMMANDS: Command[] = [
   }),
   itemCommand({
     id: 'items.skip',
-    label: 'Skip habit today',
-    description: 'Marks the day skipped without breaking the streak',
+    label: 'Skip today',
+    description: "Marks the day skipped — for a habit, without breaking the streak",
     icon: SkipForward,
-    keywords: 'skip habit rest day pass miss',
+    keywords: 'skip habit rest day pass miss recurring',
     aliases: ['skip'],
-    placeholder: 'Which habit?',
-    emptyLabel: 'No habit left to skip today',
+    placeholder: 'Which item?',
+    emptyLabel: 'Nothing left to skip today',
+    // Registry capability, not "is it a habit": any recurring occurrence of a
+    // skippable type can be skipped (#194). One-shot items are excluded by
+    // isSkippable — they get completed or cancelled, never skipped.
     eligible: (item, dateStr) =>
-      isHabit(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
-    run: (item) => planner().toggleHabitStatus(item.id, 'skipped'),
+      isSkippable(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
+    // No date argument, exactly as before: the store resolves the selected day,
+    // which is the same day `dateStr` was derived from.
+    run: (item) => planner().setItemSkipped(item.id, true),
   }),
   itemCommand({
     id: 'items.resetStreak',

@@ -13,6 +13,7 @@
 import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
 import { selectOverdue, toDateOnly } from './overdue'
+import { isRecurring } from './recurrence'
 import type {
   HabitItem,
   Item,
@@ -45,6 +46,24 @@ export interface ItemTypeConfig {
   dateAnchored: boolean
   /** Whether drag-and-drop may target a specific date (week-view column drops). */
   dateAddressable: boolean
+  /**
+   * May a single recurring occurrence be marked "not this one" — skipped —
+   * without counting as done? Skips are per-DATE (`skippedDates`), exactly like
+   * completions, so this capability only bites on a recurring item; a one-shot
+   * item is completed, cancelled or deleted, never skipped. Ask
+   * `isSkippable(item)` rather than reading this flag directly.
+   */
+  skippable: boolean
+  /**
+   * Scalar `status` value this type denormalizes a skip into, or null for
+   * "skippedDates only".
+   *
+   * Habits keep a last-toggle snapshot in `status` and their vocabulary has a
+   * 'skipped' member. Tasks must NOT: `pending|completed|cancelled` is an
+   * external contract the OpenClaw plugin safeParses and throws on, so a
+   * skipped task is a task with a date in `skippedDates` and nothing else.
+   */
+  skipStatus: string | null
   /** Participates in manual ordering (the "order" column + reorder actions). */
   orderable: boolean
   /** Which container table names this type resolves against. */
@@ -117,6 +136,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     allowedFrequencies: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: true,
     dateAddressable: true,
+    skippable: true,
+    skipStatus: null,
     orderable: true,
     containerKind: 'projects',
     containerRequired: false,
@@ -227,6 +248,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     allowedFrequencies: ['daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: false,
     dateAddressable: false,
+    skippable: true,
+    skipStatus: 'skipped',
     orderable: false,
     containerKind: 'habitGroups',
     containerRequired: true,
@@ -307,6 +330,11 @@ export function buildCustomTypeConfig(
     allowedFrequencies: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: true,
     dateAddressable: true,
+    // Task-shaped in every respect, skips included: a recurring custom item
+    // gets the same per-date skip + minimized row a habit does, with no code
+    // path of its own.
+    skippable: true,
+    skipStatus: null,
     // Manual ordering is per-type ("order" sequences would collide); custom
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
@@ -389,4 +417,15 @@ export function getItemTypeConfig(name: string): ItemTypeConfig {
     customTypeConfigs[name] ??
     buildCustomTypeConfig({ name, label: capitalize(name), labelPlural: `${capitalize(name)}s` })
   )
+}
+
+/**
+ * Can this item's occurrences be skipped? Capability AND recurrence: a skip is
+ * a date in `skippedDates`, which is only meaningful when the item has more
+ * than one occurrence to skip. Habits pass on both counts by construction
+ * (their allowed frequencies exclude 'none'), so this is the same predicate
+ * the habit row has always applied — now stated once, for every type.
+ */
+export function isSkippable(item: Item): boolean {
+  return getItemTypeConfig(itemTypeName(item)).skippable && isRecurring(item)
 }

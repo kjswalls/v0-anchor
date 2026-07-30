@@ -84,6 +84,25 @@ Per type: `allowedStatuses`, `doneStatus`, `defaultFrequency`, `allowedFrequenci
 `carryForwardEligible` (EOD/morning), rail-slot policy (priority glyph vs StreakFlame),
 confirm copy. Custom types later = rows in an `item_types` table hydrated into this shape.
 
+**`skippable` + `skipStatus` (added 2026-07-30, issues #194/#195).** `skippable`
+says a type's occurrences can be skipped; `skipStatus` says whether that skip is
+*also* denormalized into scalar `status` (`'skipped'` for habits, `null` for tasks
+and custom types). The split exists to protect the pinned legacy projection: task
+status vocabulary stays `pending|completed|cancelled`, so a skipped task is only a
+date in `skippedDates` and never a new status value.
+
+Ask `isSkippable(item)` rather than the capability flag directly — it ANDs the
+flag with `isRecurring(item)`, because a skip is a date in `skippedDates` and only
+means something when there is another occurrence to skip. Habits satisfy both by
+construction (their allowed frequencies exclude `'none'`), so this reproduces the
+old habit-only predicate exactly while extending it to recurring tasks and
+recurring custom types.
+
+`skippedDates` moved into `RecurrenceFieldsSchema` alongside `completedDates`, so
+it lands on every recurring-capable type at once. It is additive and optional, so
+older OpenClaw plugin builds strip it as an unknown key rather than throwing —
+but note `/api/agent/context`'s `tasks[]` projection does now carry it.
+
 ## Phasing (app must work at every step)
 
 - **Phase 0 — stabilize:** fix latent bugs unification amplifies: habit toggle timezone

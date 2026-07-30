@@ -78,6 +78,7 @@ function itemFromRow(row: ItemRow): Item {
       repeatDays: row.repeat_days ?? undefined,
       repeatMonthDay: row.repeat_month_day ?? undefined,
       completedDates: row.completed_dates ?? [],
+      skippedDates: row.skipped_dates ?? [],
       order: row.order ?? 0,
       inProjectBlock: row.in_project_block ?? undefined,
       previousStartTime: row.previous_start_time ?? undefined,
@@ -122,6 +123,11 @@ function itemFromRow(row: ItemRow): Item {
     repeatDays: row.repeat_days ?? undefined,
     repeatMonthDay: row.repeat_month_day ?? undefined,
     completedDates: row.completed_dates ?? [],
+    // items.skipped_dates is not habit-private: it is the per-date skip twin of
+    // completed_dates for EVERY recurring type (migration 019 declared it
+    // `text[] default '{}'` on the unified table, so no migration was needed to
+    // start writing it for tasks).
+    skippedDates: row.skipped_dates ?? [],
     order: row.order ?? 0,
     inProjectBlock: row.in_project_block ?? undefined,
     previousStartTime: row.previous_start_time ?? undefined,
@@ -172,6 +178,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     repeat_days: item.repeatDays ?? null,
     repeat_month_day: item.repeatMonthDay ?? null,
     completed_dates: item.completedDates ?? [],
+    skipped_dates: item.skippedDates ?? [],
     // legacy tasks."order" was NOT NULL DEFAULT 0; agent POST bodies may omit it
     order: item.order ?? 0,
     in_project_block: item.inProjectBlock ?? null,
@@ -202,6 +209,7 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
   if ('completedDates' in updates) row.completed_dates = updates.completedDates ?? [];
+  if ('skippedDates' in updates) row.skipped_dates = updates.skippedDates ?? [];
   if ('order' in updates && updates.order != null) row.order = updates.order;
   if ('inProjectBlock' in updates) row.in_project_block = updates.inProjectBlock ?? null;
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;

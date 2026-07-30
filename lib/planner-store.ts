@@ -43,7 +43,7 @@ import {
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
-import { ITEM_TYPES, getItemTypeConfig, itemTypeName, hydrateCustomTypes } from './item-registry';
+import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, hydrateCustomTypes } from './item-registry';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
@@ -126,6 +126,14 @@ interface PlannerStore {
   /** Batched unscheduleTask — one set(), one history entry, one undo. */
   unscheduleTasks: (ids: string[]) => void;
   reorderTasks: (taskIds: string[]) => void;
+
+  /**
+   * Declare whether ONE recurring occurrence is skipped (intent-based, so a
+   * repeat is a no-op). Type-agnostic: the registry decides whether the type
+   * can be skipped at all and whether a skip is also denormalized into scalar
+   * `status` — it is for habits, never for tasks (see ItemTypeConfig.skipStatus).
+   */
+  setItemSkipped: (id: string, skipped: boolean, date?: Date) => void;
 
   // Habit actions
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
@@ -815,6 +823,53 @@ export const usePlannerStore = create<PlannerStore>()(
         changed.forEach((t) =>
           dbUpdateItem(t.id, 'task', { order: t.order }).catch(console.error)
         );
+      },
+
+      setItemSkipped: (id, skipped, date) => {
+        const item = get().items.find((i) => i.id === id);
+        if (!item) return;
+        const config = getItemTypeConfig(itemTypeName(item));
+        // Capability + recurrence, never `type === 'habit'`. A one-shot item
+        // has no occurrence to skip, so this is a no-op rather than a write
+        // that no surface would ever read back.
+        if (!isSkippable(item)) return;
+
+        // Types whose status vocabulary carries a skip value (habits) keep
+        // going through the status toggle: it owns the interaction between a
+        // skip, the day's completion and the server-side streak, and that
+        // behavior is deliberately untouched here.
+        if (config.skipStatus) {
+          get().toggleHabitStatus(id, (skipped ? config.skipStatus : 'pending') as HabitStatus, undefined, date);
+          return;
+        }
+
+        const dateStr = resolveDateStr(date);
+        const current = item.skippedDates ?? [];
+        if (current.includes(dateStr) === skipped) return;
+        setNextActionLabel(
+          `${skipped ? 'Skip' : 'Unskip'} ${config.label.toLowerCase()} on ${dateStr}: ${item.title}`,
+        );
+
+        const optimistic: Partial<Task> = {
+          skippedDates: skipped ? [...current, dateStr] : current.filter((d) => d !== dateStr),
+        };
+        // A skipped occurrence is not a completed one — same exclusivity the
+        // habit path enforces. Completion belongs to the atomic RPC, so it is
+        // applied optimistically here and written there, never as an absolute
+        // array through the update allowlist.
+        const clearCompletion = skipped && isCompletedOnDate(item, dateStr);
+        if (clearCompletion) {
+          optimistic.completedDates = (item.completedDates ?? []).filter((d) => d !== dateStr);
+        }
+
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id && i.type === item.type ? { ...i, ...optimistic } as Item : i)),
+        ));
+
+        if (clearCompletion) {
+          dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
+        }
+        dbUpdateItem(id, dbTypeOf(item), { skippedDates: optimistic.skippedDates }).catch(console.error);
       },
 
       addHabit: (habitData) => {

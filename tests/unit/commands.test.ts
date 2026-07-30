@@ -347,11 +347,52 @@ describe('entity arguments', () => {
       habit({ id: 'h1', title: 'Stretch', streak: 4 }),
       habit({ id: 'h2', title: 'Read', streak: 0 }),
     ]);
+    // t1 is a one-shot task: skipping is per-DATE, so it needs recurrence, not
+    // habit-ness (see the recurring-task case below).
     expect(picks('items.skip').sort()).toEqual(['h1', 'h2']);
     // Nothing to reset on a streak of zero.
     expect(picks('items.resetStreak')).toEqual(['h1']);
     // Habits are date-blind, so there is no date on them to snooze.
     expect(picks('items.snooze')).toEqual(['t1']);
+  });
+
+  it('offers Skip to recurring items of any skippable type (#194)', () => {
+    seedStore(
+      [
+        task({ id: 'once', title: 'File taxes', startDate: TODAY }),
+        task({
+          id: 'daily',
+          title: 'Water plants',
+          startDate: '2026-03-01',
+          repeatFrequency: 'daily',
+        }),
+        task({
+          id: 'done-today',
+          title: 'Vitamins',
+          startDate: '2026-03-01',
+          repeatFrequency: 'daily',
+          completedDates: [TODAY],
+        }),
+        task({
+          id: 'already-skipped',
+          title: 'Journal',
+          startDate: '2026-03-01',
+          repeatFrequency: 'daily',
+          skippedDates: [TODAY],
+        }),
+        {
+          ...task({ id: 'goal', title: 'Ship v2', startDate: '2026-03-01' }),
+          type: 'custom',
+          customType: 'goal',
+          repeatFrequency: 'weekdays',
+        } as Item,
+        habit({ id: 'h1', title: 'Stretch' }),
+      ],
+      [typeDef('goal')]
+    );
+    // Recurring task and recurring custom type join the habit; the one-shot,
+    // the day's completion and the already-skipped day are all excluded.
+    expect(picks('items.skip').sort()).toEqual(['daily', 'goal', 'h1']);
   });
 
   it('does not offer a value the item already has', () => {

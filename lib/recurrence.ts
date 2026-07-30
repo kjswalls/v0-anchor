@@ -60,6 +60,19 @@ export function isCompletedOnDate(
 }
 
 /**
+ * Returns true if the occurrence on the given date was explicitly skipped.
+ * The skip twin of isCompletedOnDate — same per-date shape, same rule that
+ * scalar `status` is never the truth for a recurring item.
+ * dateStr must be a YYYY-MM-DD string resolved to the user's local timezone before calling.
+ */
+export function isSkippedOnDate(
+  item: { skippedDates?: string[] },
+  dateStr: string
+): boolean {
+  return item.skippedDates?.includes(dateStr) ?? false;
+}
+
+/**
  * Returns true if the item is a recurring item (has a repeat frequency other than none/undefined).
  */
 export function isRecurring(item: { repeatFrequency?: string }): boolean {

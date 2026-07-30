@@ -16,7 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
+import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -104,6 +104,9 @@ export function EODReview() {
       if (t.status === 'cancelled') return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
+      // A recurring task skipped for today was already decided on — the review
+      // shouldn't ask about it again, same as skipped habits (#194).
+      if (isSkippedOnDate(t, today)) return false;
       // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
       return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
     });
