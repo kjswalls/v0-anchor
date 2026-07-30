@@ -59,6 +59,7 @@ function WeekHourCell({
     <div
       ref={setNodeRef}
       data-dnd-id={`weekhour:${dateStr}:${hour}`}
+      data-dnd-over={isOver ? 'true' : 'false'}
       className={cn('relative transition-colors', isOver && 'bg-primary/10')}
       style={{ height: hourPx }}
     >
@@ -149,6 +150,7 @@ function WeekScheduleColumn({
       <div
         ref={setNodeRef}
         data-dnd-id={`week:${col.dateStr}:anytime`}
+        data-dnd-over={isOver ? 'true' : 'false'}
         style={{ height: ANYTIME_H }}
         className={cn(
           'mt-2 overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',

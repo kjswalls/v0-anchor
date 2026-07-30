@@ -95,6 +95,12 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId }: ProjectB
   return (
     <div
       ref={setNodeRef}
+      data-testid="project-block"
+      data-dnd-id={`projectblock:${project.name}`}
+      data-dnd-over={isOver ? 'true' : 'false'}
+      // A project block only accepts a task whose project matches, so a test
+      // asserting the reject path needs to see the distinction.
+      data-dnd-accepts={canAcceptDrop ? 'true' : 'false'}
       className={cn(
         'mb-3 overflow-hidden rounded-lg border-2 p-3 transition-all',
         isOver && canAcceptDrop ? 'border-solid border-primary bg-primary/10' : 'border-dashed',

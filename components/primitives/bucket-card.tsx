@@ -53,6 +53,13 @@ export function BucketCard({
 
   return (
     <section
+      data-testid="bucket-card"
+      data-bucket={bucket}
+      // 'You are here' is otherwise a pure Tailwind ring — and it is the only
+      // current-time affordance in the app, since the current-time-indicator
+      // setting is one of the dead ones.
+      data-current={isCurrent ? 'true' : 'false'}
+      data-drop-target={isDropTarget ? 'true' : 'false'}
       className={cn(
         'group/bucket rounded-[20px] border border-surface-3 bg-surface-2 transition-shadow',
         isCurrent && 'ring-2 ring-ring/60',
@@ -84,7 +91,7 @@ export function BucketCard({
             the far end of the band: it reads as part of the label ("Anytime, 6")
             instead of as a second, unrelated control next to the add button. */}
         <h3 className="font-sans text-xs font-normal text-muted-foreground">{meta.label}</h3>
-        <CountBadge count={count} />
+        <CountBadge count={count} testId="bucket-count" />
         <span className="flex-1" />
         {onAdd && (
           <AddIconButton

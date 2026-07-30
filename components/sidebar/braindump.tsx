@@ -233,6 +233,11 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
     <section
       ref={setNodeRef}
       data-dnd-id="sidebar"
+      data-dnd-over={isOver ? 'true' : 'false'}
+      // Separates the CONTENT scope from the DnD hook: data-dnd-id="sidebar"
+      // currently does double duty as both, so a spec scoping assertions to the
+      // braindump is really asserting against a drop target.
+      data-testid="braindump"
       className="flex min-h-0 flex-1 flex-col gap-2"
     >
       {/* Header — gray capsule (flat) framing a shadowed white row-pill.

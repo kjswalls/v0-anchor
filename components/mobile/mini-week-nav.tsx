@@ -41,6 +41,11 @@ export function MiniWeekNav() {
         variant="ghost"
         size="icon"
         onClick={goPrevious}
+        aria-label="Previous"
+        // Same testid the desktop capsule carries, so one date-navigation helper
+        // works across both shells. These buttons had no label and no testid, so
+        // mobile date navigation was unreachable from a test.
+        data-testid="header-prev"
         className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -88,6 +93,8 @@ export function MiniWeekNav() {
         variant="ghost"
         size="icon"
         onClick={goNext}
+        aria-label="Next"
+        data-testid="header-next"
         className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-foreground"
       >
         <ChevronRight className="h-4 w-4" />

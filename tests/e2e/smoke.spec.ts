@@ -1,7 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import {
+  getAccessToken,
+  createTestTask,
+  cleanupTestData,
+  cleanupByTitlePrefix,
+  testTitle,
+  apiKey,
+} from './helpers/api';
 import { getTodayStr } from './helpers/dates';
+import {
+  reloadApp,
+  itemCard,
+  expectCompleted,
+  completeButton,
+   
+   
+} from './helpers/app';
 
 /**
  * Redesign safety net: the core daily loop must survive every phase of the
@@ -20,29 +35,53 @@ test.describe('Smoke: core daily loop', () => {
     await expect(page.locator('[data-dnd-bucket="afternoon"]')).toBeVisible();
   });
 
-  test('add a task through the UI and complete it', async ({ page }) => {
-    const title = `Smoke task ${Date.now()}`;
+  test('add a task through the UI, complete it, and have that survive a reload', async ({
+    page,
+  }) => {
+    // This test used to click complete, reload, and END — no assertion after the
+    // reload, despite a comment claiming completion survived it. It passed whether
+    // or not completion worked, whether or not the write landed, and even if the
+    // row vanished. It also never deleted the task it created, leaking a row into
+    // the shared braindump on every run.
+    const title = testTitle('smoke');
 
-    await page.getByRole('button', { name: 'Add task' }).first().click();
-    await expect(page.getByText('Add New')).toBeVisible();
-    await page.getByPlaceholder('What needs to be done?').fill(title);
-    await page.getByRole('button', { name: 'Add Task' }).click();
+    try {
+      await page.getByTestId('braindump').getByRole('button', { name: 'Add task' }).click();
+      const dialog = page.getByTestId('item-dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveAttribute('data-mode', 'add');
+      await dialog.getByTestId('item-dialog-title-input').fill(title);
+      await dialog.getByTestId('item-dialog-submit').click();
 
-    // New tasks land in the sidebar (unscheduled) or the day view.
-    const row = page.getByText(title).first();
-    await expect(row).toBeVisible({ timeout: 10_000 });
+      // Resolve the id the app assigned, so every assertion below is id-based.
+      let created: { id: string } | null = null;
+      await expect
+        .poll(
+          async () => {
+            const res = await page.request.get('http://localhost:3000/api/agent/context', {
+              headers: { Authorization: `Bearer ${apiKey()}` },
+            });
+            const body = await res.json();
+            created = (body.tasks ?? []).find((x: { title: string }) => x.title === title) ?? null;
+            return created?.id ?? null;
+          },
+          { message: `task "${title}" was never persisted`, timeout: 10_000 }
+        )
+        .not.toBeNull();
+      const id = created!.id;
 
-    // Complete it via the row checkbox.
-    const rowContainer = page
-      .locator('div, li')
-      .filter({ has: page.getByText(title, { exact: true }) })
-      .filter({ has: page.getByTestId('task-complete-button') })
-      .last();
-    await rowContainer.getByTestId('task-complete-button').first().click();
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await expectCompleted(page, id, false);
 
-    // Completion survives a reload.
-    await page.reload();
-    await page.waitForURL('/');
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+
+      // The actual claim: it is STILL completed after a reload.
+      await reloadApp(page);
+      await expectCompleted(page, id, true);
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
   });
 
   test('day/week toggle switches views', async ({ page }) => {
@@ -80,8 +119,7 @@ test.describe('Smoke: core daily loop', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(
         page.locator('[data-dnd-bucket="morning"]').getByText(title).first()
       ).toBeVisible({ timeout: 10_000 });

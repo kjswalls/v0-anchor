@@ -1,145 +1,125 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import {
+  createTestTask,
+  createTestHabit,
+  cleanupTestData,
+  testTitle,
+  resetUserSettings,
+  setUserSetting,
+} from './helpers/api';
 import { getTodayStr } from './helpers/dates';
-
-/** Open the settings dialog via the user profile dropdown. */
-async function openSettings(page: import('@playwright/test').Page) {
-  // The user avatar / profile button opens a dropdown with a "Settings" item.
-  // UserProfileDropdown → DropdownMenuTrigger (aria-label="User menu") → DropdownMenuItem("Settings").
-  await page.getByRole('button', { name: 'User menu' }).click();
-
-  // If the dropdown opened, "Settings" should be visible.
-  const settingsItem = page.getByRole('menuitem', { name: 'Settings' });
-  await settingsItem.click();
-
-  // Wait for the dialog to be visible.
-  await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
-}
+import {
+  reloadApp,
+  itemCard,
+  completeButton,
+  expectCompleted,
+  setLayout,
+  runCommand,
+} from './helpers/app';
 
 test.describe('Settings persistence', () => {
+  // Serial: both tests mutate columns on the SHARED test user, so they must not
+  // interleave with each other.
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
   });
 
-  test('changing time format to 24h persists after page reload', async ({ page }) => {
-    await openSettings(page);
+  // Hard-restore the shared settings row after EVERY test, straight to the DB.
+  // A test that fails part-way never reaches its own restore step, and these
+  // columns leak into every other spec's fresh context — a stray 24h clock or a
+  // stray show_completed_tasks:false made unrelated specs fail with no clue why.
+  test.afterEach(async ({ page }) => {
+    await resetUserSettings(page);
+  });
 
-    const dialog = page.getByRole('dialog', { name: 'Settings' });
+  test('a persisted 24-hour preference renders a 24-hour schedule gutter', async ({ page }) => {
+    // What this asserts: the stored preference reaches the view. The old test
+    // asserted "00:00 - 12:00" on a bucket header, which no component has rendered
+    // since the redesign (formatBucketRange's only surviving caller is a unit
+    // test), so it could never pass.
+    //
+    // SCOPE NOTE: this drives time_format through user_settings, not through the
+    // settings dialog. The dialog has sectioned navigation whose selects are not
+    // mounted until their section is chosen, and driving it via the palette command
+    // did not take effect in a headless run — worth a look, and tracked as an
+    // uncovered path rather than papered over with a passing-but-hollow assertion.
+    await setLayout(page, 'Schedule');
+    // 12h (the globalSetup default): the gutter prints "8 am".
+    await expect(page.getByText(/^\d{1,2}\s(am|pm)$/i).first()).toBeVisible({ timeout: 10_000 });
 
-    // Find the "Time format" select and switch to 24-hour.
-    const timeFormatSelect = dialog.getByRole('combobox').first();
-    await timeFormatSelect.click();
-
-    // Pick "24-hour"
-    await page.getByRole('option', { name: /24.hour/i }).click();
-
-    // Close the dialog
-    await page.keyboard.press('Escape');
-
-    // Reload and reopen to verify persistence.
-    await page.reload();
-    await page.waitForURL('/');
-
-    // In 24h mode the morning bucket shows "00:00 - 12:00" instead of "12am - 12pm".
-    await expect(page.getByText('00:00 - 12:00')).toBeVisible({ timeout: 10_000 });
-
-    // Restore 12h so other tests aren't affected.
-    await openSettings(page);
-    const select2 = page.getByRole('dialog', { name: 'Settings' }).getByRole('combobox').first();
-    await select2.click();
-    await page.getByRole('option', { name: /12.hour/i }).click();
-    await page.keyboard.press('Escape');
+    try {
+      await setUserSetting(page, { time_format: '24h' });
+      await reloadApp(page);
+      await setLayout(page, 'Schedule');
+      // formatHourLabel returns `HH:00` under 'HH:mm' (components/views/day-schedule.tsx).
+      await expect(page.getByText(/^\d{2}:00$/).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText(/^\d{1,2}\s(am|pm)$/i)).toHaveCount(0);
+    } finally {
+      // afterEach hard-restores anyway; this keeps the failure mode local.
+      await setUserSetting(page, { time_format: '12h' });
+    }
   });
 
   // Known bug: desktop sidebar scroll is broken — issue #92
-  test.skip('settings sidebar scrolls on desktop viewport (#92 — scroll broken)', async ({ page }) => {
+  test.skip('settings sidebar scrolls on desktop viewport (#92 — scroll broken)', async () => {
     // BUG #92: The settings/sidebar panel does not scroll properly on desktop.
-    // Once fixed: set viewport to 1280×800, open settings panel, scroll to
-    // bottom, assert the last setting item is visible.
+    // Once fixed: set viewport to 1280x800, open settings, scroll to the bottom,
+    // assert the last setting item is visible.
   });
 
-  test('toggling compact mode affects task card height', async ({ page }) => {
-    // Seed a task so a task card is present in the timeline to measure.
-    const TODAY = getTodayStr();
-    const accessToken = await getAccessToken(page);
-    const taskTitle = `Compact mode test ${Date.now()}`;
-    const taskId = await createTestTask(page, accessToken, {
-      title: taskTitle,
-      startDate: TODAY,
+  test('show-completed-tasks hides completed tasks and never habits', async ({ page }) => {
+    // Replaces a compact-mode test that could not pass on two counts: it measured
+    // [class*="group/card"], a Tailwind group that exists nowhere in the app, and
+    // compactMode is one of the deliberately DEAD settings — it persists but no
+    // view reads it (lib/commands/registry.ts says so outright), so no layout
+    // assertion about it can ever be true.
+    //
+    // show_completed_tasks is the real equivalent: a persisted setting a view does
+    // read, carrying a documented invariant — it gates TASKS only, never habits.
+    const taskId = await createTestTask(page, {
+      title: testTitle('showdone_task'),
+      startDate: getTodayStr(),
       isScheduled: true,
       timeBucket: 'morning',
     });
-    await page.reload();
-    await page.waitForURL('/');
-    // Wait for the task card to appear before measuring.
-    await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
+    const habitId = await createTestHabit(page, {
+      title: testTitle('showdone_habit'),
+      timeBucket: 'morning',
+    });
+
+    // Driven through the palette rather than the settings dialog: the dialog has
+    // sectioned navigation, so the switch is not mounted until its section is
+    // selected — and settings.showCompleted is a first-class command with a
+    // dynamic label, i.e. a real user path with a stable id.
+    const toggleShowCompleted = () =>
+      runCommand(page, 'settings.showCompleted', { query: '/completed' });
 
     try {
-    await openSettings(page);
+      await reloadApp(page);
 
-    const dialog = page.getByRole('dialog', { name: 'Settings' });
+      await completeButton(page, taskId).click();
+      await expectCompleted(page, taskId, true);
+      await completeButton(page, habitId).click();
+      await expectCompleted(page, habitId, true);
 
-    // The "Appearance" section is collapsed by default — expand it first.
-    await dialog.getByRole('button', { name: 'Appearance' }).click();
+      await toggleShowCompleted();
 
-    // Find the Compact mode row; navigate to its sibling switch.
-    const compactRow = dialog.locator('div').filter({ hasText: /^Compact mode$/ }).first();
-    await expect(compactRow).toBeVisible({ timeout: 5_000 });
-    const compactSwitch = compactRow.locator('xpath=ancestor::div[contains(@class,"flex items-center justify-between")]').getByRole('switch');
-
-    // Ensure compact mode is OFF before measuring normal height.
-    const isChecked = await compactSwitch.getAttribute('data-state');
-    if (isChecked === 'checked') {
-      await compactSwitch.click();
-      await page.waitForTimeout(300);
-    }
-
-    // Close dialog
-    await page.keyboard.press('Escape');
-    await expect(dialog).not.toBeVisible();
-
-    // Measure a task card height in normal mode.
-    // Task cards have class "group/card" (Tailwind named group).
-    const taskCard = page.locator('[class*="group\\/card"]').first();
-    await expect(taskCard).toBeVisible({ timeout: 5_000 });
-    const normalBox = await taskCard.boundingBox();
-
-    // Re-open settings, expand Appearance, and enable compact mode.
-    await openSettings(page);
-    const dialog2 = page.getByRole('dialog', { name: 'Settings' });
-    await dialog2.getByRole('button', { name: 'Appearance' }).click();
-    const compactRow2 = dialog2.locator('div').filter({ hasText: /^Compact mode$/ }).first();
-    await expect(compactRow2).toBeVisible({ timeout: 5_000 });
-    const compactSwitch2 = compactRow2.locator('xpath=ancestor::div[contains(@class,"flex items-center justify-between")]').getByRole('switch');
-    const state2 = await compactSwitch2.getAttribute('data-state');
-    if (state2 !== 'checked') {
-      await compactSwitch2.click();
-      await page.waitForTimeout(300);
-    }
-    await page.keyboard.press('Escape');
-    await expect(dialog2).not.toBeVisible();
-
-    // In compact mode the task card should be shorter (min-h-[52px] vs min-h-[72px]).
-    const compactBox = await page.locator('[class*="group\\/card"]').first().boundingBox();
-
-    // Verify compact mode reduced task card height.
-    expect(compactBox!.height).toBeLessThan(normalBox!.height);
-
-    // Restore: open settings, expand Appearance, turn compact mode off.
-    await openSettings(page);
-    const dialog3 = page.getByRole('dialog', { name: 'Settings' });
-    await dialog3.getByRole('button', { name: 'Appearance' }).click();
-    const compactRow3 = dialog3.locator('div').filter({ hasText: /^Compact mode$/ }).first();
-    await expect(compactRow3).toBeVisible({ timeout: 5_000 });
-    const compactSwitch3 = compactRow3.locator('xpath=ancestor::div[contains(@class,"flex items-center justify-between")]').getByRole('switch');
-    const state3 = await compactSwitch3.getAttribute('data-state');
-    if (state3 === 'checked') {
-      await compactSwitch3.click();
-    }
-    await page.keyboard.press('Escape');
+      try {
+        // The completed TASK disappears…
+        await expect(itemCard(page, taskId)).toHaveCount(0, { timeout: 10_000 });
+        // …and the completed HABIT does not. That asymmetry is the invariant.
+        await expect(itemCard(page, habitId)).toHaveCount(1);
+        await expectCompleted(page, habitId, true);
+      } finally {
+        // Restore: every other spec relies on completed tasks being visible.
+        await toggleShowCompleted();
+        await page.waitForTimeout(700);
+      }
     } finally {
-      await cleanupTestData(page, accessToken, [taskId]);
+      await cleanupTestData(page, [taskId], [habitId]);
     }
   });
 });

@@ -305,6 +305,13 @@ export function Omnibar({
         key={row.value}
         value={row.value}
         disabled={row.disabled}
+        data-testid="omnibar-row"
+        // The command id, not the row copy. Row labels collide with their own
+        // group headings ('Settings' is both a command and a group), so text
+        // matching resolves by scoring accident and becomes a strict-mode
+        // violation the moment keywords change.
+        data-command-id={row.command.id}
+        data-arg={row.arg?.value ?? ''}
         onSelect={() => runCommand(row.command, row.arg?.value)}
       >
         <Icon className="h-4 w-4 text-muted-foreground" />
@@ -387,7 +394,10 @@ export function Omnibar({
       <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
         {/* Panel above the input */}
         {open && (
-          <CommandList className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg">
+          <CommandList
+            data-testid="omnibar-panel"
+            className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg"
+          >
             {/* Argument mode owns the whole panel — nothing else is relevant
                 while a command is waiting for its value. */}
             {activeCommand ? (
@@ -469,6 +479,9 @@ export function Omnibar({
                         <CommandItem
                           key={item.id}
                           value={`${group.type}-${item.id}`}
+                          data-testid="omnibar-result"
+                          data-item-id={item.id}
+                          data-item-type={group.type}
                           onSelect={() => {
                             openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                             closeAndClear();
@@ -516,7 +529,7 @@ export function Omnibar({
                 {!grouped && !isChatMode && (
                   <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
                     {!isCommandMode && (
-                      <CommandItem value="action-add" onSelect={quickAdd}>
+                      <CommandItem value="action-add" data-testid="omnibar-add-row" onSelect={quickAdd}>
                         <Plus className="h-4 w-4 text-success-text" />
                         <span className="truncate">
                           Add task
@@ -701,6 +714,11 @@ export function Omnibar({
                   : 'Search, add a task, start a chat, run a command...'
               }
               aria-label="Omnibar"
+              // cmdk gives this input role="combobox", and Playwright's
+              // getByLabel does not resolve aria-label on it (verified: 0
+              // matches while [aria-label="Omnibar"] matches 1). A testid is
+              // the one handle that cannot silently stop matching.
+              data-testid="omnibar-input"
               // Identifiers typed as an argument (a project name is the key
               // every task references) must not be autocapitalised, and neither
               // should an item title you are searching for.

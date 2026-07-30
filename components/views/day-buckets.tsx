@@ -30,6 +30,12 @@ function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boo
   return (
     <div
       ref={setNodeRef}
+      // CONTRACT.md declares this droppable but it used to emit no DOM marker,
+      // which made it both untestable and invisible to a test aiming nearby —
+      // collision is closestCenter, so a drop meant for unscheduled:{bucket}
+      // can silently resolve here instead and assign a TIME.
+      data-dnd-id={dropId}
+      data-dnd-over={isOver ? 'true' : 'false'}
       className={cn(
         '-my-0.5 h-2 rounded transition-all',
         isOver ? 'my-1 h-8 border-2 border-dashed border-primary bg-primary/15' : 'bg-transparent'
@@ -43,6 +49,8 @@ function EmptyBucketDropZone({ bucket }: { bucket: TimeBucket }) {
   return (
     <div
       ref={setNodeRef}
+      data-dnd-id={`scheduled:${bucket}:empty`}
+      data-dnd-over={isOver ? 'true' : 'false'}
       className={cn(
         'flex items-center justify-center rounded-lg border-2 border-dashed transition-all',
         isOver ? 'h-16 border-primary bg-primary/10' : 'h-10 border-border/60 bg-surface-3/50'
@@ -123,7 +131,15 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   ].sort((a, b) => a.time.localeCompare(b.time));
 
   return (
-    <div ref={setBucketRef} data-dnd-bucket={bucket}>
+    <div
+      ref={setBucketRef}
+      data-dnd-bucket={bucket}
+      data-dnd-id={bucket}
+      // `isOver` on the bare bucket only — the untimed section reports its own
+      // hover below, and a drag helper needs to know which of the two it is on
+      // before it releases the pointer.
+      data-dnd-over={isOver ? 'true' : 'false'}
+    >
       <BucketCard
         bucket={bucket}
         count={totalItems}
@@ -137,6 +153,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
           <div
             ref={setUnscheduledRef}
             data-dnd-id={`unscheduled:${bucket}`}
+            data-dnd-over={isOverUnscheduled ? 'true' : 'false'}
             className="space-y-2 pl-4"
           >
             {untimedHabits.length > 0 && (

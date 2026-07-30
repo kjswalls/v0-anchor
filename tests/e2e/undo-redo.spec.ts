@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
+import { reloadApp,   expectCompleted } from './helpers/app';
 
 test.describe('Undo / redo actions', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,8 +35,7 @@ test.describe('Undo / redo actions', () => {
 
     try {
       // Reload so the store picks up the new task.
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Find the completion button via XPath, scoped to the timeline.
       // Navigate: task-title <p> → ancestor div.group/card → first button child.
@@ -44,19 +44,20 @@ test.describe('Undo / redo actions', () => {
 
       // Locate the task card by data-testid, scoped to the card that contains the
       // task title. Then find the circular complete button within it via data-testid.
-      const getTaskCard = () => timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => getTaskCard().locator('[data-testid="task-complete-button"]');
+      const getTaskCard = () => timeline.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => getTaskCard().locator('[data-testid="item-complete-button"]');
 
       await getCompleteBtn().click();
 
-      // Verify the task became completed (button gets bg-primary class).
-      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expectCompleted(page, taskId, true);
 
-      // Undo with Ctrl+Z — the action-feed listens for this keydown.
-      await page.keyboard.press('Control+Z');
+      // Undo. MOD, not Control: lib/commands/keys.ts refuses to fold ctrl into
+      // the primary modifier on Apple platforms ("a literal 'ctrl' matches no
+      // binding, which is exactly what leaves the native behaviour alone"), so a
+      // hardcoded Control+Z passed on Windows and failed on macOS.
+      await page.keyboard.press('ControlOrMeta+z');
 
-      // After undo the task re-appears as pending — button should lose bg-primary.
-      await expect(getCompleteBtn()).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expectCompleted(page, taskId, false);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -74,26 +75,25 @@ test.describe('Undo / redo actions', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       const timeline = page.locator('[data-tour="timeline"]');
       await expect(timeline.getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       // Locate the task card by data-testid, scoped to the card that contains the
       // task title. Then find the circular complete button within it via data-testid.
-      const getTaskCard = () => timeline.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).first();
-      const getCompleteBtn = () => getTaskCard().locator('[data-testid="task-complete-button"]');
+      const getTaskCard = () => timeline.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle }).first();
+      const getCompleteBtn = () => getTaskCard().locator('[data-testid="item-complete-button"]');
 
       // Complete → undo → redo
       await getCompleteBtn().click();
-      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await expectCompleted(page, taskId, true);
 
-      await page.keyboard.press('Control+Z');
-      await expect(getCompleteBtn()).not.toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await page.keyboard.press('ControlOrMeta+z');
+      await expectCompleted(page, taskId, false);
 
-      await page.keyboard.press('Control+Shift+Z');
-      await expect(getCompleteBtn()).toHaveClass(/bg-primary/, { timeout: 5_000 });
+      await page.keyboard.press('ControlOrMeta+Shift+z');
+      await expectCompleted(page, taskId, true);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }

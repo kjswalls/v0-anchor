@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
+import { reloadApp,     currentDateStr } from './helpers/app';
 
 /**
  * The scope × layout view matrix behind the header capsule (P5).
@@ -37,8 +38,7 @@ test.describe('View matrix', () => {
     await expect(page.locator('[data-dnd-id^="week:"]').first()).toBeVisible({ timeout: 5_000 });
 
     // Prefs persist across reload (view-store localStorage)
-    await page.reload();
-    await page.waitForURL('/');
+    await reloadApp(page);
     await expect(page.locator('[data-dnd-id^="week:"]').first()).toBeVisible({ timeout: 10_000 });
 
     // Back to defaults for other tests
@@ -57,8 +57,7 @@ test.describe('View matrix', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       const canvas = page.locator('[data-tour="timeline"]');
       await expect(canvas.getByText(title)).toBeVisible({ timeout: 10_000 });
 
@@ -72,15 +71,38 @@ test.describe('View matrix', () => {
     }
   });
 
-  test('week-buckets highlights and selects days', async ({ page }) => {
+  test('week-buckets marks today and moves the selection when a day is clicked', async ({
+    page,
+  }) => {
+    // Two separate bugs used to live here. The 'today' text assertion could never
+    // pass: that literal is rendered ONLY by week-LIST, and this test is in
+    // week-BUCKETS. And the second half was named "selects days" but, after
+    // clicking a header, only asserted that the morning bucket exists — true in
+    // every possible state, so it proved nothing about selection at all.
     await pick(page, 'Scope', 'Week');
     await pick(page, 'Layout', 'Buckets');
-    await expect(page.getByText('today', { exact: true })).toBeVisible({ timeout: 5_000 });
 
-    // Clicking another day header moves the selection (capsule date changes)
-    const headers = page.locator('button[title^="Select "]');
-    await headers.first().click();
-    await pick(page, 'Scope', 'Day');
-    await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 5_000 });
+    // Exactly one column is today, and it is the selected one on arrival.
+    const columns = page.getByTestId('week-column');
+    await expect(columns.first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="week-column"][data-today="true"]')).toHaveCount(1);
+    const todayStr = await currentDateStr(page);
+    await expect(
+      page.locator(`[data-testid="week-column"][data-date="${todayStr}"]`)
+    ).toHaveAttribute('data-selected', 'true');
+
+    // Click a DIFFERENT column and the selection follows it.
+    const other = page.locator(`[data-testid="week-column"]:not([data-date="${todayStr}"])`).first();
+    const otherDate = await other.getAttribute('data-date');
+    await other.getByTestId('week-column-header').click();
+
+    await expect(
+      page.locator(`[data-testid="week-column"][data-date="${otherDate}"]`)
+    ).toHaveAttribute('data-selected', 'true');
+    await expect(
+      page.locator(`[data-testid="week-column"][data-date="${todayStr}"]`)
+    ).toHaveAttribute('data-selected', 'false');
+    // …and the header capsule agrees, which is what "selection" means downstream.
+    expect(await currentDateStr(page)).toBe(otherDate);
   });
 });

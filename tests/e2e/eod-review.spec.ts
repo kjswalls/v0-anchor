@@ -2,13 +2,21 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
 import { getTodayStr, getTomorrowStr } from './helpers/dates';
+import { reloadApp, gotoApp, runCommand, navigateToDate, itemCard } from './helpers/app';
 
-/** Open the EOD review modal via the dev trigger button (moon emoji, title contains "[DEV]"). */
+/**
+ * Open the EOD review through the command palette.
+ *
+ * It used to be opened by `getByTitle('[DEV] Trigger EOD review')` — a button
+ * deleted in commit 016a2aa, when the two [DEV] emoji triggers became real
+ * commands ("The two [DEV] emoji triggers that used to sit on the right are gone:
+ * 'Show overdue tasks' and 'Start end-of-day review' are real commands in the
+ * palette now", components/shell/desktop-shell.tsx). That single dead selector
+ * failed in a beforeEach-shaped helper and took 9 of this file's 10 tests with it.
+ */
 async function openEODReview(page: import('@playwright/test').Page) {
-  const eodBtn = page.getByTitle('[DEV] Trigger EOD review');
-  await expect(eodBtn).toBeVisible({ timeout: 5_000 });
-  await eodBtn.click();
-  await expect(page.getByRole('dialog', { name: 'End of day' })).toBeVisible({ timeout: 5_000 });
+  await runCommand(page, 'rituals.eod');
+  await expect(page.getByRole('dialog', { name: 'End of day' })).toBeVisible({ timeout: 10_000 });
 }
 
 test.describe('End of day (EOD) review modal', () => {
@@ -16,7 +24,7 @@ test.describe('End of day (EOD) review modal', () => {
     await loginTestUser(page);
   });
 
-  test('EOD modal can be opened from the nav bar', async ({ page }) => {
+  test('EOD modal opens from the command palette', async ({ page }) => {
     await openEODReview(page);
 
     const dialog = page.getByRole('dialog', { name: 'End of day' });
@@ -30,7 +38,7 @@ test.describe('End of day (EOD) review modal', () => {
     await expect(dialog).not.toBeVisible();
   });
 
-  test('completing all tasks in EOD shows a congratulations state', async ({ page }) => {
+  test('marking a task done inside EOD makes it undoable in place', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
 
@@ -44,8 +52,7 @@ test.describe('End of day (EOD) review modal', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Wait for the task to appear in the timeline, ensuring the store has loaded
       // before opening the EOD modal (the modal snapshots livePendingTasks on open).
@@ -57,23 +64,29 @@ test.describe('End of day (EOD) review modal', () => {
       // The task should be in the "Carrying forward" section as a pending task.
       await expect(dialog.getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
 
-      // Mark it done by clicking the "Mark as done" circle button.
-      // Scope to the specific task's list item to avoid matching other tasks in the dialog.
-      const carrySection = dialog.locator('section').filter({ hasText: 'Carrying forward' });
-      const taskListItem = carrySection.getByRole('listitem').filter({ hasText: taskTitle });
-      await taskListItem.getByTitle('Mark as done').click();
+      // Mark it done from its own row, addressed by id.
+      //
+      // The old selectors here were wrong three ways and are worth naming so they
+      // do not come back: the section was called "Carrying forward" (it is "Still
+      // on your list"), the completed section was "Wrapped up today" (it is "Done
+      // today"), and — the substantive one — a task completed DURING the session is
+      // deliberately EXCLUDED from the done section and stays in the pending list
+      // with a filled circle so it can be un-done (`preExistingCompletedTasks`
+      // filters out `justCompletedIds`, components/ai/eod-review.tsx). So the old
+      // assertion could never pass: it asserted the opposite of the design.
+      const row = dialog.getByTestId(`eod-task-row-${taskId}`);
+      await expect(row).toBeVisible({ timeout: 5_000 });
+      await row.getByTitle('Mark as done').click();
 
-      // After marking done, the task title span should have line-through styling.
-      await expect(carrySection.getByText(taskTitle)).toHaveClass(
-        /line-through|text-muted-foreground/,
-        { timeout: 5_000 }
-      );
+      // It stays in place and its circle button becomes the undo control — the
+      // action pills (eod-undo-btn among them) are hidden once isDone, so that
+      // testid is NOT the done-row affordance.
+      await expect(row.getByTitle('Undo')).toBeVisible({ timeout: 5_000 });
+      await expect(row.getByTitle('Mark as done')).toHaveCount(0);
 
-      // After marking done, the "Wrapped up today" section should appear and
-      // include our task — confirming the completed-task UI is visible.
-      const wrappedSection = dialog.locator('section').filter({ hasText: 'Wrapped up today' });
-      await expect(wrappedSection).toBeVisible({ timeout: 5_000 });
-      await expect(wrappedSection.getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+      // Un-done again, back to the pills.
+      await row.getByTitle('Undo').click();
+      await expect(row.getByTitle('Mark as done')).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -91,8 +104,7 @@ test.describe('End of day (EOD) review modal', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Wait for the task to appear in the timeline before opening EOD modal.
       await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
@@ -139,8 +151,7 @@ test.describe('End of day (EOD) review modal', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
@@ -175,8 +186,7 @@ test.describe('End of day (EOD) review modal', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
@@ -190,22 +200,29 @@ test.describe('End of day (EOD) review modal', () => {
       const popover = page.locator('[data-radix-popper-content-wrapper]');
       await expect(popover).toBeVisible({ timeout: 3_000 });
 
-      // Select tomorrow's date from the calendar by clicking the day button.
-      // shadcn Calendar renders day buttons with aria-label like "April 8, 2026".
-      const tomorrowDate = new Date(TOMORROW + 'T12:00:00');
-      const ariaLabel = tomorrowDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-      await popover.getByRole('button', { name: ariaLabel }).click();
+      // Select tomorrow from the calendar.
+      //
+      // react-day-picker v9 labels day buttons through date-fns "PPPP", i.e.
+      // "Wednesday, July 29th, 2026" (and prefixes "Today, " for today) — see
+      // labelDayButton in the package. The old locator built "July 29, 2026",
+      // which is NOT a substring of that, so it matched nothing. Tolerate the
+      // ordinal rather than hardcoding it.
+      const [ty, tm, td] = TOMORROW.split('-').map(Number);
+      const monthName = new Date(Date.UTC(ty, tm - 1, td, 12)).toLocaleDateString('en-US', {
+        month: 'long',
+        timeZone: 'UTC',
+      });
+      await popover
+        .getByRole('button', { name: new RegExp(`${monthName} ${td}(st|nd|rd|th)?, ${ty}`) })
+        .click();
 
       // Undo link should appear and pills gone
       await expect(page.getByTestId(`eod-undo-btn-${taskId}`)).toBeVisible({ timeout: 3_000 });
 
       // Close and navigate to tomorrow to verify the task is there
       await page.keyboard.press('Escape');
-      const nextDayBtn = page.locator('button').filter({
-        has: page.locator('svg.lucide-chevron-right'),
-      }).first();
-      await nextDayBtn.click();
-      await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 5_000 });
+      await navigateToDate(page, TOMORROW);
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -220,8 +237,7 @@ test.describe('End of day (EOD) review modal', () => {
     const taskId2 = await createTestTask(page, accessToken, { title: title2, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(page.locator('[data-tour="timeline"]').getByText(title1)).toBeVisible({ timeout: 10_000 });
       await expect(page.locator('[data-tour="timeline"]').getByText(title2)).toBeVisible({ timeout: 10_000 });
 
@@ -257,8 +273,7 @@ test.describe('End of day (EOD) review modal', () => {
     const taskId2 = await createTestTask(page, accessToken, { title: title2, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(page.locator('[data-tour="timeline"]').getByText(title1)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
@@ -299,8 +314,7 @@ test.describe('End of day (EOD) review modal', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await expect(page.locator('[data-tour="timeline"]').getByText(taskTitle)).toBeVisible({ timeout: 10_000 });
 
       await openEODReview(page);
@@ -327,8 +341,6 @@ test.describe('End of day (EOD) review modal', () => {
   test('deep link ?eod=1 opens EOD modal', async ({ page }) => {
     // Navigate directly to /?eod=1 after login — the deep link handler should open the modal
     await page.goto('/?eod=1');
-    await page.waitForURL('/');
-
     // The EOD review dialog should open automatically
     await expect(page.getByRole('dialog', { name: 'End of day' })).toBeVisible({ timeout: 8_000 });
   });

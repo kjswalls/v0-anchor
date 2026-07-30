@@ -3,58 +3,38 @@ import { loginTestUser } from './helpers/auth';
 import { getAccessToken, createTestTask, createTestHabit, cleanupTestData } from './helpers/api';
 import { format, nextSaturday, nextMonday, nextWednesday, addDays } from 'date-fns';
 import { getTodayInTz, getTodayStr } from './helpers/dates';
+import {
+  reloadApp,
+  navigateToDate as navigateToDateStr,
+  currentDateStr,
+  itemCard,
+  expectCompleted,
+} from './helpers/app';
 
 
 /**
- * Navigate the day view to a specific date by clicking next/prev arrows.
- * We pass a target Date and click until the header matches yyyy-MM-dd.
- * Max 14 clicks to prevent infinite loops.
+ * Date navigation, adapted to this spec's Date-based call sites.
+ *
+ * The two hand-rolled helpers this replaces were the single biggest source of
+ * failure in the file. They looked for the date inside a <header> element —
+ * desktop has none, the date is a bare button in HeaderCapsule — so all ten
+ * tests timed out at their first navigation. Their fallback regex was also
+ * UNANCHORED, so a target of "Friday, August 1" matched a header reading
+ * "Fri, Aug 15": a 14-day overshoot read as success. And they slept 150ms per
+ * click instead of waiting for anything.
+ *
+ * helpers/app.ts navigates against data-date and asserts exact equality.
  */
+const asDateStr = (d: Date) => d.toISOString().slice(0, 10);
+
 async function navigateToDate(page: import('@playwright/test').Page, targetDate: Date) {
-  const targetStr = format(targetDate, 'yyyy-MM-dd');
-
-  // The date is displayed in the top nav header — look for it after navigation.
-  // We navigate by clicking the chevron-right or chevron-left buttons.
-  const nextBtn = page.locator('button').filter({
-    has: page.locator('svg.lucide-chevron-right'),
-  }).first();
-  const prevBtn = page.locator('button').filter({
-    has: page.locator('svg.lucide-chevron-left'),
-  }).first();
-
-  // Determine direction: use timezone-aware today so diff matches the browser's view.
-  const today = getTodayInTz();
-  const diff = Math.round((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  const btn = diff >= 0 ? nextBtn : prevBtn;
-  const clicks = Math.abs(diff);
-
-  for (let i = 0; i < Math.min(clicks, 14); i++) {
-    await btn.click();
-    await page.waitForTimeout(150);
-  }
-
-  // Assert the header reflects the target date. Desktop shows the long form
-  // ("Saturday, April 5"); the mobile header shows the short form ("Sat, Apr 5").
-  const longLabel = format(targetDate, 'EEEE, MMMM d');
-  const shortLabel = format(targetDate, 'EEE, MMM d');
-  await expect(
-    page.locator('header').getByText(new RegExp(`${longLabel}|${shortLabel}`))
-  ).toBeVisible({ timeout: 3_000 });
+  await navigateToDateStr(page, asDateStr(targetDate));
 }
 
-/**
- * Navigate the currently displayed date by a relative number of days.
- * Positive = forward, negative = backward. Does not depend on getTodayInTz()
- * so it works correctly from any currently displayed date.
- */
+/** Shift the displayed date by N days from wherever the view currently is. */
 async function navigateByDaysFromCurrent(page: import('@playwright/test').Page, days: number) {
-  const nextBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-right') }).first();
-  const prevBtn = page.locator('button').filter({ has: page.locator('svg.lucide-chevron-left') }).first();
-  const btn = days >= 0 ? nextBtn : prevBtn;
-  for (let i = 0; i < Math.abs(days); i++) {
-    await btn.click();
-    await page.waitForTimeout(150);
-  }
+  const [y, m, d] = (await currentDateStr(page)).split('-').map(Number);
+  await navigateToDateStr(page, asDateStr(new Date(Date.UTC(y, m - 1, d + days, 12, 0, 0))));
 }
 
 test.describe('Recurring tasks and habits', () => {
@@ -75,8 +55,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await page.waitForTimeout(500);
 
       // Should be visible on today (the start date)
@@ -99,8 +78,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Navigate to tomorrow — daily task should still be visible
       const tomorrow = addDays(getTodayInTz(), 1);
@@ -126,8 +104,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await page.waitForTimeout(500);
 
       // Today: task should NOT be visible (startDate is tomorrow)
@@ -150,24 +127,23 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await page.waitForTimeout(500);
 
       // Complete on today
-      const taskCard = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle });
+      const taskCard = page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle });
       await expect(taskCard).toBeVisible({ timeout: 5_000 });
-      await taskCard.locator('[data-testid="task-complete-button"]').click();
+      await taskCard.locator('[data-testid="item-complete-button"]').click();
       await page.waitForTimeout(300);
 
       // Navigate to tomorrow — task should appear un-completed (no strikethrough)
       const tomorrow = addDays(getTodayInTz(), 1);
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
-      const tomorrowTaskCard = page.locator('[data-tour="timeline"]').getByText(taskTitle).first();
-      await expect(tomorrowTaskCard).toBeVisible({ timeout: 5_000 });
-      // Confirm not completed: title should not have line-through styling
-      await expect(tomorrowTaskCard).not.toHaveClass(/line-through/);
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 5_000 });
+      // data-completed, not a line-through class: completion had been asserted
+      // through Tailwind, which a restyle silently breaks.
+      await expectCompleted(page, taskId, false);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -185,8 +161,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await page.waitForTimeout(500);
 
       // One-off task should be visible today
@@ -219,8 +194,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Navigate to next Saturday (use timezone-aware today so date-fns picks the right day).
       const saturday = nextSaturday(getTodayInTz());
@@ -246,8 +220,7 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Navigate to next Monday — habit should be visible in the timeline.
       const monday = nextMonday(getTodayInTz());
@@ -256,8 +229,7 @@ test.describe('Recurring tasks and habits', () => {
       await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
 
       // Reset to today before navigating to Wednesday so the click count is correct.
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Navigate to next Wednesday — habit should also be visible in the timeline.
       const wednesday = nextWednesday(getTodayInTz());
@@ -266,8 +238,7 @@ test.describe('Recurring tasks and habits', () => {
       await expect(page.locator('[data-tour="timeline"]').getByText(habitTitle)).toBeVisible({ timeout: 5_000 });
 
       // Reset to today before navigating to Saturday so the click count is correct.
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Navigate to the Saturday after next Monday — habit should NOT be visible in the timeline.
       const saturday = nextSaturday(monday);
@@ -289,14 +260,13 @@ test.describe('Recurring tasks and habits', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await page.waitForTimeout(500);
 
       // Find habit card in timeline and click its complete button
-      const habitCard = page.locator('[data-tour="timeline"]').locator('[data-testid="habit-card"]').filter({ hasText: habitTitle });
+      const habitCard = page.locator('[data-tour="timeline"]').locator('[data-testid="item-card"][data-item-kind="habit"]').filter({ hasText: habitTitle });
       await expect(habitCard).toBeVisible({ timeout: 5_000 });
-      await habitCard.locator('[data-testid="habit-complete-button"]').click();
+      await habitCard.locator('[data-testid="item-complete-button"]').click();
       await page.waitForTimeout(300);
 
       // Navigate to tomorrow
@@ -307,9 +277,8 @@ test.describe('Recurring tasks and habits', () => {
       // Navigate back to today
       await navigateByDaysFromCurrent(page, -1);
 
-      // Habit title should still show as completed (line-through)
-      const habitTitleEl = page.locator('[data-tour="timeline"]').locator('[data-testid="habit-card"]').filter({ hasText: habitTitle }).getByText(habitTitle).first();
-      await expect(habitTitleEl).toHaveClass(/line-through/);
+      // Still completed after navigating away and back.
+      await expectCompleted(page, habitId, true);
     } finally {
       await cleanupTestData(page, accessToken, [], [habitId]);
     }
@@ -342,8 +311,7 @@ test.describe('Mobile @mobile', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await openMobileSchedule(page);
 
       // Navigate to tomorrow — daily task should be visible
@@ -351,7 +319,7 @@ test.describe('Mobile @mobile', () => {
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
@@ -371,14 +339,13 @@ test.describe('Mobile @mobile', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await openMobileSchedule(page);
 
       // Find task card on today and mark complete
-      const taskCard = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle });
+      const taskCard = page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle });
       await expect(taskCard).toBeVisible({ timeout: 5_000 });
-      await taskCard.locator('[data-testid="task-complete-button"]').click();
+      await taskCard.locator('[data-testid="item-complete-button"]').click();
       await page.waitForTimeout(300);
 
       // Navigate to tomorrow — task should appear un-completed
@@ -386,16 +353,13 @@ test.describe('Mobile @mobile', () => {
       await navigateToDate(page, tomorrow);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
-      // Confirm task title is not struck through on tomorrow
-      const tomorrowTaskTitle = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
-      await expect(tomorrowTaskTitle).not.toHaveClass(/line-through/);
+      await expectCompleted(page, taskId, false);
 
       // Navigate back to today (schedule tab stays open — no need to re-open it)
       await navigateByDaysFromCurrent(page, -1);
-      const todayTaskTitle = page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle }).getByText(taskTitle).first();
-      await expect(todayTaskTitle).toHaveClass(/line-through/);
+      await expectCompleted(page, taskId, true);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }
@@ -411,8 +375,7 @@ test.describe('Mobile @mobile', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await openMobileSchedule(page);
 
       // Navigate to next Saturday — weekday habit should NOT be visible
@@ -420,7 +383,7 @@ test.describe('Mobile @mobile', () => {
       await navigateToDate(page, saturday);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="habit-card"]').filter({ hasText: habitTitle })
+        page.locator('[data-testid="item-card"][data-item-kind="habit"]').filter({ hasText: habitTitle })
       ).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [], [habitId]);
@@ -439,13 +402,12 @@ test.describe('Mobile @mobile', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
       await openMobileSchedule(page);
 
       // Stay on today — task should be visible
       await expect(
-        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle })
       ).toBeVisible({ timeout: 5_000 });
 
       // Navigate to yesterday — task should NOT appear
@@ -453,7 +415,7 @@ test.describe('Mobile @mobile', () => {
       await navigateToDate(page, yesterday);
       await page.waitForTimeout(500);
       await expect(
-        page.locator('[data-testid="task-card"]').filter({ hasText: taskTitle })
+        page.locator('[data-testid="item-card"][data-item-kind="task"]').filter({ hasText: taskTitle })
       ).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);

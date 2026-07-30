@@ -19,6 +19,7 @@ import {
   TagDot,
   DayDots,
   formatDuration,
+  formatDurationLong,
 } from '@/components/primitives/pills';
 import type { Task, Habit, HabitStatus } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -75,6 +76,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+
+  // The registry name + config for this item's type, resolved once. The
+  // projected Task/Habit doesn't type its own discriminator — the store's
+  // projections are filters, not maps, so `type`/`customType` survive at
+  // runtime — hence the cast. This drives the delete-confirm copy, the
+  // data-item-type attribute and the identity column's tooltip, all of which
+  // used to resolve it separately.
+  const projected = item as { type?: string; customType?: string };
+  const typeName = projected.type === 'custom' ? projected.customType! : itemType;
+  const typeConfig = getItemTypeConfig(typeName);
 
   // Effective per-date status
   const taskRecurring = task ? isRecurring(task) : false;
@@ -161,11 +172,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
   const handleDelete = () => {
     // Registry copy so custom-type rows say "Delete Goal?", not "Delete Task?".
-    const r = item as { type?: string; customType?: string };
-    const config = getItemTypeConfig(r.type === 'custom' ? r.customType! : itemType);
     confirm({
-      title: `Delete ${config.label}?`,
-      description: config.form.deleteDescription(item.title),
+      title: `Delete ${typeConfig.label}?`,
+      description: typeConfig.form.deleteDescription(item.title),
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => (isTask ? deleteTask(item.id) : deleteHabit(item.id)),
@@ -176,7 +185,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   if (habit && habitStatus === 'skipped' && !inBraindump) {
     return (
       <div
-        data-testid="habit-card"
+        data-testid="item-card"
+        data-item-id={habit.id}
+        data-item-kind="habit"
+        // A skipped habit is a COMPLETELY different DOM shape under the same
+        // testid — no complete button, no rail. Tests must be able to tell the
+        // two apart, or a drill to item-complete-button times out mysteriously.
+        data-row-variant="skipped"
         onClick={() => openEditFor(item, itemType)}
         className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover-wash"
       >
@@ -185,6 +200,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         <Button
           variant="ghost"
           size="sm"
+          data-testid="item-unskip-button"
           className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             e.stopPropagation();
@@ -210,13 +226,28 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       {...attributes}
       {...listeners}
       suppressHydrationWarning
-      data-testid={isTask ? 'task-card' : 'habit-card'}
+      // One testid for both kinds — the Phase 6 selector policy. Disambiguate
+      // with data-item-kind / data-item-type rather than a second testid, so a
+      // single helper can drive completion for any type.
+      data-testid="item-card"
+      // Identity, so assertions are id-based instead of hasText-based: a title
+      // filter breaks on truncation and cannot tell apart the same item
+      // rendered twice (a project-block task also renders in its bucket).
+      data-item-id={item.id}
+      data-item-kind={itemType}
       // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
-      // selector policy; per-kind testids above stay until the e2e migration.
-      data-item-type={(() => {
-        const r = item as { type?: string; customType?: string };
-        return r.type === 'custom' ? r.customType : itemType;
-      })()}
+      // selector policy.
+      data-item-type={typeName}
+      data-row-variant="default"
+      // Completion is otherwise observable only as Tailwind classes on the
+      // title and the checkbox, which is exactly the coupling a restyle breaks.
+      data-completed={completed ? 'true' : 'false'}
+      // A row's resolved slot. The visible start time is `hidden md:inline`, so
+      // without these a drop's inferred time is unassertable on narrow/mobile
+      // viewports — and these are what distinguish an untimed bucket drop from
+      // a timed one.
+      data-bucket={item.timeBucket ?? ''}
+      data-start-time={item.startTime ?? ''}
       className={cn(
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
@@ -258,7 +289,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           trailing rail, where revealing it costs no width. Clicking still
           increments — handleHabitToggle counts up and lands on done at target. */}
       <button
-        data-testid={isTask ? 'task-complete-button' : 'habit-complete-button'}
+        data-testid="item-complete-button"
         onClick={(e) => {
           e.stopPropagation();
           if (isTask) handleTaskToggle();
@@ -316,8 +347,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
             days     59px   weekday dots — empty slot when the item doesn't repeat
             identity 96px   tag dot + truncating name (6px, dot only, below lg)
-            glyph    16px   priority bars / streak flame
-            quantity 48px   right-aligned tabular figures
+            glyph    36px   priority bars / streak flame + count
+            quantity 48px   duration, right-aligned tabular figures, both types
+
+          Every one of these columns is a de-chromed glyph or a bare numeral, and
+          none of them carries a label — which is what buys the alignment and what
+          costs the reader any way of knowing what they are looking at. Each one
+          therefore answers on hover, through RailTooltip (pills.tsx): an eyebrow
+          naming the column over the value in words. The native `title` attributes
+          these used to carry are gone; they fired a second, unstyleable tooltip
+          in a system font at the OS's own delay.
 
           Reserving the first two is a change of mind, and the reason is that the
           old rule ("only fixed-size things reserve") produced rails only at the
@@ -361,28 +400,36 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                 <RowControl
                   icon={Minus}
                   label="Decrease count"
+                  testId="item-stepper-dec"
                   disabled={habitEffectiveCount <= 0}
                   onClick={handleHabitDecrement}
                 />
                 <RowControl
                   icon={Plus}
                   label="Increase count"
+                  testId="item-stepper-inc"
                   disabled={habitEffectiveCount >= multiTarget}
                   onClick={handleHabitIncrement}
                 />
               </span>
             )}
             {isTask && (
-              <RowControl icon={ArrowLeftToLine} label="Move to Braindump" onClick={() => unscheduleTask(item.id)} />
+              <RowControl
+                icon={ArrowLeftToLine}
+                label="Move to Braindump"
+                testId="item-unschedule-button"
+                onClick={() => unscheduleTask(item.id)}
+              />
             )}
             {habit && habitStatus === 'pending' && (
               <RowControl
                 icon={SkipForward}
                 label="Skip today"
+                testId="item-skip-button"
                 onClick={() => toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate)}
               />
             )}
-            <RowControl icon={Trash2} label="Delete" destructive onClick={handleDelete} />
+            <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
           </span>
         )}
 
@@ -396,6 +443,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             <RowControl
               icon={Minus}
               label="Decrease count"
+              testId="item-stepper-dec"
               disabled={habitEffectiveCount <= 0}
               onClick={handleHabitDecrement}
               className="h-7 w-7"
@@ -403,6 +451,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             <RowControl
               icon={Plus}
               label="Increase count"
+              testId="item-stepper-inc"
               disabled={habitEffectiveCount >= multiTarget}
               onClick={handleHabitIncrement}
               className="h-7 w-7"
@@ -418,6 +467,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             size="icon"
             className="h-7 w-7 text-muted-foreground"
             aria-label="Actions"
+            data-testid="item-actions-button"
             onClick={() => useScheduleSheet.getState().open(row)}
           >
             <MoreHorizontal className="h-4 w-4" />
@@ -442,6 +492,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             className="-my-1.5 h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
             onClick={handleDelete}
             aria-label="Delete"
+            data-testid="item-delete-button"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -451,9 +502,25 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <>
             {/* OCCASIONAL — unreserved and variable, so it sits innermost where
                 the title's elastic gap absorbs it and no rail outboard moves. */}
-            {item.startTime && <MetaText className="hidden md:inline">{item.startTime}</MetaText>}
+            {item.startTime && (
+              <MetaText
+                testId="item-start-time"
+                className="hidden md:inline"
+                // Label only: the value is already the reading, so a body line
+                // would just print the same figure twice.
+                tooltip={{ label: 'Start time' }}
+              >
+                {item.startTime}
+              </MetaText>
+            )}
             {habit && habit.timesPerDay && habit.timesPerDay > 1 && (
-              <MetaText>
+              <MetaText
+                testId="item-count"
+                tooltip={{
+                  label: 'Times per day',
+                  detail: `${habitEffectiveCount || 0} of ${habit.timesPerDay} done today`,
+                }}
+              >
                 {habitEffectiveCount || 0}/{habit.timesPerDay}
               </MetaText>
             )}
@@ -475,6 +542,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               <TagDot
                 name={tagName}
                 color={tagColor}
+                // 'Project' or 'Group' from the registry — below lg the name is
+                // hidden and this is the column's only reading.
+                label={typeConfig.form.containerLabel}
                 className="w-1.5 lg:w-24"
                 nameClassName="hidden lg:block"
               />
@@ -482,25 +552,36 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               <span aria-hidden className="w-1.5 flex-shrink-0 lg:w-24" />
             )}
 
-            {/* GLYPH — 16px, reserved on every row of both types. Priority bars
-                for tasks, streak flame for habits: the first shared rail. */}
-            <span className="flex w-4 flex-shrink-0 items-center justify-center">
+            {/* GLYPH — 36px, reserved on every row of both types. Priority bars
+                for tasks, flame + streak count for habits: the first shared
+                rail. It was 16px while the streak count lived outboard in the
+                quantity slot; the extra 20px is that count's room. Both types
+                start their ink on the slot's left edge — the priority bars
+                occupy exactly the first 16px, as before — so nothing that was
+                already here moved and the column is still one straight rail. */}
+            <span className="flex w-9 flex-shrink-0 items-center">
               {isTask
                 ? task?.priority && <PriorityGlyph priority={task.priority} />
-                : <StreakFlame active={(habit?.streak ?? 0) > 0} />}
+                : <StreakFlame streak={habit?.streak ?? 0} />}
             </span>
 
-            {/* QUANTITY — 48px, right-aligned tabular figures on both types
-                (duration for tasks, streak count for habits): the second rail,
-                and the most scannable element in the list. */}
-            <MetaText className="w-12 flex-shrink-0 text-right">
-              {isTask
-                ? task?.duration
-                  ? formatDuration(task.duration)
-                  : ''
-                : (habit?.streak ?? 0) > 0
-                  ? habit!.streak
-                  : ''}
+            {/* QUANTITY — 48px, right-aligned tabular figures: how long the item
+                takes, on EVERY type. This used to be duration for tasks and the
+                streak count for habits, which meant the app's most scannable
+                column held minutes on one row and days on the next — you could
+                read it as neither. Habits carry a real duration now (see
+                memory/plans/unified-items.md), so the column has one unit, and
+                the streak moved in beside its own flame. */}
+            <MetaText
+              testId="item-duration"
+              className="w-12 flex-shrink-0 text-right"
+              tooltip={
+                item.duration
+                  ? { label: 'Duration', detail: formatDurationLong(item.duration) }
+                  : undefined
+              }
+            >
+              {item.duration ? formatDuration(item.duration) : ''}
             </MetaText>
           </>
         )}
@@ -537,6 +618,7 @@ function RowControl({
   disabled,
   onClick,
   className,
+  testId,
 }: {
   icon: LucideIcon;
   label: string;
@@ -544,12 +626,19 @@ function RowControl({
   disabled?: boolean;
   onClick: () => void;
   className?: string;
+  /**
+   * Stable handle for e2e. These controls are otherwise addressed by their
+   * `label` copy, and 'Delete' alone collides with the confirm dialog's button,
+   * the mobile swipe action and the schedule sheet — four elements, one name.
+   */
+  testId?: string;
 }) {
   return (
     <button
       type="button"
       title={label}
       aria-label={label}
+      data-testid={testId}
       disabled={disabled}
       onClick={onClick}
       className={cn(

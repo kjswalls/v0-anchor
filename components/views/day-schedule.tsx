@@ -5,11 +5,12 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
-import { PriorityGlyph, MetaText, formatDuration } from '@/components/primitives/pills';
+import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { HOUR_PX } from '@/lib/schedule-constants';
+import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
@@ -151,17 +152,38 @@ const toMin = (t: string) => {
   return h * 60 + m;
 };
 
+/** The type's own fallback block length, for an item with no duration set. */
+function defaultMinutes(item: Task | Habit, itemType: 'task' | 'habit'): number {
+  const projected = item as { type?: string; customType?: string };
+  return getItemTypeConfig(projected.type === 'custom' ? projected.customType! : itemType).schedule
+    .defaultBlockMinutes;
+}
+
 /** Timed items (tasks/habits with startTime + project-block tasks) for one day. */
 export function deriveTimedEntries(day: DayItems): TimedEntry[] {
   const allTasks = BUCKET_ORDER.flatMap((b) => day.tasksByBucket[b]);
   const allHabits = BUCKET_ORDER.flatMap((b) => day.habitsByBucket[b]);
   return [
+    // Both branches read the item's own duration and fall back to the registry's
+    // defaultBlockMinutes. The habit branch used to hardcode 30 because habits
+    // had no duration field at all; now that they do, a habit block is as long as
+    // the habit says it is.
     ...allHabits
       .filter((h) => h.startTime)
-      .map((h) => ({ itemType: 'habit' as const, item: h, startMin: toMin(h.startTime!), duration: 30 })),
+      .map((h) => ({
+        itemType: 'habit' as const,
+        item: h,
+        startMin: toMin(h.startTime!),
+        duration: h.duration ?? defaultMinutes(h, 'habit'),
+      })),
     ...allTasks
       .filter((t) => t.startTime && !t.inProjectBlock)
-      .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(t.startTime!), duration: t.duration ?? 30 })),
+      .map((t) => ({
+        itemType: 'task' as const,
+        item: t,
+        startMin: toMin(t.startTime!),
+        duration: t.duration ?? defaultMinutes(t, 'task'),
+      })),
     ...day.recurringProjects
       .filter((p) => p.startTime)
       .flatMap((p) =>
@@ -262,7 +284,13 @@ function HourSlot({
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: `hour:${hour}`, disabled: !isActive });
   return (
-    <div ref={setNodeRef} data-dnd-id={`hour:${hour}`} className="relative flex" style={{ height: hourPx }}>
+    <div
+      ref={setNodeRef}
+      data-dnd-id={`hour:${hour}`}
+      data-dnd-over={isOver ? 'true' : 'false'}
+      className="relative flex"
+      style={{ height: hourPx }}
+    >
       {/* Gutter: a bare column of mono marks, no box. The old bordered cells
           drew a second grid beside the real one — every hour boxed on three
           sides — which competed with the hairlines that actually carry the time.
@@ -308,8 +336,15 @@ export function ScheduleBlock({
    *  content block below. */
   variant?: 'day' | 'week';
 }) {
-  const { getProjectColor, getHabitGroupColor, selectedDate, userTimezone, toggleTaskStatus, updateTask } =
-    usePlannerStore();
+  const {
+    getProjectColor,
+    getHabitGroupColor,
+    selectedDate,
+    userTimezone,
+    toggleTaskStatus,
+    updateTask,
+    updateHabit,
+  } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
   const isWeek = variant === 'week';
   const { item, itemType } = entry;
@@ -332,11 +367,22 @@ export function ScheduleBlock({
       : 'var(--primary)'
     : getHabitGroupColor(habit!.group);
 
-  // Drag-to-resize a task's own-timed block (habits have no duration column,
-  // project blocks take their length from the project — both are excluded).
-  // Bottom edge changes duration; top edge changes start (bottom fixed).
-  // Live preview from local state; the store write lands on pointer-up.
-  const canResize = isTask && !!task!.startTime && !task!.inProjectBlock;
+  // Drag-to-resize an own-timed block. Bottom edge changes duration; top edge
+  // changes start (bottom fixed). Live preview from local state; the store write
+  // lands on pointer-up.
+  //
+  // WHETHER a type may be resized is a registry capability, not a task-vs-habit
+  // branch — habits declare `resizable: false` because habitShape carries no
+  // `duration` field to write the result to, and custom types declare true and
+  // ride the task pipeline. The projected `Task`/`Habit` doesn't type its own
+  // discriminator, so the registry name is resolved the way TaskRow's
+  // delete-confirm resolves it. Project blocks are still excluded outright: they
+  // take their extent from the project, not from the item.
+  const projected = item as { type?: string; customType?: string };
+  const typeConfig = getItemTypeConfig(
+    projected.type === 'custom' ? projected.customType! : itemType
+  );
+  const canResize = typeConfig.schedule.resizable && !!item.startTime && !task?.inProjectBlock;
   const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
   const effStartMin = preview?.startMin ?? entry.startMin;
   const effDuration = preview?.duration ?? entry.duration;
@@ -441,11 +487,16 @@ export function ScheduleBlock({
     resizeRef.current = null;
     setPreview(null);
     setResizing(false);
-    if (!r || !task || !p) return;
+    if (!r || !p) return;
+    // The write has to go through the action for the item's OWN type: the store
+    // narrows updateTask to task-like (non-habit) items, so sending a habit
+    // resize through it would preview correctly and then silently no-op on
+    // release. Both actions take the same Partial shape.
+    const commit = isTask ? updateTask : updateHabit;
     if (r.edge === 'bottom') {
-      if (p.duration !== entry.duration) updateTask(task.id, { duration: p.duration });
+      if (p.duration !== entry.duration) commit(item.id, { duration: p.duration });
     } else if (p.startMin !== entry.startMin || p.duration !== entry.duration) {
-      updateTask(task.id, {
+      commit(item.id, {
         startTime: minToTime(p.startMin),
         duration: p.duration,
         timeBucket: bucketForMin(p.startMin),
@@ -532,6 +583,15 @@ export function ScheduleBlock({
     // still propagates up here from those children, which is what drives the
     // registration marks and the z-index raise.
     <div
+      data-testid="schedule-block"
+      data-item-id={item.id}
+      data-item-kind={itemType}
+      data-completed={done ? 'true' : 'false'}
+      // Duration and start are the whole point of a schedule block, and both
+      // are otherwise encoded only in inline pixel styles. These make the
+      // hour-drop and resize outcomes assertable.
+      data-start-min={effStartMin}
+      data-duration={effDuration}
       className={cn(
         'group/blk pointer-events-none absolute left-0 right-1 z-[2] h-[var(--blk-h)] hover:z-[7]',
         // The hover-expand. Everything that annotates the block — corners,
@@ -574,6 +634,15 @@ export function ScheduleBlock({
           // In flow, not absolute: the wrapper's hover-expand height is `auto`,
           // and an absolutely positioned pane would contribute nothing to it.
           'pointer-events-auto relative h-full cursor-grab touch-manipulation overflow-hidden rounded-[5px] border border-border active:cursor-grabbing',
+          // …but `h-full` against that `auto` wrapper is a percentage of an
+          // indefinite height, so it collapses the pane to its CONTENT. On a
+          // block whose slot is taller than its title (a 3-hour block holding
+          // two lines) the pane shrank out from under the cursor on hover, hover
+          // was lost — the wrapper is pointer-events-none, so the pane is the
+          // only target — the pane sprang back, and the block flickered between
+          // the two sizes forever. The floor makes hovering a block that already
+          // fits a no-op, and only a genuinely clipped title grows past it.
+          canExpand && 'min-h-[var(--blk-h)]',
           'bg-[var(--sched-pane)] shadow-[var(--sched-shadow)] transition-[background-color,box-shadow] duration-150',
           // Done recedes by thinning the plate and switching the lit edge off,
           // never by fading the whole block — opacity here composites the lime
@@ -642,9 +711,11 @@ export function ScheduleBlock({
                 {checkbox}
                 <span className={cn(titleClass, 'truncate')}>{item.title}</span>
                 {effDuration > 0 && (
-                  <MetaText className={cn('flex-shrink-0', done && 'opacity-60')}>
-                    {formatDuration(effDuration)}
-                  </MetaText>
+                  <RollingMetaText
+                    value={effDuration}
+                    format={formatDuration}
+                    className={cn('flex-shrink-0', done && 'opacity-60')}
+                  />
                 )}
               </div>
               <div className="flex min-w-0 items-center gap-2">
@@ -661,7 +732,7 @@ export function ScheduleBlock({
               <span className={cn(titleClass, 'truncate')}>{item.title}</span>
               <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
                 {task?.priority && <PriorityGlyph priority={task.priority} />}
-                {effDuration > 0 && <MetaText>{formatDuration(effDuration)}</MetaText>}
+                {effDuration > 0 && <RollingMetaText value={effDuration} format={formatDuration} />}
               </span>
             </div>
           )}
@@ -796,6 +867,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           <div
             ref={setAnytimeRef}
             data-dnd-id="unscheduled:anytime"
+            data-dnd-over={isOverAnytime ? 'true' : 'false'}
             className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
             <GroupSection label="Anytime" variant="canvas">

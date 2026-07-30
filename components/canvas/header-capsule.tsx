@@ -139,6 +139,7 @@ export function HeaderCapsule() {
           onClick={goPrevious}
           className="h-8 w-6 text-muted-foreground hover:text-foreground"
           aria-label="Previous"
+          data-testid="header-prev"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -146,6 +147,14 @@ export function HeaderCapsule() {
         <button
           onClick={() => setCalendarOpen(true)}
           title="Open calendar"
+          data-testid="header-date"
+          // The machine-readable selected date. The visible text is a format
+          // string ('EEEE, MMMM d') with no delimiter after the day number, so
+          // asserting on it needs an anchored regex — an unanchored one matches
+          // 'Fri, Aug 15' for a target of 'Friday, August 1', i.e. a 14-day
+          // overshoot reads as success. Also empty before hydration; this
+          // attribute is not.
+          data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
           className="cursor-pointer px-1 font-sans text-base font-semibold text-foreground transition-colors hover:text-primary-foreground/80"
         >
           {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="inline-block w-44" />}
@@ -157,6 +166,7 @@ export function HeaderCapsule() {
           onClick={goNext}
           className="h-8 w-6 text-muted-foreground hover:text-foreground"
           aria-label="Next"
+          data-testid="header-next"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>

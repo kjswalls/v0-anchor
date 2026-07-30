@@ -167,11 +167,22 @@ export function AppShell() {
       window.history.replaceState({}, '', '/');
     };
 
-    if (!usePlannerStore.getState().isLoading) {
+    // `!isLoading` alone is NOT "loaded" — the store initialises with
+    // isLoading:false, and this effect runs before the load even starts:
+    // initializeStore is called from SupabaseProvider, a PARENT, and React runs
+    // child effects first. So the fast path used to fire against an EMPTY store,
+    // and EODReview snapshots its pending list once on the isOpen transition and
+    // never re-snapshots — leaving a permanently empty review for anyone who
+    // arrived by tapping the push notification. `userId` is set in the same
+    // set() as isLoading:true, so it is the signal that a load has begun.
+    const isLoaded = (s: { userId: string | null; isLoading: boolean }) =>
+      !!s.userId && !s.isLoading;
+
+    if (isLoaded(usePlannerStore.getState())) {
       openAndClear();
     } else {
       const unsub = usePlannerStore.subscribe((state) => {
-        if (!state.isLoading) {
+        if (isLoaded(state)) {
           openAndClear();
           unsub();
         }

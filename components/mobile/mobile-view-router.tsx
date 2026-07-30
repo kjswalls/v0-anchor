@@ -16,7 +16,24 @@ export function MobileViewRouter() {
   const layout = useViewStore((s) => s.layout);
   const activeId = useDragStore((s) => s.activeId);
 
-  if (layout === 'list') return <DayList />;
-  if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
-  return <DayBuckets activeId={activeId} />;
+  const view = (() => {
+    if (layout === 'list') return <DayList />;
+    if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
+    return <DayBuckets activeId={activeId} />;
+  })();
+
+  // Same marker the desktop ViewRouter carries, so one readiness check and one
+  // set of view assertions work across both shells. Mobile is day-scope only by
+  // design, hence the fixed scope. `display: contents` keeps this out of layout.
+  return (
+    <div
+      data-testid="view-root"
+      data-view-scope="day"
+      data-view-layout={layout}
+      data-shell="mobile"
+      style={{ display: 'contents' }}
+    >
+      {view}
+    </div>
+  );
 }

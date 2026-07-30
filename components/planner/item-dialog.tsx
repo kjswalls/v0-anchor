@@ -5,7 +5,6 @@ import { addDays, format, startOfDay, subDays } from 'date-fns';
 import {
   CalendarIcon,
   Check,
-  CheckCircle2,
   Clock,
   Flag,
   Flame,
@@ -17,7 +16,6 @@ import {
   RotateCcw,
   Trash2,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -63,7 +61,7 @@ import type {
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
 import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { CategoryIcon, makeIconToken, resolveCategoryIcon } from '@/lib/category-icons';
+import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
 /**
@@ -105,6 +103,21 @@ const DATE_SHORTCUTS = [
   { label: 'Tomorrow', days: 1 },
   { label: 'Next week', days: 7 },
 ];
+
+/**
+ * Identity mark for a type or container — the mockup's 9px color square, as
+ * opposed to the round dot that marks a *value* (priority). Same vocabulary as
+ * PropertyChip's swatchShape="square".
+ */
+function ColorSquare({ color }: { color: string }) {
+  return (
+    <span
+      className="size-[9px] shrink-0 rounded-[3px]"
+      style={{ background: color }}
+      aria-hidden
+    />
+  );
+}
 
 /** Last 14 days of a habit's completion history, oldest first. */
 function recentStreakDays(habit: HabitItem): boolean[] {
@@ -164,7 +177,9 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     startDate: config.dateAnchored ? seed.date : undefined,
     timeBucket: seed.bucket ?? seed.defaultTimeBucket ?? 'anytime',
     startTime: '',
-    duration: '30',
+    // The type's own default block length. All three currently say 30, which is
+    // what this literal was — so a new type can change it without touching here.
+    duration: config.schedule.defaultBlockMinutes.toString(),
     repeatFrequency: config.defaultFrequency,
     repeatDays: [],
     repeatMonthDay: 1,
@@ -201,7 +216,9 @@ function draftFromItem(item: Item): ItemDraft {
     startDate,
     timeBucket: item.timeBucket || 'none',
     startTime: item.startTime || '',
-    duration: item.type !== 'habit' ? item.duration?.toString() || '30' : '30',
+    // Every type carries a duration now, so this reads the item's own value
+    // rather than pinning habits to a hardcoded '30' they could never change.
+    duration: item.duration?.toString() || config.schedule.defaultBlockMinutes.toString(),
     repeatFrequency: item.repeatFrequency ?? config.defaultFrequency,
     repeatDays: item.repeatDays || [],
     repeatMonthDay: item.repeatMonthDay || 1,
@@ -229,6 +246,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     resetHabitStreak,
     projects,
     habitGroups,
+    getProjectColor,
+    getHabitGroupColor,
     addProject,
     addHabitGroup,
     itemTypesAvailable,
@@ -360,14 +379,6 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     setActiveType(next);
   };
 
-  /** Row/header glyph for a type — custom types use the icon set at creation. */
-  const typeIcon = (name: string): LucideIcon => {
-    if (name === 'habit') return Flame;
-    if (name === 'task') return CheckCircle2;
-    const def = itemTypes.find((t) => t.name === name);
-    return resolveCategoryIcon(def?.icon, def?.label ?? name);
-  };
-
   /** Draft for a type, with a default for custom types not yet seeded. */
   const draftFor = (type: string): ItemDraft =>
     addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups });
@@ -426,6 +437,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
         group: d.container,
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
+        duration: d.duration ? parseInt(d.duration) : undefined,
         repeatFrequency: d.repeatFrequency,
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
@@ -484,6 +496,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
         startTime: d.startTime || undefined,
+        duration: d.duration ? parseInt(d.duration) : undefined,
       });
 
       if (d.timeBucket !== 'none') {
@@ -530,7 +543,10 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     const containers = config.containerKind === 'projects' ? projects : habitGroups;
-    const containerGlyph = containers.find((c) => c.name === d.container)?.emoji;
+    // The same color the rows' TagDot and the schedule rail resolve for this
+    // container — the dialog joins that vocabulary instead of the gray icon.
+    const containerColor =
+      config.containerKind === 'projects' ? getProjectColor : getHabitGroupColor;
 
     const toggleDay = (day: number) => {
       patch({
@@ -560,7 +576,13 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     const effectiveBucket: TimeBucket | 'none' =
       config.dateAnchored && d.startDate && d.timeBucket === 'none' ? 'anytime' : d.timeBucket;
     const showTime = !config.dateAnchored || !!d.startDate;
-    const hasDuration = config.dateAnchored && config.fields.includes('duration');
+    // Purely a capability question now. The `config.dateAnchored &&` this used to
+    // carry was doing two jobs: keeping duration behind a date for tasks — which
+    // `showTime` already does, since the chip this lives inside doesn't render
+    // without one — and hiding it from habits, which had no `duration` field to
+    // show. They do now, and an un-anchored type reaches its duration through the
+    // chip that is always open to it.
+    const hasDuration = config.fields.includes('duration');
     const timeParts = [
       effectiveBucket === 'none' ? null : BUCKET_LABELS[effectiveBucket],
       effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && d.startTime
@@ -601,7 +623,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                   }}
                 >
                   <span
-                    className="size-2 shrink-0 rounded-full"
+                    className={cn('size-2 shrink-0 rounded-full', p === 'none' && 'opacity-50')}
                     style={{
                       background:
                         p === 'none' ? 'var(--muted-foreground)' : `var(--priority-${p})`,
@@ -618,11 +640,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
         {config.containerKind && (
           <PropertyChip
             icon={Folder}
-            glyph={
-              d.container !== 'none' ? (
-                <CategoryIcon glyph={containerGlyph} name={d.container} />
-              ) : undefined
-            }
+            swatch={d.container === 'none' ? undefined : containerColor(d.container)}
+            swatchShape="square"
             label={config.form.containerLabel}
             value={d.container === 'none' ? undefined : d.container}
             className={config.containerKind === 'habitGroups' ? 'capitalize' : undefined}
@@ -684,7 +703,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                         close();
                       }}
                     >
-                      <CategoryIcon glyph={c.emoji} name={c.name} />
+                      <ColorSquare color={containerColor(c.name)} />
                       <span
                         className={cn(
                           'truncate',
@@ -713,6 +732,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
           <PropertyChip
             icon={CalendarIcon}
             label="Date"
+            testId="item-dialog-date-chip"
             value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
             contentClassName="w-auto p-0"
           >
@@ -724,6 +744,8 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                     return (
                       <ChipOption
                         key={label}
+                        testId="item-dialog-date-shortcut"
+                        value={label.toLowerCase().replace(/\s+/g, '-')}
                         onSelect={() => {
                           patch({ startDate: date });
                           close();
@@ -973,7 +995,16 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     <>
       <ResponsiveModal open={open} onOpenChange={onOpenChange}>
         <ResponsiveModalContent
-          className="w-[calc(100vw-2rem)] sm:max-w-[460px] max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          data-testid="item-dialog"
+          data-mode={mode}
+          data-item-type={activeTypeName}
+          // top-[14vh] + translate-y-0 override the primitive's dead-center
+          // position (tailwind-merge drops the top-[50%]/translate pair): a
+          // quick capture is a command, not a ceremony, and the omnibar's
+          // latitude keeps your eyes near the day you're adding to. Desktop
+          // only — the mobile drawer ignores this className. max-h drops to
+          // 80vh so 14vh + dialog never presses the viewport bottom.
+          className="top-[14vh] w-[calc(100vw-2rem)] translate-y-0 sm:max-w-[460px] max-h-[80vh] overflow-y-auto overflow-x-hidden"
           onKeyDown={(e) => {
             // defaultPrevented: Radix menu/select items preventDefault their own
             // Enter. Those events still bubble through the portal in React's
@@ -1011,32 +1042,33 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
               <div className="flex items-center gap-2 pr-8">
                 {mode === 'add' ? (
                   <PropertyChip
-                    icon={typeIcon(activeTypeName)}
+                    swatch={activeConfig.accent}
+                    swatchShape="square"
                     label={activeConfig.label}
                     value={activeConfig.label}
+                    testId="item-dialog-type-chip"
                     alwaysChevron
                     className="font-medium"
                     contentClassName="w-56"
                   >
                     {(close) => (
                       <>
-                        {typeNames.map((t) => {
-                          const TypeIcon = typeIcon(t);
-                          return (
-                            <ChipOption
-                              key={t}
-                              selected={t === activeTypeName}
-                              onSelect={() => {
-                                switchType(t);
-                                close();
-                              }}
-                            >
-                              <TypeIcon className="size-3.5 shrink-0" />
-                              {getItemTypeConfig(t).label}
-                              {t === activeTypeName && <Check className="ml-auto size-3.5" />}
-                            </ChipOption>
-                          );
-                        })}
+                        {typeNames.map((t) => (
+                          <ChipOption
+                            key={t}
+                            selected={t === activeTypeName}
+                            testId="item-dialog-type-option"
+                            value={t}
+                            onSelect={() => {
+                              switchType(t);
+                              close();
+                            }}
+                          >
+                            <ColorSquare color={getItemTypeConfig(t).accent} />
+                            {getItemTypeConfig(t).label}
+                            {t === activeTypeName && <Check className="ml-auto size-3.5" />}
+                          </ChipOption>
+                        ))}
                         {itemTypesAvailable && (
                           <>
                             <div className="bg-border -mx-1 my-1 h-px" />
@@ -1064,10 +1096,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                   // converting an item is a data decision (streaks, completion
                   // history), not a control.
                   <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
-                    {(() => {
-                      const TypeIcon = typeIcon(activeTypeName);
-                      return <TypeIcon className="size-3" />;
-                    })()}
+                    <ColorSquare color={activeConfig.accent} />
                     {activeConfig.label}
                   </span>
                 )}
@@ -1082,6 +1111,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                       <Button
                         variant="ghost"
                         size="icon"
+                        data-testid="item-dialog-more"
                         className="text-muted-foreground ml-auto size-7"
                       >
                         <MoreHorizontal className="size-4" />
@@ -1090,13 +1120,17 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-52">
                       {editConfig?.counters.streak && (
-                        <DropdownMenuItem onSelect={() => setShowResetConfirm(true)}>
+                        <DropdownMenuItem
+                          data-testid="item-dialog-reset-streak"
+                          onSelect={() => setShowResetConfirm(true)}
+                        >
                           <RotateCcw className="size-3.5" />
                           Reset streak
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
                         variant="destructive"
+                        data-testid="item-dialog-delete"
                         onSelect={() => setShowDeleteConfirm(true)}
                       >
                         <Trash2 className="size-3.5" />
@@ -1110,6 +1144,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
               {/* Title — the only required field, so it carries the dialog. */}
               <Input
                 id={titleId}
+                data-testid="item-dialog-title-input"
                 placeholder={activeConfig.form.titlePlaceholder}
                 value={activeDraft.title}
                 onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
@@ -1159,6 +1194,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                 </span>
                 <Button
                   onClick={handleSubmit}
+                  data-testid="item-dialog-submit"
                   disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
                   className="h-9 max-sm:w-full"
                 >
@@ -1172,7 +1208,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
       {editConfig?.counters.streak && (
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
-          <AlertDialogContent>
+          <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>
               <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
               <AlertDialogDescription>
@@ -1181,7 +1217,11 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleResetStreak} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                data-testid="reset-streak-confirm-accept"
+                onClick={handleResetStreak}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 Reset Streak
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -1190,7 +1230,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
       )}
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
+        <AlertDialogContent data-testid="item-dialog-delete-confirm">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {editConfig?.label ?? 'Item'}?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1199,7 +1239,11 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              data-testid="item-dialog-delete-confirm-accept"
+              onClick={handleDeleteConfirm}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

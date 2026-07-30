@@ -339,6 +339,12 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
               <SettingRow label="Show completed tasks" description="Display completed tasks in timeline">
                 <Switch
+                  // settings.spec.ts used to reach a switch through an XPath
+                  // ancestor walk matching the Tailwind substring
+                  // "flex items-center justify-between" — an unbounded match that
+                  // resolves to two switches the moment another wrapper uses those
+                  // three utilities.
+                  data-setting="show_completed_tasks"
                   checked={showCompletedTasks}
                   onCheckedChange={setShowCompletedTasks}
                 />

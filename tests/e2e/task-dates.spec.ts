@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import {
+  getAccessToken,
+  createTestTask,
+  cleanupTestData,
+  fetchTestTask,
+} from './helpers/api';
 import { getTodayStr, getTomorrowStr } from './helpers/dates';
+import { reloadApp, itemCard, navigateToDate } from './helpers/app';
 
 test.describe('Task date assignment and display', () => {
   test.beforeEach(async ({ page }) => {
@@ -20,8 +26,7 @@ test.describe('Task date assignment and display', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // The task should appear in the day view timeline for today.
       await expect(page.getByRole('main').getByText(taskTitle).first()).toBeVisible({ timeout: 10_000 });
@@ -42,8 +47,7 @@ test.describe('Task date assignment and display', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
       // Ensure we're on today's day view (default) and the task is NOT visible.
       // Give the store a moment to hydrate, then assert absence.
@@ -68,35 +72,43 @@ test.describe('Task date assignment and display', () => {
     });
 
     try {
-      await page.reload();
-      await page.waitForURL('/');
+      await reloadApp(page);
 
-      // Task should be visible today.
-      const taskText = page.getByText(taskTitle).first();
-      await expect(taskText).toBeVisible({ timeout: 10_000 });
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
 
-      // Move it to tomorrow via the API (simulating a date edit).
-      await page.request.patch(`http://localhost:3000/api/agent/tasks/${taskId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        data: { startDate: TOMORROW },
-      });
+      // Change the date through the REAL dialog. The previous version of this test
+      // PATCHed the agent API and reloaded, under a comment reading "simulating a
+      // date edit" — so despite its name it never touched the dialog, and the
+      // off-by-one guard in its local-date parsing was untested.
+      await itemCard(page, taskId).getByText(taskTitle, { exact: true }).click();
+      const dialog = page.getByTestId('item-dialog');
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveAttribute('data-mode', 'edit');
 
-      // Reload so the store reflects the change.
-      await page.reload();
-      await page.waitForURL('/');
+      // The date chip's TOMORROW shortcut, not a calendar grid cell. The grid cell
+      // never settled — Playwright retried 'visible, enabled and stable' 96 times —
+      // because the calendar sits in an animating popover that the dialog portals
+      // outside itself. The shortcut is the same code path (it patches startDate)
+      // and is a plain button.
+      await dialog.getByTestId('item-dialog-date-chip').click();
+      const popover = page.locator('[data-slot="popover-content"]').last();
+      await expect(popover).toBeVisible({ timeout: 5_000 });
+      await popover
+        .locator('[data-testid="item-dialog-date-shortcut"][data-value="tomorrow"]')
+        .click();
 
-      // Task should no longer appear today.
-      await page.waitForTimeout(2_000);
-      await expect(page.getByRole('main').getByText(taskTitle).first()).not.toBeVisible();
+      await dialog.getByTestId('item-dialog-submit').click();
+      await expect(dialog).toHaveCount(0);
 
-      // Navigate to tomorrow by clicking the ">" button.
-      const nextDayBtn = page.getByRole('button').filter({
-        has: page.locator('svg.lucide-chevron-right'),
-      }).first();
-      await nextDayBtn.click();
+      // Gone from today…
+      await expect(itemCard(page, taskId)).toHaveCount(0, { timeout: 10_000 });
 
-      // Task should appear on tomorrow's view.
-      await expect(page.getByRole('main').getByText(taskTitle).first()).toBeVisible({ timeout: 5_000 });
+      // …present tomorrow, and persisted there.
+      await navigateToDate(page, TOMORROW);
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
+
+      const persisted = await fetchTestTask(page, taskId);
+      expect(persisted?.startDate).toBe(TOMORROW);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
     }

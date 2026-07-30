@@ -22,6 +22,7 @@ export function PropertyChip({
   label,
   value,
   swatch,
+  swatchShape = 'dot',
   glyph,
   align = 'start',
   className,
@@ -29,6 +30,7 @@ export function PropertyChip({
   disabled,
   alwaysChevron,
   children,
+  testId,
 }: {
   icon?: LucideIcon;
   /** Shown when `value` is empty — the noun for this property. */
@@ -37,6 +39,8 @@ export function PropertyChip({
   value?: string;
   /** Small colour dot, for properties whose value carries a colour. */
   swatch?: string;
+  /** Swatch form — 'square' marks identity (type, project), 'dot' a value (priority). */
+  swatchShape?: 'dot' | 'square';
   /** Leading glyph node (a project/group icon), replacing `icon`. */
   glyph?: ReactNode;
   align?: 'start' | 'center' | 'end';
@@ -46,6 +50,9 @@ export function PropertyChip({
   /** Keep the caret on a chip that is always set — a switcher, not a value. */
   alwaysChevron?: boolean;
   children: (close: () => void) => ReactNode;
+  /** Stable e2e handle. Chips are otherwise addressed by their value copy,
+   *  which is registry-driven and differs per item type. */
+  testId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const isSet = !!value;
@@ -76,6 +83,7 @@ export function PropertyChip({
         <button
           type="button"
           disabled={disabled}
+          data-testid={testId}
           data-set={isSet || undefined}
           className={cn(
             'inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-sm border px-2.5',
@@ -92,7 +100,10 @@ export function PropertyChip({
         >
           {swatch ? (
             <span
-              className="size-2 shrink-0 rounded-full"
+              className={cn(
+                'shrink-0',
+                swatchShape === 'square' ? 'size-[9px] rounded-[3px]' : 'size-2 rounded-full'
+              )}
               style={{ background: swatch }}
               aria-hidden
             />
@@ -129,17 +140,24 @@ export function ChipOption({
   children,
   className,
   tone = 'default',
+  testId,
+  value,
 }: {
   selected?: boolean;
   onSelect: () => void;
   children: ReactNode;
   className?: string;
   tone?: 'default' | 'muted' | 'primary';
+  testId?: string;
+  /** Machine-readable option value, so a test never matches on label copy. */
+  value?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      data-testid={testId}
+      data-value={value}
       data-selected={selected || undefined}
       className={cn(
         'flex h-8 w-full items-center gap-2 rounded-sm px-2 text-left text-sm hover-wash',

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
@@ -22,7 +23,55 @@ import { cn } from '@/lib/utils';
  * compose into the trailing rail, and which of them reserve width.
  */
 
+/**
+ * The rail's tooltip shell. Every column in the quiet rail is a de-chromed glyph
+ * or a bare numeral — which is what buys the alignment, and what costs the reader
+ * any label saying what they are looking at. This is where the label goes: an
+ * eyebrow naming the COLUMN over the value spelled out in words.
+ *
+ * It wears `TooltipContent`, which deliberately wears the popover shell rather
+ * than shadcn's inverted chip (see components/ui/tooltip.tsx), so a rail tooltip,
+ * the DayDots keycap panel and the sidebar's History popover are one object.
+ *
+ * Native `title` is NOT an option for these and the callers below drop theirs:
+ * it renders in a system font at the OS's own delay, unstyleable, and having both
+ * fires two tooltips for one hover.
+ */
+export function RailTooltip({
+  label,
+  detail,
+  side = 'top',
+  children,
+}: {
+  /** What this column IS — the muted eyebrow. */
+  label: string;
+  /** The value in words. Omit for a label-only tip. */
+  detail?: React.ReactNode;
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  /** The trigger. Cloned via asChild, so it must take a ref and spread props. */
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side} align="center">
+        <div className={cn('px-0.5 text-2xs font-medium text-muted-foreground', detail && 'mb-1')}>
+          {label}
+        </div>
+        {detail && <div className="px-0.5 text-xs text-foreground">{detail}</div>}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const PRIORITY_LABEL: Record<Priority, string> = { high: 'High', medium: 'Med', low: 'Low' };
+
+/** Unabbreviated, for the tooltip — 'Med' is a glyph label, not a word. */
+const PRIORITY_LABEL_FULL: Record<Priority, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
 
 /** How many of the three bars are lit. Count encodes level redundantly to hue,
  *  so the glyph survives colorblindness and low-contrast displays. */
@@ -55,35 +104,58 @@ export function PriorityGlyph({ priority, className }: { priority: Priority; cla
   const lit = PRIORITY_BARS[priority];
   const label = `${PRIORITY_LABEL[priority]} priority`;
   return (
-    <span
-      title={label}
-      aria-label={label}
-      role="img"
-      className={cn('flex h-4 w-4 flex-shrink-0 items-center justify-center', className)}
-    >
-      <span className={cn('flex items-end gap-px', BAR_STACK_HEIGHT)}>
-        {BAR_HEIGHT.map((h, i) => (
-          <span
-            key={h}
-            className={cn('w-0.5 rounded-full', h, i < lit ? PRIORITY_FILL[priority] : 'bg-muted-foreground/25')}
-          />
-        ))}
+    <RailTooltip label="Priority" detail={PRIORITY_LABEL_FULL[priority]}>
+      <span
+        aria-label={label}
+        role="img"
+        className={cn('flex h-4 w-4 flex-shrink-0 items-center justify-center', className)}
+      >
+        <span className={cn('flex items-end gap-px', BAR_STACK_HEIGHT)}>
+          {BAR_HEIGHT.map((h, i) => (
+            <span
+              key={h}
+              className={cn('w-0.5 rounded-full', h, i < lit ? PRIORITY_FILL[priority] : 'bg-muted-foreground/25')}
+            />
+          ))}
+        </span>
       </span>
-    </span>
+    </RailTooltip>
   );
 }
 
 /**
- * Habit streak as a flame in the same 16px glyph slot: presence says "this is a
- * habit", color says "the streak is alive". The count itself renders as bare
- * numerals in the quantity slot, so the flame never changes width.
+ * Habit streak in the row's glyph slot: presence says "this is a habit", colour
+ * says the streak is alive, and the numeral says how long.
+ *
+ * The count used to live two columns outboard, in the quantity slot, so that the
+ * flame could never change width. It moved here when habits gained a duration
+ * (see memory/plans/unified-items.md) and the quantity column became duration for
+ * every type — a column holding minutes on one row and days on the next can't be
+ * scanned as either. Flame and count are one datum and now read as one mark; the
+ * slot is still fixed-width, so the rail is intact.
+ *
+ * The count element renders even at streak 0 (empty). It is the only observable
+ * output of the streak counter — see MetaText's testId note.
  */
-export function StreakFlame({ active, className }: { active: boolean; className?: string }) {
+export function StreakFlame({ streak, className }: { streak: number; className?: string }) {
+  const active = streak > 0;
   return (
-    <Flame
-      aria-hidden
-      className={cn('h-3.5 w-3.5 flex-shrink-0', active ? 'text-warning-text' : 'text-muted-foreground/40', className)}
-    />
+    <RailTooltip
+      label="Streak"
+      detail={active ? `${streak} ${streak === 1 ? 'day' : 'days'} in a row` : 'No streak yet'}
+    >
+      <span
+        role="img"
+        aria-label={active ? `${streak}-day streak` : 'No streak yet'}
+        className={cn('flex flex-shrink-0 items-center gap-1', className)}
+      >
+        <Flame
+          aria-hidden
+          className={cn('h-3.5 w-3.5 flex-shrink-0', active ? 'text-warning-text' : 'text-muted-foreground/40')}
+        />
+        <MetaText testId="item-streak">{active ? streak : ''}</MetaText>
+      </span>
+    </RailTooltip>
   );
 }
 
@@ -92,8 +164,126 @@ export function StreakFlame({ active, className }: { active: boolean; className?
  * streak count. Bare mono text, no chrome — right-aligned in a fixed slot by
  * the caller so digits form one hard rail down the list.
  */
-export function MetaText({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <span className={cn('font-num text-2xs text-muted-foreground', className)}>{children}</span>;
+export function MetaText({
+  children,
+  className,
+  testId,
+  tooltip,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  /**
+   * Stable handle for e2e. These slots are the ONLY observable output of the
+   * habit counters (progress, streak), and the rail is right-anchored, so
+   * without a testid they can only be read by DOM position in a column that is
+   * actively being redesigned.
+   */
+  testId?: string;
+  /**
+   * Names the column this numeral belongs to, on hover. Optional because the
+   * schedule blocks reuse MetaText inside a pane that already labels its own
+   * metadata by position; it's the ROW rail where a bare figure needs saying.
+   */
+  tooltip?: { label: string; detail?: React.ReactNode };
+}) {
+  const text = (
+    <span data-testid={testId} className={cn('font-num text-2xs text-muted-foreground', className)}>
+      {children}
+    </span>
+  );
+  if (!tooltip) return text;
+  return (
+    <RailTooltip label={tooltip.label} detail={tooltip.detail}>
+      {text}
+    </RailTooltip>
+  );
+}
+
+/**
+ * MetaText for a figure that is being EDITED live, rather than merely reported —
+ * the duration on a schedule block under a resize drag.
+ *
+ * A resize snaps in 15-minute steps, so a plain text node swaps between strings
+ * that share no glyphs ("45m" → "1h") with nothing connecting them: the readout
+ * flickers, and at 10px it's easy to miss that it moved at all. Here the slot
+ * turns over instead — the old figure leaves the way the value went and the new
+ * one arrives from the other side (see meta-roll-in/out in globals.css). The
+ * DIRECTION is the whole point: it ties the numeral to the edge under the cursor,
+ * so the readout reads as one value moving rather than as a stream of unrelated
+ * ones.
+ *
+ * Takes the value and its formatter, not formatted text, for two reasons: the
+ * direction has to be derived by comparing numbers, and "1h" appearing for both
+ * 60 and 60-after-59 must be told apart from "1h" that hasn't changed.
+ */
+export function RollingMetaText({
+  value,
+  format,
+  className,
+  testId,
+}: {
+  value: number;
+  format: (value: number) => string;
+  className?: string;
+  testId?: string;
+}) {
+  // Render-phase state adjustment (React's supported "derive state from a changed
+  // prop" pattern) rather than an effect or a ref: the outgoing figure has to be
+  // captured on the SAME commit that paints the incoming one. An effect would
+  // start the turn a frame late — visibly behind a pointer the user is still
+  // moving — and a ref would already hold the new value by the time the outgoing
+  // layer rendered.
+  const [roll, setRoll] = useState({ value, from: null as string | null, dir: 1, seq: 0 });
+  if (roll.value !== value) {
+    setRoll({
+      value,
+      from: format(roll.value),
+      dir: value > roll.value ? 1 : -1,
+      seq: roll.seq + 1,
+    });
+  }
+
+  return (
+    // inline-block, not inline: `overflow` is ignored on inline boxes, and the
+    // clip to a single line box is what makes the two figures pass through a slot
+    // instead of crossing over each other in the open. (Both call sites are flex
+    // rows, which blockify this anyway — it's stated so the primitive doesn't
+    // depend on its parent to work.)
+    <span
+      data-testid={testId}
+      className={cn(
+        'relative inline-block overflow-hidden font-num text-2xs text-muted-foreground',
+        className
+      )}
+      style={{ '--roll-dir': String(roll.dir) } as React.CSSProperties}
+    >
+      {/* The outgoing figure. Keyed on the step counter, so a drag that ticks
+          faster than the turn REPLACES it rather than queueing another one — a
+          flick spins the slot and settles on wherever the pointer stopped. Left
+          mounted once it finishes: it costs no layout (absolute) and ends at
+          opacity 0, so there is nothing to clean up and no timer to race the next
+          step. aria-hidden because the live figure below is the accessible one. */}
+      {roll.from !== null && (
+        <span
+          key={`out-${roll.seq}`}
+          aria-hidden
+          className="animate-meta-roll-out pointer-events-none absolute left-0 top-0 whitespace-nowrap"
+        >
+          {roll.from}
+        </span>
+      )}
+      {/* The live figure, and the one that sets the slot's width and height.
+          Unanimated until the value has actually changed once, so a block
+          scrolling or mounting into view doesn't announce a turn that never
+          happened. */}
+      <span
+        key={`in-${roll.seq}`}
+        className={cn('block whitespace-nowrap', roll.from !== null && 'animate-meta-roll-in')}
+      >
+        {format(value)}
+      </span>
+    </span>
+  );
 }
 
 /**
@@ -111,16 +301,24 @@ export function MetaText({ children, className }: { children?: React.ReactNode; 
 export function TagDot({
   name,
   color,
+  label,
   className,
   nameClassName,
 }: {
   name: string;
   color?: string;
+  /**
+   * What KIND of container this is — 'Project' for tasks, 'Group' for habits,
+   * from the type registry's `form.containerLabel`. The dot and name alone can't
+   * say which namespace they came from, and below lg the name is hidden entirely
+   * and the tooltip is the only reading of the column there is.
+   */
+  label?: string;
   className?: string;
   nameClassName?: string;
 }) {
-  return (
-    <span className={cn('flex min-w-0 flex-shrink-0 items-center gap-1.5', className)} title={name}>
+  const tag = (
+    <span className={cn('flex min-w-0 flex-shrink-0 items-center gap-1.5', className)}>
       <span
         aria-hidden
         className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
@@ -128,6 +326,12 @@ export function TagDot({
       />
       <span className={cn('truncate text-2xs font-medium text-muted-foreground', nameClassName)}>{name}</span>
     </span>
+  );
+  if (!label) return tag;
+  return (
+    <RailTooltip label={label} detail={name}>
+      {tag}
+    </RailTooltip>
   );
 }
 
@@ -335,14 +539,32 @@ export function formatDuration(minutes: number): string {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+/** The same value in words, for a tooltip body: "45 minutes" / "1 hour 30 minutes". */
+export function formatDurationLong(minutes: number): string {
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  if (minutes < 60) return plural(minutes, 'minute');
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${plural(h, 'hour')} ${plural(m, 'minute')}` : plural(h, 'hour');
+}
+
 /** Item count beside a bucket name. The only metadata that keeps a container —
  *  it's a chip in the header band, not a row datum. 20×20 minimum with 6px side
  *  padding, so a single digit reads as a square and a three-digit count grows
  *  sideways only. */
-export function CountBadge({ count, className }: { count: number; className?: string }) {
+export function CountBadge({
+  count,
+  className,
+  testId,
+}: {
+  count: number;
+  className?: string;
+  testId?: string;
+}) {
   if (count <= 0) return null;
   return (
     <span
+      data-testid={testId}
       className={cn(
         'inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-surface-3 px-1.5 font-num text-2xs font-medium text-muted-foreground',
         className

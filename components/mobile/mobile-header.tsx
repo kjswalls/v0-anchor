@@ -57,6 +57,12 @@ export function MobileHeader({ onOpenSettings }: MobileHeaderProps) {
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
+                data-testid="header-date"
+                // Same machine-readable date as the desktop capsule, so one
+                // navigation helper works across both shells. Mobile also
+                // renders the literal 'Today' instead of a date, which no
+                // format-string assertion can match.
+                data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
                 className="h-9 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-accent"
               >
                 <Calendar className="h-4 w-4 text-muted-foreground" />

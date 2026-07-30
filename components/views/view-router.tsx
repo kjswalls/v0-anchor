@@ -18,13 +18,31 @@ export function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
   const { scope, layout } = useViewStore();
 
-  if (scope === 'week') {
-    if (layout === 'list') return <WeekList />;
-    if (layout === 'schedule') return <WeekSchedule activeId={activeId} />;
-    return <WeekBuckets activeId={activeId} />;
-  }
+  const view = (() => {
+    if (scope === 'week') {
+      if (layout === 'list') return <WeekList />;
+      if (layout === 'schedule') return <WeekSchedule activeId={activeId} />;
+      return <WeekBuckets activeId={activeId} />;
+    }
+    if (layout === 'list') return <DayList />;
+    if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
+    return <DayBuckets activeId={activeId} />;
+  })();
 
-  if (layout === 'list') return <DayList />;
-  if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
-  return <DayBuckets activeId={activeId} />;
+  // Nothing in the DOM used to say WHICH of the six views was mounted, so tests
+  // inferred it from droppable ids — which are ambiguous ([data-dnd-id^="week:"]
+  // is emitted by both week-buckets and week-schedule; unscheduled:anytime by
+  // both day-buckets and day-schedule). A layout regression then surfaced as an
+  // opaque timeout in an unrelated assertion. `display: contents` so this
+  // wrapper adds a marker without joining the layout.
+  return (
+    <div
+      data-testid="view-root"
+      data-view-scope={scope}
+      data-view-layout={layout}
+      style={{ display: 'contents' }}
+    >
+      {view}
+    </div>
+  );
 }

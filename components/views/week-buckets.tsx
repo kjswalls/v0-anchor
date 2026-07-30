@@ -29,7 +29,11 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
   const count = tasks.length + habits.length;
 
   return (
-    <div ref={setNodeRef} data-dnd-id={`week:${dateStr}:${bucket}`}>
+    <div
+      ref={setNodeRef}
+      data-dnd-id={`week:${dateStr}:${bucket}`}
+      data-dnd-over={isOver ? 'true' : 'false'}
+    >
       <BucketCard bucket={bucket} count={count} density="mini" isDropTarget={isOver}>
         {count === 0 ? (
           <div
@@ -62,6 +66,14 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
 
   return (
     <div
+      data-testid="week-column"
+      // Per-column identity. Without it the only handles are nth() and
+      // title^="Select ", both position-dependent — and the column order is
+      // reshuffled by the weekStartDay setting. `today` also replaces the
+      // getByText('today') assertion, which only ever matched week-LIST.
+      data-date={format(date, 'yyyy-MM-dd')}
+      data-selected={selected ? 'true' : 'false'}
+      data-today={today ? 'true' : 'false'}
       className={cn(
         'flex w-60 min-w-60 snap-start flex-col gap-2 transition-opacity',
         !selected && 'opacity-75 hover:opacity-100'
@@ -69,6 +81,7 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
     >
       <button
         onClick={() => setSelectedDate(date)}
+        data-testid="week-column-header"
         className={cn(
           'flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
           // Ink role on the lime fill — see week-schedule's day header.
