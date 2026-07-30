@@ -18,6 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { OVERDUE_COHORT_LABELS, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
 import { itemTypeName } from '@/lib/item-registry';
+import { isRecurring } from '@/lib/recurrence';
 import { openEditFor } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 import type { Item, Task, TaskItem } from '@/lib/planner-types';
@@ -176,7 +177,7 @@ type RowAction =
  * the receipt to be stamped unconditionally afterwards, i.e. the tray telling
  * the user it had carried an item it had in fact not touched.
  */
-type StaleReason = 'deleted' | 'completed';
+type StaleReason = 'deleted' | 'completed' | 'recurring';
 
 /**
  * @param live the item as the store has it RIGHT NOW; `undefined` = gone.
@@ -189,6 +190,18 @@ type StaleReason = 'deleted' | 'completed';
  */
 function staleReasonFor(live: Item | undefined): StaleReason | null {
   if (!live || live.type === 'habit') return 'deleted';
+  // Turned recurring under the tray — the row's own title button opens the edit
+  // dialog on top of this list, so it is a two-click trip from here.
+  //
+  // lib/overdue.ts refuses recurring items on the way IN (their misses are
+  // per-date state, never a property of the item), and this is the same rule on
+  // the way OUT: every exit in this list writes startDate, which for a recurring
+  // item is the recurrence ANCHOR rather than the date of the row you are
+  // looking at. "Move to Braindump" in particular would clear it and take the
+  // whole series off the calendar — issue #187, the EOD ✕'s bug. So the row
+  // stops offering exits rather than quietly mangling the series; the item is
+  // now something the past-due pile has no opinion about.
+  if (isRecurring(live)) return 'recurring';
   // 'pending' is the only status lib/overdue.ts:109 accepts, so anything else —
   // completed in the day list behind the tray, or 'cancelled' via the agent API
   // — means the item has left the pile for real and must not be carried.
@@ -698,8 +711,11 @@ function TriageRow({
         )}
       >
         {stale ? (
+          // "Repeats", not "Skipped" or anything with a verdict in it: it names
+          // what the item BECAME, which is also the whole reason the exits went
+          // away. Same muted register as the other two markers.
           <span className="w-full truncate text-right text-2xs text-muted-foreground">
-            {stale === 'deleted' ? 'Deleted' : 'Completed'}
+            {stale === 'deleted' ? 'Deleted' : stale === 'recurring' ? 'Repeats' : 'Completed'}
           </span>
         ) : action ? (
           <button

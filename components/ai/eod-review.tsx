@@ -50,6 +50,10 @@ function formatDateInTz(date: Date, tz?: string | null): string {
 function actionLabel(action: TaskAction, userTimezone: string | null | undefined): string {
   if (!action) return '';
   if (action.type === 'dismissed') return 'Moved to sidebar';
+  // Nothing happened to the item, and the receipt says so without dressing it up
+  // as an achievement or a failure: it stayed where it was and it comes back on
+  // its own schedule. See the `left` branch of handleDismiss.
+  if (action.type === 'left') return 'Left for next time';
   if (action.type === 'moved') {
     const tomorrow = tomorrowStr(userTimezone);
     if (action.to === tomorrow) return 'Moved to tomorrow';
@@ -64,7 +68,20 @@ function actionLabel(action: TaskAction, userTimezone: string | null | undefined
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
+/**
+ * What the user did to a row this session.
+ *
+ * `dismissed` and `left` are the SAME gesture (the ✕) on two different kinds of
+ * item, and they are separate variants because they are separate outcomes:
+ * `dismissed` unscheduled a one-off task, `left` wrote nothing at all. Merging
+ * them would make the receipt lie about one of the two — and would lose the flag
+ * handleUndo reads to know there is nothing to restore.
+ */
+type TaskAction =
+  | { type: 'moved'; to: string }
+  | { type: 'dismissed' }
+  | { type: 'left' }
+  | null;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -194,8 +211,33 @@ export function EODReview() {
     updateTask(id, { startDate: date });
   };
 
+  /**
+   * The ✕. One-off tasks go back to the Braindump; recurring ones are LEFT ALONE.
+   *
+   * A recurring item's startDate is its recurrence anchor, not the date of the
+   * occurrence you are looking at — so unscheduleTask (which clears startDate,
+   * timeBucket, startTime and isScheduled) doesn't dismiss tonight's instance,
+   * it deletes the whole series off the calendar and drops it in the sidebar.
+   * Issue #187: a task that repeats every Tuesday and gets dismissed on Tuesday
+   * night must still be there next Tuesday.
+   *
+   * So the recurring branch writes NOTHING. Not the scalar status either —
+   * recurring completion is per-date (`completedDates`), and a scalar
+   * 'completed'/'cancelled' here would both lie about the occurrence and
+   * silently retire every future one. The item stays incomplete on its date,
+   * exactly as the issue asks, and the receipt is purely session UI so the row
+   * stops asking to be triaged again in this sitting.
+   *
+   * Branching on isRecurring(), not on the item's TYPE: a recurring task and a
+   * one-off task are the same registry type, so this is a runtime property of
+   * the item and there is no capability question to ask instead.
+   */
   const handleDismiss = (id: string) => {
     const task = pendingTasks.find((t) => t.id === id);
+    if (task && isRecurring(task)) {
+      setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'left' }); return next; });
+      return;
+    }
     setUndoStack((prev) => {
       const next = new Map(prev);
       if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket, startTime: task?.startTime ?? null });
@@ -206,6 +248,14 @@ export function EODReview() {
   };
 
   const handleUndo = (id: string) => {
+    // A `left` receipt has no undo stack entry because it had nothing to stack:
+    // the dismissal wrote no fields. Clearing the receipt IS the whole reversal,
+    // and routing it through updateTask instead would push a history entry (and
+    // a db write) for a change that never happened.
+    if (taskActions.get(id)?.type === 'left') {
+      setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
+      return;
+    }
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
