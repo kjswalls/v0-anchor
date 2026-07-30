@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus, Check, Loader2, AlertCircle, BookOpen } from 'lucide-react';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import {
   Dialog,
@@ -506,6 +506,16 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     )}
                   </div>
                 )}
+
+                <a
+                  href="/docs/openclaw"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  How to connect OpenClaw
+                </a>
 
                 {/* Beacon fallback — secondary */}
                 <div className="rounded-lg border border-border px-3 py-3 space-y-3">
