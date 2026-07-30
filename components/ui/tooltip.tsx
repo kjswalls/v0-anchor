@@ -55,10 +55,21 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
+          // text-xs is NOT decoration — it is the missing default. This content
+          // is portalled to <body>, and app/globals.css sets no font-size on
+          // html/body (only bg + colour), so a tooltip passed bare text
+          // inherited the browser's 16px while the row that triggered it renders
+          // at --text-content (12px). It only ever looked right on the one caller
+          // that sizes its own children (the DayDots keycap panel in
+          // components/primitives/pills.tsx, whose contents are text-2xs); every
+          // plain-string tooltip came out a third larger than the UI around it.
+          // 11px is the app's label register — what the sunrise bar's copy and
+          // the chip labels already use.
+          //
           // shadow-[var(--shadow-elev-md)], not shadow-md: named @theme shadow
           // utilities inline the light value and never see the .dark re-tune.
           // See the elevation block in app/globals.css.
-          'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md border p-2 shadow-[var(--shadow-elev-md)] outline-hidden',
+          'bg-popover text-popover-foreground text-xs data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md border p-2 shadow-[var(--shadow-elev-md)] outline-hidden',
           className,
         )}
         {...props}
