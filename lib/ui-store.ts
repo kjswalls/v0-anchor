@@ -67,8 +67,10 @@ export const openAddDialog = (
 
 /**
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so
- * the discriminator is stamped here. The item is a snapshot captured at open
- * time — the dialog deliberately does not re-resolve it from the store.
+ * the discriminator is stamped here. What lands in the slot is a snapshot, but
+ * it is only an ADDRESS now: the surface re-resolves it from the store by id
+ * every render and re-seeds its draft only when that id changes. Calling this
+ * again with a different item is therefore how the docked panel retargets.
  *
  * Custom-type items ride the tasks projection (Phase 6b), so their runtime
  * discriminator must survive: stamping 'task' over a {type:'custom'} object

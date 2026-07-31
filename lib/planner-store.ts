@@ -198,7 +198,14 @@ interface PlannerStore {
 // type/customType keys (projections filter, never map).
 const projectItems = (items: Item[]) => ({
   items,
-  tasks: items.filter((i): i is TaskItem => i.type !== 'habit') as Task[],
+  // Subtasks (parentItemId set) live inside their parent's detail surface and
+  // are deliberately EXCLUDED from the tasks projection — braindump, buckets,
+  // schedule, EOD/morning all read this projection, so one filter keeps a
+  // subtask from showing up as a free-floating task everywhere at once.
+  // items[] still carries them (the panel and the agent context read items).
+  tasks: items.filter(
+    (i): i is TaskItem => i.type !== 'habit' && !i.parentItemId
+  ) as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
 });
 
@@ -616,9 +623,24 @@ export const usePlannerStore = create<PlannerStore>()(
         const found = findTaskLike(id);
         setNextActionLabel(`Delete task: ${found?.title || 'Unknown'}`);
         if (!found) return;
-        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === found.type))));
+        // Cascade to subtasks explicitly: soft-delete doesn't fire the DB's
+        // ON DELETE SET NULL (that's for the hard purge), and an orphaned
+        // subtask would be unreachable — excluded from every view, parent gone.
+        const children = get().items.filter(
+          (i) => i.type !== 'habit' && i.parentItemId === id
+        );
+        set((state) =>
+          projectItems(
+            state.items.filter(
+              (i) =>
+                !(i.id === id && i.type === found.type) &&
+                !children.some((c) => c.id === i.id)
+            )
+          )
+        );
 
         dbDeleteItem(id, dbTypeOf(found)).catch(console.error);
+        children.forEach((c) => dbDeleteItem(c.id, dbTypeOf(c)).catch(console.error));
       },
 
       toggleTaskStatus: (id, status?, date?) => {
@@ -997,7 +1019,13 @@ export const usePlannerStore = create<PlannerStore>()(
         return project?.emoji || '';
       },
 
-      getProjectColor: (name) => accentColorForName(name),
+      // Stored color wins (same precedence as getHabitGroupColor); the
+      // name-hash ramp remains the no-choice default, so nothing changes for
+      // projects that never picked one.
+      getProjectColor: (name) => {
+        const project = get().projects.find((p) => p.name === name);
+        return project?.color || accentColorForName(name);
+      },
 
       getProject: (name) => {
         return get().projects.find((p) => p.name === name);

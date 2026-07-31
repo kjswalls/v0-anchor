@@ -34,6 +34,8 @@ export const ProjectSchema = z.object({
     id: z.string(),
     name: z.string(),
     emoji: z.string(),
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.string().optional(),
     repeatFrequency: RepeatFrequencySchema.optional(),
     repeatDays: z.array(z.number()).optional(),
     repeatMonthDay: z.number().optional(),
@@ -68,6 +70,21 @@ const taskShape = {
     previousStartTime: z.string().optional(),
     previousStartDate: z.string().optional(),
     notes: NotesSchema,
+    // ── Item-surface growth (memory/plans/item-surface-growth.md) ────────────
+    // Waking the migration-007/019 future-proofing columns. All four are
+    // additive-optional: old plugin builds strip unknown keys, so the pinned
+    // legacy projections keep parsing. Reads are deliberately LOOSE strings —
+    // constraining aiStatus to an enum here would let a future vocabulary
+    // addition brick an old plugin's safeParse; the write-side schemas
+    // (TaskUpdateSchema) carry the strict enum instead.
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.string().optional(),
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.string().optional(),
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.string().optional(),
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.string().optional(),
     ...RecurrenceFieldsSchema.shape,
 };
 const habitShape = {
@@ -81,6 +98,13 @@ const habitShape = {
     dailyCounts: z.record(z.string(), z.number()),
     timeBucket: TimeBucketSchema.optional(),
     startTime: z.string().optional(),
+    // Minutes. Habits carry a length for the same reason tasks do — "30 minutes
+    // of reading" is the habit, not a 30-minute default someone has to accept —
+    // which is also what makes a habit block resizable on the schedule grid
+    // (registry `schedule.resizable`). Optional: a habit with no duration falls
+    // back to the type's defaultBlockMinutes, and the column already existed as
+    // nullable in `items` (migration 019), so nothing needed backfilling.
+    duration: z.number().optional(), // minutes
     // Required (a habit is recurring by definition); .or().transform() rather
     // than z.preprocess so z.input keeps the field required and enum-typed.
     repeatFrequency: RepeatFrequencySchema
@@ -167,6 +191,10 @@ export const TaskCreateSchema = z
     duration: z.number().int().optional(),
     repeatDays: z.array(z.number().int()).optional(),
     repeatMonthDay: z.number().int().optional(),
+    // Growth fields are strict at the create boundary too (taskShape's reads
+    // stay loose) — a bad uuid or status must 400 here, not 500 at Postgres.
+    parentItemId: z.string().uuid().optional(),
+    aiStatus: z.enum(['queued', 'working', 'done', 'failed']).optional(),
 })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
@@ -176,6 +204,9 @@ export const HabitCreateSchema = z
     title: z.string().min(1),
     group: z.string().optional(),
     streak: z.number().int().optional(),
+    // int, like the task side: items.duration is an integer column, so a
+    // fractional body should 400 at the boundary rather than 500 on the insert.
+    duration: z.number().int().optional(),
     status: HabitStatusSchema.optional(),
     completedDates: z.array(z.string()).optional(),
     skippedDates: z.array(z.string()).optional(),
@@ -215,6 +246,12 @@ export const TaskUpdateSchema = z
     repeatDays: clearable(z.array(z.number().int())),
     repeatMonthDay: clearable(z.number().int()),
     completedDates: clearable(z.array(z.string())),
+    // Item-surface growth fields — strict on the write side (see taskShape
+    // note): agents may only set the pinned aiStatus vocabulary.
+    parentItemId: clearable(z.string().uuid()),
+    assignee: clearable(z.string()),
+    aiStatus: clearable(z.enum(['queued', 'working', 'done', 'failed'])),
+    aiResult: clearable(z.string()),
 })
     .superRefine(requireCustomDays);
 export const HabitUpdateSchema = z
@@ -228,6 +265,9 @@ export const HabitUpdateSchema = z
     dailyCounts: z.record(z.string(), z.number()).optional(),
     timeBucket: clearable(TimeBucketSchema),
     startTime: clearable(z.string()),
+    // Clearable: items.duration is nullable, so null means "back to the type's
+    // default block length" rather than being rejected.
+    duration: clearable(z.number().int()),
     repeatFrequency: z.preprocess(normalizeWeekly, RepeatFrequencySchema).optional(),
     repeatDays: clearable(z.array(z.number().int())),
     repeatMonthDay: clearable(z.number().int()),

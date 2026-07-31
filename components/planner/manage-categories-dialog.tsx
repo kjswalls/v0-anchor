@@ -26,8 +26,10 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { usePlannerStore } from '@/lib/planner-store';
 import { CategoryIcon, makeIconToken } from '@/lib/category-icons';
+import { accentColorForName } from '@/lib/accent-colors';
 
 interface ManageCategoriesDialogProps {
   open: boolean;
@@ -50,6 +52,7 @@ export function ManageCategoriesDialog({
   const {
     projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup,
     itemTypes, itemTypesAvailable, addItemType, removeItemType,
+    updateProject, updateHabitGroup, updateItemType, getHabitGroupColor,
   } = usePlannerStore();
   const [newProject, setNewProject] = useState('');
   const [newProjectEmoji, setNewProjectEmoji] = useState(makeIconToken('Briefcase'));
@@ -174,6 +177,12 @@ export function ManageCategoriesDialog({
                         )}
                       </div>
                       <div className="flex items-center gap-1">
+                        <ColorSwatchPicker
+                          value={project.color}
+                          fallback={accentColorForName(project.name)}
+                          onSelect={(color) => updateProject(project.id, { color })}
+                          aria-label={`Color for ${project.name}`}
+                        />
                         <Button
                           variant="ghost"
                           size="icon"
@@ -225,14 +234,22 @@ export function ManageCategoriesDialog({
                         <CategoryIcon glyph={group.emoji} name={group.name} />
                         <span className="capitalize">{group.name}</span>
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirm({ type: 'group', name: group.name, id: group.id })}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <ColorSwatchPicker
+                          value={group.color}
+                          fallback={getHabitGroupColor(group.name)}
+                          onSelect={(color) => updateHabitGroup(group.id, { color })}
+                          aria-label={`Color for ${group.name}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteConfirm({ type: 'group', name: group.name, id: group.id })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -278,14 +295,22 @@ export function ManageCategoriesDialog({
                         {t.label}
                         <span className="text-[10px] text-muted-foreground font-mono">{t.name}</span>
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirm({ type: 'itemType', name: t.label, id: t.id })}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <ColorSwatchPicker
+                          value={t.color}
+                          fallback={accentColorForName(t.name)}
+                          onSelect={(color) => updateItemType(t.id, { color })}
+                          aria-label={`Color for ${t.label}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteConfirm({ type: 'itemType', name: t.label, id: t.id })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}

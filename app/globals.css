@@ -97,6 +97,16 @@
      card 1.0). Retune here, not at the call sites. */
   --modal: var(--canvas);
 
+  /* The frost behind non-destructive modals (dialog + drawer overlays): the
+     blur lives in the overlay's backdrop-blur utility; this token is only the
+     faint tint laid over it. Hue 272 is the ink's own hue (same reasoning as
+     the hover wash above), so the frosted app reads as itself gone quiet, not
+     as a color arriving. AlertDialog deliberately keeps bg-black/50 — a
+     destructive confirm has earned the heavier curtain. If frost janks on the
+     schedule grid, the self-veil fallback is recorded in
+     memory/plans/item-surface-growth.md. */
+  --scrim: oklch(0.22 0.012 272 / 12%);
+
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
@@ -287,6 +297,10 @@
   --input: oklch(1 0 0 / 8%);
   --ring: var(--lime-solid);
 
+  /* Frost tint on a dark ground goes black and a notch heavier — see the
+     light block's --scrim note. */
+  --scrim: oklch(0 0 0 / 30%);
+
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
@@ -429,6 +443,7 @@
   --color-surface-3: var(--surface-3);
   --color-canvas: var(--canvas);
   --color-modal: var(--modal);
+  --color-scrim: var(--scrim);
 
   /* Anchor semantics */
   --color-success: var(--success);

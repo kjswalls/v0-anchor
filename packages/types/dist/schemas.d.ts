@@ -25,6 +25,8 @@ export declare const ProjectSchema: z.ZodObject<{
     id: z.ZodString;
     name: z.ZodString;
     emoji: z.ZodString;
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -38,6 +40,7 @@ export declare const ProjectSchema: z.ZodObject<{
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
+    color?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
@@ -48,6 +51,7 @@ export declare const ProjectSchema: z.ZodObject<{
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
     repeatDays?: number[] | undefined;
     repeatMonthDay?: number | undefined;
+    color?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
@@ -88,6 +92,14 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -108,6 +120,10 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -128,6 +144,10 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -148,6 +168,10 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -168,6 +192,10 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
@@ -180,6 +208,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
+    duration: z.ZodOptional<z.ZodNumber>;
     repeatFrequency: z.ZodEffects<z.ZodUnion<[z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, z.ZodLiteral<"weekly">]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly">;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -200,6 +229,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -217,6 +247,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -234,6 +265,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -251,6 +283,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -279,6 +312,14 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -301,6 +342,10 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -322,6 +367,10 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -343,6 +392,10 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -364,6 +417,10 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
@@ -376,6 +433,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
+    duration: z.ZodOptional<z.ZodNumber>;
     repeatFrequency: z.ZodEffects<z.ZodUnion<[z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, z.ZodLiteral<"weekly">]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly">;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -398,6 +456,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -416,6 +475,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -434,6 +494,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -452,6 +513,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -476,6 +538,14 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
     customType: z.ZodString;
@@ -501,6 +571,10 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -523,6 +597,10 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -545,6 +623,10 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -567,6 +649,10 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
@@ -588,6 +674,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -610,6 +704,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -631,6 +729,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>, z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
@@ -642,6 +744,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
+    duration: z.ZodOptional<z.ZodNumber>;
     repeatFrequency: z.ZodEffects<z.ZodUnion<[z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, z.ZodLiteral<"weekly">]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly">;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -664,6 +767,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -682,6 +786,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -705,6 +810,14 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    aiStatus: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
     customType: z.ZodString;
@@ -730,6 +843,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -752,6 +869,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>]>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -773,6 +894,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 } | {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -788,6 +913,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -813,6 +939,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -834,6 +964,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 } | {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -849,6 +983,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     repeatMonthDay?: number | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -874,6 +1009,10 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: string | undefined;
+    aiResult?: string | undefined;
 }>;
 export declare const ItemTypeDefSchema: z.ZodObject<{
     id: z.ZodString;
@@ -911,6 +1050,8 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     duration: z.ZodOptional<z.ZodNumber>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
+    parentItemId: z.ZodOptional<z.ZodString>;
+    aiStatus: z.ZodOptional<z.ZodEnum<["queued", "working", "done", "failed"]>>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     completedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
@@ -922,6 +1063,10 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+    assignee: z.ZodOptional<z.ZodString>;
+    /** Agent's latest result/summary for this item. */
+    aiResult: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -942,6 +1087,10 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiResult?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -962,6 +1111,10 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiResult?: string | undefined;
 }>, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -982,6 +1135,10 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiResult?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1002,12 +1159,17 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | undefined;
+    assignee?: string | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiResult?: string | undefined;
 }>;
 export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     title: z.ZodString;
     group: z.ZodOptional<z.ZodString>;
     streak: z.ZodOptional<z.ZodNumber>;
+    duration: z.ZodOptional<z.ZodNumber>;
     status: z.ZodOptional<z.ZodEnum<["pending", "done", "skipped"]>>;
     completedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     skippedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -1030,6 +1192,7 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     id?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1047,6 +1210,7 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     id?: string | null | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1064,6 +1228,7 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     id?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1081,6 +1246,7 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     id?: string | null | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    duration?: number | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1108,6 +1274,10 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     repeatDays: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodNumber, "many">>>;
     repeatMonthDay: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     completedDates: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString, "many">>>;
+    parentItemId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    assignee: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    aiStatus: z.ZodOptional<z.ZodNullable<z.ZodEnum<["queued", "working", "done", "failed"]>>>;
+    aiResult: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | null | undefined;
@@ -1127,6 +1297,10 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
 }, {
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: unknown;
@@ -1146,6 +1320,10 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
 }>, {
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | null | undefined;
@@ -1165,6 +1343,10 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
 }, {
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: unknown;
@@ -1184,6 +1366,10 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
     notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
 }>;
 export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     title: z.ZodOptional<z.ZodString>;
@@ -1195,6 +1381,7 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     dailyCounts: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
     timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
     startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    duration: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodNumber, "many">>>;
     repeatMonthDay: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
@@ -1209,6 +1396,7 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     completedDates?: string[] | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    duration?: number | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1225,6 +1413,7 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     completedDates?: string[] | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    duration?: number | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1241,6 +1430,7 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     completedDates?: string[] | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    duration?: number | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1257,6 +1447,7 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     completedDates?: string[] | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    duration?: number | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1290,6 +1481,14 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime: z.ZodOptional<z.ZodString>;
         previousStartDate: z.ZodOptional<z.ZodString>;
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+        /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+        parentItemId: z.ZodOptional<z.ZodString>;
+        /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+        assignee: z.ZodOptional<z.ZodString>;
+        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        aiStatus: z.ZodOptional<z.ZodString>;
+        /** Agent's latest result/summary for this item. */
+        aiResult: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -1310,6 +1509,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -1330,6 +1533,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }>, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -1350,6 +1557,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -1370,6 +1581,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         id: z.ZodString;
@@ -1382,6 +1597,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
         startTime: z.ZodOptional<z.ZodString>;
+        duration: z.ZodOptional<z.ZodNumber>;
         repeatFrequency: z.ZodEffects<z.ZodUnion<[z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, z.ZodLiteral<"weekly">]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly">;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1402,6 +1618,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1419,6 +1636,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1436,6 +1654,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1453,6 +1672,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1461,6 +1681,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         emoji: z.ZodString;
+        /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+        color: z.ZodOptional<z.ZodString>;
         repeatFrequency: z.ZodOptional<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1474,6 +1696,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
+        color?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
@@ -1484,6 +1707,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
+        color?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
@@ -1524,6 +1748,14 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime: z.ZodOptional<z.ZodString>;
         previousStartDate: z.ZodOptional<z.ZodString>;
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+        /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+        parentItemId: z.ZodOptional<z.ZodString>;
+        /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+        assignee: z.ZodOptional<z.ZodString>;
+        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        aiStatus: z.ZodOptional<z.ZodString>;
+        /** Agent's latest result/summary for this item. */
+        aiResult: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"task">;
     }, "strip", z.ZodTypeAny, {
         type: "task";
@@ -1546,6 +1778,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -1567,6 +1803,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }>, z.ZodObject<{
         id: z.ZodString;
         title: z.ZodString;
@@ -1578,6 +1818,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         dailyCounts: z.ZodRecord<z.ZodString, z.ZodNumber>;
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
         startTime: z.ZodOptional<z.ZodString>;
+        duration: z.ZodOptional<z.ZodNumber>;
         repeatFrequency: z.ZodEffects<z.ZodUnion<[z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, z.ZodLiteral<"weekly">]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly">;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1600,6 +1841,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1618,6 +1860,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1641,6 +1884,14 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime: z.ZodOptional<z.ZodString>;
         previousStartDate: z.ZodOptional<z.ZodString>;
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+        /** Parent item id — this item is a subtask when set (items.parent_item_id). */
+        parentItemId: z.ZodOptional<z.ZodString>;
+        /** Who's working this item: 'openclaw' | 'beacon' | free text. */
+        assignee: z.ZodOptional<z.ZodString>;
+        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        aiStatus: z.ZodOptional<z.ZodString>;
+        /** Agent's latest result/summary for this item. */
+        aiResult: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"custom">;
         /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
         customType: z.ZodString;
@@ -1666,6 +1917,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }, {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -1688,6 +1943,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }>]>, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -1709,6 +1968,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -1724,6 +1987,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1749,6 +2013,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -1770,6 +2038,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -1785,6 +2057,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1810,6 +2083,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }>, "many">>;
     schemaVersion: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
@@ -1835,6 +2112,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -1850,6 +2131,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1861,6 +2143,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
+        color?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
@@ -1893,6 +2176,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -1908,6 +2195,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1933,6 +2221,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     })[] | undefined;
     schemaVersion?: number | undefined;
 }, {
@@ -1958,6 +2250,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -1973,6 +2269,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1984,6 +2281,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
         repeatDays?: number[] | undefined;
         repeatMonthDay?: number | undefined;
+        color?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
@@ -2016,6 +2314,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -2031,6 +2333,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         repeatMonthDay?: number | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        duration?: number | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2056,6 +2359,10 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
+        parentItemId?: string | undefined;
+        assignee?: string | undefined;
+        aiStatus?: string | undefined;
+        aiResult?: string | undefined;
     })[] | undefined;
     schemaVersion?: number | undefined;
 }>;

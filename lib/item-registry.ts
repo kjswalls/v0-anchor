@@ -12,6 +12,7 @@
 
 import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
+import { accentColorForName } from './accent-colors'
 import { selectOverdue, toDateOnly } from './overdue'
 import type {
   HabitItem,
@@ -28,6 +29,13 @@ export interface ItemTypeConfig {
   type: ItemType
   label: string
   labelPlural: string
+  /**
+   * CSS color string (a var() token) for the type's identity swatch — the
+   * colored square on the dialog's type chip and inside the type picker.
+   * Custom types use their stored color when set, else the same name-hash
+   * accent ramp projects draw from.
+   */
+  accent: string
   /** Valid values for the item's scalar `status` field. */
   allowedStatuses: readonly string[]
   /** The status meaning "finished" for one-shot (non-recurring) items. */
@@ -56,7 +64,16 @@ export interface ItemTypeConfig {
     streak: boolean
     dailyCounts: boolean
   }
+  /** May carry child items (items.parent_item_id) — the panel's Subtasks section. */
+  subtasks: boolean
+  /** May be handed to OpenClaw/Beacon (assignee / ai_status / ai_result). */
+  agentAssignable: boolean
   schedule: {
+    /**
+     * Whether the schedule grid offers drag-to-resize handles on this type's
+     * blocks. Requires `duration` in `fields` — there is nowhere to write the
+     * result otherwise.
+     */
     resizable: boolean
     /** Minutes a block occupies on the schedule grid when no duration is set. */
     defaultBlockMinutes: number
@@ -111,6 +128,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     type: 'task',
     label: 'Task',
     labelPlural: 'Tasks',
+    accent: 'var(--primary)',
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',
@@ -122,7 +140,14 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     containerRequired: false,
     orphanContainerFallback: null,
     counters: { streak: false, dailyCounts: false },
-    schedule: { resizable: true, defaultBlockMinutes: 60 },
+    subtasks: true,
+    agentAssignable: true,
+    // 30, not the 60 this said before it was consumed anywhere: the ItemDialog
+    // seeds a new item's duration at '30' and the grid has always rendered a
+    // duration-less block as 30 minutes. The 60 was aspirational config that
+    // nothing read, so wiring it up would have silently doubled every such
+    // block — the value follows the behavior, not the reverse.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
     braindumpEligible: true,
     carryForwardEligible: true,
     defaultTimeBucket: null,
@@ -141,7 +166,13 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
-        const tasks = items.filter((i): i is TaskItem => i.type === 'task')
+        // Subtasks stay out of Beacon's narration — no view shows them as
+        // free-floating tasks, so Beacon must not either. (The focused-item
+        // section in ai-context.ts is where they speak.) Pre-subtask fixtures
+        // carry no parentItemId, so the pinned byte-output is unchanged.
+        const tasks = items.filter(
+          (i): i is TaskItem => i.type === 'task' && !i.parentItemId
+        )
         const lines: string[] = []
         lines.push("### Today's Tasks")
 
@@ -221,6 +252,9 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     type: 'habit',
     label: 'Habit',
     labelPlural: 'Habits',
+    // Honey is already the habit hue everywhere it has one (streak strip,
+    // flame) via the warning alias — reuse it rather than minting a token.
+    accent: 'var(--warning)',
     allowedStatuses: ['pending', 'done', 'skipped'],
     doneStatus: 'done',
     defaultFrequency: 'daily',
@@ -232,7 +266,14 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     containerRequired: true,
     orphanContainerFallback: 'Personal',
     counters: { streak: true, dailyCounts: true },
-    schedule: { resizable: false, defaultBlockMinutes: 30 },
+    // Habits recur; a habit "subtask" or agent handoff has no defined meaning.
+    subtasks: false,
+    agentAssignable: false,
+    // Habits carry a real length now (`duration` joined habitShape), so their
+    // blocks resize like any other — "30 minutes of reading a day" is the habit
+    // itself. This was false only because there was no field to store the drag
+    // into; it was never a statement that habits are momentary.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
     braindumpEligible: false,
     carryForwardEligible: false,
     defaultTimeBucket: null,
@@ -293,7 +334,7 @@ export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as KnownItemType[]
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 
 export function buildCustomTypeConfig(
-  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural'>
+  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural' | 'color'>
 ): ItemTypeConfig {
   const label = def.label || capitalize(def.name)
   const labelPlural = def.labelPlural || `${label}s`
@@ -301,6 +342,7 @@ export function buildCustomTypeConfig(
     type: 'custom',
     label,
     labelPlural,
+    accent: def.color?.trim() || accentColorForName(def.name),
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',
@@ -314,7 +356,11 @@ export function buildCustomTypeConfig(
     containerRequired: false,
     orphanContainerFallback: null,
     counters: { streak: false, dailyCounts: false },
-    schedule: { resizable: true, defaultBlockMinutes: 60 },
+    // Custom types are task-shaped (v1 template) — they grow the same way.
+    subtasks: true,
+    agentAssignable: true,
+    // 30 to match the built-in types — see the note on task.schedule.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
     braindumpEligible: true,
     // The store's task actions operate on any task-like item (Phase 6b), so
     // dated custom items roll forward in morning check / EOD like tasks do.

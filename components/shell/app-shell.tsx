@@ -383,8 +383,11 @@ export function AppShell() {
 
       <DragGhost />
 
+      {/* Add is always the modal. Desktop EDIT is the docked panel, which
+          DesktopShell mounts as a layout sibling of the canvas; mobile edit
+          stays the bottom sheet, where there is no room to dock anything. */}
       <ItemDialog
-        state={itemDialogState}
+        state={itemDialogState?.mode === 'add' || isMobile ? itemDialogState : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
 
