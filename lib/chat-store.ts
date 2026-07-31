@@ -4,6 +4,7 @@ import { useAISettingsStore } from './ai-settings-store';
 import { buildAnchorContext } from './ai-context';
 import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
+import { parseSseFrames } from './sse';
 
 /**
  * Shared chat state + streaming logic for Beacon/OpenClaw, extracted from
@@ -181,33 +182,16 @@ export const useChatStore = create<ChatStore>()((set, get) => {
               body: JSON.stringify({ message: trimmed, sessionKey: 'anchor-chat', context }),
             });
             if (!res.body) throw new Error('No response body');
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
+            // Accumulate rather than patch per frame: the plugin sends the whole
+            // assistant turn in a single frame, so there is nothing to animate.
             let accumulated = '';
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() ?? '';
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const payload = line.slice(6).trim();
-                if (payload === '[DONE]') break;
-                try {
-                  const parsed = JSON.parse(payload);
-                  if (parsed.error) {
-                    // Don't clobber existing content; only set error if nothing received yet
-                    if (!accumulated) accumulated = `Error: ${parsed.error}`;
-                    break;
-                  } else if (parsed.content) {
-                    accumulated += parsed.content;
-                  }
-                } catch {
-                  /* skip malformed */
-                }
+            for await (const frame of parseSseFrames(res.body)) {
+              if (frame.error) {
+                // Don't clobber existing content; only set error if nothing received yet
+                if (!accumulated) accumulated = `Error: ${frame.error}`;
+                break;
               }
+              if (frame.content) accumulated += frame.content;
             }
             patchLastAssistant((last) => ({
               ...last,
@@ -244,28 +228,11 @@ export const useChatStore = create<ChatStore>()((set, get) => {
 
         if (!res.body) throw new Error('No response body');
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue;
-            const payload = line.slice(6).trim();
-            if (payload === '[DONE]') break;
-            try {
-              const { content } = JSON.parse(payload);
-              if (content) {
-                patchLastAssistant((last) => ({ ...last, content: last.content + content }));
-              }
-            } catch {
-              /* skip malformed */
-            }
+        // Token-by-token: /api/chat streams real provider deltas. Errors arrive
+        // as content ("[Error: …]"), so there is no error frame to handle here.
+        for await (const frame of parseSseFrames(res.body)) {
+          if (frame.content) {
+            patchLastAssistant((last) => ({ ...last, content: last.content + frame.content }));
           }
         }
       } catch {
