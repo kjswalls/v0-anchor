@@ -19,8 +19,10 @@ import type {
   Project,
   HabitGroupType,
   ItemTypeDef,
+  Proposal,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
+import { validateProposalOperations } from './proposal';
 import {
   fetchItems,
   fetchProjects,
@@ -126,6 +128,12 @@ interface PlannerStore {
   /** Batched unscheduleTask — one set(), one history entry, one undo. */
   unscheduleTasks: (ids: string[]) => void;
   reorderTasks: (taskIds: string[]) => void;
+  /**
+   * Apply an accepted AI proposal. Operations are re-validated against the type
+   * registry here (never trust the model), then applied in ONE set() so the
+   * whole plan is a single Cmd+Z. Returns the number of operations applied.
+   */
+  applyProposal: (proposal: Proposal) => number;
 
   // Habit actions
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
@@ -759,6 +767,94 @@ export const usePlannerStore = create<PlannerStore>()(
         writes.forEach(({ id, dbType, updates }) =>
           dbUpdateItem(id, dbType, updates).catch(console.error),
         );
+      },
+
+      applyProposal: (proposal) => {
+        const state = get();
+        // Re-validate at the boundary rather than trusting whatever produced
+        // the proposal: the card may have been rendered minutes ago, and the
+        // items it references can be edited or deleted in the meantime.
+        const { accepted } = validateProposalOperations(proposal.operations, {
+          items: state.items,
+          customTypeNames: state.itemTypes.map((t) => t.name),
+        });
+        if (accepted.length === 0) return 0;
+
+        // Armed before the set(), like every other labelled action — the label
+        // is consumed by the NEXT history save.
+        setNextActionLabel(`Accept plan: ${proposal.summary}`);
+
+        const created: Item[] = [];
+        const patchById = new Map<string, Partial<Task>>();
+        // Mirrors addTask's `order: get().tasks.length`, advanced per create so
+        // a multi-item plan doesn't stack every new task on the same index.
+        let orderCursor = state.tasks.length;
+
+        for (const op of accepted) {
+          if (op.kind === 'create') {
+            const timeBucket = autoCorrectBucket(op.startTime, op.timeBucket);
+            const common = {
+              title: op.title,
+              notes: op.notes,
+              priority: op.priority,
+              project: op.project,
+              startDate: op.startDate,
+              startTime: op.startTime,
+              timeBucket,
+              id: crypto.randomUUID(),
+              status: 'pending' as const,
+              isScheduled: !!timeBucket,
+            };
+            created.push(
+              op.itemType === 'task'
+                ? ({ ...common, type: 'task', order: orderCursor++ } as Item)
+                : // Custom types aren't manually orderable (created_at sorts).
+                  ({ ...common, type: 'custom', customType: op.itemType, order: 0 } as Item),
+            );
+            continue;
+          }
+
+          const { kind: _kind, itemId, ...rest } = op;
+          void _kind;
+          const target = state.items.find((i) => i.id === itemId);
+          if (!target) continue;
+
+          const updates = { ...rest } as Partial<Task>;
+          // Same auto-correct the manual edit path applies: a concrete start
+          // time overrides a mismatched bucket.
+          if (updates.startTime) {
+            updates.timeBucket = autoCorrectBucket(
+              updates.startTime,
+              updates.timeBucket ?? target.timeBucket,
+            );
+          }
+          // Merge rather than overwrite: two operations may touch one item.
+          patchById.set(itemId, { ...(patchById.get(itemId) ?? {}), ...updates });
+        }
+
+        // ONE set() => ONE history entry => ONE Cmd+Z reverses the whole plan.
+        // Accepting an AI proposal is a single user gesture and must undo like
+        // one; see the same contract on moveTasksToDate.
+        set((s) => projectItems([
+          ...s.items.map((i) => {
+            const updates = patchById.get(i.id);
+            return updates ? ({ ...i, ...updates } as Item) : i;
+          }),
+          ...created,
+        ]));
+
+        const userId = get().userId;
+        if (userId) {
+          created.forEach((item) => dbCreateItem(userId, item).catch(console.error));
+        }
+        // dbType per item: a custom-type row is matched on .eq('type', slug),
+        // so passing 'task' would silently write nothing.
+        patchById.forEach((updates, id) => {
+          const item = get().items.find((i) => i.id === id);
+          if (item) dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
+        });
+
+        return accepted.length;
       },
 
       /** Batched unscheduleTask (bulk "move to Braindump", auto-age sweep). */

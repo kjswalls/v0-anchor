@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 
 interface MobileChatPanelProps {
@@ -23,6 +24,7 @@ export function MobileChatPanel({ onOpenSettings }: MobileChatPanelProps) {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-background">
+      <ProposalCard className="mx-3 mt-3 shrink-0" />
       <ChatConversation variant="mobile" focusSignal={focusSignal} onOpenSettings={onOpenSettings} />
     </div>
   );

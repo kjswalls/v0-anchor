@@ -2059,6 +2059,380 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     })[] | undefined;
     schemaVersion?: number | undefined;
 }>;
+export declare const ProposalCreateOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"create">;
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.ZodString;
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.ZodString;
+    project: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+    startTime: z.ZodOptional<z.ZodString>;
+    priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+}, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+}>;
+export declare const ProposalUpdateOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"update">;
+    itemId: z.ZodString;
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+    startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+    status: z.ZodOptional<z.ZodString>;
+    title: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}>;
+export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+    kind: z.ZodLiteral<"create">;
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.ZodString;
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.ZodString;
+    project: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+    startTime: z.ZodOptional<z.ZodString>;
+    priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+}, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"update">;
+    itemId: z.ZodString;
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+    startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+    status: z.ZodOptional<z.ZodString>;
+    title: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}>]>;
+export declare const ProposalSchema: z.ZodObject<{
+    id: z.ZodString;
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.ZodString;
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.ZodOptional<z.ZodString>;
+    operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+        kind: z.ZodLiteral<"create">;
+        /** Registry type name: 'task', 'habit', or a user-defined slug. */
+        itemType: z.ZodString;
+        /** Required on create — the one field a new item cannot be missing. */
+        title: z.ZodString;
+        project: z.ZodOptional<z.ZodString>;
+        startDate: z.ZodOptional<z.ZodString>;
+        timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+        startTime: z.ZodOptional<z.ZodString>;
+        priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    }, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"update">;
+        itemId: z.ZodString;
+        /** Null clears the field, matching the update-schema convention above. */
+        startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+        startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+        status: z.ZodOptional<z.ZodString>;
+        title: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }>]>, "many">;
+    createdAt: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    createdAt: string;
+    rationale?: string | undefined;
+}, {
+    id: string;
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    createdAt: string;
+    rationale?: string | undefined;
+}>;
+/** What the model is asked to return; ids and timestamps are stamped locally. */
+export declare const ProposalDraftSchema: z.ZodObject<Omit<{
+    id: z.ZodString;
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.ZodString;
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.ZodOptional<z.ZodString>;
+    operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+        kind: z.ZodLiteral<"create">;
+        /** Registry type name: 'task', 'habit', or a user-defined slug. */
+        itemType: z.ZodString;
+        /** Required on create — the one field a new item cannot be missing. */
+        title: z.ZodString;
+        project: z.ZodOptional<z.ZodString>;
+        startDate: z.ZodOptional<z.ZodString>;
+        timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+        startTime: z.ZodOptional<z.ZodString>;
+        priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    }, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"update">;
+        itemId: z.ZodString;
+        /** Null clears the field, matching the update-schema convention above. */
+        startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+        startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+        status: z.ZodOptional<z.ZodString>;
+        title: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }>]>, "many">;
+    createdAt: z.ZodString;
+}, "id" | "createdAt">, "strip", z.ZodTypeAny, {
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    rationale?: string | undefined;
+}, {
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    rationale?: string | undefined;
+}>;
 export declare const AnchorChangeEventSchema: z.ZodObject<{
     event: z.ZodEnum<["tasks.updated", "habits.updated", "projects.updated", "habitGroups.updated"]>;
     userId: z.ZodString;

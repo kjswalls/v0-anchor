@@ -253,6 +253,63 @@ export const AnchorContextResponseSchema = z.object({
     // projections of the unified items table; 3 = items[] present.
     schemaVersion: z.number().optional(),
 });
+// ── Proposals ──────────────────────────────────────────────────────────────────
+// A proposal is a planner diff the AI suggests and the user accepts with one
+// tap — the core interaction grammar (memory/plans/ai-vision.md). It lives here
+// rather than app-side because both tiers emit it: the assistant tier via a
+// structured completion, the agent tier via a gateway tool call.
+//
+// Two deliberate holes in the validation, both filled app-side by the type
+// registry (lib/item-registry.ts), which is the only authority on per-type
+// capability:
+//   - `itemType` is an open string (custom types are user-defined slugs).
+//   - `status` is an open string, NOT a union of the task/habit enums. The
+//     vocabularies are frozen and per-type; merging them here would invent a
+//     status vocabulary that no type actually accepts. validateProposal()
+//     checks each value against that type's allowedStatuses.
+const proposalFields = {
+    title: z.string().min(1).optional(),
+    startDate: z.string().optional(),
+    timeBucket: TimeBucketSchema.optional(),
+    startTime: z.string().optional(),
+    priority: PrioritySchema.optional(),
+    notes: z.string().optional(),
+};
+export const ProposalCreateOpSchema = z.object({
+    ...proposalFields,
+    kind: z.literal('create'),
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.string(),
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.string().min(1),
+    project: z.string().optional(),
+});
+export const ProposalUpdateOpSchema = z.object({
+    ...proposalFields,
+    kind: z.literal('update'),
+    itemId: z.string(),
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.string().nullable().optional(),
+    timeBucket: TimeBucketSchema.nullable().optional(),
+    startTime: z.string().nullable().optional(),
+    priority: PrioritySchema.nullable().optional(),
+    status: z.string().optional(),
+});
+export const ProposalOperationSchema = z.discriminatedUnion('kind', [
+    ProposalCreateOpSchema,
+    ProposalUpdateOpSchema,
+]);
+export const ProposalSchema = z.object({
+    id: z.string(),
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.string().min(1),
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.string().optional(),
+    operations: z.array(ProposalOperationSchema).min(1),
+    createdAt: z.string(),
+});
+/** What the model is asked to return; ids and timestamps are stamped locally. */
+export const ProposalDraftSchema = ProposalSchema.omit({ id: true, createdAt: true });
 export const AnchorChangeEventSchema = z.object({
     event: z.enum([
         'tasks.updated',

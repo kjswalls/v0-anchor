@@ -26,6 +26,11 @@ export type {
   ItemTypeDef,
   Project,
   HabitGroupType,
+  Proposal,
+  ProposalDraft,
+  ProposalOperation,
+  ProposalCreateOp,
+  ProposalUpdateOp,
 } from '@anchor-app/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────

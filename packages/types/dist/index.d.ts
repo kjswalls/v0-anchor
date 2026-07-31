@@ -1,7 +1,7 @@
-export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, } from './schemas.js';
+export { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, } from './schemas.js';
 export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS } from './schemas.js';
 import { z } from 'zod';
-import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, AnchorContextResponseSchema, AnchorChangeEventSchema } from './schemas.js';
+import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema } from './schemas.js';
 export type Priority = z.infer<typeof PrioritySchema>;
 export type TimeBucket = z.infer<typeof TimeBucketSchema>;
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
@@ -23,4 +23,9 @@ export type KnownItemType = TaskItem['type'] | HabitItem['type'];
 export type ItemTypeDef = z.infer<typeof ItemTypeDefSchema>;
 export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>;
 export type AnchorChangeEvent = z.infer<typeof AnchorChangeEventSchema>;
+export type ProposalCreateOp = z.infer<typeof ProposalCreateOpSchema>;
+export type ProposalUpdateOp = z.infer<typeof ProposalUpdateOpSchema>;
+export type ProposalOperation = z.infer<typeof ProposalOperationSchema>;
+export type Proposal = z.infer<typeof ProposalSchema>;
+export type ProposalDraft = z.infer<typeof ProposalDraftSchema>;
 //# sourceMappingURL=index.d.ts.map
