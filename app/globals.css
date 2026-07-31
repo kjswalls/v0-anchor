@@ -513,6 +513,19 @@
   /* Motion — the "settle" identity */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* Motion for a TURN rather than a settle. The two curves above are near-expo
+     ease-outs — measured, --ease-out-soft is 76% travelled by the first quarter
+     of its run and 96% by the midpoint. That is exactly right for something
+     arriving at rest, where all you read is the landing; it is wrong for two
+     bodies crossing through one another, where the middle of the run is the only
+     part you read. Under the settle curve a crossover is over before the eye
+     catches it and the remaining 80% of the duration is a sub-pixel crawl — it
+     looks like a jump no matter how long you make it.
+
+     Symmetric, crossover dead centre at 50%, travel spread across the whole
+     window. Used by the meta-roll pair below. */
+  --ease-roll: cubic-bezier(0.45, 0, 0.55, 1);
 }
 
 /* Elevation shadows — the surfaces that must read as FLOATING above the paper
@@ -638,6 +651,27 @@
   /* The unlit rail down the lane. Deliberately BELOW hairline contrast: it
      carries no information of its own and must not out-shout the hour grid. */
   --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
+
+  /* ── Containment: the pocket (lib/schedule-overlap.ts) ────────────────────
+     When a block CONTAINS another — a 7h session with a 3h task inside it — the
+     container stops being a lamp and becomes the field its contents are lit
+     against. Its wash drops to --sched-wash-field, and it sinks one POCKET per
+     child: a well in its own plate that the child's plate then sits in.
+
+     The pocket is what makes containment read in LIGHT MODE, and it is the whole
+     reason this direction won over the ones that expressed depth with alpha.
+     On white, a 94%-opaque plate over an 80%-opaque one is 0.00003 L apart —
+     invisible. So depth here is a real VALUE step instead: the pocket composites
+     to ~0.975 against a ~0.999 pane, and the nested child then goes SOLID
+     surface-2 (pure white) on top of it. Three distinct values, both themes.
+
+     A nested plate is deliberately not glass: there is nothing informative behind
+     it, so it has nothing to let through. */
+  --sched-wash-field: 0.2;
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
+  /* The lip the child's plate disappears under — same gesture as the pressed-key
+     inset, one hair of it. */
+  --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 5%);
 }
 
 /* Dark mode: on navy a black drop shadow barely registers, so elevation is
@@ -719,6 +753,15 @@
   --sched-wash-reach: 72px;
 
   --sched-rail: oklch(1 0 0 / 7%);
+
+  /* The pocket, dark. Dark has a value step available to it that light does not,
+     so the well only has to go a little deeper than the plate — 0.251 under a
+     0.264 pane — and the nested child's solid surface-2 (0.278) then reads
+     clearly above both. The lip goes heavier: a black inset barely registers on
+     a dark ground. */
+  --sched-wash-field: 0.34;
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
+  --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 25%);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
@@ -856,6 +899,80 @@ body {
 
 .animate-slide-in-from-right {
   animation: slide-in-from-right 0.4s var(--ease-out-soft);
+}
+
+/* A metadata figure turning over to a new value — RollingMetaText, driving the
+   duration on a schedule block under a resize drag. The slot clips to one line
+   and the two figures pass through it like an odometer: the outgoing one leaves
+   the way the value went and the incoming one arrives from the opposite side.
+   --roll-dir is +1 when the value grew and -1 when it shrank, so the turn always
+   matches the direction of the edge being dragged.
+
+   The two halves TILE: at the midpoint the incoming figure sits at +50% and the
+   outgoing at -50%, so the slot always holds one full line of glyphs with the
+   seam running through it. That's why opacity holds at 1 across the middle of
+   both runs and only fades at the extremes — a fade through the crossover washes
+   the motion out to a grey smear, and the crossover is the only part of an
+   odometer you actually read. The fades stay as insurance for the case where the
+   slot is taller than its line box, where ±100% wouldn't fully clear the clip.
+
+   --ease-roll, NOT --ease-out-soft: see the token. The app's settle curve spends
+   96% of its travel before the midpoint, which puts the crossover before the eye
+   arrives and leaves the rest of the run crawling sub-pixel — under it this reads
+   as an instant swap at any duration. That was the whole bug.
+
+   190ms: a full turn has to be legible at 11px, and with the travel actually
+   spread across the run this is 190ms of visible motion rather than 60ms and a
+   tail. Still short enough that a normal drag (a snap every few frames) settles
+   between steps, and that a flick reads as the slot spinning rather than as a
+   queue of stale values paying out after the pointer has stopped. */
+@keyframes meta-roll-in {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--roll-dir, 1) * 100%));
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes meta-roll-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--roll-dir, 1) * -100%));
+  }
+}
+
+.animate-meta-roll-in {
+  animation: meta-roll-in 190ms var(--ease-roll);
+}
+
+/* `forwards` is load-bearing: it parks the outgoing figure translated clear of
+   the clip at opacity 0, which is what lets RollingMetaText leave it mounted
+   instead of racing a timer against the next step of the drag. */
+.animate-meta-roll-out {
+  animation: meta-roll-out 190ms var(--ease-roll) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-meta-roll-in {
+    animation: none;
+  }
+  .animate-meta-roll-out {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Hide scrollbar while keeping scroll functionality */

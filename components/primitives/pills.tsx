@@ -215,15 +215,26 @@ export function MetaText({
  * Takes the value and its formatter, not formatted text, for two reasons: the
  * direction has to be derived by comparing numbers, and "1h" appearing for both
  * 60 and 60-after-59 must be told apart from "1h" that hasn't changed.
+ *
+ * `active` is what makes the turn worth watching, and it is not decoration. A
+ * resize expands the grid to the full day at a frozen scale, which drops the hour
+ * height to ~29px and pins every block under ~78 minutes at PANE_MIN_H — so the
+ * block barely changes size and this figure is the ENTIRE readout for the gesture.
+ * At the rail's resting 10px muted grey it is missable, so for the duration of the
+ * drag it steps up to 11px ink: the one datum on the block that is currently an
+ * instrument rather than a report.
  */
 export function RollingMetaText({
   value,
   format,
+  active,
   className,
   testId,
 }: {
   value: number;
   format: (value: number) => string;
+  /** The value is being edited right now — promote it out of the quiet rail. */
+  active?: boolean;
   className?: string;
   testId?: string;
 }) {
@@ -251,8 +262,14 @@ export function RollingMetaText({
     // depend on its parent to work.)
     <span
       data-testid={testId}
+      data-rolling={active ? 'true' : undefined}
       className={cn(
-        'relative inline-block overflow-hidden font-num text-2xs text-muted-foreground',
+        'relative inline-block overflow-hidden font-num',
+        // Size and colour are the promotion; the transition is only on colour,
+        // because the size step has to be instant — the slot's height IS the
+        // roll's travel distance, and easing it would ease the travel with it.
+        active ? 'text-xs text-foreground' : 'text-2xs text-muted-foreground',
+        'transition-colors duration-150',
         className
       )}
       style={{ '--roll-dir': String(roll.dir) } as React.CSSProperties}

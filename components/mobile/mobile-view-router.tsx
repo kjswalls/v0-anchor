@@ -18,6 +18,9 @@ export function MobileViewRouter() {
 
   const view = (() => {
     if (layout === 'list') return <DayList />;
+    // No overlap-column prop here on purpose: DaySchedule measures its own field
+    // and derives how many channels fit at MIN_CHANNEL_PX, so this shell's ~294px
+    // gets two where the desktop's ~900px gets six. Neither shell has to know.
     if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
     return <DayBuckets activeId={activeId} />;
   })();
