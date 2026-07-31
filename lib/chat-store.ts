@@ -25,6 +25,15 @@ export interface ChatMessage {
 }
 
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+const ITEM_HISTORY_PREFIX = 'anchor-item-chat-';
+
+/**
+ * Per-thread transcript cap. localStorage is ~5MB for the WHOLE origin and
+ * eight other stores persist into it; when it fills, `setItem` throws for all
+ * of them, so a runaway thread doesn't break chat, it breaks view prefs and
+ * the morning check. Trim the oldest rather than risk the ceiling.
+ */
+const MAX_STORED_MESSAGES = 100;
 
 interface ChatThreadConfig {
   /** localStorage key for this thread's transcript. */
@@ -60,8 +69,10 @@ export function createChatStore(config: ChatThreadConfig) {
 
   function saveHistory(messages: ChatMessage[]) {
     if (messages.length === 0) return;
+    const stored =
+      messages.length > MAX_STORED_MESSAGES ? messages.slice(-MAX_STORED_MESSAGES) : messages;
     try {
-      localStorage.setItem(historyKey, JSON.stringify({ messages, savedAt: Date.now() }));
+      localStorage.setItem(historyKey, JSON.stringify({ messages: stored, savedAt: Date.now() }));
     } catch {
       /* ignore */
     }
@@ -331,9 +342,44 @@ export function itemChatStore(itemId: string): ChatStoreHook {
   return store;
 }
 
+/** Walk every stored item-thread key. Backwards, since removal reindexes. */
+function forEachItemThreadKey(fn: (key: string) => void) {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(ITEM_HISTORY_PREFIX)) fn(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Drop expired item transcripts at boot.
+ *
+ * The 24h TTL is only checked when a thread is OPENED, so a transcript for an
+ * item you never revisit is never swept — it just sits there, and the pile only
+ * grows. Sweeping once per session keeps the origin's shared quota from filling
+ * with conversations nobody will read again.
+ */
+function sweepExpiredItemThreads() {
+  const now = Date.now();
+  forEachItemThreadKey((key) => {
+    let expired = true;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) ?? 'null');
+      expired = !parsed?.savedAt || now - parsed.savedAt >= HISTORY_TTL_MS;
+    } catch {
+      expired = true; // unparseable is also worth reclaiming
+    }
+    if (expired) localStorage.removeItem(key);
+  });
+}
+
 // New provider → fresh transcripts (avoid mixing Beacon / OpenClaw threads)
 // and re-sync connection info. Module-scope subscription; inert on the server.
 if (typeof window !== 'undefined') {
+  sweepExpiredItemThreads();
   let prevProvider = useAISettingsStore.getState().provider;
   useAISettingsStore.subscribe((state) => {
     if (state.provider !== prevProvider) {
@@ -345,14 +391,7 @@ if (typeof window !== 'undefined') {
       // stores isn't enough: transcripts for threads not opened THIS session
       // live only in localStorage and would hydrate into the new provider.
       itemChatStores.forEach((store) => store.getState().clear());
-      try {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key?.startsWith('anchor-item-chat-')) localStorage.removeItem(key);
-        }
-      } catch {
-        /* ignore */
-      }
+      forEachItemThreadKey((key) => localStorage.removeItem(key));
     }
   });
 }

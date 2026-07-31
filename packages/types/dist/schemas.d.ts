@@ -96,7 +96,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     parentItemId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
-    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
@@ -316,7 +316,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     parentItemId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
-    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
@@ -542,7 +542,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     parentItemId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
-    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
@@ -678,7 +678,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     parentItemId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
-    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
@@ -814,7 +814,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     parentItemId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
-    /** Agent progress state — write vocabulary: queued|working|done|failed. */
+    /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
@@ -1051,7 +1051,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     parentItemId: z.ZodOptional<z.ZodString>;
-    aiStatus: z.ZodOptional<z.ZodEnum<["queued", "working", "done", "failed"]>>;
+    aiStatus: z.ZodOptional<z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     completedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
@@ -1089,7 +1089,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
 }, {
     title: string;
@@ -1113,7 +1113,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
 }>, {
     title: string;
@@ -1137,7 +1137,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
 }, {
     title: string;
@@ -1161,7 +1161,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
 }>;
 export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
@@ -1276,7 +1276,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     completedDates: z.ZodOptional<z.ZodNullable<z.ZodArray<z.ZodString, "many">>>;
     parentItemId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     assignee: z.ZodOptional<z.ZodNullable<z.ZodString>>;
-    aiStatus: z.ZodOptional<z.ZodNullable<z.ZodEnum<["queued", "working", "done", "failed"]>>>;
+    aiStatus: z.ZodOptional<z.ZodNullable<z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>>>;
     aiResult: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1299,7 +1299,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
     aiResult?: string | null | undefined;
 }, {
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1322,7 +1322,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
     aiResult?: string | null | undefined;
 }>, {
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1345,7 +1345,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
     aiResult?: string | null | undefined;
 }, {
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1368,7 +1368,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
-    aiStatus?: "done" | "queued" | "working" | "failed" | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
     aiResult?: string | null | undefined;
 }>;
 export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
@@ -1485,7 +1485,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         parentItemId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
-        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
@@ -1752,7 +1752,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         parentItemId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
-        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
@@ -1888,7 +1888,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         parentItemId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
-        /** Agent progress state — write vocabulary: queued|working|done|failed. */
+        /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;

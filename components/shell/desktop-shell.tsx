@@ -10,7 +10,11 @@ import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dial
 import { Button } from '@/components/ui/button';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useMediaQuery } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
+
+/** Below this the panel stops compressing the canvas and overlays it instead. */
+const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
 
 /**
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
@@ -29,6 +33,11 @@ export function DesktopShell() {
     () => (activeDialog?.type === 'edit-item' ? { mode: 'edit', item: activeDialog.item } : null),
     [activeDialog]
   );
+
+  // When the panel overlays rather than compresses, the canvas underneath is
+  // covered but still tabbable — so Tab would walk onto blocks and buttons
+  // hidden behind an opaque card. A class can't express that; `inert` can.
+  const panelOverlays = useMediaQuery(PANEL_OVERLAY_QUERY);
 
   // Stable so the panel's Escape listener isn't torn down and re-bound on every
   // store tick.
@@ -49,7 +58,10 @@ export function DesktopShell() {
           mode where a black drop barely registers); shadow-elev-panel adds the
           leftward cast onto the sidebar plus a left-edge light-catch, which the
           vertical-only elev family couldn't give it. */}
-      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]">
+      <main
+        inert={panelOverlays && !!panelState}
+        className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
+      >
         {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div

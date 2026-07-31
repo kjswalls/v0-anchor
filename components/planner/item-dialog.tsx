@@ -179,6 +179,9 @@ function SurfaceContent({
     return (
       <aside
         aria-label={panelLabel}
+        // Focusable as a container so ⌘\ can land here and Tab can continue
+        // into it — the panel never takes focus on its own (see autoFocus).
+        tabIndex={-1}
         // Deliberately NOT role="dialog" — it isn't modal, and the suite's bare
         // getByRole('dialog') must keep resolving to exactly one node.
         // Same card recipe as <main> so it reads as a sibling of the canvas
@@ -187,7 +190,7 @@ function SurfaceContent({
         // shell's column animates open — and no drop shadow, because that
         // column has to clip (overflow-hidden) for the width animation, which
         // would eat an outer cast entirely. The border carries the edge.
-        className="border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5"
+        className="border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none"
         {...props}
       >
         {children}
@@ -1335,6 +1338,15 @@ export function ItemDialog({
     pending.current = null;
     onOpenChange(false);
   }, [autosaves, latched, items, onOpenChange]);
+
+  // ⌘\ (workspace.focusItemPanel) is the keyboard's way in. Token-bumped from
+  // the ui-store, the same pattern the omnibar uses, so the command doesn't
+  // need a handle on this component.
+  const itemPanelFocusToken = useUIStore((s) => s.itemPanelFocusToken);
+  useEffect(() => {
+    if (!isPanel || !open || itemPanelFocusToken === 0) return;
+    document.querySelector<HTMLElement>('[data-testid="item-dialog"]')?.focus();
+  }, [isPanel, open, itemPanelFocusToken]);
 
   // Escape closes the panel. Radix owned this for the modal; a plain <aside>
   // has to say so itself.

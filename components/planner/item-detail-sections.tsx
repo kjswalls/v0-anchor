@@ -153,7 +153,17 @@ function AgentSection({ item }: { item: Item }) {
         <Sparkles className="text-warning-text size-3.5 shrink-0" />
         <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
         {live.aiStatus && (
-          <span className="bg-warning text-warning-foreground rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase">
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
+              // 'blocked' is the only state that wants something FROM you, so
+              // it's the only one that gets to raise its voice. The rest are
+              // progress you're free to ignore.
+              live.aiStatus === 'blocked'
+                ? 'bg-destructive text-destructive-foreground'
+                : 'bg-warning text-warning-foreground'
+            )}
+          >
             {live.aiStatus}
           </span>
         )}

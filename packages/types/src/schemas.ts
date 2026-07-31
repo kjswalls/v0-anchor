@@ -97,7 +97,7 @@ const taskShape = {
   parentItemId: z.string().optional(),
   /** Who's working this item: 'openclaw' | 'beacon' | free text. */
   assignee: z.string().optional(),
-  /** Agent progress state — write vocabulary: queued|working|done|failed. */
+  /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
   aiStatus: z.string().optional(),
   /** Agent's latest result/summary for this item. */
   aiResult: z.string().optional(),
@@ -223,7 +223,7 @@ export const TaskCreateSchema = z
     // Growth fields are strict at the create boundary too (taskShape's reads
     // stay loose) — a bad uuid or status must 400 here, not 500 at Postgres.
     parentItemId: z.string().uuid().optional(),
-    aiStatus: z.enum(['queued', 'working', 'done', 'failed']).optional(),
+    aiStatus: z.enum(['queued', 'working', 'blocked', 'done', 'failed']).optional(),
   })
   .superRefine(requireCustomDays)
 
@@ -282,7 +282,12 @@ export const TaskUpdateSchema = z
     // note): agents may only set the pinned aiStatus vocabulary.
     parentItemId: clearable(z.string().uuid()),
     assignee: clearable(z.string()),
-    aiStatus: clearable(z.enum(['queued', 'working', 'done', 'failed'])),
+    // 'blocked' means the agent is waiting on a decision from the user — added
+    // BEFORE anything real writes this vocabulary, because the moment an
+    // independently-deployed agent does, renaming a value costs a coordinated
+    // release (the plugin safeParses and throws on drift). Growing the set
+    // stays cheap forever; the read side is deliberately loose.
+    aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
     aiResult: clearable(z.string()),
   })
   .superRefine(requireCustomDays)

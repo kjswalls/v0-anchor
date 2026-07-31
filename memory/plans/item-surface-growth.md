@@ -149,15 +149,25 @@ adapters — growth is a presentation, not a fork.
 10. **Completion toggles produce no activity events** — `set_item_completion` (RPC)
     bypasses updateItem. Additive fix later: record the event beside the RPC call.
 
+- [x] **Phase 9 — Cheap wins** (shipped 2026-07-30).
+      `aiStatus` gains **`blocked`** — a state that wants something *from* you, added
+      while the vocabulary is still free (an independently-deployed agent writing it makes
+      renaming a coordinated release; growing the set stays cheap forever). It gets the
+      only loud chip in the agent block. Thread transcripts are capped at 100 messages and
+      swept at boot — the 24h TTL only ran when a thread was *opened*, so threads for
+      items you never revisit accumulated forever against an origin quota eight other
+      stores share. `inert` on `<main>` while the panel overlays it (under 1180px), via a
+      new `useMediaQuery` on `useSyncExternalStore` — a class can't drive an attribute.
+      **⌘\\** focuses the panel (`workspace.focusItemPanel`, a ui-store focus token like
+      the omnibar's), which is the keyboard's only way in given the panel deliberately
+      never steals focus.
+
 ## Open after Phase 8 (2026-07-30)
 
-- **Keyboard reach.** The panel deliberately doesn't steal focus on open (it retargets on
-  every row you click). The cost: no way to Tab into it except through every schedule
-  block, and no focus restoration when it unmounts. Wants a shortcut that focuses the
-  panel, which is the same gesture the command palette's selection model will need.
-- **Under 1180px the panel overlays a still-tabbable canvas** — nothing sets `inert` on
-  `<main>`, so Tab walks behind the panel. Correct fix is `inert` in the overlay branch
-  only.
+- ~~Keyboard reach~~ / ~~inert~~ — closed the same day, see Phase 9.
+- **No focus restoration when the panel unmounts.** Radix's FocusScope used to return
+  focus on close; the `<aside>` drops it to `<body>`, so Tab restarts at the top of the
+  document.
 - **Escape during a pointer drag** can close the panel (dnd-kit cancels the drag without
   `preventDefault`, and focus is often `<body>`). Cosmetic; noted so it isn't rediscovered.
 - **No drop shadow on the panel card** — the animating column has to clip, which would eat

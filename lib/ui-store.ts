@@ -39,6 +39,12 @@ interface UIStore {
   /** Bumping the token tells the omnibar to grab focus (⌘K etc.). */
   omnibarFocusToken: number;
   focusOmnibar: () => void;
+
+  /** Same trick for the docked item panel. It deliberately doesn't steal focus
+   *  when it opens — it retargets on every row you click — so this is the only
+   *  way to reach it from the keyboard without tabbing the whole grid. */
+  itemPanelFocusToken: number;
+  focusItemPanel: () => void;
 }
 
 export const useUIStore = create<UIStore>()((set, get) => ({
@@ -56,6 +62,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
 
   omnibarFocusToken: 0,
   focusOmnibar: () => set((s) => ({ omnibarFocusToken: s.omnibarFocusToken + 1 })),
+
+  itemPanelFocusToken: 0,
+  focusItemPanel: () => set((s) => ({ itemPanelFocusToken: s.itemPanelFocusToken + 1 })),
 }));
 
 /* Convenience helpers for common dialogs */
