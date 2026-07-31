@@ -42,6 +42,13 @@ interface ChatStore {
   openclawChatUrl: string | null;
   openclawAgentIdDisplay: string | null;
   openclawAnchorApiKey: string | null;
+  /**
+   * True once a gateway URL *and* token are stored server-side. Selects the
+   * transport: gateway chat is proxied through /api/chat (durable sessions,
+   * token never in the browser), and only accounts that have not set one up
+   * still POST at the plugin's /plugins/anchor/chat.
+   */
+  openclawGatewayConfigured: boolean;
 
   /** Load persisted history (24h TTL). Call once from the shell. */
   hydrate: () => void;
@@ -76,6 +83,7 @@ export const useChatStore = create<ChatStore>()((set, get) => {
     openclawChatUrl: null,
     openclawAgentIdDisplay: null,
     openclawAnchorApiKey: null,
+    openclawGatewayConfigured: false,
 
     hydrate: () => {
       if (get().hydrated) return;
@@ -100,9 +108,28 @@ export const useChatStore = create<ChatStore>()((set, get) => {
 
     syncOpenclawInfo: () => {
       if (useAISettingsStore.getState().provider !== 'openclaw') {
-        set({ openclawChatUrl: null, openclawAgentIdDisplay: null, openclawAnchorApiKey: null });
+        set({
+          openclawChatUrl: null,
+          openclawAgentIdDisplay: null,
+          openclawAnchorApiKey: null,
+          openclawGatewayConfigured: false,
+        });
         return;
       }
+
+      // Gateway status decides the transport; the legacy chat-url lookup stays
+      // as the fallback for accounts still on the plugin path. Independent
+      // requests so one failing endpoint cannot blank the other's state.
+      fetch('/api/agent/gateway')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((gateway) =>
+          set({
+            openclawGatewayConfigured: Boolean(gateway?.configured),
+            ...(gateway?.agentId ? { openclawAgentIdDisplay: gateway.agentId } : {}),
+          })
+        )
+        .catch(() => set({ openclawGatewayConfigured: false }));
+
       fetch('/api/agent/chat-url')
         .then((r) => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -155,7 +182,9 @@ export const useChatStore = create<ChatStore>()((set, get) => {
           systemPrompt ||
           buildBeaconSystemPrompt(itemTypes.map((t) => t.labelPlural.toLowerCase()));
 
-        if (provider === 'openclaw') {
+        // Gateway transport rides the shared /api/chat path below — one client
+        // code path for every tier, with translation done server-side.
+        if (provider === 'openclaw' && !get().openclawGatewayConfigured) {
           const { openclawChatUrl, openclawAnchorApiKey } = get();
           if (!openclawChatUrl) {
             patchLastAssistant(() => ({
@@ -223,6 +252,9 @@ export const useChatStore = create<ChatStore>()((set, get) => {
             apiKey,
             model,
             systemPrompt: effectiveSystemPrompt,
+            // Stable key => durable gateway-side memory for this thread.
+            // Ignored by the non-gateway providers.
+            sessionKey: 'anchor:chat',
           }),
         });
 

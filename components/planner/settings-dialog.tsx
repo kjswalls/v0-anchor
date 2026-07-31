@@ -33,6 +33,7 @@ import type { TimeBucket } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore, type TypeMode } from '@/lib/view-store';
 import { saveSettings } from '@/lib/settings-service';
@@ -204,6 +205,60 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
       cancelled = true;
     };
   }, [open, provider]);
+
+  // ── Gateway transport ──────────────────────────────────────────────────────
+  // Entering a URL + token is what switches Beacon off the plugin chat path and
+  // onto the gateway's OpenAI-compatible surface (durable sessions, token never
+  // in the browser). No separate toggle: configuring it IS the opt-in.
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [gatewayToken, setGatewayToken] = useState('');
+  const [gatewayHasToken, setGatewayHasToken] = useState(false);
+  const [gatewaySave, setGatewaySave] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [gatewayError, setGatewayError] = useState('');
+
+  useEffect(() => {
+    if (!open || provider !== 'openclaw') return;
+    let cancelled = false;
+    fetch('/api/agent/gateway')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setGatewayUrl(data.gatewayUrl ?? '');
+        setGatewayHasToken(Boolean(data.hasToken));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [open, provider]);
+
+  const saveGateway = async () => {
+    setGatewaySave('saving');
+    setGatewayError('');
+    try {
+      const res = await fetch('/api/agent/gateway', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Only send the token when the user actually typed one — the field is
+        // blank on load because a stored token is never sent to the browser,
+        // and an empty string here would clear it.
+        body: JSON.stringify({
+          gatewayUrl,
+          ...(gatewayToken ? { token: gatewayToken } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (gatewayToken) setGatewayHasToken(true);
+      setGatewayToken('');
+      setGatewaySave('saved');
+      // Re-resolve the transport so the next message goes the new way.
+      useChatStore.getState().syncOpenclawInfo();
+    } catch (err) {
+      setGatewaySave('error');
+      setGatewayError(err instanceof Error ? err.message : 'Could not save.');
+    }
+  };
 
   const { leftSidebarHoverEnabled, setLeftSidebarHoverEnabled } = useSidebarStore();
 
@@ -504,6 +559,62 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                         </p>
                       </div>
                     )}
+
+                    {/* Gateway transport */}
+                    <div className="mt-3 space-y-2 rounded-lg border border-border px-3 py-3">
+                      <div>
+                        <p className="text-xs font-medium text-foreground">
+                          Gateway{' '}
+                          {gatewayUrl && gatewayHasToken && (
+                            <span className="font-normal text-success-text">· in use</span>
+                          )}
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          Chat straight through your gateway instead of the plugin. Keeps
+                          conversation memory between sessions.
+                        </p>
+                      </div>
+
+                      <SettingRow label="URL" description="e.g. http://100.x.y.z:8787">
+                        <Input
+                          value={gatewayUrl}
+                          onChange={(e) => setGatewayUrl(e.target.value)}
+                          placeholder="https://gateway.example.ts.net"
+                          className="h-8 w-44 text-xs"
+                        />
+                      </SettingRow>
+
+                      <SettingRow
+                        label="Token"
+                        description={gatewayHasToken ? 'Saved — type to replace' : 'Never leaves the server'}
+                      >
+                        <Input
+                          type="password"
+                          value={gatewayToken}
+                          onChange={(e) => setGatewayToken(e.target.value)}
+                          placeholder={gatewayHasToken ? '••••••••' : 'gateway token'}
+                          className="h-8 w-44 text-xs"
+                        />
+                      </SettingRow>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2.5 text-xs"
+                          onClick={saveGateway}
+                          disabled={gatewaySave === 'saving'}
+                        >
+                          {gatewaySave === 'saving' ? 'Saving…' : 'Save'}
+                        </Button>
+                        {gatewaySave === 'saved' && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-success" />
+                        )}
+                        {gatewaySave === 'error' && (
+                          <span className="text-xs text-destructive">{gatewayError}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 

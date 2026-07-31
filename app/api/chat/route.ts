@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
+import { createClient } from '@/lib/supabase-server'
+import { getGatewayConfig, sessionKeyFor, streamGatewayChat } from '@/lib/openclaw-gateway'
 
 const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
@@ -45,16 +47,52 @@ export async function POST(req: NextRequest) {
     apiKey,
     systemPrompt,
     context,
+    sessionKey,
   } = await req.json()
 
   const encoder = new TextEncoder()
 
-  // ── OpenClaw provider — use POST /api/openclaw/openclaw-chat ───────────────
+  // ── OpenClaw gateway ───────────────────────────────────────────────────────
+  // Proxied here rather than called from the browser: the gateway token is full
+  // operator access and stays server-side. Chunks are translated into Anchor's
+  // own frames, so the client parser is the same one the OpenAI path feeds.
   if (provider === 'openclaw') {
-    return new Response(
-      streamChars('OpenClaw chat uses /api/openclaw/openclaw-chat.'),
-      { status: 400, headers: SSE_HEADERS }
-    )
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return new Response(streamChars('Sign in to use your OpenClaw gateway.'), {
+          headers: SSE_HEADERS,
+        })
+      }
+
+      const config = await getGatewayConfig(user.id)
+      if (!config) {
+        // Not an error: this account simply has not moved off the plugin chat
+        // path yet, and the client only routes here when it believes a gateway
+        // is configured.
+        return new Response(
+          streamChars('No OpenClaw gateway configured — add one in Settings → AI Assistant.'),
+          { headers: SSE_HEADERS }
+        )
+      }
+
+      const resolvedPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
+      const stream = await streamGatewayChat({
+        config,
+        sessionKey: sessionKey || sessionKeyFor('chat'),
+        messages: [
+          { role: 'system', content: context ? `${resolvedPrompt}\n\n${context}` : resolvedPrompt },
+          ...messages,
+        ],
+      })
+      return new Response(stream, { headers: SSE_HEADERS })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      return new Response(streamChars(`Could not reach your gateway — ${msg}`, 0), {
+        headers: SSE_HEADERS,
+      })
+    }
   }
 
   // ── Anthropic (coming soon) / none ─────────────────────────────────────────
