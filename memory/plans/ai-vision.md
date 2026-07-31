@@ -5,9 +5,16 @@ scannable, low-overwhelm, guilt-free, but capability-rich. The AI is not a chatb
 to a planner — it is a **collaborator on the planner itself**. Some items are yours, some
 are Beacon's, and the grid tells you at a glance who is doing what and what needs you.
 
-**Status (2026-07-31):** Vision agreed; phases defined below. Nothing shipped yet — this
-document is the governing design, written before the first line of implementation, the
-same role [unified-items.md](unified-items.md) plays for the items refactor.
+**Status (2026-07-31):** **Phase 1 SHIPPED** (`da56e9b` one SSE parser, `4df4ca7` the
+proposal primitive, `046adb4` the gateway transport, `01d254a` review fixes). Phase 2
+(delegation) is deliberately **not started** — see the phasing section for why. This
+document governs the work the same way [unified-items.md](unified-items.md) governs the
+items refactor.
+
+**What works right now, with no configuration at all:** the "Pick things back up" command
+(omnibar, or `/catchup`) produces a catch-up proposal computed locally — no key, no
+gateway, no network — and accepting it is one undoable gesture. Everything else needs
+either an OpenAI key (assistant tier) or a gateway (agent tier).
 
 ---
 
@@ -187,47 +194,90 @@ client will stop connecting.)
 9. **The existing plugin chat path keeps working** until the user deliberately switches
    transports. No flag day.
 
-## Schema note — the delegation columns already exist
+## Schema note — delegation must NOT enter the `Item` type
 
-Migration 019 carried these onto `items` (originally from 007's future-proofing), all
-nullable, no CHECKs, and **not mapped app-side anywhere** (`lib/db.ts`,
-`lib/planner-types.ts`, `packages/types` have no reference):
+*(Corrected 2026-07-31. The first version of this note said to adopt the existing columns
+app-side; a review found that would leak straight into a frozen external contract.)*
 
-- `assignee text` — who owns the item (user vs agent)
-- `ai_status text` — delegation lifecycle
-- `ai_result text` — result payload
-- `parent_item_id uuid` — FK to `items(id)`, indexed — **subtasks**, which is also where
-  "break this down into steps" proposals land
+Migration 019 did carry `assignee`, `ai_status`, `ai_result` and `parent_item_id` onto
+`items` (from 007's future-proofing) — all nullable, no CHECKs, referenced nowhere in
+`lib/db.ts`, `lib/planner-types.ts` or `packages/types`. Tempting, and a trap:
 
-So delegation needs far less migration than expected: primarily a thread-entries table
-plus indexes, not a redesign of `items`.
+```ts
+// lib/db.ts
+export function toLegacyTask(item: TaskItem): Task {
+  const { type: _type, ...task } = item;   // ← spreads EVERYTHING else
+  return task;
+}
+```
+
+The legacy projection is a spread. Any field added to `taskShape` therefore (1) appears in
+the frozen `tasks[]` the agent API serves, (2) joins schema-derived `TASK_FIELDS`, which
+drives `diffItem` and so the undo/redo DB sync, and (3) has to be threaded through the
+per-type db allowlists. Delegation state changes many times a minute while an agent works;
+routing that through undo history and a frozen external contract is wrong in three
+directions at once.
+
+**Locked: delegation state lives in a side table and an app-side store keyed by item id.
+It never becomes a field on `Item`.** The 019 columns stay unused — leave them alone
+rather than repurposing them, so nothing implies the Item type owns this. `parent_item_id`
+is a separate question (real subtasks) and is not part of delegation.
+
+## Unverified assumptions (test these first, with a real gateway)
+
+Written down because none could be checked without a gateway, and each has a one-line fix:
+
+1. **Does posting to a keyed session APPEND or REPLACE history?** The gateway holds session
+   state, so resending a full transcript each turn may duplicate it. Anchor currently sends
+   the system prompt plus only the newest turn, behind
+   `SEND_FULL_TRANSCRIPT_TO_GATEWAY` in `lib/openclaw-gateway.ts`. Under-sending costs
+   context the gateway already has; over-sending corrupts it. **Flip the constant if a
+   gateway turns out to be stateless per request.**
+2. **Does the OpenAI-compatible endpoint accept `x-openclaw-session-key` from Anchor's
+   origin,** with `gateway.http.endpoints.chatCompletions.enabled: true`? If not, fall back
+   to the OpenAI `user` field, which the docs say derives a stable key.
+3. **What does `model` mean here?** Anchor sends `agentId ?? 'default'`. If a gateway
+   rejects that, it needs its own config field rather than reusing `openclaw_agent_id`.
+4. **CORS/ingress**: Anchor calls the gateway server-side, so browser CORS does not apply —
+   but the gateway must be reachable from wherever Anchor runs (Vercel), which a
+   tailnet-only gateway is not. Local dev works; production may need Tailscale Funnel or
+   equivalent. This is the most likely thing to be wrong.
 
 ## Phasing (the app must work at every step)
 
-**Phase 1 — the proposal primitive + the transport fix.** Ships value on the *assistant*
-tier alone, so it needs no gateway to be real.
-- AI capability registry; replace provider-string branching.
-- Proposal schema, store, and `ProposalCard`, reusing the one-decision-at-a-time patterns
-  already in [components/ai/morning-triage-list.tsx](../../components/ai/morning-triage-list.tsx).
-- Batched `applyProposal` in planner-store (one undo).
-- Server-side gateway transport (`/v1/chat/completions`, SSE translation, stable session
-  key), added **alongside** the existing plugin path, opt-in.
-- Extract the duplicated SSE parse loop in `chat-store.ts` into one tested helper.
+**Phase 1 — the proposal primitive + the transport fix. SHIPPED.**
+- `lib/ai-registry.ts` — the capability registry.
+- `lib/proposal.ts` / `lib/proposal-store.ts` / `components/ai/proposal-card.tsx` /
+  `app/api/ai/propose/route.ts` — proposals, with the catch-up case computed locally.
+- `planner-store.applyProposal` — batched, one undo.
+- `lib/sse.ts` — one parser for every transport.
+- `lib/openclaw-gateway.ts` + the `/api/chat` gateway branch + `/api/agent/gateway` +
+  migration 023 — the server-side transport, alongside the plugin path, opt-in by config.
 
-**Phase 2 — delegation + item threads.** OpenClaw tier.
-- Migration: thread entries table (+ RLS), delegation indexes; adopt the existing
-  `assignee` / `ai_status` / `ai_result` / `parent_item_id` columns.
-- Agent API routes for progress reporting, reusing `lib/agent-api.ts` machinery.
-- Plugin tools for report-progress / read-my-work (TypeBox params, matching house style).
-- `POST /hooks/agent` kickoff from Anchor's server.
-- UI: delegate action, status chip on the item, thread panel, needs-input surface.
-- Sidebar becomes the agent activity feed.
+**Phase 2 — delegation + item threads. NOT STARTED, deliberately.** It is the largest
+surface in the plan (a thread table, delegation storage, agent + browser routes, plugin
+tools, hooks kickoff, four UI surfaces) and it is **100% unverifiable without a migration
+applied, a reachable gateway, and a hooks token with allowlisted prefixes**. It also
+carries the only change that can brick the plugin's entire cached context (any addition to
+the context response, which `openclaw-plugin/src/cache.ts` `safeParse`s and throws on).
+Writing it blind, overnight, on top of a transport that has never spoken to a real gateway
+would produce a large diff nobody can trust. It starts once Phase 1 is confirmed working.
+
+When it does start, the order is: migration 024 (thread entries + delegation side table,
+RLS, indexes) → `@anchor-app/types` schemas → `lib/db.ts` helpers that `console.warn` and
+return `null` on a missing relation, with an `available` flag defaulting FALSE (mirroring
+`fetchItemTypes` / `itemTypesAvailable`) → agent API routes on the `lib/agent-api.ts`
+machinery, each calling `verifyItemOwnership` **without loosening its signature** → plugin
+tools → UI behind `canDelegate()`. The context-response addition comes last and alone.
 
 **Phase 3 — seams, not speculation.** Explicitly *not* building hosted-tier
-infrastructure: it would sit on unvalidated phases 1–2. Phase 3 tonight is this document,
-the capability-registry seam that lets a hosted tier slot in as config, and the honest
-list of what a hosted tier would require (server-held keys, per-user rate limits and cost
-accounting, an Anchor-operated agent runtime, abuse controls).
+infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the
+capability-registry seam that lets a hosted tier slot in as one config row, and an honest
+statement of what a hosted tier actually needs before it is a product: server-held provider
+keys with per-user cost accounting and rate limits, an Anchor-operated agent runtime
+(nobody else's gateway to lean on), abuse controls, and a support answer for "the agent did
+something I didn't want". That is a business, not a sprint — the market read is that it is
+also the only path off the power-user tier.
 
 ## Market context (2026-07, research summary)
 
