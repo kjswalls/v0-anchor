@@ -10,8 +10,11 @@ vi.mock('@/lib/supabase-service', () => ({
 }));
 
 import {
+  assertAllowedGatewayUrl,
+  chatSessionKey,
   deltaFromChunk,
-  sessionKeyFor,
+  gatewayTurnMessages,
+  itemSessionKey,
   translateGatewayStream,
 } from '@/lib/openclaw-gateway';
 import { parseSseFrames } from '@/lib/sse';
@@ -111,13 +114,86 @@ describe('translateGatewayStream', () => {
   });
 });
 
-describe('sessionKeyFor', () => {
-  it('uses the anchor: namespace — subagent:, cron: and acp: are reserved', () => {
-    expect(sessionKeyFor('chat')).toBe('anchor:chat');
-    expect(sessionKeyFor('item', 'abc-123')).toBe('anchor:item:abc-123');
+describe('session keys', () => {
+  it('namespaces every key under anchor: — subagent:, cron: and acp: are reserved', () => {
+    expect(chatSessionKey('u1')).toBe('anchor:u:u1:chat');
+    expect(itemSessionKey('u1', 'abc-123')).toBe('anchor:u:u1:item:abc-123');
   });
 
   it('is stable across calls, which is what makes a thread durable', () => {
-    expect(sessionKeyFor('item', 'x')).toBe(sessionKeyFor('item', 'x'));
+    expect(itemSessionKey('u1', 'x')).toBe(itemSessionKey('u1', 'x'));
+  });
+
+  it('separates users, so one browser can never address another thread', () => {
+    expect(chatSessionKey('u1')).not.toBe(chatSessionKey('u2'));
+  });
+
+  it('cannot be pushed into a reserved namespace by hostile input', () => {
+    // Keys are built from a fixed literal, so even an id that looks like a
+    // reserved prefix stays under anchor:. This is why nothing accepts a
+    // caller-supplied session key.
+    for (const hostile of ['subagent:evil', 'cron:evil', 'acp:evil', '../../cron:evil']) {
+      expect(chatSessionKey(hostile).startsWith('anchor:')).toBe(true);
+      expect(itemSessionKey('u1', hostile).startsWith('anchor:')).toBe(true);
+    }
+  });
+});
+
+describe('assertAllowedGatewayUrl', () => {
+  it('accepts an https gateway', () => {
+    expect(assertAllowedGatewayUrl('https://gw.example.ts.net')).toEqual({
+      ok: true,
+      url: 'https://gw.example.ts.net',
+    });
+  });
+
+  it('strips a trailing slash so path concatenation stays correct', () => {
+    const result = assertAllowedGatewayUrl('https://gw.example.ts.net/');
+    expect(result).toMatchObject({ ok: true, url: 'https://gw.example.ts.net' });
+  });
+
+  it('blocks the cloud metadata range', () => {
+    // A server-side fetch of 169.254.169.254 would hand over instance credentials.
+    expect(assertAllowedGatewayUrl('http://169.254.169.254/latest/meta-data/').ok).toBe(false);
+    expect(assertAllowedGatewayUrl('https://169.254.169.254').ok).toBe(false);
+  });
+
+  it('allows private and Tailscale ranges — that is the intended deployment', () => {
+    expect(assertAllowedGatewayUrl('https://100.101.102.103:8787').ok).toBe(true);
+    expect(assertAllowedGatewayUrl('https://192.168.1.50:8787').ok).toBe(true);
+  });
+
+  it('requires https except on loopback in development', () => {
+    expect(assertAllowedGatewayUrl('http://gw.example.com').ok).toBe(false);
+    expect(assertAllowedGatewayUrl('http://localhost:8787').ok).toBe(true);
+    expect(assertAllowedGatewayUrl('http://127.0.0.1:8787').ok).toBe(true);
+  });
+
+  it('rejects non-http schemes and junk', () => {
+    for (const bad of ['file:///etc/passwd', 'ftp://x.com', 'javascript:alert(1)', 'not a url', '']) {
+      expect(assertAllowedGatewayUrl(bad).ok).toBe(false);
+    }
+  });
+});
+
+describe('gatewayTurnMessages', () => {
+  const messages = [
+    { role: 'system' as const, content: 'sys' },
+    { role: 'user' as const, content: 'first' },
+    { role: 'assistant' as const, content: 'reply' },
+    { role: 'user' as const, content: 'newest' },
+  ];
+
+  it('sends the system prompt plus only the newest turn', () => {
+    // The gateway session already holds the history; resending it would make
+    // the model see every message twice. See SEND_FULL_TRANSCRIPT_TO_GATEWAY.
+    expect(gatewayTurnMessages(messages)).toEqual([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: 'newest' },
+    ]);
+  });
+
+  it('handles a first turn with no history', () => {
+    expect(gatewayTurnMessages([messages[0], messages[1]])).toEqual([messages[0], messages[1]]);
   });
 });

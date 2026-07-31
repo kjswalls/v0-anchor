@@ -138,10 +138,63 @@ describe('validateProposalOperations — updates', () => {
     expect(rejected[0].reason).toMatch(/not a valid status/);
   });
 
-  it('accepts each vocabulary against its own type', () => {
+  it('refuses to write scalar status to a recurring item', () => {
+    // CLAUDE.md: recurring items track completion per-DATE in completedDates,
+    // never via scalar status. A daily chore is `pending` forever by design, so
+    // writing 'completed' here would mark the whole series done with no way for
+    // the store's patch path to turn it back into one date's toggle.
+    const recurring: Item[] = [
+      {
+        type: 'task',
+        id: 'chore',
+        title: 'Water plants',
+        status: 'pending',
+        isScheduled: false,
+        order: 0,
+        repeatFrequency: 'daily',
+        completedDates: [],
+      },
+    ];
+    const { accepted, rejected } = validateProposalOperations(
+      [{ kind: 'update', itemId: 'chore', status: 'completed' }],
+      { items: recurring, customTypeNames: [] },
+    );
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0].reason).toMatch(/per-date/);
+  });
+
+  it('still lets a recurring item be rescheduled', () => {
+    const recurring: Item[] = [
+      {
+        type: 'task',
+        id: 'chore',
+        title: 'Water plants',
+        status: 'pending',
+        isScheduled: false,
+        order: 0,
+        repeatFrequency: 'daily',
+        completedDates: [],
+      },
+    ];
+    const { accepted } = validateProposalOperations(
+      [{ kind: 'update', itemId: 'chore', timeBucket: 'evening' }],
+      { items: recurring, customTypeNames: [] },
+    );
+    expect(accepted).toHaveLength(1);
+  });
+
+  it('accepts each vocabulary against its own one-shot type', () => {
     expect(validate({ kind: 'update', itemId: 'task-1', status: 'completed' }).accepted).toHaveLength(1);
-    expect(validate({ kind: 'update', itemId: 'habit-1', status: 'done' }).accepted).toHaveLength(1);
     expect(validate({ kind: 'update', itemId: 'goal-1', status: 'completed' }).accepted).toHaveLength(1);
+  });
+
+  it('never lets a proposal set a habit\'s status at all', () => {
+    // A habit is recurring by definition (the registry forbids 'none'), so it
+    // is always caught by the per-date rule — 'done' is a valid habit word and
+    // still cannot be written as scalar status.
+    const { accepted, rejected } = validate({ kind: 'update', itemId: 'habit-1', status: 'done' });
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0].reason).toMatch(/per-date/);
   });
 
   it('strips startDate from a date-blind type instead of rejecting the operation', () => {

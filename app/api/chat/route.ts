@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 import { createClient } from '@/lib/supabase-server'
-import { getGatewayConfig, sessionKeyFor, streamGatewayChat } from '@/lib/openclaw-gateway'
+import { chatSessionKey, getGatewayConfig, streamGatewayChat } from '@/lib/openclaw-gateway'
 
 const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
     apiKey,
     systemPrompt,
     context,
-    sessionKey,
   } = await req.json()
 
   const encoder = new TextEncoder()
@@ -80,7 +79,10 @@ export async function POST(req: NextRequest) {
       const resolvedPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
       const stream = await streamGatewayChat({
         config,
-        sessionKey: sessionKey || sessionKeyFor('chat'),
+        // Derived from the authenticated user, never taken from the body: a
+        // client-supplied key would let a browser address the gateway's
+        // reserved namespaces or another thread entirely.
+        sessionKey: chatSessionKey(user.id),
         messages: [
           { role: 'system', content: context ? `${resolvedPrompt}\n\n${context}` : resolvedPrompt },
           ...messages,

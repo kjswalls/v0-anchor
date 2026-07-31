@@ -91,18 +91,33 @@ export const AI_TIERS: Record<AITier, AITierConfig> = {
   },
 }
 
+/**
+ * Providers with no working transport yet.
+ *
+ * They belong to a tier conceptually but cannot do anything, and the registry
+ * has to say so — otherwise a surface asks `canPropose`, gets true, offers the
+ * action, and the route answers with an error string. One question, one answer,
+ * in one place.
+ */
+const NOT_IMPLEMENTED: readonly AIProvider[] = ['anthropic']
+
 /** Which tier a stored provider belongs to, ignoring reachability. */
 export function tierForProvider(provider: AIProvider): AITier {
+  if (NOT_IMPLEMENTED.includes(provider)) return 'none'
   switch (provider) {
     case 'openclaw':
       return 'agent'
     case 'openai':
-    case 'anthropic':
       return 'assistant'
     case 'none':
     default:
       return 'none'
   }
+}
+
+/** True when the provider is selectable but not yet wired to anything. */
+export function isProviderComingSoon(provider: AIProvider): boolean {
+  return NOT_IMPLEMENTED.includes(provider)
 }
 
 /**
@@ -121,6 +136,9 @@ export function resolveAICapabilities(
   const tier = tierForProvider(provider)
   if (tier === 'agent' && connection === 'disconnected') {
     return { ...AI_TIERS.assistant, label: AI_TIERS.agent.label }
+  }
+  if (isProviderComingSoon(provider)) {
+    return { ...AI_TIERS.none, label: 'Claude' }
   }
   return AI_TIERS[tier]
 }

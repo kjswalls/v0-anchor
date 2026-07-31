@@ -252,9 +252,6 @@ export const useChatStore = create<ChatStore>()((set, get) => {
             apiKey,
             model,
             systemPrompt: effectiveSystemPrompt,
-            // Stable key => durable gateway-side memory for this thread.
-            // Ignored by the non-gateway providers.
-            sessionKey: 'anchor:chat',
           }),
         });
 

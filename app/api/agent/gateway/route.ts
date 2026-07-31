@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient } from '@/lib/supabase-service'
+import { assertAllowedGatewayUrl } from '@/lib/openclaw-gateway'
 
 /**
  * /api/agent/gateway — read and write the user's OpenClaw gateway connection.
@@ -18,17 +19,6 @@ import { createServiceClient } from '@/lib/supabase-service'
 interface GatewayBody {
   gatewayUrl?: string | null
   token?: string | null
-}
-
-/** Reject anything that is not a plausible absolute http(s) URL. */
-function normalizeUrl(raw: string): string | null {
-  try {
-    const url = new URL(raw.trim())
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
-    return url.toString().replace(/\/+$/, '')
-  } catch {
-    return null
-  }
 }
 
 export async function GET() {
@@ -85,11 +75,14 @@ export async function POST(req: NextRequest) {
     // Each field is optional so the settings UI can update the URL without
     // making the user retype a token it can never show them.
     if (body.gatewayUrl !== undefined) {
-      const url = body.gatewayUrl === null || body.gatewayUrl.trim() === ''
-        ? null
-        : normalizeUrl(body.gatewayUrl)
-      if (body.gatewayUrl && url === null) {
-        return NextResponse.json({ error: 'Enter a full http(s) URL' }, { status: 400 })
+      let url: string | null = null
+      if (body.gatewayUrl !== null && body.gatewayUrl.trim() !== '') {
+        // Validated on the way IN as well as before each fetch: this URL is
+        // one the server will make authenticated outbound requests to, so it
+        // never gets stored unchecked.
+        const allowed = assertAllowedGatewayUrl(body.gatewayUrl)
+        if (!allowed.ok) return NextResponse.json({ error: allowed.reason }, { status: 400 })
+        url = allowed.url
       }
       const { error } = await supabase
         .from('user_settings')

@@ -65,15 +65,62 @@ export async function getGatewayConfig(userId: string): Promise<GatewayConfig | 
 }
 
 /**
- * Stable session key for a conversation.
+ * Stable session keys, derived SERVER-SIDE from the authenticated user.
  *
  * Sessions have no TTL by default, so a stable key is what gives a thread
- * durable gateway-side memory across reloads and devices. `subagent:`, `cron:`
- * and `acp:` are reserved namespaces the gateway REJECTS from external callers,
- * hence the `anchor:` prefix.
+ * durable gateway-side memory across reloads and devices.
+ *
+ * Never accept a session key from the client. `subagent:`, `cron:` and `acp:`
+ * are reserved namespaces the gateway rejects from external callers, and a
+ * caller-supplied key would also let one browser address another thread. Both
+ * are structurally impossible here because every key is built from the fixed
+ * `anchor:` literal plus values the server already knows — so there is no
+ * denylist to maintain and nothing to keep in sync with the gateway.
  */
-export function sessionKeyFor(scope: 'chat' | 'item', id?: string): string {
-  return scope === 'chat' ? 'anchor:chat' : `anchor:item:${id}`
+export function chatSessionKey(userId: string): string {
+  return `anchor:u:${userId}:chat`
+}
+
+export function itemSessionKey(userId: string, itemId: string): string {
+  return `anchor:u:${userId}:item:${itemId}`
+}
+
+/**
+ * Guard for the one place Anchor fetches a URL the user typed.
+ *
+ * Deliberately does NOT block RFC1918 or CGNAT 100.64/10: a Tailscale address
+ * is the intended, normal deployment, and blocking private ranges here would
+ * reject the correct configuration. What it does block is the cloud metadata
+ * endpoint, and it requires TLS anywhere but local development.
+ */
+export function assertAllowedGatewayUrl(
+  raw: string
+): { ok: true; url: string } | { ok: false; reason: string } {
+  let url: URL
+  try {
+    url = new URL(raw.trim())
+  } catch {
+    return { ok: false, reason: 'Enter a full URL, including http:// or https://' }
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { ok: false, reason: 'Only http and https URLs are supported' }
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+
+  // 169.254.0.0/16 — cloud instance metadata lives at 169.254.169.254, and a
+  // server-side fetch of it would hand over instance credentials.
+  if (/^169\.254\./.test(host) || host === 'fd00:ec2::254') {
+    return { ok: false, reason: 'That address range is not allowed' }
+  }
+
+  if (url.protocol === 'http:' && !(isLoopback && process.env.NODE_ENV !== 'production')) {
+    return { ok: false, reason: 'Use https (http is only allowed for localhost in development)' }
+  }
+
+  return { ok: true, url: url.toString().replace(/\/+$/, '') }
 }
 
 export interface GatewayChatRequest {
@@ -81,6 +128,31 @@ export interface GatewayChatRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   sessionKey: string
   signal?: AbortSignal
+}
+
+/**
+ * THE UNVERIFIED ASSUMPTION — the first thing to test against a real gateway.
+ *
+ * A keyed session on the gateway holds its own history. What the docs do not
+ * say is whether posting a full transcript to an existing session key APPENDS
+ * the messages or REPLACES the turn, and the two behaviours differ sharply:
+ * if the gateway already remembers the conversation, resending it every turn
+ * duplicates history and the model sees each message twice.
+ *
+ * `false` (send only the newest turn) is the safer default: under-sending
+ * costs context the gateway already has, while over-sending corrupts it. If a
+ * gateway turns out to be stateless per request, flip this to true.
+ */
+export const SEND_FULL_TRANSCRIPT_TO_GATEWAY = false
+
+/** The messages to actually put on the wire, per the assumption above. */
+export function gatewayTurnMessages(
+  messages: GatewayChatRequest['messages']
+): GatewayChatRequest['messages'] {
+  if (SEND_FULL_TRANSCRIPT_TO_GATEWAY) return messages
+  const system = messages.filter((m) => m.role === 'system')
+  const latest = messages.filter((m) => m.role !== 'system').slice(-1)
+  return [...system, ...latest]
 }
 
 /**
@@ -110,7 +182,10 @@ export async function streamGatewayChat({
   sessionKey,
   signal,
 }: GatewayChatRequest): Promise<ReadableStream<Uint8Array>> {
-  const res = await fetch(`${config.baseUrl}/v1/chat/completions`, {
+  const allowed = assertAllowedGatewayUrl(config.baseUrl)
+  if (!allowed.ok) throw new Error(allowed.reason)
+
+  const res = await fetch(`${allowed.url}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -120,18 +195,20 @@ export async function streamGatewayChat({
       'x-openclaw-session-key': sessionKey,
     },
     signal,
+    // A redirect could bounce this authenticated request — bearer token and
+    // all — at a host the URL guard never saw.
+    redirect: 'error',
     body: JSON.stringify({
       model: config.agentId ?? 'default',
-      messages,
+      messages: gatewayTurnMessages(messages),
       stream: true,
     }),
   })
 
   if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => '')
-    throw new Error(
-      `Gateway responded ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`
-    )
+    // Status only. The upstream body can carry configuration detail, and this
+    // message is rendered straight into the chat panel.
+    throw new Error(`Gateway responded ${res.status}`)
   }
 
   return translateGatewayStream(res.body)

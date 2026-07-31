@@ -16,6 +16,7 @@ import { format } from 'date-fns'
 import type { Item, Proposal, ProposalDraft, ProposalOperation } from './planner-types'
 import { getItemTypeConfig, itemTypeName } from './item-registry'
 import { selectOverdue, splitOverdueCohorts } from './overdue'
+import { isRecurring } from './recurrence'
 
 export interface ProposalContext {
   items: Item[]
@@ -81,11 +82,21 @@ export function validateProposalOperations(
     const config = getItemTypeConfig(itemTypeName(target))
     const next = { ...operation }
 
-    if (next.status !== undefined && !config.allowedStatuses.includes(next.status)) {
-      // Status vocabularies are frozen and per-type — 'done' is a habit word,
-      // 'completed' is a task word, and neither is translatable into the other.
-      reject(operation, `"${next.status}" is not a valid status for ${config.label.toLowerCase()}`)
-      continue
+    if (next.status !== undefined) {
+      if (!config.allowedStatuses.includes(next.status)) {
+        // Status vocabularies are frozen and per-type — 'done' is a habit word,
+        // 'completed' is a task word, and neither is translatable into the other.
+        reject(operation, `"${next.status}" is not a valid status for ${config.label.toLowerCase()}`)
+        continue
+      }
+      if (isRecurring(target)) {
+        // Recurring items track completion per-DATE in completedDates and never
+        // through scalar status — a daily chore is `pending` forever by design.
+        // Writing status here would mark the whole series done, and the store's
+        // patch path has no way to turn it back into a single date's toggle.
+        reject(operation, 'recurring items are completed per-date, not by status')
+        continue
+      }
     }
     if (!config.dateAnchored && next.startDate != null) delete next.startDate
 
