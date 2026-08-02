@@ -118,10 +118,12 @@ export function DesktopShell() {
 
       </main>
 
-      {/* The item panel — a sibling card, not a layer over one. Opening it
-          narrows <main> (flex-1 recomputes exactly as it does for the braindump
-          collapse), which is the whole argument for going non-modal: the day
-          stays visible, and stays workable, beside the item.
+      {/* The item panel — a sibling surface on the backdrop, not a layer over
+          the canvas. `flat` drops its card chrome so it reads as the paper
+          plane BELOW <main>, mirroring the braindump column on the left.
+          Opening it narrows <main> (flex-1 recomputes exactly as it does for
+          the braindump collapse), which is the whole argument for going
+          non-modal: the day stays visible, and stays workable, beside the item.
 
           The width lives out here rather than in ItemDialog so the column can
           animate both ways while its contents mount and unmount — the surface
@@ -139,7 +141,7 @@ export function DesktopShell() {
           'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
         )}
       >
-        <ItemDialog presentation="panel" state={panelState} onOpenChange={handlePanelOpenChange} />
+        <ItemDialog presentation="panel" flat state={panelState} onOpenChange={handlePanelOpenChange} />
       </div>
     </div>
   );

@@ -990,6 +990,35 @@ body {
   }
 }
 
+/* Selected-item marker — the neutral dot on the row whose editor is open in the
+   docked panel. A slow breathing pulse (opacity + scale) on its OWN element, so
+   nothing else in the row composites or dims it. Neutral fill (--foreground:
+   near-black on paper, near-white on the dark ramp), so — unlike the lime accent
+   — the pulse can dip its alpha freely without drifting hue. --ease-roll is the
+   symmetric in/out curve, so the breath is even both ways. */
+@keyframes row-selected-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.78);
+  }
+}
+
+.animate-row-selected-pulse {
+  animation: row-selected-pulse 2s var(--ease-roll) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No breath — the dot stays a solid static marker at full opacity. */
+  .animate-row-selected-pulse {
+    animation: none;
+  }
+}
+
 /* Hide scrollbar while keeping scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;

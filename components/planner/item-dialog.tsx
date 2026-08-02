@@ -162,6 +162,7 @@ function SurfaceRoot({
 function SurfaceContent({
   panel,
   open,
+  flat,
   panelLabel,
   className,
   overlayClassName,
@@ -170,6 +171,9 @@ function SurfaceContent({
 }: ComponentProps<typeof ResponsiveModalContent> & {
   panel: boolean;
   open: boolean;
+  /** Docked on the backdrop (shell column) vs floating as an overlay card
+   *  (the /item page). Flat drops the card chrome; floating keeps it. */
+  flat: boolean;
   panelLabel: string;
 }) {
   if (panel) {
@@ -184,13 +188,26 @@ function SurfaceContent({
         tabIndex={-1}
         // Deliberately NOT role="dialog" — it isn't modal, and the suite's bare
         // getByRole('dialog') must keep resolving to exactly one node.
-        // Same card recipe as <main> so it reads as a sibling of the canvas
-        // rather than a layer above it, which is the whole point of going
-        // non-modal. Fixed width so the content doesn't reflow while the
-        // shell's column animates open — and no drop shadow, because that
-        // column has to clip (overflow-hidden) for the width animation, which
-        // would eat an outer cast entirely. The border carries the edge.
-        className="border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none"
+        //
+        // Two surfaces, one body:
+        //  · flat (shell) — a surface on the surface-0 backdrop, NOT a card: it
+        //    reads as the paper plane BELOW the floating <main> card, mirroring
+        //    the braindump column on the left (whose list sits directly on
+        //    paper). So no bg-canvas fill, no border, no rounded card edge —
+        //    the backdrop shows through. pt-[42px] drops the title's cap-top
+        //    onto the same line as the "Braindump" and date headers (~59px from
+        //    the window top); this column has no header capsule to add the
+        //    offset those two get for free.
+        //  · floating (/item page) — the same card recipe as <main>, because
+        //    there it is a fixed overlay ABOVE the page's own content, so it
+        //    must stay opaque and framed. No drop shadow either way: the shell
+        //    column clips (overflow-hidden) for its width animation, which would
+        //    eat an outer cast.
+        className={
+          flat
+            ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
+            : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
+        }
         {...props}
       >
         {children}
@@ -231,6 +248,13 @@ interface ItemDialogProps {
    * can keep working behind it. Edit-only; add is always a modal.
    */
   presentation?: 'modal' | 'panel';
+  /**
+   * Docked-panel only. When true the panel drops its card chrome (bg, border,
+   * radius) and sits flat on the app backdrop — the plane BELOW the <main>
+   * card, matching the braindump column. The shell passes it; the /item page
+   * leaves it false because its panel is a fixed overlay that must stay framed.
+   */
+  flat?: boolean;
 }
 
 /** Local form state. 'none' / '' are UI sentinels, translated to `undefined`
@@ -402,6 +426,7 @@ export function ItemDialog({
   onOpenChange,
   withDetailSections = true,
   presentation = 'modal',
+  flat = false,
 }: ItemDialogProps) {
   const {
     items,
@@ -1392,12 +1417,177 @@ export function ItemDialog({
     ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
   }, [activeDraft?.notes, activeTypeName, open]);
 
+  // ── Header pieces ────────────────────────────────────────────────────────
+  // Extracted so the docked panel can LEAD with the title — putting its heading
+  // in the same top band the canvas and braindump headers occupy — while the
+  // modal (and mobile drawer) keep the type-first layout unchanged.
+
+  const headerActions = (
+    <div className="ml-auto flex items-center gap-0.5">
+      {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
+        <Button
+          variant="ghost"
+          size="icon"
+          data-testid="item-dialog-open-page"
+          className="text-muted-foreground size-7"
+          onClick={() => {
+            onOpenChange(false);
+            router.push(`/item/${editItem.id}`);
+          }}
+        >
+          <Maximize2 className="size-3.5" />
+          <span className="sr-only">Open as page</span>
+        </Button>
+      )}
+
+      {mode === 'edit' && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              data-testid="item-dialog-more"
+              className="text-muted-foreground size-7"
+            >
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">More actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            {editConfig?.counters.streak && (
+              <DropdownMenuItem
+                data-testid="item-dialog-reset-streak"
+                onSelect={() => setShowResetConfirm(true)}
+              >
+                <RotateCcw className="size-3.5" />
+                Reset streak
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              variant="destructive"
+              data-testid="item-dialog-delete"
+              onSelect={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {activeConfig.label.toLowerCase()}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* The modal gets Radix's own close button; the panel has to bring one —
+          and it must flush before it goes. */}
+      {isPanel && (
+        <Button
+          variant="ghost"
+          size="icon"
+          data-testid="item-dialog-close"
+          className="text-muted-foreground size-7"
+          onClick={() => {
+            flushNow();
+            onOpenChange(false);
+          }}
+        >
+          <X className="size-4" />
+          <span className="sr-only">Close</span>
+        </Button>
+      )}
+    </div>
+  );
+
+  const typeControl =
+    mode === 'add' ? (
+      <PropertyChip
+        swatch={activeConfig.accent}
+        swatchShape="square"
+        label={activeConfig.label}
+        value={activeConfig.label}
+        testId="item-dialog-type-chip"
+        alwaysChevron
+        className="font-medium"
+        contentClassName="w-56"
+      >
+        {(close) => (
+          <>
+            {typeNames.map((t) => (
+              <ChipOption
+                key={t}
+                selected={t === activeTypeName}
+                testId="item-dialog-type-option"
+                value={t}
+                onSelect={() => {
+                  switchType(t);
+                  close();
+                }}
+              >
+                <ColorSquare color={getItemTypeConfig(t).accent} />
+                {getItemTypeConfig(t).label}
+                {t === activeTypeName && <Check className="ml-auto size-3.5" />}
+              </ChipOption>
+            ))}
+            {itemTypesAvailable && (
+              <>
+                <div className="bg-border -mx-1 my-1 h-px" />
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    close();
+                    // Replaces this dialog rather than stacking on it: openDialog
+                    // swaps the single active slot.
+                    useUIStore
+                      .getState()
+                      .openDialog({ type: 'manage-categories', tab: 'types' });
+                  }}
+                >
+                  <Plus className="size-3.5" />
+                  Manage types…
+                </ChipOption>
+              </>
+            )}
+          </>
+        )}
+      </PropertyChip>
+    ) : (
+      // Edit mode shows the type, it does not offer to change it: converting an
+      // item is a data decision (streaks, completion history), not a control.
+      <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
+        <ColorSquare color={activeConfig.accent} />
+        {activeConfig.label}
+      </span>
+    );
+
+  const modeLabel = (
+    <span className="text-muted-foreground text-xs">
+      {mode === 'add' ? 'New item' : 'Edit'}
+    </span>
+  );
+
+  // The title — the only required field, so it carries the dialog.
+  const titleInput = activeDraft ? (
+    <Input
+      id={titleId}
+      data-testid="item-dialog-title-input"
+      placeholder={activeConfig.form.titlePlaceholder}
+      value={activeDraft.title}
+      onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
+      onBlur={autosaves ? flushNow : undefined}
+      // The panel doesn't grab focus: it retargets on every row you click, and
+      // stealing the caret each time would fight the canvas you're still in.
+      autoFocus={presentation === 'modal' && (mode === 'edit' || activeTypeName === 'task')}
+      // dark:bg-transparent is load-bearing: Input carries dark:bg-input/30,
+      // which tailwind-merge keeps (different modifier) and which outranks
+      // bg-transparent on specificity.
+      className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
+    />
+  ) : null;
+
   return (
     <>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange}>
         <SurfaceContent
           panel={isPanel}
           open={open}
+          flat={isPanel && flat}
           panelLabel={`${activeConfig.label} details`}
           data-testid="item-dialog"
           data-mode={mode}
@@ -1467,166 +1657,42 @@ export function ItemDialog({
 
           {activeDraft && (
             <div className="flex flex-col gap-4">
-              {/* Header: what this is, and — in add mode — what else it could be. */}
-              <div className="flex items-center gap-2 pr-8">
-                {mode === 'add' ? (
-                  <PropertyChip
-                    swatch={activeConfig.accent}
-                    swatchShape="square"
-                    label={activeConfig.label}
-                    value={activeConfig.label}
-                    testId="item-dialog-type-chip"
-                    alwaysChevron
-                    className="font-medium"
-                    contentClassName="w-56"
-                  >
-                    {(close) => (
-                      <>
-                        {typeNames.map((t) => (
-                          <ChipOption
-                            key={t}
-                            selected={t === activeTypeName}
-                            testId="item-dialog-type-option"
-                            value={t}
-                            onSelect={() => {
-                              switchType(t);
-                              close();
-                            }}
-                          >
-                            <ColorSquare color={getItemTypeConfig(t).accent} />
-                            {getItemTypeConfig(t).label}
-                            {t === activeTypeName && <Check className="ml-auto size-3.5" />}
-                          </ChipOption>
-                        ))}
-                        {itemTypesAvailable && (
-                          <>
-                            <div className="bg-border -mx-1 my-1 h-px" />
-                            <ChipOption
-                              tone="muted"
-                              onSelect={() => {
-                                close();
-                                // Replaces this dialog rather than stacking on
-                                // it: openDialog swaps the single active slot.
-                                useUIStore
-                                  .getState()
-                                  .openDialog({ type: 'manage-categories', tab: 'types' });
-                              }}
-                            >
-                              <Plus className="size-3.5" />
-                              Manage types…
-                            </ChipOption>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </PropertyChip>
-                ) : (
-                  // Edit mode shows the type, it does not offer to change it:
-                  // converting an item is a data decision (streaks, completion
-                  // history), not a control.
-                  <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
-                    <ColorSquare color={activeConfig.accent} />
-                    {activeConfig.label}
-                  </span>
-                )}
-
-                <span className="text-muted-foreground text-xs">
-                  {mode === 'add' ? 'New item' : 'Edit'}
-                </span>
-
-                {/* One ml-auto for the whole trailing group: two auto margins in
-                    the same flex row SPLIT the free space between them, which
-                    parked the buttons mid-header instead of at the edge. */}
-                <div className="ml-auto flex items-center gap-0.5">
-                {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    data-testid="item-dialog-open-page"
-                    className="text-muted-foreground size-7"
-                    onClick={() => {
-                      onOpenChange(false);
-                      router.push(`/item/${editItem.id}`);
-                    }}
-                  >
-                    <Maximize2 className="size-3.5" />
-                    <span className="sr-only">Open as page</span>
-                  </Button>
-                )}
-
-                {mode === 'edit' && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        data-testid="item-dialog-more"
-                        className="text-muted-foreground size-7"
-                      >
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">More actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      {editConfig?.counters.streak && (
-                        <DropdownMenuItem
-                          data-testid="item-dialog-reset-streak"
-                          onSelect={() => setShowResetConfirm(true)}
-                        >
-                          <RotateCcw className="size-3.5" />
-                          Reset streak
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        variant="destructive"
-                        data-testid="item-dialog-delete"
-                        onSelect={() => setShowDeleteConfirm(true)}
-                      >
-                        <Trash2 className="size-3.5" />
-                        Delete {activeConfig.label.toLowerCase()}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-
-                {/* The modal gets Radix's own close button; the panel has to
-                    bring one — and it must flush before it goes. ml-auto is a
-                    fallback for when the open-as-page button isn't rendered. */}
-                {isPanel && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    data-testid="item-dialog-close"
-                    className="text-muted-foreground size-7"
-                    onClick={() => {
-                      flushNow();
-                      onOpenChange(false);
-                    }}
-                  >
-                    <X className="size-4" />
-                    <span className="sr-only">Close</span>
-                  </Button>
-                )}
+              {/* Header + title. The docked panel LEADS with the title so its
+                  cap-top lands on the same line as the braindump and date
+                  headings (the top band those two headers occupy); the type +
+                  mode ride BELOW it as a subtitle. The modal — and the mobile
+                  drawer — keep the original type-first row with the title under
+                  it. Both share the same pieces (headerActions / typeControl /
+                  modeLabel / titleInput), only reordered. */}
+              {isPanel && mode === 'edit' ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    {/* The same breathing dot the selected row carries, so the
+                        pane and its row read as one thing. Grey, its own element
+                        so the pulse's transform/opacity touches nothing else. */}
+                    <span
+                      aria-hidden
+                      data-testid="item-panel-selected-indicator"
+                      className="animate-row-selected-pulse size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                    />
+                    <div className="min-w-0 flex-1">{titleInput}</div>
+                    {headerActions}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {typeControl}
+                    {modeLabel}
+                  </div>
                 </div>
-              </div>
-
-              {/* Title — the only required field, so it carries the dialog. */}
-              <Input
-                id={titleId}
-                data-testid="item-dialog-title-input"
-                placeholder={activeConfig.form.titlePlaceholder}
-                value={activeDraft.title}
-                onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
-                onBlur={autosaves ? flushNow : undefined}
-                // The panel doesn't grab focus: it retargets on every row you
-                // click, and stealing the caret each time would fight the canvas
-                // you're still working in.
-                autoFocus={presentation === 'modal' && (mode === 'edit' || activeTypeName === 'task')}
-                // dark:bg-transparent is load-bearing: Input carries
-                // dark:bg-input/30, which tailwind-merge keeps (different
-                // modifier) and which outranks bg-transparent on specificity.
-                className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
-              />
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 pr-8">
+                    {typeControl}
+                    {modeLabel}
+                    {headerActions}
+                  </div>
+                  {titleInput}
+                </>
+              )}
 
               {/* Streak — the habit's history in the row's own dot vocabulary,
                   reading the open-time snapshot (stale after a reset until
