@@ -1,14 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format } from 'date-fns';
+import { format, isToday } from 'date-fns';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Sun,
-  Moon,
   Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,7 +28,6 @@ import {
   type ViewOption,
 } from '@/lib/view-options';
 import { goToDate, stepScope } from '@/lib/nav-commands';
-import { useSunTimes } from '@/hooks/use-sun-times';
 
 /**
  * Floating header capsule at the top of the canvas (Figma view controls
@@ -88,7 +85,6 @@ export function HeaderCapsule() {
   const { selectedDate, projects } = usePlannerStore();
   const { scope, layout, typeFilter, canvasFilters, setScope, setLayout, setTypeFilter, setCanvasFilters } =
     useViewStore();
-  const { isAfterSunset } = useSunTimes();
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -112,12 +108,6 @@ export function HeaderCapsule() {
               aria-label="Open calendar"
             >
               <CalendarIcon className="h-4 w-4" />
-              {mounted &&
-                (isAfterSunset ? (
-                  <Moon className="absolute -top-px -right-px h-1.5 w-1.5 text-evening" />
-                ) : (
-                  <Sun className="absolute -top-px -right-px h-1.5 w-1.5 text-morning" />
-                ))}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -155,7 +145,7 @@ export function HeaderCapsule() {
           // overshoot reads as success. Also empty before hydration; this
           // attribute is not.
           data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
-          className="cursor-pointer px-1 font-sans text-base font-semibold text-foreground transition-colors hover:text-primary-foreground/80"
+          className="cursor-pointer rounded-md px-1.5 font-sans text-base font-semibold text-foreground transition-colors hover:bg-accent"
         >
           {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="inline-block w-44" />}
         </button>
@@ -170,6 +160,20 @@ export function HeaderCapsule() {
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
+
+        {mounted && !isToday(selectedDate) && (
+          <button
+            onClick={() => goToDate(new Date())}
+            className="ml-1 inline-flex h-6 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Go to today"
+            data-testid="header-today"
+          >
+            <span aria-hidden="true" className="inline-block -scale-x-100 font-mono text-[11px] leading-none">
+              ↵
+            </span>
+            Today
+          </button>
+        )}
       </div>
 
       {/* Row 2 — white pill: type · layout · scope selectors */}
