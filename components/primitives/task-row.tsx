@@ -121,8 +121,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * The date a skip is written against is the date the ROW is drawn for, not
    * the globally selected day. In a week column those differ, and using the
    * selected day there wrote the skip onto a day the user was not looking at —
-   * so the row it was aimed at never minimized. (Completion toggles still take
-   * the selected day; that mismatch predates this and is left alone.)
+   * so the row it was aimed at never minimized.
+   *
+   * Every per-date write in this row now uses `rowDate` for the same reason —
+   * see handleTaskToggle / handleHabitToggle below.
    */
   const setSkipped = (next: boolean) => setItemSkipped(item.id, next, rowDate);
 
@@ -170,15 +172,31 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     }
   }, [isDragging]);
 
+  /**
+   * Completion is written against `rowDate` — the day this row is DRAWN for —
+   * not the store's selectedDate.
+   *
+   * The two are the same thing in day views (rowDate falls back to
+   * selectedDate), but a week column passes its own `date`, and reading the
+   * per-date state from one day while writing it to another is a straight
+   * mismatch: the checkbox above already computes `taskDone` from
+   * `dateStr` (= rowDate), so ticking Thursday's row used to mark Tuesday and
+   * leave Thursday's box empty. Same rule the skip write follows (#194) and the
+   * schedule block / project block already follow.
+   *
+   * `undefined` for a NON-recurring task is deliberate and unchanged: a one-off
+   * task has no per-date dimension at all — it carries a scalar status — so the
+   * store must not be handed a date it would resolve and ignore.
+   */
   const handleTaskToggle = () =>
-    toggleTaskStatus(item.id, undefined, taskRecurring ? selectedDate : undefined);
+    toggleTaskStatus(item.id, undefined, taskRecurring ? rowDate : undefined);
 
   /** One step up; landing on the target marks the habit done. */
   const handleHabitIncrement = () => {
     if (!habit || multiTarget === 0) return;
     const next = habitEffectiveCount + 1;
-    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, selectedDate);
-    else toggleHabitStatus(habit.id, 'pending', next, selectedDate);
+    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, rowDate);
+    else toggleHabitStatus(habit.id, 'pending', next, rowDate);
   };
 
   /**
@@ -192,10 +210,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const handleHabitToggle = () => {
     if (!habit) return;
     if (multiTarget > 0) {
-      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, selectedDate);
+      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, rowDate);
       else handleHabitIncrement();
     } else {
-      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, selectedDate);
+      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, rowDate);
     }
   };
 
@@ -257,7 +275,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
   const handleHabitDecrement = () => {
     if (!habit || habitEffectiveCount <= 0) return;
-    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, selectedDate);
+    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, rowDate);
   };
 
   const rowContent = (
