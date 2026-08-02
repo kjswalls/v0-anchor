@@ -6,9 +6,9 @@ export const HOUR_PX = 75;
 /** Cap for <ProjectBlock variant="week"> (issue #193). Day view's ProjectBlock
  *  stays unbounded, since a mini week column can't afford an ever-growing card
  *  the way a full day-width one can. ~4 task rows before it scrolls.
- *  NOTE: nothing passes variant="week" yet — Week view doesn't currently render
- *  ProjectBlock cards at all, and whether it should is an open design question
- *  (see issue #193). The cap is here and ready for when that lands. */
+ *  Week × Buckets (components/views/week-buckets.tsx) passes variant="week";
+ *  it nests inside the bucket's own WEEK_BUCKET_MAX_H cap, so keep this the
+ *  smaller of the two or the inner scroll never engages. */
 export const WEEK_PROJECT_BLOCK_MAX_H = 160;
 
 /** Week × Buckets. A single time bucket's content caps out here and scrolls

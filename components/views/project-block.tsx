@@ -16,10 +16,14 @@ import { cn } from '@/lib/utils';
  * lib/dnd/CONTRACT.md — only tasks of the same project may drop in.
  */
 
-function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
+function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; date?: Date }) {
   const { toggleTaskStatus, selectedDate, userTimezone } = usePlannerStore();
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const dateStr = toDateStr(selectedDate, timezone);
+  // Same rule as TaskRow's `date` prop: a block rendered inside a week column
+  // belongs to THAT column's day, not the globally selected one. Without it a
+  // check in Friday's column would read (and write) Tuesday's completion.
+  const blockDate = date ?? selectedDate;
+  const dateStr = toDateStr(blockDate, timezone);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id });
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -53,7 +57,7 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            toggleTaskStatus(task.id, undefined, recurring ? selectedDate : undefined);
+            toggleTaskStatus(task.id, undefined, recurring ? blockDate : undefined);
           }}
           className={cn(
             'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
@@ -83,9 +87,26 @@ interface ProjectBlockProps {
    *  screen, so 'week' caps the body and scrolls it instead. Defaults to
    *  'day' so the shared day-buckets usage is untouched. */
   variant?: 'day' | 'week';
+  /** The day this block is rendered for (week columns); defaults to the
+   *  selected day, which is what day-buckets wants. */
+  date?: Date;
 }
 
-export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 'day' }: ProjectBlockProps) {
+/** How many not-yet-in-block tasks the "available" panel previews before it
+ *  collapses into "+N more". A week column is ~240px wide and the block body
+ *  is capped at WEEK_PROJECT_BLOCK_MAX_H, so five previews there would be all
+ *  anyone ever saw of the block — the tasks actually IN the block would sit
+ *  above the fold. Same panel, fewer rows; no layout of its own. */
+const PREVIEW_LIMIT = { day: 5, week: 2 } as const;
+
+export function ProjectBlock({
+  project,
+  tasks,
+  onTaskClick,
+  activeId,
+  variant = 'day',
+  date,
+}: ProjectBlockProps) {
   const { getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } =
     usePlannerStore();
 
@@ -98,6 +119,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
   const { isOver, setNodeRef } = useDroppable({ id: `projectblock:${project.name}` });
   const draggedTask = activeId ? allTasks.find((t) => t.id === activeId) : null;
   const canAcceptDrop = draggedTask && draggedTask.project === project.name;
+  const previewLimit = PREVIEW_LIMIT[variant];
 
   return (
     <div
@@ -116,9 +138,12 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
       style={{ borderColor: isOver ? undefined : projectColor }}
     >
       <div className="mb-2 flex items-center gap-2">
-        <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4" />
-        <span className="font-content text-content text-foreground">{project.name}</span>
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4 flex-shrink-0" />
+        {/* Truncation is a no-op at day width; in a ~240px week column it is the
+            difference between "name pushes the time out of the clipped card" and
+            "name ellipsises, time stays". No sizing of its own. */}
+        <span className="min-w-0 truncate font-content text-content text-foreground">{project.name}</span>
+        <span className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
           {project.startTime}
           {project.duration ? ` · ${project.duration}m` : ''}
@@ -135,7 +160,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
         {tasksInBlock.length > 0 && (
           <div className="mb-3 space-y-1.5">
             {tasksInBlock.map((task) => (
-              <BlockTask key={task.id} task={task} onClick={() => onTaskClick(task)} />
+              <BlockTask key={task.id} task={task} onClick={() => onTaskClick(task)} date={date} />
             ))}
           </div>
         )}
@@ -143,13 +168,13 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
         {availableTasks.length > 0 ? (
           <div className="rounded-lg border border-dashed border-border/50 p-2">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
                 {availableTasks.length} task{availableTasks.length !== 1 ? 's' : ''} available
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-xs text-success-text hover:text-success-text"
+                className="h-6 flex-shrink-0 px-2 text-xs text-success-text hover:text-success-text"
                 onClick={() => moveTasksToProjectBlock(availableTasks.map((t) => t.id))}
               >
                 <ChevronsRight className="mr-1 h-3 w-3" />
@@ -157,7 +182,7 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
               </Button>
             </div>
             <div className="space-y-1.5">
-              {availableTasks.slice(0, 5).map((task) => (
+              {availableTasks.slice(0, previewLimit).map((task) => (
                 <div
                   key={task.id}
                   onClick={() => onTaskClick(task)}
@@ -180,9 +205,9 @@ export function ProjectBlock({ project, tasks, onTaskClick, activeId, variant = 
                   </Button>
                 </div>
               ))}
-              {availableTasks.length > 5 && (
+              {availableTasks.length > previewLimit && (
                 <p className="py-1 text-center text-xs text-muted-foreground/70">
-                  +{availableTasks.length - 5} more
+                  +{availableTasks.length - previewLimit} more
                 </p>
               )}
             </div>
