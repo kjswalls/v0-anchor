@@ -4,6 +4,70 @@ Branch: `claude/anchor-roadmap-features-xk9mfx`. Everything below is committed a
 pushed. Nothing here has been merged, and no issues were closed — closing them is
 your call.
 
+> **Round 2 (same session).** Kirby answered §3 and a second batch landed. See
+> §0 immediately below; §3 is kept as the record of what was asked and decided.
+
+---
+
+## 0. Round 2 — decisions taken and shipped
+
+| Decision | Outcome |
+|---|---|
+| **#193 part 1** — "implement like Day view, polish later, no Figma" | Week × Buckets now groups project tasks into `ProjectBlock` cards, passing the `variant="week"` cap part 2 had added but nothing used |
+| **#149** — "drop SSE now, stream later" | Plugin chat answers with `application/json`; payload shape unchanged |
+| **Bug §3.6** — "fix it, not file it" | Recurring rows lose the date controls and gain **Skip today** |
+| **§3.7 connection status** | Tri-state via new `/api/openclaw/status` — no schema change needed |
+| **#192 `v`, §3.2 sizing** | Kept as-is, confirmed |
+| **§3.8 palette entries (#186)** | Kept — issue can close |
+| **Week-view completion date** | Fixed; audited every completion path |
+
+Round-2 gates: `pnpm lint` 0 errors, `pnpm test` **278 passing (20 files)**,
+`pnpm build` clean. E2E still unrun (needs `.env.test` + live Supabase).
+
+### Round-2 findings worth knowing
+
+- **#124 was already done.** Both chat panels were long since collapsed into
+  `chat-conversation.tsx` over `lib/chat-store.ts`. The issue text is stale.
+  `app/api/chat/route.ts` keeps its SSE deliberately — that one genuinely streams.
+- **Chat deploy skew is asymmetric.** New client + old plugin throws a visible
+  parse error; old client + new plugin silently renders "No response received."
+  The likely direction (web auto-deploys on merge, plugin upgrades by hand) is the
+  loud one. A one-release `Content-Type` sniff in the client would close the window
+  if you want it.
+- **CLAUDE.md was wrong** and is now corrected: CI gates `packages/types/dist`
+  (committed), *not* the plugin's `dist` (gitignored, built at publish time). This
+  is why the §3.4 tool fix reaches users **only on npm republish**.
+- **Week-view completion was writing to the wrong day** — found while fixing the
+  above. `TaskRow` read all per-date state from the row's date but five *write*
+  sites still used the store's global `selectedDate`. Habit multi-count was hit too
+  (`dailyCounts` keyed on the wrong day). `ScheduleBlock`, `BlockTask`, the morning
+  tray and the mobile sheet were already correct.
+- **`BlockTask` had the same bug**, found independently while wiring Week view.
+
+### Round-2 rough edges, deliberately left
+
+- Week `ProjectBlock` at 240px: the "N tasks available / Move all" panel is heavy,
+  and because `availableTasks` isn't date-filtered a daily project renders the
+  identical panel in all seven columns. This is the sanctioned polish pass.
+- `ProjectBlock`'s droppable id is now duplicated across week columns. Benign — the
+  resolved command is date-agnostic and the fallback drops into the bucket — but a
+  real fix needs a date-scoped id in `lib/dnd/CONTRACT.md`.
+- Unselected week columns dim via `opacity-75`, which fades the lime accent through
+  a parent's opacity, against the CLAUDE.md rule. Pre-existing — every `TaskRow`
+  checkbox in a week column already did it.
+- `toggleTaskStatus` doesn't clear `skippedDates` for a recurring task, while
+  `toggleHabitStatus` does. Currently unreachable outside EOD, guarded at the
+  component instead of changing store semantics.
+- Braindump completion still writes `selectedDate` for recurring tasks. Arguable —
+  there's no date column there.
+
+### Still open after round 2
+
+- **§3.4 plugin write tools** — fixed but never run against a live gateway, and
+  worthless on npm until republished (#134). Only you can do either.
+- **§3.8** — the braindump `status` filter, orphaned `ItemTypeConfig.accent`, and
+  #73 (recommend closing; `anchor-workspace` is accurate for a workspace root).
+
 ---
 
 ## 1. Shipped
