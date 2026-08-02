@@ -101,9 +101,11 @@ export default function OpenClawDocsPage() {
             </p>
             <p>
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
-              plugin still refreshes your context on its own, but there is no push and no
-              sidebar chat, and this app will keep showing OpenClaw as not connected. You
-              can add <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
+              plugin still refreshes your context on its own, there is just no push and no
+              sidebar chat. Settings will show{' '}
+              <span className="text-foreground">Connected · pull-only</span> — still
+              connected, still working. You can add{' '}
+              <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
               to the <code className="font-mono text-xs text-foreground">anchor-context</code>{' '}
               config in <code className="font-mono text-xs text-foreground">openclaw.json</code>{' '}
               whenever you like.
