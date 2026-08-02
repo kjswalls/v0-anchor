@@ -111,7 +111,7 @@ export default definePluginEntry({
       },
     })
 
-    // ── Chat endpoint: browser → plugin (SSE) ────────────────────────────────
+    // ── Chat endpoint: browser → plugin (blocking JSON) ──────────────────────
     api.registerHttpRoute({
       path: '/plugins/anchor/chat',
       auth: 'plugin',
