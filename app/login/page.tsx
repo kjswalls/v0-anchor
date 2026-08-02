@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase';
-import { RELAY } from '@/lib/relay-config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,18 +65,27 @@ function LoginPageInner() {
 
   return (
     <div className="relative min-h-[100dvh] flex items-center justify-center overflow-hidden bg-background px-4">
-      {RELAY.auth && (
-        <RelayField
-          className="absolute inset-0 z-0"
-          focalY={0.42}
-          pitch={44}
-          period={3.6}
-          idleIntensity={0.85}
-          mask="radial-gradient(115% 90% at 50% 38%, black 0%, black 45%, transparent 100%)"
-        />
-      )}
+      {/* Full-bleed relay field at the same brightness the omnibar hits on
+          focus — permanently lit (no focus event here, so idleIntensity carries
+          the level rather than active). No skeleton, no frost: the card floats
+          straight on the live field. radialGain keeps the ring calm at its
+          center and lets it grow hotter as it expands; the focal follows the
+          cursor and a click re-strikes the wave from where you clicked. */}
+      <RelayField
+        className="absolute inset-0 z-0"
+        focalY={0.5}
+        pitch={30}
+        period={3.2}
+        idleIntensity={0.75}
+        radialGain={0.2}
+        pointerFocus
+        pointerBurst
+        pointerEase={0.04}
+        pointerParallax={0.15}
+        mask="radial-gradient(130% 130% at 50% 50%, black 60%, transparent 100%)"
+      />
 
-      <div className="relative z-10 w-full max-w-sm space-y-8">
+      <div className="relative z-20 w-full max-w-sm space-y-8 rounded-panel border border-border bg-card p-8 shadow-[var(--shadow-elev-panel)]">
         {/* Logo / Title */}
         <div className="text-center space-y-2">
           <div className="text-4xl">⚓</div>
@@ -130,7 +138,7 @@ function LoginPageInner() {
                 <span className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">or</span>
+                <span className="bg-card px-2 text-muted-foreground">or</span>
               </div>
             </div>
 
