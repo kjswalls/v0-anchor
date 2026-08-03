@@ -44,29 +44,35 @@ Round-2 gates: `pnpm lint` 0 errors, `pnpm test` **278 passing (20 files)**,
   tray and the mobile sheet were already correct.
 - **`BlockTask` had the same bug**, found independently while wiring Week view.
 
-### Round-2 rough edges, deliberately left
+### Round-2 rough edges — now filed
 
-- Week `ProjectBlock` at 240px: the "N tasks available / Move all" panel is heavy,
-  and because `availableTasks` isn't date-filtered a daily project renders the
-  identical panel in all seven columns. This is the sanctioned polish pass.
-- `ProjectBlock`'s droppable id is now duplicated across week columns. Benign — the
-  resolved command is date-agnostic and the fallback drops into the bucket — but a
-  real fix needs a date-scoped id in `lib/dnd/CONTRACT.md`.
-- Unselected week columns dim via `opacity-75`, which fades the lime accent through
-  a parent's opacity, against the CLAUDE.md rule. Pre-existing — every `TaskRow`
-  checkbox in a week column already did it.
+| Issue | What |
+|---|---|
+| **#213** | Week `ProjectBlock` too heavy at 240px, and `availableTasks` isn't date-filtered so a daily project repeats the same panel in all seven columns |
+| **#214** | `ProjectBlock`'s droppable id duplicated across week columns — benign today, latent trap, needs a date-scoped id in the dnd contract |
+| **#215** | Braindump "hide completed" filters recurring items by scalar `status` |
+| **#216** | `item-dialog.tsx` reads `ItemTypeConfig.accent`, which doesn't exist — 3 standing tsc errors |
+| **#217** | Unselected week columns dim the lime accent through parent opacity (pre-existing, against the CLAUDE.md rule) |
+
+Not filed, recorded here only:
+
 - `toggleTaskStatus` doesn't clear `skippedDates` for a recurring task, while
-  `toggleHabitStatus` does. Currently unreachable outside EOD, guarded at the
-  component instead of changing store semantics.
-- Braindump completion still writes `selectedDate` for recurring tasks. Arguable —
-  there's no date column there.
+  `toggleHabitStatus` does. Currently unreachable outside EOD, so it's guarded at
+  the component rather than by changing store semantics.
+- Braindump *completion* still writes `selectedDate` for recurring tasks. Arguable
+  rather than wrong — there's no date column there. Related to #215.
 
 ### Still open after round 2
 
 - **§3.4 plugin write tools** — fixed but never run against a live gateway, and
-  worthless on npm until republished (#134). Only you can do either.
-- **§3.8** — the braindump `status` filter, orphaned `ItemTypeConfig.accent`, and
-  #73 (recommend closing; `anchor-workspace` is accurate for a workspace root).
+  worthless on npm until republished. Both are yours; the details, plus the
+  publish-order hazard from #149, are in a comment on **#134**.
+- **#73** — recommend closing; `anchor-workspace` is accurate for a workspace root.
+  Left open since you never confirmed.
+- **`tsc` is not clean on main** and so can't be a gate. Four pre-existing clusters:
+  `app/sw.ts` typings, `duration` on the Habit union (#188), `ItemTypeConfig.accent`
+  (#216), and `edit-project-dialog.tsx` comparing against `'weekly'`, which the
+  union no longer contains. CI runs lint + vitest only.
 
 ---
 
