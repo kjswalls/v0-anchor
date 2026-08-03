@@ -70,6 +70,42 @@ export function useFitHourPx(rowCount: number, freeze = false) {
 }
 
 /**
+ * Measured width of the events layer, for the overlap pass.
+ *
+ * The pass emits PERCENTAGE bands — deliberately, so it needs no measurement to
+ * position anything — but a floor expressed in pixels (MIN_CHANNEL_PX) cannot be
+ * enforced against a percentage without knowing what the percentages are of. So
+ * day measures its field once and on resize, and the pass turns that into "as
+ * many channels as actually fit".
+ *
+ * Measured in a LAYOUT effect so the first paint already has the real width;
+ * seeding from state would flash a full set of columns before capping them.
+ *
+ * There is no measure → resize → measure loop here: the events layer is
+ * absolutely positioned against the grid, so its width depends on the viewport
+ * and never on what this hook reports.
+ */
+export function useFieldWidth() {
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const [fieldWidth, setFieldWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = fieldRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setFieldWidth((prev) => (prev === w ? prev : w));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return { fieldWidth, fieldRef };
+}
+
+/**
  * Keeps the grid visually anchored when `gridStartHour` changes while `active`
  * (a resize is in progress). Expanding the window to the full day at resize-start
  * adds rows above the content, which would shove every block — and the edge under

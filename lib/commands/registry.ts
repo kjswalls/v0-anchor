@@ -677,6 +677,20 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => useSidebarStore.getState().toggleLeftSidebar(),
   },
   {
+    id: 'workspace.focusItemPanel',
+    label: 'Focus item panel',
+    description: 'Move focus into the open item panel',
+    group: 'workspace',
+    icon: PanelLeft,
+    keywords: 'item panel inspector focus edit details',
+    shortcut: { id: 'focus_item_panel', keys: ['meta', '\\'], allowInInput: true },
+    // Hidden for the same reason toggleSidebar is: with no panel open the row
+    // would be a trapdoor that appears to do nothing. The binding is the point,
+    // and it still shows up in the shortcuts modal.
+    hidden: true,
+    run: () => useUIStore.getState().focusItemPanel(),
+  },
+  {
     id: 'workspace.focusOmnibar',
     label: 'Search',
     description: 'Focus the omnibar',

@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { addDays, format, startOfDay, subDays } from 'date-fns';
 import {
   CalendarIcon,
@@ -9,6 +10,7 @@ import {
   Flag,
   Flame,
   Folder,
+  Maximize2,
   MoreHorizontal,
   Plus,
   Repeat,
@@ -37,6 +39,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +48,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { ItemDetailSections } from '@/components/planner/item-detail-sections';
 import {
   ChipOption,
   ChipSectionLabel,
@@ -53,10 +57,12 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import type {
+  Habit,
   HabitItem,
   Item,
   Priority,
   RepeatFrequency,
+  Task,
   TimeBucket,
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
@@ -128,6 +134,101 @@ function recentStreakDays(habit: HabitItem): boolean[] {
   );
 }
 
+// ── The two shapes of the surface ────────────────────────────────────────────
+// Same children either way. `modal` is the Radix dialog (desktop) / vaul drawer
+// (mobile); `panel` is a bare <aside> the shell lays out BESIDE the canvas — no
+// portal, no overlay, no focus trap, no scroll lock, so the app stays workable
+// behind it. Splitting at the wrapper rather than forking the body is what keeps
+// "growth is a presentation, not a fork" true (memory/plans/item-surface-growth.md).
+
+function SurfaceRoot({
+  panel,
+  open,
+  onOpenChange,
+  children,
+}: {
+  panel: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  if (panel) return <>{children}</>;
+  return (
+    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      {children}
+    </ResponsiveModal>
+  );
+}
+
+function SurfaceContent({
+  panel,
+  open,
+  flat,
+  panelLabel,
+  className,
+  overlayClassName,
+  children,
+  ...props
+}: ComponentProps<typeof ResponsiveModalContent> & {
+  panel: boolean;
+  open: boolean;
+  /** Docked on the backdrop (shell column) vs floating as an overlay card
+   *  (the /item page). Flat drops the card chrome; floating keeps it. */
+  flat: boolean;
+  panelLabel: string;
+}) {
+  if (panel) {
+    // Unmounts when closed: the shell's column animates its own width, and the
+    // e2e suite asserts the surface reaches count 0 after a close.
+    if (!open) return null;
+    return (
+      <aside
+        aria-label={panelLabel}
+        // Focusable as a container so ⌘\ can land here and Tab can continue
+        // into it — the panel never takes focus on its own (see autoFocus).
+        tabIndex={-1}
+        // Deliberately NOT role="dialog" — it isn't modal, and the suite's bare
+        // getByRole('dialog') must keep resolving to exactly one node.
+        //
+        // Two surfaces, one body:
+        //  · flat (shell) — a surface on the surface-0 backdrop, NOT a card: it
+        //    reads as the paper plane BELOW the floating <main> card, mirroring
+        //    the braindump column on the left (whose list sits directly on
+        //    paper). So no bg-canvas fill, no border, no rounded card edge —
+        //    the backdrop shows through. pt-[42px] drops the title's cap-top
+        //    onto the same line as the "Braindump" and date headers (~59px from
+        //    the window top); this column has no header capsule to add the
+        //    offset those two get for free.
+        //  · floating (/item page) — the same card recipe as <main>, because
+        //    there it is a fixed overlay ABOVE the page's own content, so it
+        //    must stay opaque and framed. No drop shadow either way: the shell
+        //    column clips (overflow-hidden) for its width animation, which would
+        //    eat an outer cast.
+        className={
+          flat
+            ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
+            : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
+        }
+        {...props}
+      >
+        {children}
+      </aside>
+    );
+  }
+  return (
+    <ResponsiveModalContent className={className} overlayClassName={overlayClassName} {...props}>
+      {children}
+    </ResponsiveModalContent>
+  );
+}
+
+/** Radix needs a title/description in the a11y tree; the <aside> labels itself
+ *  (and a DialogTitle rendered outside a Dialog throws). */
+function SurfaceHeader({ panel, children }: { panel: boolean; children: ReactNode }) {
+  if (panel) return null;
+  return <ResponsiveModalHeader className="sr-only">{children}</ResponsiveModalHeader>;
+}
+
 /** `type` is the registry name ('task', 'habit', or a custom slug like 'goal'). */
 export type ItemDialogState =
   | { mode: 'add'; type: string; bucket?: TimeBucket; date?: Date }
@@ -137,12 +238,32 @@ interface ItemDialogProps {
   /** null = closed. Must be referentially stable per open (memoize upstream). */
   state: ItemDialogState | null;
   onOpenChange: (open: boolean) => void;
+  /** /item/[id] mounts its own dialog NEXT TO the same sections — it passes
+   *  false so the panel doesn't render a second live copy of them. */
+  withDetailSections?: boolean;
+  /**
+   * How the surface presents itself. 'modal' is the Radix dialog (desktop) /
+   * vaul drawer (mobile). 'panel' is the non-modal docked inspector: no portal,
+   * no overlay, no focus trap, no scroll lock — it is a layout sibling of the
+   * canvas, so the shell compresses the day rather than covering it, and you
+   * can keep working behind it. Edit-only; add is always a modal.
+   */
+  presentation?: 'modal' | 'panel';
+  /**
+   * Docked-panel only. When true the panel drops its card chrome (bg, border,
+   * radius) and sits flat on the app backdrop — the plane BELOW the <main>
+   * card, matching the braindump column. The shell passes it; the /item page
+   * leaves it false because its panel is a fixed overlay that must stay framed.
+   */
+  flat?: boolean;
 }
 
 /** Local form state. 'none' / '' are UI sentinels, translated to `undefined`
  *  at save time — they must never reach the store. */
-interface ItemDraft {
+export interface ItemDraft {
   title: string;
+  /** Free text the user and the agents both read. '' saves as `undefined`. */
+  notes: string;
   priority: Priority | 'none';
   /** Project or group NAME (containers are name-referenced pre-Phase-6). */
   container: string;
@@ -157,6 +278,73 @@ interface ItemDraft {
   newContainer: { show: boolean; name: string; icon: string };
 }
 
+/** Every draft key that maps to stored data — `newContainer` is transient UI. */
+export const DRAFT_KEYS = [
+  'title',
+  'notes',
+  'priority',
+  'container',
+  'startDate',
+  'timeBucket',
+  'startTime',
+  'duration',
+  'repeatFrequency',
+  'repeatDays',
+  'repeatMonthDay',
+  'timesPerDay',
+] as const satisfies readonly (keyof ItemDraft)[];
+
+/** Typed, not picked — these wait for blur instead of saving on every pause. */
+const TYPED_KEYS: readonly string[] = ['title', 'notes'];
+
+/**
+ * The store payload for the draft fields named in `keys`, and nothing else.
+ *
+ * Scoping the write is what makes a non-modal surface safe: the canvas behind
+ * the panel stays live, so a full-property write on every autosave would revert
+ * whatever the grid, an undo, or an agent did to the same item while it was
+ * open. The modal passes DRAFT_KEYS and gets the original whole-item save.
+ *
+ * Exported for tests/unit/item-panel-writes.test.ts — this is the invariant.
+ */
+export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<Task> {
+  const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
+  const updates: Partial<Task> = {};
+  if (wants('title')) updates.title = d.title.trim();
+  if (wants('notes')) updates.notes = d.notes.trim() || undefined;
+  if (wants('priority')) updates.priority = d.priority === 'none' ? undefined : d.priority;
+  if (wants('container')) updates.project = d.container === 'none' ? undefined : d.container;
+  // Save date as yyyy-MM-dd string to avoid timezone issues
+  if (wants('startDate'))
+    updates.startDate = d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined;
+  if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
+  if (wants('startTime')) updates.startTime = d.startTime || undefined;
+  // The three repeat fields are one control; touching any means writing all.
+  if (wants('repeatFrequency', 'repeatDays', 'repeatMonthDay')) {
+    updates.repeatFrequency = d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined;
+    updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
+    updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
+  }
+  return updates;
+}
+
+export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<Habit> {
+  const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
+  const updates: Partial<Habit> = {};
+  if (wants('title')) updates.title = d.title.trim();
+  if (wants('notes')) updates.notes = d.notes.trim() || undefined;
+  if (wants('container')) updates.group = d.container;
+  if (wants('timesPerDay')) updates.timesPerDay = parseInt(d.timesPerDay) || 1;
+  if (wants('startTime')) updates.startTime = d.startTime || undefined;
+  if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
+  if (wants('repeatFrequency', 'repeatDays', 'repeatMonthDay')) {
+    updates.repeatFrequency = d.repeatFrequency;
+    updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
+    updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
+  }
+  return updates;
+}
+
 interface AddSeed {
   bucket?: TimeBucket;
   date?: Date;
@@ -168,6 +356,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
   const config = getItemTypeConfig(type);
   return {
     title: '',
+    notes: '',
     priority: 'none',
     // Required containers fall back like the old add dialog: first group, else
     // legacy lowercase 'personal' (NOT orphanContainerFallback — changing this
@@ -212,6 +401,7 @@ function draftFromItem(item: Item): ItemDraft {
   }
   return {
     title: item.title,
+    notes: item.notes || '',
     priority: item.type !== 'habit' ? item.priority || 'none' : 'none',
     container: item.type === 'habit' ? item.group : item.project || 'none',
     startDate,
@@ -232,8 +422,15 @@ function draftFromItem(item: Item): ItemDraft {
   };
 }
 
-export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
+export function ItemDialog({
+  state,
+  onOpenChange,
+  withDetailSections = true,
+  presentation = 'modal',
+  flat = false,
+}: ItemDialogProps) {
   const {
+    items,
     addItem,
     addTask,
     addHabit,
@@ -257,6 +454,9 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     userTimezone,
   } = usePlannerStore();
 
+  const router = useRouter();
+  const pathname = usePathname();
+
   // Tab order: built-ins first (pinned), then user-defined types.
   const typeNames = useMemo(
     () => [...ALL_ITEM_TYPES, ...itemTypes.map((t) => t.name)],
@@ -278,8 +478,20 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
+  const isPanel = presentation === 'panel';
+  /** Only the docked panel saves itself; the modal still commits on submit. */
+  const autosaves = isPanel && mode === 'edit';
   const addPayload = last?.mode === 'add' ? last : null;
-  const editItem = last?.mode === 'edit' ? last.item : null;
+
+  // The payload carries a SNAPSHOT (ui-store stamps it at open time). Re-resolve
+  // it against the store so the surface shows live truth — the streak strip, the
+  // agent block, and a title changed by a drag elsewhere all used to sit stale
+  // until reopen. The snapshot stays the fallback: after a delete, `items` no
+  // longer has the row and the latch is what keeps the closing frame painted.
+  const latched = last?.mode === 'edit' ? last.item : null;
+  const editItem = latched
+    ? (items.find((i) => i.id === latched.id) ?? latched)
+    : null;
   const editConfig = editItem ? getItemTypeConfig(itemTypeName(editItem)) : null;
 
   const [activeType, setActiveType] = useState<string>('task');
@@ -288,13 +500,45 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   );
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
 
-  // Edit mode: re-init the whole draft from the item snapshot. Render-phase
-  // rather than an effect so switching edit targets (habit → task) never
-  // paints one frame of the previous item's draft in the new type's form.
-  const [seededItem, setSeededItem] = useState<Item | null>(null);
-  if (editItem && editItem !== seededItem) {
-    setSeededItem(editItem);
+  // ── Autosave bookkeeping (panel only; the modal still commits on submit) ────
+  // `pending` carries the (item, draft) pair rather than reading them off the
+  // latch, so a queued save can still be flushed for an item the panel has
+  // already retargeted away from.
+  /** Autosave has no button to press, so the surface says so out loud. */
+  const [saving, setSaving] = useState(false);
+  const pending = useRef<{ item: Item; draft: ItemDraft; keys: string[] } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flush = useRef<() => void>(() => {});
+
+  // Edit mode: re-init the whole draft from the item. Render-phase rather than
+  // an effect so switching edit targets (habit → task) never paints one frame of
+  // the previous item's draft in the new type's form.
+  //
+  // Keyed on the item's ID, not its identity. `editItem` is live now, so every
+  // write to it — including the panel's own autosave — hands back a new object;
+  // re-seeding on identity would rewrite the draft mid-keystroke and drop
+  // whatever was typed during the save. Closing releases the seed so reopening
+  // the same item re-reads it (the `!state` branch is `else if` for a reason:
+  // both firing in one render would re-seed and loop).
+  const [seededId, setSeededId] = useState<string | null>(null);
+  const [syncedItem, setSyncedItem] = useState<Item | null>(null);
+  if (state?.mode === 'edit' && editItem && editItem.id !== seededId) {
+    setSeededId(editItem.id);
+    setSyncedItem(editItem);
     setEditDraft(draftFromItem(editItem));
+    // Whatever was pending belongs to the item being left; the retarget effect
+    // flushes it, and the fresh target starts clean.
+    setSaving(false);
+  } else if (autosaves && editItem && editItem !== syncedItem) {
+    // The item moved under an OPEN panel — dragged on the canvas, resized,
+    // undone, or written by an agent. Non-modal means that is a normal event,
+    // not a conflict, so the panel follows along. Skipped while a save is
+    // queued: that draft is the newer truth and re-seeding would eat the
+    // keystrokes it hasn't committed yet.
+    setSyncedItem(editItem);
+    if (!saving) setEditDraft(draftFromItem(editItem));
+  } else if (!state && seededId !== null) {
+    setSeededId(null);
   }
 
   // Add mode: each open re-seeds only the type, buckets, and the anchored date.
@@ -365,6 +609,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
         [next]: {
           ...base,
           title: from.title,
+          notes: exposed('notes') ? from.notes : base.notes,
           priority: exposed('priority') ? from.priority : base.priority,
           startDate:
             config.dateAnchored && fromConfig.dateAnchored ? from.startDate : base.startDate,
@@ -387,7 +632,10 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
   const patchDraft = (type: string, updates: Partial<ItemDraft>) => {
     if (last?.mode === 'edit') {
-      setEditDraft((d) => (d ? { ...d, ...updates } : d));
+      if (!editDraft) return;
+      const next = { ...editDraft, ...updates };
+      setEditDraft(next);
+      if (autosaves) scheduleSave(editDraft, next, updates);
     } else {
       setAddDrafts((d) => ({
         ...d,
@@ -423,6 +671,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
       const create = type === 'task' ? addTask : addItem.bind(null, type);
       create({
         title: d.title.trim(),
+        notes: d.notes.trim() || undefined,
         priority: d.priority === 'none' ? undefined : d.priority,
         project: d.container === 'none' ? undefined : d.container,
         startDate: d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined,
@@ -436,6 +685,7 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     } else {
       addHabit({
         title: d.title.trim(),
+        notes: d.notes.trim() || undefined,
         group: d.container,
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
@@ -451,63 +701,95 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
     onOpenChange(false);
   };
 
-  const handleEditSave = () => {
-    if (!state || state.mode !== 'edit') return;
-    if (!editItem || !editDraft || !editDraft.title.trim()) return;
-    const d = editDraft;
+  /**
+   * The edit write, as a pure function of (item, draft, touched fields).
+   *
+   * Pure in `item` because the panel autosaves: a queued save has to be
+   * flushable for the item the panel already moved OFF of, which a closure over
+   * `editItem` could no longer name.
+   *
+   * Scoped by `keys` because the panel is NON-MODAL, which makes the draft a
+   * claim about the fields you touched rather than about the whole item. The
+   * canvas behind the panel is live — you can drag the very block you have open
+   * — so writing the full property set back would silently revert that drag (and
+   * an undo, and an agent's write) on the next keystroke's save. The modal has
+   * no such window and still passes DRAFT_KEYS for a byte-identical full save.
+   *
+   * Scheduling compares against the LIVE item, not the seeded snapshot: after
+   * the first autosave the snapshot's isScheduled/startTime are stale, and a
+   * stale comparison re-runs scheduleTask — which unconditionally clears
+   * inProjectBlock and the previous-slot fields — on every subsequent save.
+   */
+  const commitEdit = (item: Item, d: ItemDraft, keys: readonly string[]) => {
+    if (!d.title.trim()) return;
+    const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
+    const startTime = d.startTime || undefined;
 
     // Habit first; task and custom items share the task-shaped save path
     // (the store's task actions operate on any task-like item).
-    if (editItem.type !== 'habit') {
-      // Save date as yyyy-MM-dd string to avoid timezone issues
-      const startDateStr = d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined;
-      updateTask(editItem.id, {
-        title: d.title.trim(),
-        priority: d.priority === 'none' ? undefined : d.priority,
-        project: d.container === 'none' ? undefined : d.container,
-        startDate: startDateStr,
-        duration: d.duration ? parseInt(d.duration) : undefined,
-        startTime: d.startTime || undefined,
-        repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
-        repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
-        repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
-      });
+    if (item.type !== 'habit') {
+      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
+      const live = found && found.type !== 'habit' ? found : item;
+
+      const updates = taskUpdatesFromDraft(d, keys);
+      if (Object.keys(updates).length > 0) updateTask(item.id, updates);
 
       // Scheduling is a second pass through scheduleTask/unscheduleTask — they
-      // own isScheduled and the project-block/previous-slot clears.
-      const effectiveTimeBucket = d.startDate
-        ? d.timeBucket === 'none'
-          ? 'anytime'
-          : d.timeBucket
-        : undefined;
-      if (d.startDate && effectiveTimeBucket) {
-        if (effectiveTimeBucket !== editItem.timeBucket || !editItem.isScheduled) {
-          scheduleTask(editItem.id, effectiveTimeBucket, d.startTime || undefined);
-        } else if (d.startTime !== editItem.startTime) {
-          updateTask(editItem.id, { startTime: d.startTime || undefined });
+      // own isScheduled and the project-block/previous-slot clears — and only
+      // runs when something schedule-shaped actually moved.
+      if (wants('startDate', 'timeBucket', 'startTime')) {
+        const effectiveTimeBucket = d.startDate
+          ? d.timeBucket === 'none'
+            ? 'anytime'
+            : d.timeBucket
+          : undefined;
+        if (d.startDate && effectiveTimeBucket) {
+          if (effectiveTimeBucket !== live.timeBucket || !live.isScheduled) {
+            scheduleTask(item.id, effectiveTimeBucket, startTime);
+            // `''` is the draft's sentinel for "no specific time"; the store says
+            // `undefined`. Comparing them raw made this branch fire on every
+            // save for every bucket-only task.
+          } else if (startTime !== live.startTime) {
+            updateTask(item.id, { startTime });
+          }
+        } else if (!d.startDate && live.isScheduled) {
+          unscheduleTask(item.id);
         }
-      } else if (!d.startDate && editItem.isScheduled) {
-        unscheduleTask(editItem.id);
       }
     } else {
-      updateHabit(editItem.id, {
-        title: d.title.trim(),
-        group: d.container,
-        repeatFrequency: d.repeatFrequency,
-        repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
-        repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
-        timesPerDay: parseInt(d.timesPerDay) || 1,
-        startTime: d.startTime || undefined,
-        duration: d.duration ? parseInt(d.duration) : undefined,
-      });
+      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
+      const live = found && found.type === 'habit' ? found : item;
 
-      if (d.timeBucket !== 'none') {
-        scheduleHabit(editItem.id, d.timeBucket, d.startTime || undefined);
-      } else {
-        updateHabit(editItem.id, { timeBucket: undefined, startTime: undefined });
+      const updates = habitUpdatesFromDraft(d, keys);
+      if (Object.keys(updates).length > 0) updateHabit(item.id, updates);
+
+      // Same second pass, and the same reason for the equality guard the task
+      // branch has always had: scheduleHabit writes unconditionally.
+      if (wants('timeBucket', 'startTime')) {
+        if (d.timeBucket !== 'none') {
+          if (d.timeBucket !== live.timeBucket || startTime !== live.startTime) {
+            scheduleHabit(item.id, d.timeBucket, startTime);
+          }
+        } else if (live.timeBucket !== undefined) {
+          updateHabit(item.id, { timeBucket: undefined, startTime: undefined });
+        }
       }
     }
+  };
 
+  const handleEditSave = () => {
+    if (!state || state.mode !== 'edit') return;
+    if (!editItem || !editDraft || !editDraft.title.trim()) return;
+    // In the panel this button is "Done", not "Save": everything is already
+    // written or queued, so flush what's outstanding and leave. Committing
+    // unconditionally here would re-send a payload the timer already sent —
+    // a second round trip, a second webhook, a second activity row.
+    if (autosaves) {
+      flushNow();
+      onOpenChange(false);
+      return;
+    }
+    commitEdit(editItem, editDraft, DRAFT_KEYS);
     onOpenChange(false);
   };
 
@@ -999,6 +1281,139 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   const invalidCustomDays = (d: ItemDraft | null) =>
     !!d && d.repeatFrequency === 'custom' && d.repeatDays.length === 0;
 
+  // ── Autosave ───────────────────────────────────────────────────────────────
+  // The panel has no moment of commitment: you click a row on the grid behind it
+  // and expect the edit kept. So the surface saves itself, and Save becomes Done.
+
+  // Latest-value ref, so effect cleanups and timers can flush without having to
+  // list a new-every-render callback as a dependency (which would re-subscribe,
+  // and re-flush, on every render). Assigned in an effect, not during render.
+  useEffect(() => {
+    flush.current = () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const p = pending.current;
+      pending.current = null;
+      if (p) commitEdit(p.item, p.draft, p.keys);
+    };
+  });
+
+  /** Flush from a user gesture, where clearing the indicator is also correct. */
+  const flushNow = () => {
+    flush.current();
+    setSaving(false);
+  };
+
+  /**
+   * Queue the write for a draft change. Driven by the gesture that made the
+   * change rather than by an effect watching the draft — an effect would have to
+   * re-derive what changed, and would setState during render-sync.
+   */
+  const scheduleSave = (prev: ItemDraft, next: ItemDraft, updates: Partial<ItemDraft>) => {
+    if (!editItem) return;
+    const changed = Object.keys(updates).filter(
+      (k) =>
+        k !== 'newContainer' &&
+        JSON.stringify(prev[k as keyof ItemDraft]) !== JSON.stringify(next[k as keyof ItemDraft])
+    );
+    // Re-picking the value already set, or just opening the new-project input,
+    // is not a change worth a round trip and an activity row.
+    if (changed.length === 0) return;
+    // A titleless or half-specified item is a state you're passing through, not
+    // a save. Whatever was already pending stays pending.
+    if (!next.title.trim() || invalidCustomDays(next)) return;
+
+    // Accumulate across the whole queued batch: pick a project, then type a
+    // note, and one commit must carry both — but still only those two.
+    const carried =
+      pending.current && pending.current.item.id === editItem.id ? pending.current.keys : [];
+    pending.current = {
+      item: editItem,
+      draft: next,
+      keys: Array.from(new Set([...carried, ...changed])),
+    };
+    setSaving(true);
+
+    // Every commit that changes anything pushes a deep clone of the WHOLE items
+    // array onto a 50-deep undo stack (planner-store.ts, the subscribe() at the
+    // bottom). Saving on each typing pause would spend a session's entire
+    // history recording one sentence, evicting every real action — so typed
+    // fields settle on blur, with a long backstop for the note you wander away
+    // from mid-thought. Picked values land right away, because the row behind
+    // the panel should reflect the chip you just clicked.
+    const typedOnly = changed.every((k) => TYPED_KEYS.includes(k));
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(
+      () => {
+        saveTimer.current = null;
+        flush.current();
+        setSaving(false);
+      },
+      typedOnly ? 4000 : 500
+    );
+  };
+
+  // Retargeting to another item — or unmounting — commits what's pending for the
+  // one being left. `pending` holds its own (item, draft), so the write still
+  // lands on the right row after the panel has already moved on.
+  useEffect(() => {
+    if (!autosaves) return;
+    return () => flush.current();
+  }, [autosaves, editItem?.id]);
+
+  useEffect(() => {
+    if (!autosaves) return;
+    const onHide = () => flush.current();
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [autosaves]);
+
+  // Deleting the open item — from the grid, another tab, or an agent — has to
+  // close the panel. Nothing else would: the latch keeps painting the row that
+  // no longer exists, while updateItemAction silently drops every write for a
+  // missing id, so the footer would go on reporting saves that reach nothing.
+  useEffect(() => {
+    if (!autosaves || !latched) return;
+    if (items.some((i) => i.id === latched.id)) return;
+    pending.current = null;
+    onOpenChange(false);
+  }, [autosaves, latched, items, onOpenChange]);
+
+  // ⌘\ (workspace.focusItemPanel) is the keyboard's way in. Token-bumped from
+  // the ui-store, the same pattern the omnibar uses, so the command doesn't
+  // need a handle on this component.
+  const itemPanelFocusToken = useUIStore((s) => s.itemPanelFocusToken);
+  useEffect(() => {
+    if (!isPanel || !open || itemPanelFocusToken === 0) return;
+    document.querySelector<HTMLElement>('[data-testid="item-dialog"]')?.focus();
+  }, [isPanel, open, itemPanelFocusToken]);
+
+  // Escape closes the panel. Radix owned this for the modal; a plain <aside>
+  // has to say so itself.
+  useEffect(() => {
+    if (presentation !== 'panel' || !open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Radix renders every popover and menu inside this wrapper. While one is
+      // up it owns Escape, and the panel must not close out from under it.
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      // Non-modal means focus usually lives OUTSIDE the panel, so a bare window
+      // listener would make Escape-out-of-the-braindump close the inspector
+      // too. Claim the key only from inside the panel, or when nothing else
+      // holds focus.
+      const active = document.activeElement;
+      const inPanel = !!active?.closest('[data-testid="item-dialog"]');
+      if (!inPanel && active && active !== document.body) return;
+      flush.current();
+      setSaving(false);
+      onOpenChange(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [presentation, open, onOpenChange]);
+
   // One form renders at a time now: the active tab in add mode, the item's own
   // type in edit mode (the registry NAME, not the envelope discriminant).
   const activeTypeName = mode === 'add' ? activeType : editItem ? itemTypeName(editItem) : 'task';
@@ -1008,20 +1423,218 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
   const streakDays =
     editItem && editItem.type === 'habit' ? recentStreakDays(editItem) : [];
 
+  // Notes starts one line tall and grows with what you type. `field-sizing-content`
+  // alone would do it in Chrome; measuring keeps Safari from trapping a long note
+  // inside a single scrolling row. 'auto' first so it also SHRINKS on delete.
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const ta = notesRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
+  }, [activeDraft?.notes, activeTypeName, open]);
+
+  // ── Header pieces ────────────────────────────────────────────────────────
+  // Extracted so the docked panel can LEAD with the title — putting its heading
+  // in the same top band the canvas and braindump headers occupy — while the
+  // modal (and mobile drawer) keep the type-first layout unchanged.
+
+  const headerActions = (
+    <div className="ml-auto flex items-center gap-0.5">
+      {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
+        <Button
+          variant="ghost"
+          size="icon"
+          data-testid="item-dialog-open-page"
+          className="text-muted-foreground size-7"
+          onClick={() => {
+            onOpenChange(false);
+            router.push(`/item/${editItem.id}`);
+          }}
+        >
+          <Maximize2 className="size-3.5" />
+          <span className="sr-only">Open as page</span>
+        </Button>
+      )}
+
+      {mode === 'edit' && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              data-testid="item-dialog-more"
+              className="text-muted-foreground size-7"
+            >
+              <MoreHorizontal className="size-4" />
+              <span className="sr-only">More actions</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            {editConfig?.counters.streak && (
+              <DropdownMenuItem
+                data-testid="item-dialog-reset-streak"
+                onSelect={() => setShowResetConfirm(true)}
+              >
+                <RotateCcw className="size-3.5" />
+                Reset streak
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              variant="destructive"
+              data-testid="item-dialog-delete"
+              onSelect={() => setShowDeleteConfirm(true)}
+            >
+              <Trash2 className="size-3.5" />
+              Delete {activeConfig.label.toLowerCase()}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* The modal gets Radix's own close button; the panel has to bring one —
+          and it must flush before it goes. */}
+      {isPanel && (
+        <Button
+          variant="ghost"
+          size="icon"
+          data-testid="item-dialog-close"
+          className="text-muted-foreground size-7"
+          onClick={() => {
+            flushNow();
+            onOpenChange(false);
+          }}
+        >
+          <X className="size-4" />
+          <span className="sr-only">Close</span>
+        </Button>
+      )}
+    </div>
+  );
+
+  const typeControl =
+    mode === 'add' ? (
+      <PropertyChip
+        swatch={activeConfig.accent}
+        swatchShape="square"
+        label={activeConfig.label}
+        value={activeConfig.label}
+        testId="item-dialog-type-chip"
+        alwaysChevron
+        className="font-medium"
+        contentClassName="w-56"
+      >
+        {(close) => (
+          <>
+            {typeNames.map((t) => (
+              <ChipOption
+                key={t}
+                selected={t === activeTypeName}
+                testId="item-dialog-type-option"
+                value={t}
+                onSelect={() => {
+                  switchType(t);
+                  close();
+                }}
+              >
+                <ColorSquare color={getItemTypeConfig(t).accent} />
+                {getItemTypeConfig(t).label}
+                {t === activeTypeName && <Check className="ml-auto size-3.5" />}
+              </ChipOption>
+            ))}
+            {itemTypesAvailable && (
+              <>
+                <div className="bg-border -mx-1 my-1 h-px" />
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    close();
+                    // Replaces this dialog rather than stacking on it: openDialog
+                    // swaps the single active slot.
+                    useUIStore
+                      .getState()
+                      .openDialog({ type: 'manage-categories', tab: 'types' });
+                  }}
+                >
+                  <Plus className="size-3.5" />
+                  Manage types…
+                </ChipOption>
+              </>
+            )}
+          </>
+        )}
+      </PropertyChip>
+    ) : (
+      // Edit mode shows the type, it does not offer to change it: converting an
+      // item is a data decision (streaks, completion history), not a control.
+      <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
+        <ColorSquare color={activeConfig.accent} />
+        {activeConfig.label}
+      </span>
+    );
+
+  const modeLabel = (
+    <span className="text-muted-foreground text-xs">
+      {mode === 'add' ? 'New item' : 'Edit'}
+    </span>
+  );
+
+  // The title — the only required field, so it carries the dialog.
+  const titleInput = activeDraft ? (
+    <Input
+      id={titleId}
+      data-testid="item-dialog-title-input"
+      placeholder={activeConfig.form.titlePlaceholder}
+      value={activeDraft.title}
+      onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
+      onBlur={autosaves ? flushNow : undefined}
+      // The panel doesn't grab focus: it retargets on every row you click, and
+      // stealing the caret each time would fight the canvas you're still in.
+      autoFocus={presentation === 'modal' && (mode === 'edit' || activeTypeName === 'task')}
+      // dark:bg-transparent is load-bearing: Input carries dark:bg-input/30,
+      // which tailwind-merge keeps (different modifier) and which outranks
+      // bg-transparent on specificity.
+      className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
+    />
+  ) : null;
+
   return (
     <>
-      <ResponsiveModal open={open} onOpenChange={onOpenChange}>
-        <ResponsiveModalContent
+      <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange}>
+        <SurfaceContent
+          panel={isPanel}
+          open={open}
+          flat={isPanel && flat}
+          panelLabel={`${activeConfig.label} details`}
           data-testid="item-dialog"
           data-mode={mode}
           data-item-type={activeTypeName}
-          // top-[14vh] + translate-y-0 override the primitive's dead-center
-          // position (tailwind-merge drops the top-[50%]/translate pair): a
-          // quick capture is a command, not a ceremony, and the omnibar's
-          // latitude keeps your eyes near the day you're adding to. Desktop
-          // only — the mobile drawer ignores this className. max-h drops to
-          // 80vh so 14vh + dialog never presses the viewport bottom.
-          className="top-[14vh] w-[calc(100vw-2rem)] translate-y-0 sm:max-w-[460px] max-h-[80vh] overflow-y-auto overflow-x-hidden"
+          // A settle signal for tests and anything else that needs to know the
+          // panel has stopped owing the database a write.
+          data-autosave={autosaves ? (saving ? 'pending' : 'idle') : undefined}
+          // Two presentations of the one surface (item-surface-growth Phase 1),
+          // both plain className overrides on the primitive's centered base —
+          // tailwind-merge drops the conflicting top/left/translate pair:
+          //  · add  — top-[14vh]: a quick capture is a command, not a
+          //    ceremony, and the omnibar's latitude keeps your eyes near the
+          //    day you're adding to. max-h 80vh so 14vh + dialog never presses
+          //    the viewport bottom.
+          //  · edit — the right-docked panel, the item's home: full height,
+          //    slides in from the canvas edge, and the frost is dropped
+          //    (overlayClassName) so the app stays lit behind it. zoom-*-100
+          //    neutralizes the base zoom-*-95 by CASCADE order, not merge —
+          //    tw-animate utilities have no tailwind-merge class group.
+          // Desktop only — the mobile drawer ignores both.
+          className={
+            mode === 'add'
+              ? 'top-[14vh] w-[calc(100vw-2rem)] translate-y-0 sm:max-w-[460px] max-h-[80vh] overflow-y-auto overflow-x-hidden'
+              : 'inset-y-3 right-3 left-auto w-[460px] max-w-[calc(100vw-1.5rem)] translate-x-0 translate-y-0 content-start rounded-[20px] overflow-y-auto overflow-x-hidden data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 data-[state=open]:slide-in-from-right-6 data-[state=closed]:slide-out-to-right-6'
+          }
+          overlayClassName={
+            mode === 'edit'
+              ? 'bg-transparent backdrop-blur-none backdrop-saturate-100'
+              : undefined
+          }
           onKeyDown={(e) => {
             // defaultPrevented: Radix menu/select items preventDefault their own
             // Enter. Those events still bubble through the portal in React's
@@ -1033,7 +1646,12 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
               e.key === 'Enter' &&
               !e.shiftKey &&
               !e.defaultPrevented &&
-              !(e.target as HTMLElement).closest('[data-sub-input]')
+              !(e.target as HTMLElement).closest('[data-sub-input]') &&
+              // A focused control owns its own Enter. preventDefault here would
+              // cancel the browser's Enter→click for anything that only listens
+              // for click — every chip trigger, "Open as page", Done — so
+              // keyboard users got a save instead of the button they pressed.
+              !(e.target as HTMLElement).closest('button')
             ) {
               e.preventDefault();
               handleSubmit();
@@ -1041,8 +1659,9 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
           }}
         >
           {/* The visible heading is the title field itself; Radix still needs a
-              real title and description in the a11y tree. */}
-          <ResponsiveModalHeader className="sr-only">
+              real title and description in the a11y tree. The panel doesn't —
+              it labels itself, and DialogTitle outside a Dialog would throw. */}
+          <SurfaceHeader panel={isPanel}>
             <ResponsiveModalTitle>
               {mode === 'add' ? 'Add New' : `Edit ${editConfig?.label ?? 'Item'}`}
             </ResponsiveModalTitle>
@@ -1051,126 +1670,46 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
                 ? 'Add a new task or habit to your daily planner.'
                 : editConfig?.form.editDescription}
             </ResponsiveModalDescription>
-          </ResponsiveModalHeader>
+          </SurfaceHeader>
 
           {activeDraft && (
             <div className="flex flex-col gap-4">
-              {/* Header: what this is, and — in add mode — what else it could be. */}
-              <div className="flex items-center gap-2 pr-8">
-                {mode === 'add' ? (
-                  <PropertyChip
-                    swatch={activeConfig.accent}
-                    swatchShape="square"
-                    label={activeConfig.label}
-                    value={activeConfig.label}
-                    testId="item-dialog-type-chip"
-                    alwaysChevron
-                    className="font-medium"
-                    contentClassName="w-56"
-                  >
-                    {(close) => (
-                      <>
-                        {typeNames.map((t) => (
-                          <ChipOption
-                            key={t}
-                            selected={t === activeTypeName}
-                            testId="item-dialog-type-option"
-                            value={t}
-                            onSelect={() => {
-                              switchType(t);
-                              close();
-                            }}
-                          >
-                            <ColorSquare color={getItemTypeConfig(t).accent} />
-                            {getItemTypeConfig(t).label}
-                            {t === activeTypeName && <Check className="ml-auto size-3.5" />}
-                          </ChipOption>
-                        ))}
-                        {itemTypesAvailable && (
-                          <>
-                            <div className="bg-border -mx-1 my-1 h-px" />
-                            <ChipOption
-                              tone="muted"
-                              onSelect={() => {
-                                close();
-                                // Replaces this dialog rather than stacking on
-                                // it: openDialog swaps the single active slot.
-                                useUIStore
-                                  .getState()
-                                  .openDialog({ type: 'manage-categories', tab: 'types' });
-                              }}
-                            >
-                              <Plus className="size-3.5" />
-                              Manage types…
-                            </ChipOption>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </PropertyChip>
-                ) : (
-                  // Edit mode shows the type, it does not offer to change it:
-                  // converting an item is a data decision (streaks, completion
-                  // history), not a control.
-                  <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium">
-                    <ColorSquare color={activeConfig.accent} />
-                    {activeConfig.label}
-                  </span>
-                )}
-
-                <span className="text-muted-foreground text-xs">
-                  {mode === 'add' ? 'New item' : 'Edit'}
-                </span>
-
-                {mode === 'edit' && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        data-testid="item-dialog-more"
-                        className="text-muted-foreground ml-auto size-7"
-                      >
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">More actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-52">
-                      {editConfig?.counters.streak && (
-                        <DropdownMenuItem
-                          data-testid="item-dialog-reset-streak"
-                          onSelect={() => setShowResetConfirm(true)}
-                        >
-                          <RotateCcw className="size-3.5" />
-                          Reset streak
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        variant="destructive"
-                        data-testid="item-dialog-delete"
-                        onSelect={() => setShowDeleteConfirm(true)}
-                      >
-                        <Trash2 className="size-3.5" />
-                        Delete {activeConfig.label.toLowerCase()}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-
-              {/* Title — the only required field, so it carries the dialog. */}
-              <Input
-                id={titleId}
-                data-testid="item-dialog-title-input"
-                placeholder={activeConfig.form.titlePlaceholder}
-                value={activeDraft.title}
-                onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
-                autoFocus={mode === 'edit' || activeTypeName === 'task'}
-                // dark:bg-transparent is load-bearing: Input carries
-                // dark:bg-input/30, which tailwind-merge keeps (different
-                // modifier) and which outranks bg-transparent on specificity.
-                className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
-              />
+              {/* Header + title. The docked panel LEADS with the title so its
+                  cap-top lands on the same line as the braindump and date
+                  headings (the top band those two headers occupy); the type +
+                  mode ride BELOW it as a subtitle. The modal — and the mobile
+                  drawer — keep the original type-first row with the title under
+                  it. Both share the same pieces (headerActions / typeControl /
+                  modeLabel / titleInput), only reordered. */}
+              {isPanel && mode === 'edit' ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    {/* The same breathing dot the selected row carries, so the
+                        pane and its row read as one thing. Grey, its own element
+                        so the pulse's transform/opacity touches nothing else. */}
+                    <span
+                      aria-hidden
+                      data-testid="item-panel-selected-indicator"
+                      className="animate-row-selected-pulse size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                    />
+                    <div className="min-w-0 flex-1">{titleInput}</div>
+                    {headerActions}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {typeControl}
+                    {modeLabel}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 pr-8">
+                    {typeControl}
+                    {modeLabel}
+                    {headerActions}
+                  </div>
+                  {titleInput}
+                </>
+              )}
 
               {/* Streak — the habit's history in the row's own dot vocabulary,
                   reading the open-time snapshot (stale after a reset until
@@ -1202,26 +1741,78 @@ export function ItemDialog({ state, onOpenChange }: ItemDialogProps) {
 
               {renderChips(activeTypeName, activeDraft)}
 
+              {/* Notes — the field that existed in the schema, the API and the
+                  Beacon context from the start and had never had a surface. It
+                  reads as part of the item rather than a labelled control: same
+                  borderless treatment as the title, one line until you use it.
+                  data-sub-input so Enter makes a newline; ⌘/Ctrl+Enter still
+                  saves, since the footer promises Enter does. */}
+              {activeConfig.fields.includes('notes') && (
+                <Textarea
+                  ref={notesRef}
+                  rows={1}
+                  data-sub-input
+                  data-testid="item-dialog-notes"
+                  placeholder="Notes"
+                  value={activeDraft.notes}
+                  onChange={(e) => patchDraft(activeTypeName, { notes: e.target.value })}
+                  onBlur={autosaves ? flushNow : undefined}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
+                  // min-h-0 unpins the primitive's min-h-16; the rest is the
+                  // title Input's borderless recipe, dark:bg-transparent
+                  // included (dark:bg-input/30 survives tailwind-merge).
+                  className="min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 text-sm leading-relaxed shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+                />
+              )}
+
+              {/* The sections the modal never had room for — Phase 1 of the
+                  growth plan. Live data (subtasks/agent state read the store),
+                  while the property draft above stays snapshot-based. */}
+              {withDetailSections && mode === 'edit' && editItem && (
+                <ItemDetailSections item={editItem} withThread />
+              )}
+
               <div className="flex items-center justify-between gap-3 border-t pt-3">
-                <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-                  <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
-                    ↵
-                  </kbd>
-                  to {mode === 'add' ? 'add' : 'save'}
-                </span>
+                {autosaves ? (
+                  // No Save button means no moment of commitment, so the panel
+                  // has to be legible about it: it says it keeps up, and says
+                  // when it hasn't yet.
+                  <span
+                    // The only signal that anything is being persisted, so it
+                    // has to reach a screen reader too.
+                    role="status"
+                    aria-live="polite"
+                    className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex"
+                  >
+                    {saving ? 'Saving…' : 'Saves as you go'}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
+                    <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
+                      ↵
+                    </kbd>
+                    to {mode === 'add' ? 'add' : 'save'}
+                  </span>
+                )}
                 <Button
                   onClick={handleSubmit}
                   data-testid="item-dialog-submit"
+                  variant={autosaves ? 'outline' : 'default'}
                   disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
                   className="h-9 max-sm:w-full"
                 >
-                  {mode === 'add' ? `Add ${activeConfig.label}` : 'Save Changes'}
+                  {mode === 'add' ? `Add ${activeConfig.label}` : autosaves ? 'Done' : 'Save Changes'}
                 </Button>
               </div>
             </div>
           )}
-        </ResponsiveModalContent>
-      </ResponsiveModal>
+        </SurfaceContent>
+      </SurfaceRoot>
 
       {editConfig?.counters.streak && (
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>

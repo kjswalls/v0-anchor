@@ -17,9 +17,12 @@ import {
   deriveUntimedRows,
   formatClock,
   formatHourLabel,
+  toOverlapEntries,
   FULL_DAY_RANGE,
   type TimedEntry,
 } from '@/components/views/day-schedule';
+import { layoutOverlaps } from '@/lib/schedule-overlap';
+import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -108,12 +111,44 @@ function WeekScheduleColumn({
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
 
+  // Per COLUMN, not per week: seven days are seven independent grids, and memoising
+  // this one level up would rebuild all seven whenever any one day changed.
+  //
+  // Week gets ONE gesture for overlap — shingle right-flush, z ascending — because
+  // a 140px column cannot carry a percentage split and already spends its width on
+  // a wrapping title. No containment vocabulary here at all.
+  const overlap = useMemo(
+    () =>
+      layoutOverlaps(toOverlapEntries(col.timed), {
+        hourPx,
+        gridStartMin,
+        variant: 'week',
+      }),
+    [col.timed, hourPx, gridStartMin]
+  );
+
+  /*
+   * How wide this column has to be for its narrowest pane to clear the floor.
+   *
+   * Week does not cap its channels the way day does — it GROWS. A day holding a
+   * double-booking tiles it, and the two panes are each half a channel, so the
+   * column needs two channels' worth of width for both titles to stay readable.
+   * Every other day keeps its 140px minimum and the flex row settles it; if the
+   * total no longer fits the canvas, the grid scrolls, which it is already built
+   * to do (see the ScrollBar below).
+   */
+  const minColPx = useMemo(() => {
+    let widest = MIN_CHANNEL_PX;
+    for (const l of overlap.values()) {
+      if (l.widthFraction > 0) widest = Math.max(widest, MIN_CHANNEL_PX / l.widthFraction);
+    }
+    return Math.round(widest);
+  }, [overlap]);
+
   return (
     <div
-      className={cn(
-        'flex min-w-[140px] flex-1 flex-col transition-opacity',
-        !selected && 'opacity-60 hover:opacity-100'
-      )}
+      className={cn('flex flex-1 flex-col transition-opacity', !selected && 'opacity-60 hover:opacity-100')}
+      style={{ minWidth: minColPx }}
     >
       {/* Day header card */}
       <button
@@ -186,6 +221,7 @@ function WeekScheduleColumn({
               date={col.date}
               hourPx={hourPx}
               variant="week"
+              layout={overlap.get(entry.item.id)}
             />
           ))}
           {nowY !== null && <NowMarker top={nowY} />}

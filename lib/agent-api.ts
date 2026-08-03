@@ -15,6 +15,7 @@ import {
   deleteTask,
   deleteHabit,
   verifyItemOwnership,
+  validateParentItemId,
 } from './db'
 import type { Habit, KnownItemType, Task } from './planner-types'
 
@@ -128,6 +129,21 @@ export function makeAgentCreateHandler(type: KnownItemType) {
     const body = await parseBody(req, api.createSchema)
     if (body instanceof NextResponse) return body
 
+    // parentItemId is a reference, and Zod can only shape-check it — the
+    // ownership/type/nesting rules live in one guard shared with PATCH.
+    if (type === 'task') {
+      const parentId = (body.data as { parentItemId?: string | null }).parentItemId
+      if (typeof parentId === 'string') {
+        const problem = await validateParentItemId(
+          auth.serviceClient,
+          auth.userId,
+          (body.data.id as string | undefined) ?? null,
+          parentId
+        )
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+      }
+    }
+
     try {
       // createDefaults under the body, id resolved last (body id wins; the
       // schema turns id: null into undefined so it regenerates). Remaining
@@ -163,6 +179,22 @@ export function makeAgentItemHandlers(type: KnownItemType) {
 
     const body = await parseBody(req, api.updateSchema)
     if (body instanceof NextResponse) return body
+
+    // Same referential guard as create: without it, a hallucinated id can
+    // self-parent (item vanishes from every view), point at another user's
+    // row, or nest subtasks.
+    if (type === 'task') {
+      const parentId = (body.data as { parentItemId?: string | null }).parentItemId
+      if (typeof parentId === 'string') {
+        const problem = await validateParentItemId(
+          auth.serviceClient,
+          auth.userId,
+          id,
+          parentId
+        )
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+      }
+    }
 
     try {
       // Nulls survive validation only on clearable fields; the db-layer

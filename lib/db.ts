@@ -47,6 +47,11 @@ interface ItemRow {
   in_project_block?: boolean | null;
   previous_start_time?: string | null;
   previous_start_date?: string | null;
+  // item-surface growth (columns shipped in 007/019, woken 2026-07-29)
+  parent_item_id?: string | null;
+  assignee?: string | null;
+  ai_status?: string | null;
+  ai_result?: string | null;
   // habit-side
   group?: string | null;
   streak?: number | null;
@@ -84,6 +89,10 @@ function itemFromRow(row: ItemRow): Item {
       previousStartTime: row.previous_start_time ?? undefined,
       previousStartDate: row.previous_start_date ?? undefined,
       notes: row.notes ?? undefined,
+      parentItemId: row.parent_item_id ?? undefined,
+      assignee: row.assignee ?? undefined,
+      aiStatus: row.ai_status ?? undefined,
+      aiResult: row.ai_result ?? undefined,
     };
   }
   if (row.type === 'habit') {
@@ -99,6 +108,7 @@ function itemFromRow(row: ItemRow): Item {
       dailyCounts: row.daily_counts ?? {},
       timeBucket: (row.time_bucket ?? undefined) as Habit['timeBucket'],
       startTime: row.start_time ?? undefined,
+      duration: row.duration ?? undefined,
       repeatFrequency: (row.repeat_frequency ?? ITEM_TYPES.habit.defaultFrequency) as Habit['repeatFrequency'],
       repeatDays: row.repeat_days ?? undefined,
       repeatMonthDay: row.repeat_month_day ?? undefined,
@@ -133,6 +143,10 @@ function itemFromRow(row: ItemRow): Item {
     previousStartTime: row.previous_start_time ?? undefined,
     previousStartDate: row.previous_start_date ?? undefined,
     notes: row.notes ?? undefined,
+    parentItemId: row.parent_item_id ?? undefined,
+    assignee: row.assignee ?? undefined,
+    aiStatus: row.ai_status ?? undefined,
+    aiResult: row.ai_result ?? undefined,
   };
 }
 
@@ -151,6 +165,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       daily_counts: item.dailyCounts,
       time_bucket: item.timeBucket ?? null,
       start_time: item.startTime ?? null,
+      duration: item.duration ?? null,
       repeat_frequency: item.repeatFrequency,
       repeat_days: item.repeatDays ?? null,
       repeat_month_day: item.repeatMonthDay ?? null,
@@ -185,6 +200,10 @@ function itemToRow(userId: string, item: Item): ItemRow {
     previous_start_time: item.previousStartTime ?? null,
     previous_start_date: item.previousStartDate ?? null,
     notes: item.notes ?? null,
+    parent_item_id: item.parentItemId ?? null,
+    assignee: item.assignee ?? null,
+    ai_status: item.aiStatus ?? null,
+    ai_result: item.aiResult ?? null,
   };
 }
 
@@ -215,6 +234,10 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;
   if ('previousStartDate' in updates) row.previous_start_date = updates.previousStartDate ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
+  if ('parentItemId' in updates) row.parent_item_id = updates.parentItemId ?? null;
+  if ('assignee' in updates) row.assignee = updates.assignee ?? null;
+  if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
+  if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
   return row;
 }
 
@@ -229,6 +252,7 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   if ('dailyCounts' in updates && updates.dailyCounts != null) row.daily_counts = updates.dailyCounts;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
+  if ('duration' in updates) row.duration = updates.duration ?? null;
   if ('repeatFrequency' in updates && updates.repeatFrequency != null) row.repeat_frequency = updates.repeatFrequency;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
@@ -260,6 +284,92 @@ function legacyPayload(item: Item): Record<string, unknown> {
   return legacy;
 }
 
+// ---- Item activity feed (item_events, migration 023) ----
+// Write-through lives here because create/update/delete are already the single
+// choke point every mutation flows through (same reason the webhooks fire
+// here). Fire-and-forget: an event is a trace, never a reason a save fails.
+// Availability follows the itemTypesAvailable pattern — if the table isn't
+// there yet (migration not applied), flip a flag and go quiet instead of
+// erroring on every mutation.
+
+export interface ItemEvent {
+  id: string;
+  itemId: string;
+  itemType: string;
+  action: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+let itemEventsAvailable = true;
+const missingEventsTable = (error: { code?: string } | null) =>
+  error?.code === '42P01' || error?.code === 'PGRST205';
+
+/** False once a query proved the item_events table isn't deployed yet. */
+export function getItemEventsAvailable(): boolean {
+  return itemEventsAvailable;
+}
+
+function recordItemEvent(
+  itemId: string,
+  itemType: string,
+  action: string,
+  payload: Record<string, unknown>,
+  userId?: string,
+  client?: DbClient,
+): void {
+  if (!itemEventsAvailable) return;
+  const supabase = client ?? createClient();
+  // undefined values vanish in JSON serialization, which would turn an
+  // unassign ({ assignee: undefined }) into an empty payload — keep the key,
+  // as null, so the feed can say "Unassigned" instead of "Updated".
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v])
+  );
+  supabase
+    .from('item_events')
+    // user_id defaults to auth.uid() for browser sessions; the service-role
+    // path (agent API) has no auth context and must pass it explicitly.
+    .insert({
+      ...(userId ? { user_id: userId } : {}),
+      item_id: itemId,
+      item_type: itemType,
+      action,
+      payload: cleanPayload,
+    })
+    .then(
+      ({ error }: { error: { code?: string } | null }) => {
+        if (missingEventsTable(error)) itemEventsAvailable = false;
+        else if (error) console.error('item_events insert failed', error);
+      },
+      () => {} // network failure — the trace is best-effort by design
+    );
+}
+
+export async function fetchItemEvents(itemId: string, client?: DbClient): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('id, item_id, item_type, action, payload, created_at')
+    .eq('item_id', itemId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    itemId: row.item_id as string,
+    itemType: row.item_type as string,
+    action: row.action as string,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at as string,
+  }));
+}
+
 // ---- Item CRUD ----
 
 export async function fetchItems(userId: string, type?: string, client?: DbClient): Promise<Item[]> {
@@ -286,6 +396,7 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
     action: 'create',
     [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
   });
+  recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
 }
 
 export async function updateItem(
@@ -301,17 +412,59 @@ export async function updateItem(
   const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
   if (error) throw error;
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
+  recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
 }
 
 export async function deleteItem(id: string, type: string, userId?: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
+  const deletedAt = new Date().toISOString();
   const { error } = await supabase
     .from('items')
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: deletedAt })
     .eq('id', id)
     .eq('type', type);
   if (error) throw error;
+  // Cascade to subtasks HERE, not only in the store's deleteTask: agent
+  // deletes never pass through the store, and the store can only cascade
+  // children it has fetched. The FK's ON DELETE SET NULL covers only the hard
+  // purge — without this, a soft-deleted parent leaves live-but-unreachable
+  // children that resurrect as free-floating tasks when the purge runs.
+  // Idempotent alongside the store's own per-child deletes.
+  if (type !== 'habit') {
+    const { error: childError } = await supabase
+      .from('items')
+      .update({ deleted_at: deletedAt })
+      .eq('parent_item_id', id)
+      .is('deleted_at', null);
+    if (childError) console.error('subtask delete cascade failed', childError);
+  }
   if (userId) notifyItemChange(userId, type, { action: 'delete', id });
+  recordItemEvent(id, type, 'delete', {}, userId, client);
+}
+
+/**
+ * Referential guard for parentItemId writes (agent API): the parent must be
+ * the caller's own live task-like item that is not itself a subtask — the
+ * single-level rule is what makes cycles impossible — and an item can never
+ * be its own parent. Returns a human-readable problem, or null when valid.
+ */
+export async function validateParentItemId(
+  client: DbClient,
+  userId: string,
+  childId: string | null,
+  parentId: string,
+): Promise<string | null> {
+  if (childId && parentId === childId) return 'an item cannot be its own parent';
+  const { data, error } = await client
+    .from('items')
+    .select('id, type, parent_item_id, deleted_at')
+    .eq('id', parentId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data || data.deleted_at) return 'parent item not found';
+  if (data.type === 'habit') return 'a habit cannot have subtasks';
+  if (data.parent_item_id) return 'subtasks cannot be nested';
+  return null;
 }
 
 // No plugin notify, matching the legacy restoreTask/restoreHabit exactly — a
@@ -540,6 +693,7 @@ interface ProjectRow {
   user_id: string;
   name: string;
   emoji: string;
+  color?: string | null;
   repeat_frequency?: string | null;
   repeat_days?: number[] | null;
   repeat_month_day?: number | null;
@@ -553,6 +707,7 @@ function projectFromRow(row: ProjectRow): Project {
     id: row.id,
     name: row.name,
     emoji: row.emoji,
+    color: row.color ?? undefined,
     repeatFrequency: (row.repeat_frequency ?? undefined) as Project['repeatFrequency'],
     repeatDays: row.repeat_days ?? undefined,
     repeatMonthDay: row.repeat_month_day ?? undefined,
@@ -568,6 +723,7 @@ function projectToRow(userId: string, project: Project): ProjectRow {
     user_id: userId,
     name: project.name,
     emoji: project.emoji,
+    color: project.color ?? null,
     repeat_frequency: project.repeatFrequency ?? null,
     repeat_days: project.repeatDays ?? null,
     repeat_month_day: project.repeatMonthDay ?? null,
@@ -581,6 +737,7 @@ function projectUpdatesToRow(updates: Partial<Project>): Record<string, unknown>
   const row: Record<string, unknown> = {};
   if ('name' in updates) row.name = updates.name;
   if ('emoji' in updates) row.emoji = updates.emoji;
+  if ('color' in updates) row.color = updates.color ?? null;
   if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency ?? null;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;

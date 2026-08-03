@@ -422,6 +422,76 @@ verified, 2 blockers fixed pre-commit):
    (full refetch on any event), so this is unobservable today.
 7. schemaVersion 2 → 3; `items[]` served (optional in the schema).
 
+## Post-Phase-6: habits carry a duration (Kirby, 2026-07-29)
+
+The first capability change made *because* the types are unified rather than to
+preserve pre-unification behavior. `duration` joined `habitShape`, so a habit has a
+real length ("30 minutes of reading a day" is the habit, not a default someone
+tolerates) and its blocks resize on the grid like any other type's.
+
+- **No migration.** `items.duration int` has existed and been nullable since 019 with
+  no CHECK; habits were simply never written to it. Existing habits read `null` →
+  the registry's `defaultBlockMinutes`, so nothing changed for existing data.
+- **Additive for the pinned contract.** `toLegacyHabit` is spread-minus-discriminator,
+  so `/api/agent/context` `habits[]` carries `duration` automatically, and
+  `HabitCreateSchema` (which spreads habitShape) / `HabitUpdateSchema` accept it —
+  int-constrained like the task side, `clearable` on update since the column is
+  nullable. Verified against the pre-change published schema straight out of git: an
+  already-deployed plugin build `safeParse`s the new payload and **strips** the key
+  (Zod objects are non-strict), so locked decision #6 holds and no plugin rebuild is
+  forced. Duration-less habits still parse.
+- **`schedule.resizable` / `defaultBlockMinutes` were dead config** — declared since
+  Phase 1, read nowhere. Now consumed by `deriveTimedEntries` (both branches; the
+  habit one had a hardcoded 30) and by `ScheduleBlock`'s `canResize`, which asked
+  `isTask` and therefore could never honor a custom type that declared
+  `resizable: false`.
+- **`defaultBlockMinutes` corrected 60 → 30 for task/custom.** The 60 was
+  aspirational: the ItemDialog seeds `'30'` and the grid rendered duration-less
+  blocks at 30, so consuming the declared value as-written would have silently
+  doubled every such block. Value follows behavior. The dialog's two `'30'`
+  literals now read the registry too.
+- **The resize write dispatches per type.** `onResizeUp` called `updateTask`, which
+  the store narrows to task-like (non-habit) items — a habit resize would have
+  previewed and then silently no-opped on release.
+- **The dialog's duration gate is now purely capability-based.**
+  `config.dateAnchored && fields.includes('duration')` → `fields.includes('duration')`.
+  The `dateAnchored` half did two jobs: keeping duration behind a date for tasks,
+  which the enclosing Time chip already does (`showTime`), and hiding it from habits,
+  which had no field. Un-anchored types reach duration through the chip that is
+  always open to them. The Phase-4 note "duration is only reachable once a date is
+  set" still holds for date-anchored types.
+- Consequence to watch: habit blocks can now be tall, so `deriveGridRange` windows
+  can widen on habit-only days. `switchType` will also carry duration across a
+  task↔habit switch, which `exposed('duration')` now permits — correct, since both
+  types expose the field.
+
+**Row rail follow-on (same day).** Showing habit duration in rows forced the quiet
+rail's two shared columns to be re-cut, because the quantity slot held duration for
+tasks and the streak count for habits — one column, two units, scannable as neither:
+
+- **QUANTITY (48px) is now duration for every type.** One unit down the column.
+- **GLYPH went 16px → 36px** and holds flame + streak count for habits, priority
+  bars for tasks. Both types start their ink on the slot's left edge, so the bars
+  occupy exactly the first 16px as before and nothing that was already in the rail
+  moved; the slot only grew rightward, and the quantity column didn't shift. The
+  streak numeral stays `text-muted-foreground` rather than picking up the flame's
+  honey — pills.tsx quarantines colour to glyphs, never body text.
+- The `item-streak` testid moved with the count (habits.spec asserts bare numbers
+  against it) and renders even at streak 0, so it stays resolvable in every state.
+  `item-duration` is now on both types' quantity slot.
+- Only default-density rows carry the rail (week/compact and braindump gate it off),
+  and every default-density caller is full-canvas-width, so the +20px lands nowhere
+  tight.
+- **Every rail column now answers on hover** via `RailTooltip` (pills.tsx): an
+  eyebrow naming the column over the value in words, wearing `TooltipContent`'s
+  popover shell so it matches the DayDots keycap panel and the History popover.
+  The native `title` attributes on PriorityGlyph and TagDot are gone — they fired a
+  second, unstyleable tooltip in a system font at the OS's delay. The identity
+  column's eyebrow is the registry's `form.containerLabel`, so a task says
+  "Project" and a habit says "Group" without either being hardcoded. RailTooltip
+  adds no DOM around its trigger (Radix `asChild`), so the rail's flex children are
+  unchanged.
+
 ## Behavioral invariants to preserve (regression traps)
 
 - Priority/project filters hide ALL habits (day-items, search, braindump) — once habits

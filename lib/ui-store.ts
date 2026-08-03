@@ -39,6 +39,12 @@ interface UIStore {
   /** Bumping the token tells the omnibar to grab focus (⌘K etc.). */
   omnibarFocusToken: number;
   focusOmnibar: () => void;
+
+  /** Same trick for the docked item panel. It deliberately doesn't steal focus
+   *  when it opens — it retargets on every row you click — so this is the only
+   *  way to reach it from the keyboard without tabbing the whole grid. */
+  itemPanelFocusToken: number;
+  focusItemPanel: () => void;
 }
 
 export const useUIStore = create<UIStore>()((set, get) => ({
@@ -56,6 +62,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
 
   omnibarFocusToken: 0,
   focusOmnibar: () => set((s) => ({ omnibarFocusToken: s.omnibarFocusToken + 1 })),
+
+  itemPanelFocusToken: 0,
+  focusItemPanel: () => set((s) => ({ itemPanelFocusToken: s.itemPanelFocusToken + 1 })),
 }));
 
 /* Convenience helpers for common dialogs */
@@ -67,8 +76,10 @@ export const openAddDialog = (
 
 /**
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so
- * the discriminator is stamped here. The item is a snapshot captured at open
- * time — the dialog deliberately does not re-resolve it from the store.
+ * the discriminator is stamped here. What lands in the slot is a snapshot, but
+ * it is only an ADDRESS now: the surface re-resolves it from the store by id
+ * every render and re-seeds its draft only when that id changes. Calling this
+ * again with a different item is therefore how the docked panel retargets.
  *
  * Custom-type items ride the tasks projection (Phase 6b), so their runtime
  * discriminator must survive: stamping 'task' over a {type:'custom'} object

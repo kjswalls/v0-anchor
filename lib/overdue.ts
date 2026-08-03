@@ -115,6 +115,10 @@ export function selectOverdue(items: readonly Item[], todayStr: string): TaskIte
   const overdue = items.filter((t): t is TaskItem => {
     const config = getItemTypeConfig(itemTypeName(t));
     if (!config.carryForwardEligible || !config.dateAnchored) return false;
+    // Subtasks are invisible outside their parent's detail surface — they must
+    // not surface in the morning check or be mutated by the auto-age sweep
+    // ("move to today" on an item no view shows is a dead-end loop).
+    if ('parentItemId' in t && t.parentItemId) return false;
     // THE fix: recurring items never carry forward as a whole.
     if (isRecurring(t)) return false;
     if (t.status !== 'pending') return false;

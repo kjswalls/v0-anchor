@@ -135,6 +135,7 @@ describe('command registry', () => {
       'system_search',
       'report_bug',
       'toggle_view_scope',
+      'focus_item_panel',
     ];
     const actual = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of expected) expect(actual).toContain(id);

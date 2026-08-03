@@ -1,12 +1,20 @@
 'use client';
 
+import { useCallback, useMemo } from 'react';
 import { ChevronsRight } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
+import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { Button } from '@/components/ui/button';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useUIStore } from '@/lib/ui-store';
+import { useMediaQuery } from '@/hooks/use-media-query';
+import { cn } from '@/lib/utils';
+
+/** Below this the panel stops compressing the canvas and overlays it instead. */
+const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
 
 /**
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
@@ -14,9 +22,34 @@ import { useSidebarStore } from '@/lib/sidebar-store';
  */
 export function DesktopShell() {
   const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
+  const activeDialog = useUIStore((s) => s.activeDialog);
+  const closeDialog = useUIStore((s) => s.closeDialog);
+
+  // Editing an item IS the selection here — the ui-store's single dialog slot
+  // already gives us retargeting for free: clicking another row calls
+  // openEditFor, which replaces the slot, and the panel re-seeds off the new id.
+  // Memoized because ItemDialog's anti-flicker latch keys on payload identity.
+  const panelState = useMemo<ItemDialogState | null>(
+    () => (activeDialog?.type === 'edit-item' ? { mode: 'edit', item: activeDialog.item } : null),
+    [activeDialog]
+  );
+
+  // When the panel overlays rather than compresses, the canvas underneath is
+  // covered but still tabbable — so Tab would walk onto blocks and buttons
+  // hidden behind an opaque card. A class can't express that; `inert` can.
+  const panelOverlays = useMediaQuery(PANEL_OVERLAY_QUERY);
+
+  // Stable so the panel's Escape listener isn't torn down and re-bound on every
+  // store tick.
+  const handlePanelOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) closeDialog();
+    },
+    [closeDialog]
+  );
 
   return (
-    <div className="hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
+    <div className="relative hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
       <Sidebar />
 
       {/* Body panel: a big card floating over the backdrop/sidebar field. The
@@ -25,7 +58,10 @@ export function DesktopShell() {
           mode where a black drop barely registers); shadow-elev-panel adds the
           leftward cast onto the sidebar plus a left-edge light-catch, which the
           vertical-only elev family couldn't give it. */}
-      <main className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]">
+      <main
+        inert={panelOverlays && !!panelState}
+        className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
+      >
         {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
         {!leftSidebarOpen && leftSidebarHoverEnabled && (
           <div
@@ -81,6 +117,32 @@ export function DesktopShell() {
         </div>
 
       </main>
+
+      {/* The item panel — a sibling surface on the backdrop, not a layer over
+          the canvas. `flat` drops its card chrome so it reads as the paper
+          plane BELOW <main>, mirroring the braindump column on the left.
+          Opening it narrows <main> (flex-1 recomputes exactly as it does for
+          the braindump collapse), which is the whole argument for going
+          non-modal: the day stays visible, and stays workable, beside the item.
+
+          The width lives out here rather than in ItemDialog so the column can
+          animate both ways while its contents mount and unmount — the surface
+          itself must reach count 0 when closed.
+
+          Under 1180px there is no day left worth compressing (the overlap
+          layout starts wrapping panes below ~200px each), so the column goes
+          back to overlaying: an absolutely-positioned flex child occupies no
+          track, and <main> keeps its full width. -ml-3 eats the flex gap when
+          closed, the same 12px the collapsed sidebar deliberately keeps. */}
+      <div
+        className={cn(
+          'relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
+          panelState ? 'w-[420px]' : '-ml-3 w-0',
+          'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
+        )}
+      >
+        <ItemDialog presentation="panel" flat state={panelState} onOpenChange={handlePanelOpenChange} />
+      </div>
     </div>
   );
 }
