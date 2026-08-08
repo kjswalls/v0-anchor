@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType } from './planner-types';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 
@@ -59,6 +59,9 @@ interface ItemRow {
   daily_counts?: Record<string, number> | null;
   times_per_day?: number | null;
   current_day_count?: number | null;
+  // pausing (migration 024) — shared by every type
+  paused_at?: string | null;
+  paused_until?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -93,6 +96,8 @@ function itemFromRow(row: ItemRow): Item {
       assignee: row.assignee ?? undefined,
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
+      pausedAt: row.paused_at ?? undefined,
+      pausedUntil: row.paused_until ?? undefined,
     };
   }
   if (row.type === 'habit') {
@@ -115,6 +120,8 @@ function itemFromRow(row: ItemRow): Item {
       timesPerDay: row.times_per_day ?? undefined,
       currentDayCount: row.current_day_count ?? undefined,
       notes: row.notes ?? undefined,
+      pausedAt: row.paused_at ?? undefined,
+      pausedUntil: row.paused_until ?? undefined,
     };
   }
   return {
@@ -147,6 +154,8 @@ function itemFromRow(row: ItemRow): Item {
     assignee: row.assignee ?? undefined,
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
+    pausedAt: row.paused_at ?? undefined,
+    pausedUntil: row.paused_until ?? undefined,
   };
 }
 
@@ -172,6 +181,8 @@ function itemToRow(userId: string, item: Item): ItemRow {
       times_per_day: item.timesPerDay ?? null,
       current_day_count: item.currentDayCount ?? null,
       notes: item.notes ?? null,
+      paused_at: item.pausedAt ?? null,
+      paused_until: item.pausedUntil ?? null,
     };
   }
   // task and custom items share the task-shaped column set; the DB type is
@@ -204,6 +215,8 @@ function itemToRow(userId: string, item: Item): ItemRow {
     assignee: item.assignee ?? null,
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
+    paused_at: item.pausedAt ?? null,
+    paused_until: item.pausedUntil ?? null,
   };
 }
 
@@ -238,6 +251,14 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
   if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // Pause (migration 024). These allowlists gate EVERY write, the app's own
+  // included — updateItem early-returns on an empty mapped row, so omitting
+  // them here would make the store's pause verb (and every undo/redo restore
+  // of pause state) an optimistic no-op that silently unpauses on reload.
+  // Nulls pass through: clearing is how a resume that predates the
+  // normalize-to-today convention would unset the pair.
+  if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
+  if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
   return row;
 }
 
@@ -259,6 +280,10 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   if ('timesPerDay' in updates) row.times_per_day = updates.timesPerDay ?? null;
   if ('currentDayCount' in updates) row.current_day_count = updates.currentDayCount ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
+  // Pause — see the task allowlist's note; habits need their own entries
+  // because the two lists are deliberately never merged.
+  if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
+  if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
   return row;
 }
 
@@ -621,6 +646,343 @@ export async function updateItemType(
 export async function deleteItemType(id: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase.from('item_types').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ---- Programs & routines (migration 024) ----
+//
+// Two container kinds that gate VISIBILITY rather than describe an item, plus
+// their membership join tables. Deliberately unlike projects/habit_groups in
+// two ways: members are referenced by id (name references are why renaming
+// those is still parked), and membership is many-to-many.
+//
+// No webhook notifications, unlike createProject/createHabitGroup below. The
+// event-name enum is closed and notifyPlugins silently DROPS names a plugin
+// never registered, so a 'programs.updated' would go nowhere; and a synthetic
+// tasks.updated nudge is equally dead, because every write here is
+// browser-initiated while the plugin registry is an in-memory Map that only
+// ever exists server-side. Deployed plugins refresh on their own ~5-minute
+// TTL. See plan decision 6.
+//
+// Like fetchItemTypes, the fetches return null (not []) when the migration
+// isn't applied yet, so the store can gate the WRITE path too — a pre-migration
+// create would otherwise appear to succeed and vanish on reload.
+
+interface RoutineRow {
+  id: string;
+  user_id: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  paused_at?: string | null;
+  paused_until?: string | null;
+  sort_order?: number | null;
+}
+
+interface ProgramRow {
+  id: string;
+  user_id: string;
+  name: string;
+  icon?: string | null;
+  color?: string | null;
+  state: string;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  sort_order?: number | null;
+}
+
+/**
+ * Reconcile one membership join table against the desired member list.
+ *
+ * Membership arrives from the app as an array on the container (routine.itemIds
+ * and friends) but lives normalized in the DB, so a container "update" carrying
+ * members is a set difference, not a column write — a column-mapper-style
+ * update would silently drop the key and undo of a membership change would
+ * never reach the DB.
+ */
+async function reconcileMembership(
+  supabase: DbClient,
+  table: string,
+  ownerCol: string,
+  ownerId: string,
+  memberCol: string,
+  userId: string,
+  desired: string[],
+  ordered = false,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from(table)
+    .select(memberCol)
+    .eq(ownerCol, ownerId)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const current = new Set((data as Record<string, string>[] ?? []).map((r) => r[memberCol]));
+  const desiredSet = new Set(desired);
+  const removed = [...current].filter((id) => !desiredSet.has(id));
+
+  if (removed.length > 0) {
+    const { error: deleteError } = await supabase
+      .from(table)
+      .delete()
+      .eq(ownerCol, ownerId)
+      .eq('user_id', userId)
+      .in(memberCol, removed);
+    if (deleteError) throw deleteError;
+  }
+  if (desired.length === 0) return;
+
+  // Upsert rather than insert-the-difference: it adds new members AND rewrites
+  // sort_order for existing ones in a single statement, so a reorder costs the
+  // same as an add.
+  const rows = desired.map((memberId, i) => ({
+    [ownerCol]: ownerId,
+    [memberCol]: memberId,
+    user_id: userId,
+    ...(ordered ? { sort_order: i } : {}),
+  }));
+  const onConflict = `${ownerCol},${memberCol}`;
+  const { error: upsertError } = await supabase.from(table).upsert(rows, { onConflict });
+  if (!upsertError) return;
+
+  // One dead id must not wedge the batch. A member hard-purged since the store
+  // last read (23503) is the realistic case — an undo can replay a membership
+  // snapshot whose item left the 30-day trash meanwhile. Retry row by row and
+  // skip only the casualties.
+  for (const row of rows) {
+    const { error: rowError } = await supabase.from(table).upsert(row, { onConflict });
+    if (rowError) console.warn(`${table} membership row skipped`, row, rowError.message);
+  }
+}
+
+export async function fetchRoutines(userId: string, client?: DbClient): Promise<Routine[] | null> {
+  const supabase = client ?? createClient();
+  const [routines, members] = await Promise.all([
+    supabase
+      .from('routines')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('routine_items')
+      .select('routine_id, item_id, sort_order')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true, nullsFirst: false }),
+  ]);
+  if (routines.error || members.error) {
+    console.warn(
+      'fetchRoutines failed (migration 024 applied?):',
+      (routines.error ?? members.error).message,
+    );
+    return null;
+  }
+  const itemIdsByRoutine = new Map<string, string[]>();
+  for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
+    const list = itemIdsByRoutine.get(row.routine_id);
+    if (list) list.push(row.item_id);
+    else itemIdsByRoutine.set(row.routine_id, [row.item_id]);
+  }
+  return (routines.data as RoutineRow[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    icon: row.icon ?? undefined,
+    color: row.color ?? undefined,
+    pausedAt: row.paused_at ?? undefined,
+    pausedUntil: row.paused_until ?? undefined,
+    sortOrder: row.sort_order ?? undefined,
+    itemIds: itemIdsByRoutine.get(row.id) ?? [],
+  }));
+}
+
+export async function createRoutine(userId: string, routine: Routine, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('routines').insert({
+    id: routine.id,
+    user_id: userId,
+    name: routine.name,
+    icon: routine.icon ?? null,
+    color: routine.color ?? null,
+    paused_at: routine.pausedAt ?? null,
+    paused_until: routine.pausedUntil ?? null,
+    sort_order: routine.sortOrder ?? null,
+  });
+  if (error) throw error;
+  if (routine.itemIds.length > 0) {
+    await reconcileMembership(
+      supabase, 'routine_items', 'routine_id', routine.id, 'item_id', userId, routine.itemIds, true,
+    );
+  }
+}
+
+export async function updateRoutine(
+  userId: string,
+  id: string,
+  updates: Partial<Routine>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('name' in updates) row.name = updates.name;
+  if ('icon' in updates) row.icon = updates.icon ?? null;
+  if ('color' in updates) row.color = updates.color ?? null;
+  if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
+  if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
+  if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if (Object.keys(row).length > 0) {
+    const { error } = await supabase.from('routines').update(row).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+  if (updates.itemIds) {
+    await reconcileMembership(
+      supabase, 'routine_items', 'routine_id', id, 'item_id', userId, updates.itemIds, true,
+    );
+  }
+}
+
+export async function deleteRoutine(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  // Soft delete only: membership rows deliberately survive so a restore within
+  // the 30-day window brings the routine back intact. The resolver ignores
+  // trashed containers, so the suppression they caused lifts meanwhile.
+  const { error } = await supabase
+    .from('routines')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function restoreRoutine(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('routines')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function fetchPrograms(userId: string, client?: DbClient): Promise<Program[] | null> {
+  const supabase = client ?? createClient();
+  const [programs, itemMembers, routineMembers] = await Promise.all([
+    supabase
+      .from('programs')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true }),
+    supabase.from('program_items').select('program_id, item_id').eq('user_id', userId),
+    supabase.from('program_routines').select('program_id, routine_id').eq('user_id', userId),
+  ]);
+  if (programs.error || itemMembers.error || routineMembers.error) {
+    console.warn(
+      'fetchPrograms failed (migration 024 applied?):',
+      (programs.error ?? itemMembers.error ?? routineMembers.error).message,
+    );
+    return null;
+  }
+  const groupBy = (rows: Record<string, string>[], key: string) => {
+    const map = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = map.get(row.program_id);
+      if (list) list.push(row[key]);
+      else map.set(row.program_id, [row[key]]);
+    }
+    return map;
+  };
+  const itemIdsByProgram = groupBy((itemMembers.data ?? []) as Record<string, string>[], 'item_id');
+  const routineIdsByProgram = groupBy((routineMembers.data ?? []) as Record<string, string>[], 'routine_id');
+  return (programs.data as ProgramRow[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    icon: row.icon ?? undefined,
+    color: row.color ?? undefined,
+    state: row.state as Program['state'],
+    startsOn: row.starts_on ?? undefined,
+    endsOn: row.ends_on ?? undefined,
+    sortOrder: row.sort_order ?? undefined,
+    itemIds: itemIdsByProgram.get(row.id) ?? [],
+    routineIds: routineIdsByProgram.get(row.id) ?? [],
+  }));
+}
+
+export async function createProgram(userId: string, program: Program, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.from('programs').insert({
+    id: program.id,
+    user_id: userId,
+    name: program.name,
+    icon: program.icon ?? null,
+    color: program.color ?? null,
+    state: program.state,
+    starts_on: program.startsOn ?? null,
+    ends_on: program.endsOn ?? null,
+    sort_order: program.sortOrder ?? null,
+  });
+  if (error) throw error;
+  if (program.itemIds.length > 0) {
+    await reconcileMembership(
+      supabase, 'program_items', 'program_id', program.id, 'item_id', userId, program.itemIds,
+    );
+  }
+  if (program.routineIds.length > 0) {
+    await reconcileMembership(
+      supabase, 'program_routines', 'program_id', program.id, 'routine_id', userId, program.routineIds,
+    );
+  }
+}
+
+export async function updateProgram(
+  userId: string,
+  id: string,
+  updates: Partial<Program>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('name' in updates) row.name = updates.name;
+  if ('icon' in updates) row.icon = updates.icon ?? null;
+  if ('color' in updates) row.color = updates.color ?? null;
+  if ('state' in updates && updates.state != null) row.state = updates.state;
+  if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
+  if ('endsOn' in updates) row.ends_on = updates.endsOn ?? null;
+  if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if (Object.keys(row).length > 0) {
+    const { error } = await supabase.from('programs').update(row).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+  if (updates.itemIds) {
+    await reconcileMembership(
+      supabase, 'program_items', 'program_id', id, 'item_id', userId, updates.itemIds,
+    );
+  }
+  if (updates.routineIds) {
+    await reconcileMembership(
+      supabase, 'program_routines', 'program_id', id, 'routine_id', userId, updates.routineIds,
+    );
+  }
+}
+
+export async function deleteProgram(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('programs')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function restoreProgram(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('programs')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .eq('user_id', userId);
   if (error) throw error;
 }
 

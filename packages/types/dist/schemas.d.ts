@@ -75,7 +75,106 @@ export declare const HabitGroupSchema: z.ZodObject<{
     emoji: string;
     color?: string | undefined;
 }>;
+export declare const ProgramStateSchema: z.ZodEnum<["auto", "active", "paused"]>;
+export declare const RoutineSchema: z.ZodObject<{
+    /** Member item ids (routine_items), in routine-internal order. */
+    itemIds: z.ZodArray<z.ZodString, "many">;
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
+    id: z.ZodString;
+    name: z.ZodString;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodString>;
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.ZodOptional<z.ZodString>;
+    sortOrder: z.ZodOptional<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    itemIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    itemIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
+}>;
+export declare const ProgramSchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    icon: z.ZodOptional<z.ZodString>;
+    color: z.ZodOptional<z.ZodString>;
+    sortOrder: z.ZodOptional<z.ZodNumber>;
+    /**
+     * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
+     * are manual overrides that always win, because flipping a program by hand
+     * must never be second-guessed by a date. Several programs may be active at
+     * once — the resolver unions their members.
+     */
+    state: z.ZodEnum<["auto", "active", "paused"]>;
+    /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
+    startsOn: z.ZodOptional<z.ZodString>;
+    endsOn: z.ZodOptional<z.ZodString>;
+    /** Directly-held item ids (program_items). */
+    itemIds: z.ZodArray<z.ZodString, "many">;
+    /** Held routine ids (program_routines) — their members ride along. */
+    routineIds: z.ZodArray<z.ZodString, "many">;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    itemIds: string[];
+    state: "auto" | "active" | "paused";
+    routineIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    itemIds: string[];
+    state: "auto" | "active" | "paused";
+    routineIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    startsOn?: string | undefined;
+    endsOn?: string | undefined;
+}>;
 export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -118,6 +217,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -143,6 +244,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -168,6 +271,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -193,6 +298,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -206,6 +313,19 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiResult?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
@@ -238,6 +358,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -256,6 +378,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -274,6 +398,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -292,6 +418,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -300,7 +428,22 @@ export declare const TASK_FIELDS: (keyof z.infer<typeof TaskSchema>)[];
 export declare const HABIT_FIELDS: (keyof z.infer<typeof HabitSchema>)[];
 export declare const PROJECT_FIELDS: (keyof z.infer<typeof ProjectSchema>)[];
 export declare const HABIT_GROUP_FIELDS: (keyof z.infer<typeof HabitGroupSchema>)[];
+export declare const ROUTINE_FIELDS: (keyof z.infer<typeof RoutineSchema>)[];
+export declare const PROGRAM_FIELDS: (keyof z.infer<typeof ProgramSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -345,6 +488,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -371,6 +516,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -397,6 +544,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -423,6 +572,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -436,6 +587,19 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiResult?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
@@ -470,6 +634,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -489,6 +655,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -508,6 +676,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -527,11 +697,26 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
 export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -579,6 +764,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -606,6 +793,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -633,6 +822,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -660,6 +851,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -673,6 +866,19 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiResult?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -717,6 +923,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -743,6 +951,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -755,6 +965,19 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
 }>, z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
@@ -789,6 +1012,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -808,10 +1033,25 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, z.ZodObject<{
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -859,6 +1099,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -886,6 +1128,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -912,6 +1156,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -939,6 +1185,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -958,6 +1206,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -984,6 +1234,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1011,6 +1263,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     notes?: string | null | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1030,6 +1284,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1069,7 +1325,7 @@ export declare const ItemTypeDefSchema: z.ZodObject<{
     icon?: string | undefined;
     config?: Record<string, unknown> | undefined;
 }>;
-export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
+export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     title: z.ZodString;
     status: z.ZodOptional<z.ZodEnum<["pending", "completed", "cancelled"]>>;
@@ -1080,6 +1336,19 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     parentItemId: z.ZodOptional<z.ZodString>;
     aiStatus: z.ZodOptional<z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>>;
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     completedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     skippedDates: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
@@ -1096,7 +1365,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -1197,7 +1466,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
 }>;
-export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
+export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     title: z.ZodString;
     group: z.ZodOptional<z.ZodString>;
@@ -1212,10 +1481,23 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<{
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     timesPerDay: z.ZodOptional<z.ZodNumber>;
     currentDayCount: z.ZodOptional<z.ZodNumber>;
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.ZodOptional<z.ZodString>;
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.ZodOptional<z.ZodString>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
-}, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "done" | "skipped" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -1500,6 +1782,19 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     userTimezone: z.ZodOptional<z.ZodString>;
     fetchedAt: z.ZodString;
     tasks: z.ZodArray<z.ZodEffects<z.ZodObject<{
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
         repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1542,6 +1837,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1567,6 +1864,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1592,6 +1891,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1617,6 +1918,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1630,6 +1933,19 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiResult?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
         id: z.ZodString;
         title: z.ZodString;
         group: z.ZodString;
@@ -1662,6 +1978,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1680,6 +1998,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1698,6 +2018,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1716,6 +2038,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1772,6 +2096,19 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         color?: string | undefined;
     }>, "many">;
     items: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
         repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1816,6 +2153,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1842,6 +2181,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1854,6 +2195,19 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
     }>, z.ZodObject<{
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
         id: z.ZodString;
         title: z.ZodString;
         group: z.ZodString;
@@ -1888,6 +2242,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -1907,10 +2263,25 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, z.ZodObject<{
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
         repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
         repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
         repeatMonthDay: z.ZodOptional<z.ZodNumber>;
@@ -1958,6 +2329,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -1985,6 +2358,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2011,6 +2386,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2038,6 +2415,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2057,6 +2436,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2083,6 +2464,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2110,6 +2493,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2129,6 +2514,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2159,6 +2546,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2186,6 +2575,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2224,6 +2615,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2251,6 +2644,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2270,6 +2665,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2300,6 +2697,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2327,6 +2726,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2365,6 +2766,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2392,6 +2795,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         notes?: string | null | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -2411,6 +2816,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;

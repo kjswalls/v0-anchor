@@ -8,6 +8,9 @@ export {
   RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
+  ProgramStateSchema,
+  RoutineSchema,
+  ProgramSchema,
   TaskSchema,
   HabitSchema,
   TaskItemSchema,
@@ -24,7 +27,14 @@ export {
 } from './schemas.js'
 
 // Schema-derived field lists (values, not types)
-export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS } from './schemas.js'
+export {
+  TASK_FIELDS,
+  HABIT_FIELDS,
+  PROJECT_FIELDS,
+  HABIT_GROUP_FIELDS,
+  ROUTINE_FIELDS,
+  PROGRAM_FIELDS,
+} from './schemas.js'
 
 // Types (inferred from schemas — no duplication)
 import { z } from 'zod'
@@ -37,6 +47,9 @@ import {
   RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
+  ProgramStateSchema,
+  RoutineSchema,
+  ProgramSchema,
   TaskSchema,
   HabitSchema,
   TaskItemSchema,
@@ -56,6 +69,9 @@ export type RepeatFrequency  = z.infer<typeof RepeatFrequencySchema>
 export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
 export type Project          = z.infer<typeof ProjectSchema>
 export type HabitGroupType   = z.infer<typeof HabitGroupSchema>
+export type ProgramState     = z.infer<typeof ProgramStateSchema>
+export type Routine          = z.infer<typeof RoutineSchema>
+export type Program          = z.infer<typeof ProgramSchema>
 export type Task             = z.infer<typeof TaskSchema>
 export type Habit            = z.infer<typeof HabitSchema>
 export type TaskItem         = z.infer<typeof TaskItemSchema>

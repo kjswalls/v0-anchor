@@ -26,6 +26,35 @@ export const RecurrenceFieldsSchema = z.object({
     // strips the key as unknown.
     skippedDates: z.array(z.string()).optional(),
 });
+// ── Shared pause fields ────────────────────────────────────────────────────────
+// Suppression state for programs & routines (migration 024). It lives here and
+// NEVER in `status`: task pending|completed|cancelled and habit
+// pending|done|skipped are frozen external contracts — an unknown enum value
+// makes the OpenClaw plugin's whole-context safeParse throw and bricks its
+// cache. Same shape skippedDates took for per-date skips.
+//
+// Spread into BOTH taskShape and habitShape below. That is two edit sites, not
+// one: habitShape declares its recurrence fields inline and does not consume
+// RecurrenceFieldsSchema (compare skippedDates, which appears in both places),
+// so a single shared-block edit would silently reach task + custom only.
+//
+// Additive-optional, so an already-deployed plugin build strips both keys
+// rather than rejecting them.
+const pauseFields = {
+    /**
+     * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+     * resolver's LOWER bound, without which a pause started in August would
+     * retro-suppress every unmarked occurrence back through July.
+     */
+    pausedAt: z.string().optional(),
+    /**
+     * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+     * auto-resume needs no cron. A manual resume sets this to today rather than
+     * clearing pausedAt, keeping the interval on the row for the auto-age
+     * sweep's resume grace.
+     */
+    pausedUntil: z.string().optional(),
+};
 // custom frequency requires at least one repeat day — shared by every item shape
 const requireCustomDays = (data, ctx) => {
     if (data.repeatFrequency === 'custom' && (!data.repeatDays || data.repeatDays.length === 0)) {
@@ -55,6 +84,49 @@ export const HabitGroupSchema = z.object({
     name: z.string(),
     emoji: z.string(),
     color: z.string().optional(),
+});
+// ── Programs & routines (migration 024) ────────────────────────────────────────
+// Collections that gate visibility rather than describe an item. A ROUTINE is a
+// small reusable set (a morning routine); a PROGRAM is a period of life (summer,
+// school year) holding items and/or routines. Membership is many-to-many and
+// referenced BY ID — the older containers (items.project, items."group") hold
+// container NAMES, which is exactly why renaming them is still parked.
+//
+// The member arrays are the app-side view of the join tables; the DB keeps them
+// normalized in routine_items / program_items / program_routines.
+export const ProgramStateSchema = z.enum(['auto', 'active', 'paused']);
+export const RoutineSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.string().optional(),
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.string().optional(),
+    sortOrder: z.number().optional(),
+    ...pauseFields,
+    /** Member item ids (routine_items), in routine-internal order. */
+    itemIds: z.array(z.string()),
+});
+export const ProgramSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    icon: z.string().optional(),
+    color: z.string().optional(),
+    sortOrder: z.number().optional(),
+    /**
+     * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
+     * are manual overrides that always win, because flipping a program by hand
+     * must never be second-guessed by a date. Several programs may be active at
+     * once — the resolver unions their members.
+     */
+    state: ProgramStateSchema,
+    /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
+    startsOn: z.string().optional(),
+    endsOn: z.string().optional(),
+    /** Directly-held item ids (program_items). */
+    itemIds: z.array(z.string()),
+    /** Held routine ids (program_routines) — their members ride along. */
+    routineIds: z.array(z.string()),
 });
 // Field shapes are shared between the legacy per-kind schemas (TaskSchema /
 // HabitSchema — the pinned external contract the OpenClaw plugin validates
@@ -93,6 +165,7 @@ const taskShape = {
     /** Agent's latest result/summary for this item. */
     aiResult: z.string().optional(),
     ...RecurrenceFieldsSchema.shape,
+    ...pauseFields,
 };
 const habitShape = {
     id: z.string(),
@@ -122,6 +195,7 @@ const habitShape = {
     timesPerDay: z.number().optional(),
     currentDayCount: z.number().optional(),
     notes: NotesSchema,
+    ...pauseFields,
 };
 export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays);
 export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays);
@@ -131,6 +205,8 @@ export const TASK_FIELDS = Object.keys(taskShape);
 export const HABIT_FIELDS = Object.keys(habitShape);
 export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape);
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape);
+export const ROUTINE_FIELDS = Object.keys(RoutineSchema.shape);
+export const PROGRAM_FIELDS = Object.keys(ProgramSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
 // One entity, discriminated by `type`. The task/habit branches are structurally
 // identical to Task/Habit so projections (item → legacy shape) are plain field
@@ -203,6 +279,15 @@ export const TaskCreateSchema = z
     parentItemId: z.string().uuid().optional(),
     aiStatus: z.enum(['queued', 'working', 'blocked', 'done', 'failed']).optional(),
 })
+    // Create schemas SPREAD the shapes, so anything added to taskShape becomes an
+    // accepted create-body field automatically (that propagation is how habit
+    // `duration` reached the agent API for free). Pause is different: an agent
+    // could otherwise POST a born-paused item — invisible on every surface the
+    // moment it exists — and the 201 echo would report pause state back. Agent
+    // write access to pausing is a deliberate Phase 4 decision, so strip it here.
+    // PATCH needs no equivalent: TaskUpdateSchema/HabitUpdateSchema are
+    // hand-enumerated and drop unknown keys.
+    .omit({ pausedAt: true, pausedUntil: true })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
     .object({
@@ -227,6 +312,8 @@ export const HabitCreateSchema = z
     timesPerDay: z.number().int().optional(),
     currentDayCount: z.number().int().optional(),
 })
+    // See TaskCreateSchema — pause is not agent-writable in v1.
+    .omit({ pausedAt: true, pausedUntil: true })
     .superRefine(requireCustomDays);
 // Update schemas keep requireCustomDays too: a PATCH that sets
 // repeatFrequency 'custom' (or legacy 'weekly') without non-empty repeatDays

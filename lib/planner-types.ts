@@ -26,6 +26,9 @@ export type {
   ItemTypeDef,
   Project,
   HabitGroupType,
+  Routine,
+  Program,
+  ProgramState,
 } from '@anchor-app/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────
