@@ -59,6 +59,26 @@ export async function waitForAppReady(page: Page): Promise<void> {
     page.getByRole('button', { name: 'User menu' }),
     'app rendered but no signed-in user — the injected session did not take'
   ).toBeVisible({ timeout: 20_000 });
+
+  /**
+   * …and no full-screen scrim is still eating clicks.
+   *
+   * components/onboarding/onboarding-tour.tsx renders a `fixed inset-0 z-[100]`
+   * overlay, and lib/user-profile.ts reads `data?.onboarding_completed ?? false`
+   * — so between first paint and the profile arriving, the app believes nobody
+   * has onboarded and puts the tour up. global-setup.ts marks the test user
+   * onboarded, so it always comes back down; the window is just wide enough
+   * under parallel load for the first click to land on the backdrop instead of
+   * the control.
+   *
+   * That surfaces as "<div class=…backdrop-blur-sm> intercepts pointer events"
+   * inside whatever helper clicked first, which reads as a bug in the feature
+   * under test rather than a readiness problem. Hence: here, once.
+   */
+  await expect(
+    page.locator('div.fixed.inset-0.z-\\[100\\]'),
+    'the onboarding tour scrim never went away — is the test user onboarded?'
+  ).toHaveCount(0, { timeout: 20_000 });
 }
 
 /* ── items ─────────────────────────────────────────────────────────────── */

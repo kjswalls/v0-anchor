@@ -85,6 +85,13 @@ expected to be safe to re-run.
   plain `overflow-y-auto` container when you need a real height limit.
 - **The lime accent never dims in dark mode**, and must never be faded through a parent's
   opacity — give it its own element if the container is being dimmed.
+- **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
+  fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
+  `canvas-container` on the page must flip together (header capsule, past-due bar, grid)
+  or they lose the shared left edge the utility exists to guarantee. Its `padding-inline`
+  is mirrored in JS as `CANVAS_PAD_PX` — change one, change both. Week × Schedule's pinned
+  hour gutter depends on this: a sticky box is constrained to its containing block, so
+  restoring the cap would unstick it mid-scroll.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone

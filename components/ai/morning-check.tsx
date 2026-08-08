@@ -14,6 +14,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/compon
 import { MorningTriageList } from '@/components/ai/morning-triage-list';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { useCanvasWide } from '@/lib/view-store';
 import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
 import { toDateStr } from '@/lib/recurrence';
 
@@ -282,6 +283,7 @@ function BarRow({
 export function MorningCheck() {
   const { summary, todayStr, trayOpen, visible, open, close } = usePastDue();
   const { barRef, dismissAndMoveFocus } = useDismissWithFocus();
+  const canvasWide = useCanvasWide();
 
   if (!visible) return null;
 
@@ -290,7 +292,14 @@ export function MorningCheck() {
        same left/right edges as the header capsule and every body view. The
        gutter has to live on a wrapper — canvas-container's padding-inline would
        otherwise fall inside the box's border. */
-    <div ref={barRef} className="canvas-container mt-3 mb-1 flex-shrink-0" data-testid="morning-bar">
+    <div
+      ref={barRef}
+      // …and it follows the canvas out to full width in the week column views,
+      // for exactly the reason above: the shared edge is the contract.
+      data-wide={canvasWide ? 'true' : undefined}
+      className="canvas-container mt-3 mb-1 flex-shrink-0"
+      data-testid="morning-bar"
+    >
       <Popover modal={false} open={trayOpen} onOpenChange={(o) => (o ? open() : close())}>
         {/* PopoverAnchor, not the trigger, carries the width: the trigger is only
             the copy+chevron region, so --radix-popover-trigger-width measured off

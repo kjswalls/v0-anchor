@@ -8,6 +8,7 @@ import { BucketCard } from '@/components/primitives/bucket-card';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
 import { useDayItems } from '@/hooks/use-day-items';
+import { useWeekColumns } from '@/lib/use-week-columns';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
@@ -96,7 +97,16 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
   );
 }
 
-function WeekColumn({ date, activeId }: { date: Date; activeId: string | null }) {
+function WeekColumn({
+  date,
+  activeId,
+  colPx,
+}: {
+  date: Date;
+  activeId: string | null;
+  /** Width the week scale control asks for; floors at the old fixed w-60. */
+  colPx: number;
+}) {
   const { selectedDate, setSelectedDate } = usePlannerStore();
   const selected = isSameDay(date, selectedDate);
   const today = isToday(date);
@@ -112,9 +122,16 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
       className={cn(
-        'flex w-60 min-w-60 snap-start flex-col gap-2 transition-opacity',
+        'flex flex-none snap-start flex-col gap-2 transition-opacity',
         !selected && 'opacity-75 hover:opacity-100'
       )}
+      // Was a fixed `w-60 min-w-60`. WEEK_GEOMETRY.buckets floors at that same
+      // 240px, and at seven days the arithmetic doesn't clear it until the
+      // canvas is past ~1940px — so this renders identically to the old fixed
+      // width on every realistic screen until the scale control is actually
+      // moved. A bucket card carries stacked rows under a counted header; it
+      // needs the room a schedule block doesn't.
+      style={{ width: colPx }}
     >
       <button
         onClick={() => setSelectedDate(date)}
@@ -154,6 +171,7 @@ function WeekColumn({ date, activeId }: { date: Date; activeId: string | null })
 
 export function WeekBuckets({ activeId }: { activeId: string | null }) {
   const { selectedDate, weekStartDay, navDirection } = usePlannerStore();
+  const { colPx, ref: weekColsRef } = useWeekColumns('buckets');
 
   const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
   const weekDays = useMemo(() => {
@@ -164,14 +182,16 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
   return (
     <ScrollArea className="h-full flex-1">
       <div
+        ref={weekColsRef}
         key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+        data-wide="true"
         className={cn(
           'canvas-container flex snap-x snap-mandatory gap-7 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
         {weekDays.map((day) => (
-          <WeekColumn key={day.toDateString()} date={day} activeId={activeId} />
+          <WeekColumn key={day.toDateString()} date={day} activeId={activeId} colPx={colPx} />
         ))}
       </div>
       <ScrollBar orientation="horizontal" />

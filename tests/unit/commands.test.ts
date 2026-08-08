@@ -137,6 +137,9 @@ describe('command registry', () => {
       'toggle_view_scope',
       'focus_item_panel',
       'select_all',
+      'week_columns_wider',
+      'week_columns_narrower',
+      'week_columns_reset',
     ];
     const actual = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of expected) expect(actual).toContain(id);
@@ -513,11 +516,19 @@ describe('key matching', () => {
     expect(matchesBinding(pressedKeys(keyEvent('n', { meta: true }), PC), ['n'])).toBe(false);
   });
 
-  it('lets undo and redo repeat on key auto-repeat, and nothing else', () => {
+  it('opts exactly the sweepable shortcuts into key auto-repeat', () => {
+    // Repeat is opt-in because holding a key must not reopen a dialog thirty
+    // times. These four are the ones where holding IS the gesture: rewinding
+    // history, and sweeping the week column ladder.
     const repeatable = STATIC_COMMANDS.filter((c) => c.shortcut?.repeatable).map(
       (c) => c.shortcut!.id
     );
-    expect(repeatable.sort()).toEqual(['redo', 'undo']);
+    expect(repeatable.sort()).toEqual([
+      'redo',
+      'undo',
+      'week_columns_narrower',
+      'week_columns_wider',
+    ]);
   });
 
   it('labels ctrl and meta as the platform modifier, matching what they match', () => {

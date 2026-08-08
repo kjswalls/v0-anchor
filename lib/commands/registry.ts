@@ -6,6 +6,9 @@ import {
   CalendarRange,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
+  Columns3,
   Contrast,
   Filter,
   FilterX,
@@ -58,6 +61,7 @@ import { getItemTypeConfig, isSkippable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
+import { isScalableLayout } from '../week-columns';
 import {
   CANVAS_GROUP_BY_OPTIONS,
   LAYOUT_OPTIONS,
@@ -602,6 +606,53 @@ export const STATIC_COMMANDS: Command[] = [
     // visible effect.
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
+  },
+  /*
+   * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys, and the
+   * dispatcher only preventDefaults a command it is actually going to RUN — so
+   * `availableWhen` is what hands them back to the browser everywhere except the
+   * two week views that have day columns to scale. Repeatable, because holding
+   * the key to sweep the ladder is the whole gesture.
+   */
+  {
+    id: 'view.weekColumnsWider',
+    label: 'Widen day columns',
+    description: 'Fewer, wider day columns in the week views',
+    group: 'view',
+    icon: ChevronsLeftRight,
+    keywords: 'week column width wider zoom in bigger scale days',
+    shortcut: { id: 'week_columns_wider', keys: ['meta', '='], repeatable: true },
+    availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().stepWeekDaysVisible(1),
+  },
+  {
+    id: 'view.weekColumnsNarrower',
+    label: 'Narrow day columns',
+    description: 'More, narrower day columns in the week views',
+    group: 'view',
+    icon: ChevronsRightLeft,
+    keywords: 'week column width narrower zoom out smaller scale days',
+    shortcut: { id: 'week_columns_narrower', keys: ['meta', '-'], repeatable: true },
+    availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().stepWeekDaysVisible(-1),
+  },
+  {
+    id: 'view.weekColumnsReset',
+    label: 'Reset day column width',
+    description: 'Back to whatever fits the canvas best',
+    group: 'view',
+    icon: Columns3,
+    keywords: 'week column width reset default automatic fit canvas',
+    shortcut: { id: 'week_columns_reset', keys: ['meta', '0'] },
+    // Clears the choice rather than writing a fixed count, so the view goes back
+    // to picking the stop nearest TARGET_COL_PX — and keeps re-picking it as the
+    // canvas changes, exactly as it did before the control was ever touched.
+    availableWhen: () =>
+      view().scope === 'week' && isScalableLayout(view().layout) && view().weekDaysVisible !== null,
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().setWeekDaysVisible(null),
   },
 
   /* ── Rituals & Beacon ───────────────────────────────────────────────── */

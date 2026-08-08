@@ -6,10 +6,12 @@ import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
+import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { Button } from '@/components/ui/button';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +26,7 @@ export function DesktopShell() {
   const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
   const activeDialog = useUIStore((s) => s.activeDialog);
   const closeDialog = useUIStore((s) => s.closeDialog);
+  const canvasWide = useCanvasWide();
 
   // Editing an item IS the selection here — the ui-store's single dialog slot
   // already gives us retargeting for free: clicking another row calls
@@ -95,8 +98,18 @@ export function DesktopShell() {
             in the palette now, and the morning one no longer pokes store state
             (which left the server-side dismissal in place, so the reset died on
             the next reload). */}
-        <div className="canvas-container flex flex-shrink-0 items-start pt-[31px] pb-2">
+        {/* data-wide tracks the body view: the week column grids drop the
+            1100px cap so seven columns can actually fit, and this row drops it
+            with them — the point of canvas-container is that the capsule and
+            the view underneath share an edge, not that the edge is at any
+            particular x. WeekScale sits at the far end of the same row, so in
+            week scope it lands on the grid's right edge. */}
+        <div
+          data-wide={canvasWide ? 'true' : undefined}
+          className="canvas-container flex flex-shrink-0 items-start gap-3 pt-[31px] pb-2"
+        >
           <HeaderCapsule />
+          <WeekScale className="ml-auto" />
         </div>
 
         {/* Past-due bar. CONTRACT: 50px in flow at every task count, forever —

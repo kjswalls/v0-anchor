@@ -22,8 +22,10 @@ import {
   type TimedEntry,
 } from '@/components/views/day-schedule';
 import { layoutOverlaps } from '@/lib/schedule-overlap';
-import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
+import { MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
+import { CANVAS_PAD_PX } from '@/lib/week-columns';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
+import { useWeekColumns } from '@/lib/use-week-columns';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
@@ -91,6 +93,7 @@ function WeekScheduleColumn({
   hours,
   gridStartMin,
   hourPx,
+  colPx,
   activeId,
   selected,
   today,
@@ -100,6 +103,9 @@ function WeekScheduleColumn({
   hours: number[];
   gridStartMin: number;
   hourPx: number;
+  /** Width the week scale control asks for. The column may still exceed it —
+   *  see minColPx below. */
+  colPx: number;
   activeId: string | null;
   selected: boolean;
   today: boolean;
@@ -147,8 +153,29 @@ function WeekScheduleColumn({
 
   return (
     <div
-      className={cn('flex flex-1 flex-col transition-opacity', !selected && 'opacity-60 hover:opacity-100')}
-      style={{ minWidth: minColPx }}
+      // Per-column identity, mirroring week-buckets — the two week views are
+      // asserted against with the same selectors.
+      data-testid="week-column"
+      data-date={col.dateStr}
+      data-selected={selected ? 'true' : 'false'}
+      data-today={today ? 'true' : 'false'}
+      className={cn('flex flex-none flex-col transition-opacity', !selected && 'opacity-60 hover:opacity-100')}
+      /*
+       * `flex-none` + an explicit width, where this used to be `flex-1` +
+       * minWidth. That reads like a bigger change than it is: under the old
+       * 1100px canvas cap, seven 140px columns plus the gutter and gaps always
+       * wanted more room than the container had, so flex-grow never had free
+       * space to hand out and every column sat pinned at its min-width at every
+       * desktop size. flex-1 was inert; this replaces a constant.
+       *
+       * minWidth still wins over the requested width, and deliberately: a day
+       * holding a double-booking grows to 280 so both tiled panes clear the
+       * channel floor (see minColPx above). So "five days" on a week containing
+       * an overlap gives four-and-a-bit and scrolls — week GROWS rather than
+       * dividing, which is the contract memory/plans/overlap-blocks.md locks in,
+       * and the scale control is not the place to break it.
+       */
+      style={{ width: Math.max(colPx, minColPx), minWidth: minColPx }}
     >
       {/* Day header card */}
       <button
@@ -298,6 +325,9 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
   const { hourPx, anchorRef } = useFitHourPx(hours.length, resizing);
   useResizeScrollCompensation(gridStartHour, hourPx, resizing, anchorRef);
 
+  // How wide the day columns are, and the ⌘-wheel gesture that changes it.
+  const { colPx, scrolledX, ref: weekColsRef } = useWeekColumns('schedule');
+
   const showNow = markerMin !== null && markerMin >= gridStartHour * 60 && markerMin < gridEndHour * 60;
   const nowMinShown = showNow ? markerMin! : null;
   const nowY = showNow ? ((markerMin! - gridStartHour * 60) / 60) * hourPx : null;
@@ -308,20 +338,53 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   return (
     <ScrollArea className="h-full flex-1">
-      <div
-        key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
-        className={cn(
-          'canvas-container flex gap-2 py-6 pb-20',
-          navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
-        )}
-      >
+      <div ref={weekColsRef} data-wide="true" className="canvas-container flex gap-2 py-6 pb-20">
         {/* Hour gutter — same top offsets as the columns so labels line up, and
             the same bare left-aligned mono marks the day view uses. Week has no
             Anytime rows of its own beside the gutter to answer to (its strips
             live inside the day columns), but the marks match day's inset anyway:
             switching scope shouldn't make the hour column change alignment under
             you. Narrowed to day's width for the same reason. */}
-        <div className="flex flex-shrink-0 flex-col" style={{ width: DAY_FIELD_LEFT }}>
+        {/*
+          PINNED. Once columns are user-sized the grid scrolls sideways, and an
+          hour grid whose hour labels have scrolled off the screen is just a
+          field of rectangles. Four things make the pin work, none of them
+          optional:
+
+          1. It only works because the week grid dropped canvas-container's
+             1100px cap (data-wide above). A sticky box is constrained to its
+             CONTAINING BLOCK — this flex row — not to the scrollport, so under
+             the cap the row ended at 1100px and the gutter came unstuck at
+             scrollLeft > containerLeft + 1000, sliding off exactly when the
+             scale control had made the grid wide enough to need it.
+          2. The negative margin cancels canvas-container's left padding and the
+             matching padding puts the content back, so the gutter's BOX starts
+             at the scrollport edge while its labels stay where they were. Pin
+             at `left-0` without it and columns scroll through the 32px of bare
+             padding to the gutter's left.
+          3. An opaque background, or the columns show through what they are
+             supposed to be sliding under.
+          4. WEEK_GUTTER_Z, which is one above the now-marker — see the constant
+             for why z-10 is not enough.
+        */}
+        <div
+          className={cn(
+            'sticky left-0 flex flex-shrink-0 flex-col border-r bg-canvas transition-colors',
+            // The edge treatment appears only once there is something behind
+            // it. Hairline AND shadow for the same reason the body panel pairs
+            // them: the shadow does the work in light mode, the hairline
+            // survives in dark, where a black cast barely registers.
+            scrolledX
+              ? 'border-border/60 shadow-[6px_0_10px_-6px_rgb(0_0_0/0.12)]'
+              : 'border-transparent'
+          )}
+          style={{
+            zIndex: WEEK_GUTTER_Z,
+            width: DAY_FIELD_LEFT + CANVAS_PAD_PX,
+            marginLeft: -CANVAS_PAD_PX,
+            paddingLeft: CANVAS_PAD_PX,
+          }}
+        >
           <div style={{ height: HEADER_H }} />
           <div style={{ height: ANYTIME_H }} className="mt-2" />
           <div ref={anchorRef} className="relative mt-2">
@@ -353,19 +416,45 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           </div>
         </div>
 
-        {perDay.map((col) => (
-          <WeekScheduleColumn
-            key={col.dateStr}
-            col={col}
-            hours={hours}
-            gridStartMin={gridStartHour * 60}
-            hourPx={hourPx}
-            activeId={activeId}
-            selected={isSameDay(col.date, selectedDate)}
-            today={isToday(col.date)}
-            nowY={col.dateStr === todayStr ? nowY : null}
-          />
-        ))}
+        {/*
+          The week-nav slide lives on THIS wrapper, not on the row above, so the
+          seven days slide in past a gutter that holds still. The hour labels are
+          identical from one week to the next — sliding them is motion that means
+          nothing, and once the grid scrolls sideways the pinned gutter visibly
+          jitters 40px and back on every navigation.
+
+          It has to be a wrapper rather than the class on each column. The
+          keyframes animate opacity 0.5 → 1, and an animation overrides a normal
+          declaration, so a column carrying `opacity-60` would fade to 1 and then
+          SNAP back to 0.6 the instant the animation ended. On a parent the two
+          opacities multiply, which is what makes it smooth today.
+
+          The key rides here too: it is what restarts the CSS animation on a week
+          change, and keeping it off the row means the gutter — and the width
+          measurement anchored to that row — survive the navigation.
+        */}
+        <div
+          key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+          className={cn(
+            'flex flex-none gap-2',
+            navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
+          )}
+        >
+          {perDay.map((col) => (
+            <WeekScheduleColumn
+              key={col.dateStr}
+              col={col}
+              hours={hours}
+              gridStartMin={gridStartHour * 60}
+              hourPx={hourPx}
+              colPx={colPx}
+              activeId={activeId}
+              selected={isSameDay(col.date, selectedDate)}
+              today={isToday(col.date)}
+              nowY={col.dateStr === todayStr ? nowY : null}
+            />
+          ))}
+        </div>
       </div>
       <ScrollBar orientation="horizontal" />
     </ScrollArea>

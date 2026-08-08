@@ -91,6 +91,23 @@ export const HOVER_Z = 15;
  */
 export const NOW_MARKER_Z = 20;
 
+/**
+ * …and the week grid's pinned hour gutter sits above even that.
+ *
+ * One above NOW_MARKER_Z, deliberately, because this is the one thing that must
+ * out-paint the marker: once columns are user-sized the grid scrolls sideways,
+ * and a column passing UNDER the gutter would otherwise draw its now-marker
+ * (z 20) and any hovered block (HOVER_Z 15) straight across the hour labels.
+ *
+ * Why those escape a z-10 gutter at all: non-selected columns carry
+ * `opacity-60`, which creates a stacking context that traps their descendants'
+ * z-indexes. The SELECTED column has no opacity and no transform, so it creates
+ * no stacking context and its descendants' z values compete in the root layer.
+ * The bug is therefore invisible until you scroll the selected day under the
+ * gutter — which is exactly the case the pin exists for.
+ */
+export const WEEK_GUTTER_Z = 21;
+
 /** One line of content (12/17). A free band shorter than this cannot hold a
  *  title at all. */
 export const LINE_H = 17;

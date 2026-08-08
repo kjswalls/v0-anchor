@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { GroupBy, Priority } from './planner-types';
 import { usePlannerStore } from './planner-store';
+// week-columns imports ViewLayout back from here, but type-only — erased at
+// compile time, so there is no runtime cycle.
+import {
+  clampWeekDays,
+  isScalableLayout,
+  resolveWeekDaysFromLastCanvas,
+  stepWeekDays,
+} from './week-columns';
 
 /**
  * View preferences for the redesigned canvas: what slice of time you're
@@ -63,6 +71,19 @@ interface ViewStore {
   canvasFilters: CanvasFilters;
   typeMode: TypeMode;
   scheduleMarkStyle: ScheduleMarkStyle;
+  /**
+   * How many day columns the week views try to fit across the canvas — the
+   * value behind the week scale control. Stored as a day COUNT, not a pixel
+   * width, so it keeps meaning the same thing when the canvas resizes under it
+   * (item panel, sidebar, window). lib/week-columns.ts turns it into pixels.
+   *
+   * `null` means the user has never adjusted it, and is NOT the same as landing
+   * on the default by choice: while it is null the view picks whichever stop
+   * comes nearest TARGET_COL_PX on the canvas it actually has, and keeps
+   * re-picking as that canvas changes. The first adjustment writes a number and
+   * that is what persists from then on.
+   */
+  weekDaysVisible: number | null;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -75,6 +96,10 @@ interface ViewStore {
   setCanvasFilters: (filters: CanvasFilters) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
+  /** `null` hands the choice back to the width-derived default. */
+  setWeekDaysVisible: (days: number | null) => void;
+  /** Move along the ladder by `delta` stops; +1 is one step wider. */
+  stepWeekDaysVisible: (delta: number) => void;
 }
 
 export const useViewStore = create<ViewStore>()(
@@ -89,6 +114,7 @@ export const useViewStore = create<ViewStore>()(
       canvasFilters: EMPTY_CANVAS_FILTERS,
       typeMode: 'sans',
       scheduleMarkStyle: 'nodes',
+      weekDaysVisible: null,
       adoptedLegacy: false,
 
       setScope: (scope) => {
@@ -110,13 +136,46 @@ export const useViewStore = create<ViewStore>()(
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
       setTypeMode: (typeMode) => set({ typeMode }),
       setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
+      // Clamped on the way IN, so nothing downstream has to defend against a
+      // hand-edited localStorage value or a stale ladder. `null` passes through
+      // untouched — it is the "never adjusted" state, not a bad number.
+      setWeekDaysVisible: (days) =>
+        set({ weekDaysVisible: days === null ? null : clampWeekDays(days) }),
+      // Stepping is always an adjustment, so it resolves the current effective
+      // value first — from the last measured canvas when nothing is stored yet —
+      // and writes a concrete number. Stepping from null must not jump.
+      stepWeekDaysVisible: (delta) =>
+        set((s) => ({
+          weekDaysVisible: stepWeekDays(resolveWeekDaysFromLastCanvas(s.weekDaysVisible), delta),
+        })),
     }),
     {
+      // NOT bumped for weekDaysVisible. zustand's default merge keeps the
+      // initial value for any key the persisted payload lacks, so an existing
+      // 'anchor-view' blob rehydrates with the default and no migration. A bump
+      // would invalidate every stored payload — including the literal version:1
+      // one tests/e2e/helpers/session.ts seeds, which would reset adoptedLegacy
+      // and re-run the legacy adoption on a fixture.
       name: 'anchor-view',
       version: 1,
     }
   )
 );
+
+/**
+ * True when the canvas should run edge-to-edge instead of the 1100px column.
+ *
+ * The week COLUMN views only. `canvas-container`'s cap exists so a day's rows
+ * don't stretch into unreadable 2000px lines, and that argument holds just as
+ * well for Week × List — but a grid of seven day columns is the one thing on
+ * this canvas that can actually use the width, and capping it at 1100px is why
+ * seven columns never fit on any monitor. The header capsule and the past-due
+ * bar read this too, so all three keep the shared left edge that
+ * `@utility canvas-container` exists to guarantee.
+ */
+export function useCanvasWide(): boolean {
+  return useViewStore((s) => s.scope === 'week' && isScalableLayout(s.layout));
+}
 
 /**
  * Adopt the user's existing planner-store view prefs the first time the new
