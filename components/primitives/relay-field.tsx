@@ -39,6 +39,14 @@ export interface RelayFieldProps {
   mask?: string;
   /** Vertical origin of the ripple, 0 (top) – 1 (bottom). Default 0.42. */
   focalY?: number;
+  /**
+   * Horizontal origin of the ripple, 0 (left) – 1 (right). Default 0.5.
+   *
+   * Exists for surfaces whose content is not horizontally centred — the login
+   * page measures its own sign-in column and passes its centre, so the wave is
+   * born under the content rather than in whichever half happens to be empty.
+   */
+  focalX?: number;
   /** Target grid spacing in px. Smaller = denser field. Default 40. */
   pitch?: number;
   /** Pulse period in seconds. Default 3.6. */
@@ -99,7 +107,10 @@ export interface RelayFieldProps {
   radialGain?: number;
   /**
    * When true, the ripple's focal point smoothly chases the pointer across the
-   * field's container instead of sitting at `focalY`. Adds a window pointer
+   * field's container instead of resting at `focalX`/`focalY` — which is also
+   * the point `pointerParallax` leans away from, so a field whose resting focal
+   * has been moved onto its content leans away from the content, not from the
+   * middle of the window. Adds a window pointer
    * listener, so opt in only where the field is meant to be interactive.
    * Default false.
    */
@@ -137,8 +148,8 @@ interface Cell {
    *  recompute distance/phase per frame without touching pixel positions. */
   gx: number;
   gy: number;
-  /** Normalized distance to the static (focalY) focal, and the phase derived
-   *  from it. Used whenever the field is NOT pointer-driven. */
+  /** Normalized distance to the static (focalX/focalY) focal, and the phase
+   *  derived from it. Used whenever the field is NOT pointer-driven. */
   d0: number;
   phase0: number;
   /** Per-tile phase jitter (0.09 * hash), reused when phase is recomputed live. */
@@ -274,6 +285,7 @@ export function RelayField({
   className,
   mask,
   focalY = 0.42,
+  focalX = 0.5,
   pitch = 40,
   period = 3.6,
   active = false,
@@ -350,9 +362,15 @@ export function RelayField({
     let staticFx = 0;
     let staticFy = 0;
     // Live ripple focal (grid units) and the target it eases toward. Anchored to
-    // the static focalY focal until the pointer takes over.
-    let focalX = 0;
-    let focalY2 = 0;
+    // the static focalX/focalY focal until the pointer takes over.
+    //
+    // Named liveFx/liveFy, NOT focalX/focalY: those are the props, and a local
+    // of the same name shadows them everywhere inside this effect — including
+    // in layout(), where `fx` is derived from the focalX PROP. That shadowing
+    // type-checks and lints clean while quietly making the resting focal
+    // circular (fx from the live focal, live focal from fx).
+    let liveFx = 0;
+    let liveFy = 0;
     let targetX = 0;
     let targetY = 0;
     let pointerActive = false;
@@ -419,9 +437,9 @@ export function RelayField({
       // moving focal so the outward ramp stays normalized.
       let liveMaxD = staticMaxD;
       if (dynamicFocal) {
-        focalX += (targetX - focalX) * k.pointerEase;
-        focalY2 += (targetY - focalY2) * k.pointerEase;
-        liveMaxD = cornerMaxD(focalX, focalY2, gridCols, gridRows);
+        liveFx += (targetX - liveFx) * k.pointerEase;
+        liveFy += (targetY - liveFy) * k.pointerEase;
+        liveMaxD = cornerMaxD(liveFx, liveFy, gridCols, gridRows);
       }
       const rg = k.radialGain;
 
@@ -434,7 +452,7 @@ export function RelayField({
         // Distance/phase are recomputed per frame while the focal moves, else
         // the baked statics.
         const d = dynamicFocal
-          ? Math.min(1, Math.hypot(cell.gx - focalX, cell.gy - focalY2) / liveMaxD)
+          ? Math.min(1, Math.hypot(cell.gx - liveFx, cell.gy - liveFy) / liveMaxD)
           : cell.d0;
         const phase = dynamicFocal ? (2.4 * d + cell.jitter) % 1 : cell.phase0;
         const env = reduced ? 0.5 * cell.max : pulse(phase, cell.max, t - phaseT0, k.period);
@@ -476,7 +494,7 @@ export function RelayField({
       const cell = cw / cols;
       const rows = Math.ceil(ch / cell) + 1;
       const yOff = (ch - rows * cell) / 2;
-      const fx = cols / 2;
+      const fx = cols * focalX;
       const fy = rows * focalY;
       staticMaxD = cornerMaxD(fx, fy, cols, rows);
       const next: Cell[] = [];
@@ -510,8 +528,8 @@ export function RelayField({
       // Re-anchor the live focal to the static one on (re)layout — grid units
       // change meaning with cell size — but never yank it away from the pointer.
       if (!pointerActive) {
-        focalX = targetX = fx;
-        focalY2 = targetY = fy;
+        liveFx = targetX = fx;
+        liveFy = targetY = fy;
       }
       if (reduced) draw(0);
     };
@@ -588,7 +606,7 @@ export function RelayField({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [focalY, pitch, lightPalette, pointerFocus, pointerBurst]);
+  }, [focalY, focalX, pitch, lightPalette, pointerFocus, pointerBurst]);
 
   return (
     <div
