@@ -34,7 +34,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useViewStore, type TypeMode } from '@/lib/view-store';
+import { useViewStore, type TypeMode, type ScheduleMarkStyle } from '@/lib/view-store';
 import { saveSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -111,7 +111,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const { isSupported: pushSupported, isSubscribed: pushSubscribed, permissionState, subscribe: subscribePush, unsubscribe: unsubscribePush } = usePushSubscription();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
   const { theme, setTheme } = useTheme();
-  const { typeMode, setTypeMode } = useViewStore();
+  const { typeMode, setTypeMode, scheduleMarkStyle, setScheduleMarkStyle } = useViewStore();
   const isMobile = useIsMobile();
   const {
     morningCheckEnabled, setMorningCheckEnabled,
@@ -315,6 +315,19 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   <SelectContent>
                     <SelectItem value="sans">Sans</SelectItem>
                     <SelectItem value="serif">Serif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              <SettingRow label="Schedule handles" description="Corner and resize marks on schedule blocks">
+                <Select value={scheduleMarkStyle} onValueChange={(v) => setScheduleMarkStyle(v as ScheduleMarkStyle)}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nodes">Nodes</SelectItem>
+                    <SelectItem value="target">Target</SelectItem>
+                    <SelectItem value="trim">Trim marks</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>

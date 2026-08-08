@@ -19,6 +19,15 @@ export type TypeFilter = 'all' | 'tasks' | 'habits';
 export type BraindumpGroupBy = 'none' | 'type' | 'project';
 /** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
 export type TypeMode = 'sans' | 'serif';
+/**
+ * Chrome drawn on a schedule block when it's hovered/selected — the corner
+ * registration plus the resize grips. All three are 1px --ink-1 hairline and
+ * reveal on hover; they differ only in FORM (see components/views/day-schedule).
+ *   nodes  — CAD bounding-box handles: hollow squares on the vertices (default)
+ *   target — prepress registration crosshairs floating off each corner
+ *   trim   — trim-mark lozenges + a three-patch ink strip for the grip
+ */
+export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
 
 export interface BraindumpFilters {
   projects: string[];
@@ -53,6 +62,7 @@ interface ViewStore {
   braindumpFilters: BraindumpFilters;
   canvasFilters: CanvasFilters;
   typeMode: TypeMode;
+  scheduleMarkStyle: ScheduleMarkStyle;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -64,6 +74,7 @@ interface ViewStore {
   setBraindumpFilters: (filters: BraindumpFilters) => void;
   setCanvasFilters: (filters: CanvasFilters) => void;
   setTypeMode: (mode: TypeMode) => void;
+  setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
 }
 
 export const useViewStore = create<ViewStore>()(
@@ -77,6 +88,7 @@ export const useViewStore = create<ViewStore>()(
       braindumpFilters: EMPTY_BRAINDUMP_FILTERS,
       canvasFilters: EMPTY_CANVAS_FILTERS,
       typeMode: 'sans',
+      scheduleMarkStyle: 'nodes',
       adoptedLegacy: false,
 
       setScope: (scope) => {
@@ -97,6 +109,7 @@ export const useViewStore = create<ViewStore>()(
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
       setTypeMode: (typeMode) => set({ typeMode }),
+      setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
     }),
     {
       name: 'anchor-view',
