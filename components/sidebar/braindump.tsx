@@ -1,10 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { AlignLeft, ChevronsLeft, FolderOpen, ListFilter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -176,11 +175,124 @@ function FilterPopover() {
   );
 }
 
+/**
+ * Persistent capture card at the foot of the sidebar — a boxed-plus and a
+ * borderless field inside a pill that rhymes with the Braindump header. Enter
+ * commits the title as a new unscheduled task (lands right here in the
+ * braindump), clears, and holds focus — type, Enter, type, Enter. The plus
+ * commits the same way, or focuses the field when it's empty.
+ */
+function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const addTask = usePlannerStore((s) => s.addTask);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState('');
+  const [focused, setFocused] = useState(false);
+
+  const commit = () => {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      inputRef.current?.focus();
+      return;
+    }
+    addTask({ title: trimmed });
+    setTitle('');
+    // Focus survives the re-render (same DOM node), but re-assert it so the
+    // plus-button path lands the caret back in the field too.
+    inputRef.current?.focus();
+    // Keep the just-added item in view: once it mounts (two frames — one for
+    // React's commit, one for layout) drop the scroll to the bottom so the new
+    // row lands just above this card. A no-op when the list doesn't overflow,
+    // so short lists never jump.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const el = scrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      })
+    );
+  };
+
+  // The plus hands off to the full add dialog instead of quick-committing,
+  // seeding it with whatever's typed so far. Enter stays the fast inline path.
+  const openFull = () => {
+    openAddDialog('task', undefined, undefined, title.trim() || undefined);
+    setTitle('');
+    inputRef.current?.blur();
+  };
+
+  return (
+    // A sunken tray at the foot of the sidebar — a recessed well (surface-3 + an
+    // inset shadow), deliberately the INVERSE of the raised omnibar just below,
+    // so the two never read as the same control. It sits OUTSIDE the scroll area
+    // as a section child; the list shrinks (flex) to make room, so this rides
+    // just under a short list and pins above the omnibar when the list runs long.
+    // shrink-0 keeps it from compressing. mx-[10px] holds it to the width of the
+    // header's inner pill (which sat inside the capsule's px-[10px]).
+    <div
+      data-testid="braindump-quick-add"
+      data-focused={focused ? 'true' : 'false'}
+      className={cn(
+        'mx-[10px] flex h-[37px] shrink-0 items-center gap-2 rounded-[10px] bg-surface-3 px-[15px] shadow-[var(--shadow-inset-well)] transition-[box-shadow,background-color] duration-150 ease-[var(--ease-out-soft)]',
+        // Hover, only while NOT focused (so focus stays a clean lit recess): a
+        // 1px inner hairline traces the tray on top of the inset well.
+        '[&:hover:not(:focus-within)]:shadow-[var(--shadow-inset-well),inset_0_0_0_1px_var(--border)]',
+        // Focused: the recess LIGHTENS IN PLACE (fill eases toward white but the
+        // inset shadow stays) — it never rises to a raised pill, which would twin
+        // the omnibar's press.
+        focused && 'bg-[var(--surface-3-lit)]'
+      )}
+    >
+      <AddIconButton
+        size="md"
+        onClick={openFull}
+        aria-label="Open the full add dialog"
+        // Brightens from its resting 80% to full foreground while the tray is
+        // focused — no lime; the tray's own fill carries the active state.
+        className={cn(focused && 'text-foreground')}
+      />
+      <input
+        ref={inputRef}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            setTitle('');
+            inputRef.current?.blur();
+          }
+        }}
+        placeholder="Add item"
+        aria-label="Add item"
+        data-testid="braindump-quick-add-input"
+        className="min-w-0 flex-1 bg-transparent font-content text-content text-foreground placeholder:text-muted-foreground focus:outline-none"
+      />
+      {/* Enter affordance — the row commits on Enter, so surface a ↵ keycap
+          while it's focused to make that discoverable. Kept mounted (opacity,
+          not conditional render) so the field width doesn't jump on focus. */}
+      <kbd
+        aria-hidden
+        className={cn(
+          'pointer-events-none flex-shrink-0 rounded-xs border border-border px-1 font-mono text-[10px] text-muted-foreground transition-opacity',
+          focused ? 'opacity-100' : 'opacity-0'
+        )}
+      >
+        ↵
+      </kbd>
+    </div>
+  );
+}
+
 export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } = {}) {
   const { tasks, habits } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters } = useViewStore();
   const toggleLeftSidebar = useSidebarStore((s) => s.toggleLeftSidebar);
+  // The scroll port — QuickAddRow drops it to the bottom after each add so the
+  // new row stays visible above the sticky capture row.
+  const listRef = useRef<HTMLDivElement>(null);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });
 
@@ -244,7 +356,7 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
           shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
           for the Linear-style exploration. */}
-      <div className="rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]">
+      <div className="shrink-0 rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]">
         <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
           <AlignLeft className="h-4 w-4 text-muted-foreground" />
           <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
@@ -280,10 +392,16 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
         </div>
       </div>
 
-      {/* List — sits directly on the paper backdrop, no card */}
-      <ScrollArea
+      {/* List — sits directly on the paper backdrop, no card. A plain
+          overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so
+          the quick-add card below can pin to the section foot, and its ref drives
+          scroll-to-bottom after each add. It fills the column only when empty, so
+          the empty-state poem stays vertically centered. */}
+      <div
+        ref={listRef}
         className={cn(
-          'min-h-0 flex-1 rounded-card transition-colors',
+          'min-h-0 overflow-y-auto rounded-card transition-colors',
+          rows.length === 0 && 'flex-1',
           isOver && 'ring-2 ring-ring/60'
         )}
       >
@@ -332,7 +450,10 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
+
+      {/* Quick-add — a floating card at the section foot, peer of the header. */}
+      <QuickAddRow scrollRef={listRef} />
     </section>
   );
 }

@@ -10,7 +10,7 @@ import type { Task, Habit, Item, KnownItemType, TimeBucket } from './planner-typ
 
 export type ActiveDialog =
   /** `tab` is the registry type name ('task', 'habit', or a custom slug). */
-  | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date }
+  | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date; title?: string }
   | { type: 'edit-item'; item: Item }
   /** `tab` opens a specific panel — 'projects' | 'groups' | 'types'. */
   | { type: 'manage-categories'; tab?: string }
@@ -71,8 +71,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
 export const openAddDialog = (
   tab: string = 'task',
   bucket?: TimeBucket,
-  date?: Date
-) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date });
+  date?: Date,
+  title?: string
+) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
 
 /**
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so

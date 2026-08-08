@@ -638,6 +638,10 @@ export function Omnibar({
               activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
               'translate-y-0 shadow-[var(--shadow-key-rest)]',
               'transition-[box-shadow,translate,background-color] duration-150 ease-[var(--ease-out-soft)]',
+              // Hover, only while NOT focused (focus keeps its clean pressed
+              // look): a 1px inner hairline traces the pill on top of its raised
+              // rest shadow — parity with the braindump quick-add tray.
+              '[&:hover:not(:focus-within)]:shadow-[var(--shadow-key-rest),inset_0_0_0_1px_var(--border)]',
               focused &&
                 'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]'
             )}
