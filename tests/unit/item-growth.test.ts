@@ -4,6 +4,8 @@ import { selectOverdue } from '@/lib/overdue';
 import { buildAnchorContext } from '@/lib/ai-context';
 import type { Item, TaskItem } from '@/lib/planner-types';
 
+const NONE: ReadonlySet<string> = new Set();
+
 /**
  * Pins the item-surface growth data behavior (memory/plans/item-surface-growth.md):
  * the four woken columns' update mappings, subtask invisibility in the overdue
@@ -65,7 +67,7 @@ describe('subtasks stay out of the overdue surface', () => {
         parentItemId: 'parent-1',
       }),
     ];
-    const overdue = selectOverdue(items, '2026-07-29');
+    const overdue = selectOverdue(items, '2026-07-29', NONE);
     expect(overdue.map((t) => t.id)).toEqual(['t1']);
   });
 });

@@ -31,6 +31,19 @@ export interface DayItemsInput {
   showCompletedTasks: boolean;
   /** Optional canvas filters (priority/project/hide-completed); defaults to none. */
   filters?: DayItemFilters;
+  /**
+   * Ids suppressed ON THIS DATE — from lib/active.ts `inactiveItemIdsOn`.
+   *
+   * Resolved per-date by the caller rather than computed here, for two reasons:
+   * this module is deliberately store-free and pure, and from Phase 2 resolving
+   * one item means walking item → routine → program, which should happen once
+   * per rendered day rather than once per item per filter pass.
+   *
+   * Already the open-loop rule (a suppressed item that WAS marked on this date
+   * is absent from the set and keeps rendering), so this is a plain exclusion.
+   * Optional so week columns and tests that predate pausing keep working.
+   */
+  inactiveItemIds?: ReadonlySet<string>;
 }
 
 export interface DayItems {
@@ -55,6 +68,7 @@ function byTimeThenOrder(a: { startTime?: string; order?: number }, b: { startTi
 export function deriveDayItems(input: DayItemsInput): DayItems {
   const { tasks, habits, projects, dateStr, date, timezone, typeFilter, showCompletedTasks } = input;
   const filters = input.filters ?? NO_FILTERS;
+  const inactive = input.inactiveItemIds;
   // hideCompleted stacks on the existing showCompletedTasks preference
   const hideDoneTasks = !showCompletedTasks || filters.hideCompleted;
 
@@ -63,6 +77,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     typeFilter === 'habits'
       ? []
       : tasks.filter((task) => {
+          if (inactive?.has(task.id)) return false;
           if (hideDoneTasks && task.status === 'completed') return false;
           if (filters.priorities.length && (!task.priority || !filters.priorities.includes(task.priority)))
             return false;
@@ -88,6 +103,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     typeFilter === 'tasks' || filters.priorities.length || filters.projects.length
       ? []
       : habits.filter((h) => {
+          if (inactive?.has(h.id)) return false;
           if (!shouldShowOnDate(h, dateStr, timezone)) return false;
           if (filters.hideCompleted && isCompletedOnDate(h, dateStr)) return false;
           return true;

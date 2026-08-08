@@ -59,6 +59,7 @@ import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, isSkippable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
+import { inactiveItemIdsOn } from '../active';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
@@ -449,11 +450,12 @@ export const STATIC_COMMANDS: Command[] = [
       // would read the machine tz and could grey this row out on a day the bar
       // is visibly showing overdue items.
       const { items, userTimezone } = planner();
-      const todayStr = toDateStr(
-        new Date(),
-        userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-      );
-      return selectOverdue(items, todayStr).length > 0;
+      const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const todayStr = toDateStr(new Date(), tz);
+      // Dateless surface: resolve suppression at TODAY, never at the store's
+      // navigable selectedDate (plan decision 3).
+      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz });
+      return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard openChat,
     // Open braindump and focusOmnibar already use. The past-due pill is

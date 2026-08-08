@@ -42,7 +42,8 @@ import {
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
 } from './db';
-import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, hydrateCustomTypes } from './item-registry';
+import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
+import { isPausedOn } from './active';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
@@ -154,6 +155,8 @@ interface PlannerStore {
    * `status` — it is for habits, never for tasks (see ItemTypeConfig.skipStatus).
    */
   setItemSkipped: (id: string, skipped: boolean, date?: Date) => void;
+  /** Pause/resume an item. `until` is an exclusive resume date (yyyy-MM-dd). */
+  setItemPaused: (id: string, paused: boolean, until?: string) => void;
 
   // Habit actions
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
@@ -1115,6 +1118,46 @@ export const usePlannerStore = create<PlannerStore>()(
           dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
         }
         dbUpdateItem(id, dbTypeOf(item), { skippedDates: optimistic.skippedDates }).catch(console.error);
+      },
+
+      /**
+       * Pause or resume ONE item.
+       *
+       * Writes nothing but the two pause columns — never status, streak,
+       * completedDates, skippedDates, startDate, repeat* or timeBucket. That
+       * restraint is the feature: because a streak only ever moves inside the
+       * completion RPC and nothing in the app decays one on a missed day,
+       * "pause without losing your streak" needs no streak handling at all, and
+       * resume finds the item exactly where it was (an item with no timeBucket
+       * is invisible in day views, so a pause that touched it would strand it).
+       *
+       * A resume sets `pausedUntil` to today rather than clearing the pair, so
+       * the interval stays readable on the row — the auto-age sweep's resume
+       * grace is computed from it, and clearing would make a returning user's
+       * whole backlog sweepable the next morning.
+       */
+      setItemPaused: (id, paused, until) => {
+        const item = get().items.find((i) => i.id === id);
+        if (!item) return;
+        if (!isPausable(item)) return;
+        const config = getItemTypeConfig(itemTypeName(item));
+        const todayStr = resolveDateStr();
+        if (isPausedOn(item, todayStr, get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) === paused) return;
+
+        const updates: Partial<Task> = paused
+          ? { pausedAt: new Date().toISOString(), pausedUntil: until }
+          : { pausedUntil: todayStr };
+
+        setNextActionLabel(
+          paused
+            ? `Pause ${config.label.toLowerCase()}: ${item.title}`
+            : `Resume ${config.label.toLowerCase()}: ${item.title}`,
+        );
+
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id ? { ...i, ...updates } as Item : i)),
+        ));
+        dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
       },
 
       addHabit: (habitData) => {

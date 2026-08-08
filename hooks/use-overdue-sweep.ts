@@ -4,7 +4,26 @@ import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
-import { selectOverdue, daysOverdue } from '@/lib/overdue';
+import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
+import { inactiveItemIdsOn } from '@/lib/active';
+import type { Item } from '@/lib/planner-types';
+
+/**
+ * Did this item come off a pause within the trailing `windowDays`?
+ *
+ * Reads the item's own recorded interval — `pausedUntil` is the resume date,
+ * and it survives a manual resume precisely so this is answerable. Phase 2–3
+ * extend this with the container causes (a program's `startsOn`, and a
+ * container `updated_at` as a conservative proxy for manual state flips);
+ * every one of those errs toward NOT sweeping, which is the safe direction.
+ */
+function resumedRecently(item: Item, todayStr: string, windowDays: number): boolean {
+  const until = item.pausedUntil;
+  if (!item.pausedAt || !until) return false;
+  const resumed = toDateOnly(until);
+  if (resumed > todayStr) return true; // still paused (belt-and-braces)
+  return daysOverdue({ startDate: resumed }, todayStr) <= windowDays;
+}
 
 /**
  * use-overdue-sweep — the OPT-IN "auto-clear stale items" decay (user decision D1).
@@ -173,10 +192,28 @@ export function useOverdueSweep() {
     // excludes completed/cancelled, and already respects the item-type registry's
     // carryForwardEligible/dateAnchored capabilities. Never re-implement it here.
     // `> autoAgeDays` is exactly "past due by MORE than N days".
-    const stale = selectOverdue(planner.items, todayStr).filter(
+    const inactive = inactiveItemIdsOn(planner.items, todayStr, { userTimezone });
+    const stale = selectOverdue(planner.items, todayStr, inactive).filter(
       (item) => daysOverdue(item, todayStr) > autoAgeDays,
     );
-    if (stale.length === 0) return;
+
+    // ── Resume grace ─────────────────────────────────────────────────────────
+    // Excluding suppressed items above is necessary but NOT sufficient, and the
+    // gap is this sweep's worst failure mode. daysOverdue counts from startDate,
+    // which a pause never moves, so age keeps accruing THROUGH a pause: the
+    // exclusion protects an item only while it is paused. Come back from a
+    // 35-day break with a 30-day threshold and every dated item resurfaces
+    // already past the line, so the next morning's sweep unschedules the lot in
+    // one batch — exactly the disaster the exclusion was supposed to prevent,
+    // merely deferred by the length of the pause.
+    //
+    // So: an item whose pause ended within the trailing window gets the window
+    // to be dealt with, measured from the resume rather than the due date. This
+    // is why a manual resume normalizes to `pausedUntil = today` instead of
+    // clearing the pause pair — the interval has to survive on the row for this
+    // to be computable at all.
+    const graced = stale.filter((item) => !resumedRecently(item, todayStr, autoAgeDays));
+    if (graced.length === 0) return;
 
     // ── Gate 7: no sibling tab beat us to it ─────────────────────────────────
     // Gate 6 only saw this tab's copy of the store. Two tabs open at the same
@@ -194,7 +231,7 @@ export function useOverdueSweep() {
     // which is a SIGNIFICANT_ACTIONS prefix in hooks/use-undo-toast.ts, so the
     // global undo toast fires on its own with a working Undo button. Raising our
     // own toast as well would stack two toasts for one action.
-    planner.unscheduleTasks(stale.map((item) => item.id));
+    planner.unscheduleTasks(graced.map((item) => item.id));
 
     // Stamp AFTER the mutation, never before.
     //

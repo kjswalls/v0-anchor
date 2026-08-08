@@ -14,6 +14,13 @@ import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
 import { accentColorForName } from './accent-colors'
 import { selectOverdue, toDateOnly } from './overdue'
+
+/**
+ * Shared empty set for renderers whose input is pre-filtered. Named rather than
+ * inlined so `selectOverdue(…, new Set())` never reads like someone shrugging
+ * past the required parameter.
+ */
+const EMPTY_INACTIVE: ReadonlySet<string> = new Set()
 import { isRecurring } from './recurrence'
 import type {
   HabitItem,
@@ -72,6 +79,22 @@ export interface ItemTypeConfig {
    * skipped task is a task with a date in `skippedDates` and nothing else.
    */
   skipStatus: string | null
+  /**
+   * May this type be paused — suppressed for a stretch of time without being
+   * completed, skipped or deleted?
+   *
+   * Where a skip answers ONE occurrence, a pause answers an open-ended range,
+   * so unlike `skippable` this does not require recurrence: a one-shot task
+   * inside a paused stretch of life is exactly as suppressible as a habit.
+   * Ask `isPausable(item)` rather than reading the flag, so the subtask rule
+   * below is applied everywhere.
+   */
+  pausable: boolean
+  /**
+   * May this type be collected into routines and programs? Membership is what
+   * lets a whole slice of life switch off at once.
+   */
+  collectible: boolean
   /** Participates in manual ordering (the "order" column + reorder actions). */
   orderable: boolean
   /** Which container table names this type resolves against. */
@@ -156,6 +179,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     dateAddressable: true,
     skippable: true,
     skipStatus: null,
+    pausable: true,
+    collectible: true,
     orderable: true,
     containerKind: 'projects',
     containerRequired: false,
@@ -207,7 +232,12 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         // is `status: 'pending'` forever by design. Passing the already-narrowed
         // `tasks` keeps this section's task-only shape; ordering is now the
         // selector's (recent newest-first, then the long-overdue tail).
-        const overdueTasks = selectOverdue(tasks, todayStr)
+        // Empty inactive set, deliberately and not by omission: `tasks` reaches
+        // this renderer ALREADY filtered of suppressed items (buildAnchorContext
+        // applies isOpenLoopSuppressedOn before dispatching to the per-type
+        // renderers), so re-filtering here would be a no-op — and this
+        // function's output is byte-pinned by tests/unit/ai-context.test.ts.
+        const overdueTasks = selectOverdue(tasks, todayStr, EMPTY_INACTIVE)
 
         const pendingTasks = todayTasks.filter((t) => t.status === 'pending')
         const completedTasks = todayTasks.filter((t) => t.status === 'completed')
@@ -284,6 +314,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     dateAddressable: false,
     skippable: true,
     skipStatus: 'skipped',
+    pausable: true,
+    collectible: true,
     orderable: false,
     containerKind: 'habitGroups',
     containerRequired: true,
@@ -377,6 +409,10 @@ export function buildCustomTypeConfig(
     // path of its own.
     skippable: true,
     skipStatus: null,
+    // Custom types are task-shaped, so they pause and collect exactly like
+    // tasks — a new type needs no work to join a routine or a program.
+    pausable: true,
+    collectible: true,
     // Manual ordering is per-type ("order" sequences would collide); custom
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
@@ -474,4 +510,27 @@ export function getItemTypeConfig(name: string): ItemTypeConfig {
  */
 export function isSkippable(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).skippable && isRecurring(item)
+}
+
+/**
+ * May this item be paused?
+ *
+ * Capability AND not-a-subtask. A subtask has no independent presence — it
+ * surfaces only inside its parent's detail panel, so pausing one would hide
+ * nothing and produce an item the user cannot find to un-pause. Subtasks follow
+ * their parent's state, the same reasoning that keeps them out of selectOverdue.
+ *
+ * Deliberately NOT AND-ed with recurrence, unlike isSkippable: a skip answers
+ * one occurrence and needs another to exist, whereas a pause answers a stretch
+ * of time and applies just as well to a single dated task.
+ */
+export function isPausable(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).pausable
+}
+
+/** May this item join routines and programs? Same subtask rule as isPausable. */
+export function isCollectible(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).collectible
 }

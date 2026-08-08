@@ -16,6 +16,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useCanvasWide } from '@/lib/view-store';
 import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
+import { inactiveItemIdsOn } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 
 /**
@@ -115,7 +116,13 @@ function usePastDue() {
     userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   );
 
-  const summary = useMemo(() => summarizeOverdue(items, todayStr), [items, todayStr]);
+  // Suppressed work is not past due — it is deliberately set aside, so it must
+  // not appear in the count, the tray, or the copy. Resolved at TODAY (this is
+  // a dateless surface; plan decision 3).
+  const summary = useMemo(() => {
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return summarizeOverdue(items, todayStr, inactiveItemIdsOn(items, todayStr, { userTimezone: tz }));
+  }, [items, todayStr, userTimezone]);
 
   // n === 0 hides the bar — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from

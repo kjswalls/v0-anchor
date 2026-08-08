@@ -33,6 +33,7 @@ import { useViewStore } from '@/lib/view-store';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
 import { deriveDayItems } from '@/lib/day-items';
+import { inactiveItemIdsOn } from '@/lib/active';
 import { cn } from '@/lib/utils';
 
 /**
@@ -266,6 +267,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     tasks,
     habits,
     projects,
+    items: allItems,
     showCompletedTasks,
     userTimezone,
     showCurrentTimeIndicator,
@@ -298,10 +300,13 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           typeFilter,
           showCompletedTasks,
           filters: canvasFilters,
+          // Per COLUMN, not per week: a pause ending mid-week must show the
+          // handoff in the right column rather than blanking all seven.
+          inactiveItemIds: inactiveItemIdsOn(allItems, dateStr, { userTimezone: timezone }),
         });
         return { date: d, dateStr, timed: deriveTimedEntries(items), untimed: deriveUntimedRows(items) };
       }),
-    [weekDays, tasks, habits, projects, timezone, typeFilter, showCompletedTasks, canvasFilters]
+    [weekDays, tasks, habits, projects, allItems, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the
