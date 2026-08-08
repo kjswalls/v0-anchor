@@ -400,10 +400,14 @@ dateless surfaces resolve at today (decision 3).
   header. `fetchRoutines`/`fetchPrograms` cover the other direction by returning
   null on a missing table. Do not "simplify" either guard away.
 
-  **Migration 024 is authored but NOT APPLIED** (live ledger tops out at 023).
-  Apply with `pnpm db:push`, or via the Supabase MCP — and if applied out of band,
-  record version 024 in `supabase_migrations.schema_migrations` immediately
-  (migration-ledger-drift).
+  **Migration 024 APPLIED to prod 2026-08-08** via Supabase MCP and verified live:
+  all five tables present, RLS enabled on each with its policy, 6 composite FKs
+  (2 per join table), `updated_at` triggers on `routines`/`programs` ONLY (the
+  join tables correctly have none), `items.paused_at`/`paused_until` present, and
+  the purge cron rewritten to cover both new tables. MCP stamped its own
+  timestamp version (`20260808222831`), which was corrected to `024` in
+  `supabase_migrations.schema_migrations` — leaving it would have made `db push`
+  replay 024 later (migration-ledger-drift).
 - [ ] **Phase 1 — item pausing end-to-end (#179):** lib/active.ts (item-level rules:
   isPausedOn with lower bound, open-loop predicate); the FULL surface checklist wired
   (grid, overdue with required inactiveIds param, sweep resume-grace (a), EOD,
