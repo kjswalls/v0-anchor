@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { format } from 'date-fns';
 import {
   DndContext,
   closestCenter,
@@ -17,6 +16,7 @@ import {
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
+import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
@@ -37,8 +37,10 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
+import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
@@ -57,9 +59,16 @@ function KbdHint() {
   return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
 }
 
-function DraggableTaskOverlay({ title }: { title: string }) {
+function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
-    <div className="flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
+    <div className="relative flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
+      {/* Group drag: a count badge over the primary row, so you see what you
+          grabbed AND how many travel with it. */}
+      {count > 1 && (
+        <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground shadow-soft-sm">
+          {count}
+        </span>
+      )}
       <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
       <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
       <div className="min-w-0 flex-1">
@@ -72,13 +81,21 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 /** Own subscriber so mounting the ghost never waits on an AppShell render. */
 function DragGhost() {
   const activeId = useDragStore((s) => s.activeId);
+  // Count travels only when the dragged row is itself part of a multi-selection.
+  const groupCount = useSelectionStore((s) =>
+    activeId && s.selectedIds.has(activeId) && s.selectedIds.size >= 2 ? s.selectedIds.size : 0
+  );
   const title = usePlannerStore((s) =>
     activeId
       ? (s.tasks.find((t) => t.id === activeId) ?? s.habits.find((h) => h.id === activeId))?.title ??
         null
       : null
   );
-  return <DragOverlay>{title !== null && <DraggableTaskOverlay title={title} />}</DragOverlay>;
+  return (
+    <DragOverlay>
+      {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
+    </DragOverlay>
+  );
 }
 
 /**
@@ -98,6 +115,7 @@ export function AppShell() {
     deleteHabit,
     moveTaskToProjectBlock,
     selectedDate,
+    userTimezone,
   } = usePlannerStore();
   const { setChatExpanded } = useSidebarStore();
   const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
@@ -253,16 +271,84 @@ export function AppShell() {
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
 
+    // One timezone-correct day string, shared by resolveDrop and the group
+    // branch below — the user's saved tz, matching how days are derived.
+    const userTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     const command = resolveDrop(itemId, over.id as string, {
       itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
       draggedTaskProject: draggedTask?.project,
-      selectedDateStr: format(selectedDate, 'yyyy-MM-dd'),
+      selectedDate,
+      userTimezone: userTz,
       getRefTime: (refType, refId) =>
         refType === 'task'
           ? tasks.find((t) => t.id === refId)?.startTime
           : habits.find((h) => h.id === refId)?.startTime,
       inferDropTime,
     });
+
+    // Group drag: when the dragged row is part of a multi-selection (>=2), the
+    // whole selection moves. Routed by drop target; each verb is one undo.
+    // Timed drops degrade to the target's bucket (untimed) — N items can't share
+    // one clock time. Only task-likes are date-addressable/braindump-eligible,
+    // so the bulk verbs quietly skip habits where that applies.
+    const selection = useSelectionStore.getState();
+    if (selection.selectedIds.has(itemId) && selection.selectedIds.size >= 2) {
+      const overId = over.id as string;
+      const groupIds = [...selection.selectedIds];
+      // Task-likes are the only date-addressable / braindump-eligible members;
+      // unschedule and date-move no-op on habits, so gate `acted` on this so a
+      // fully-ineligible group falls through instead of silently clearing.
+      const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
+      const planner = usePlannerStore.getState();
+      // What the primary drop resolved to: a bucket always, and — for a TIMED
+      // slot (an hour cell) — a clock time. A timed target schedules the whole
+      // group AT that time so they land as visible blocks; an untimed target
+      // (bare bucket / Anytime / week column) assigns the bucket untimed.
+      const targetBucket = command && 'bucket' in command ? command.bucket : undefined;
+      const targetTime = command && 'time' in command ? command.time : undefined;
+      const selectedDayStr = toDateStr(selectedDate, userTz);
+      let acted = false;
+      if (overId === 'sidebar') {
+        if (taskLikeIds.length) {
+          planner.unscheduleTasks(groupIds);
+          acted = true;
+        }
+      } else if (overId.startsWith('projectblock:')) {
+        const proj = overId.slice('projectblock:'.length);
+        const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
+        if (ids.length) {
+          planner.moveTasksToProjectBlock(ids);
+          acted = true;
+        }
+      } else if (overId.startsWith('week:') || overId.startsWith('weekhour:')) {
+        const dateStr = overId.split(':')[1];
+        if (dateStr && targetBucket && targetTime) {
+          // Timed week cell (weekhour): schedule the group AT that time on that
+          // day so they show as blocks.
+          planner.scheduleItemsAt(groupIds, targetBucket, targetTime, dateStr);
+          acted = true;
+        } else if (dateStr && targetBucket && taskLikeIds.length) {
+          // Untimed week column: carry to the date + bucket (habits excluded).
+          planner.moveTasksToDate(groupIds, dateStr, targetBucket);
+          acted = true;
+        }
+      } else if (targetBucket && targetTime) {
+        // Day-grid hour slot: schedule AT that time on the viewed day, so a
+        // multi-drop shows up where it was dropped (not untimed in Anytime).
+        planner.scheduleItemsAt(groupIds, targetBucket, targetTime, selectedDayStr);
+        acted = true;
+      } else if (targetBucket) {
+        planner.assignItemsToBucket(groupIds, targetBucket);
+        acted = true;
+      }
+      if (acted) {
+        selection.clear();
+        return;
+      }
+      // Target wasn't actionable for a group — fall through to single-item.
+    }
+
     if (!command) return;
 
     switch (command.kind) {
@@ -301,6 +387,27 @@ export function AppShell() {
   }, [tasks, habits]);
 
   const handleShortcutDelete = useCallback(() => {
+    // A genuine multi-selection (>=2) wins over the hovered item: Backspace
+    // deletes the whole selection (one confirm, one undo). A single selected row
+    // is just the "current / open row" (every plain click selects one), so at
+    // size 1 we fall through to the hovered-item path as before.
+    const selection = useSelectionStore.getState();
+    if (selection.selectedIds.size >= 2) {
+      const ids = [...selection.selectedIds];
+      const n = ids.length;
+      confirm({
+        title: `Delete ${n} ${n === 1 ? 'item' : 'items'}?`,
+        description:
+          'This will permanently delete the selected items (and any subtasks). This action cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: () => {
+          usePlannerStore.getState().deleteItems(ids);
+          selection.clear();
+        },
+      });
+      return;
+    }
     const { id, type } = hoveredItem;
     if (!id || !type) return;
     const item =
@@ -335,6 +442,7 @@ export function AppShell() {
         type: activeDialog.tab,
         bucket: activeDialog.bucket,
         date: activeDialog.date,
+        title: activeDialog.title,
       };
     }
     if (activeDialog?.type === 'edit-item') {
@@ -437,6 +545,8 @@ export function AppShell() {
       />
 
       <ConfirmDialog />
+
+      <BulkActionBar />
 
       {/* Persistent keyboard shortcuts hint — desktop only */}
       <div className="fixed bottom-4 right-4 z-30 hidden md:flex">

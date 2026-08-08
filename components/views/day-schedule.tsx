@@ -24,6 +24,8 @@ import { layoutOverlaps, type BlockLayout, type OverlapEntry } from '@/lib/sched
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
+import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
+import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
@@ -348,6 +350,151 @@ function HourSlot({
   );
 }
 
+/**
+ * The four corner marks a schedule block shows, in the user's chosen style
+ * (Settings → Appearance → Schedule handles). Aria-hidden, anchored off the
+ * pane's real inset so a tiled conflict member's marks track its own edges.
+ *
+ * Two states share one set of marks:
+ *   • HOVER reveals them in neutral --ink-1 (transient).
+ *   • SELECTED latches them on and turns them lime — the colour rides
+ *     --blk-mk (set on the block wrapper), so a selected block's marks stay lit
+ *     even while it's hovered. That's the signal a shared pane-brightness can't
+ *     give: hover and selection now report on different channels.
+ *
+ *   nodes  — 6px hollow square on each vertex (a CAD bounding box)
+ *   target — 9px open registration crosshair off each corner
+ *   trim   — 5px trim-mark lozenge (rotated square) off each corner
+ *
+ * The LEFT-column marks seat at the pane's own left edge rather than off it: the
+ * 12px lane (start bead + accent rail) lives just outside that edge, and a mark
+ * pushed further left would collide with it.
+ */
+function BlockCorners({
+  style,
+  paneLeftCss,
+  paneRightCss,
+  selected,
+}: {
+  style: ScheduleMarkStyle;
+  paneLeftCss: string;
+  paneRightCss: string;
+  selected: boolean;
+}) {
+  const reveal = selected
+    ? 'pointer-events-none absolute opacity-100'
+    : 'pointer-events-none absolute opacity-0 transition-opacity group-hover/blk:opacity-100';
+
+  if (style === 'target') {
+    const left = paneLeftCss;
+    const right = `calc(${paneRightCss} - 8.5px)`;
+    const corners: Array<{ pos: React.CSSProperties; y: string }> = [
+      { pos: { left }, y: '-top-[8.5px]' },
+      { pos: { right }, y: '-top-[8.5px]' },
+      { pos: { left }, y: '-bottom-[8.5px]' },
+      { pos: { right }, y: '-bottom-[8.5px]' },
+    ];
+    return (
+      <>
+        {corners.map((c, i) => (
+          <span key={i} aria-hidden className={cn(reveal, 'h-[9px] w-[9px]', c.y)} style={c.pos}>
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
+            <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--blk-mk)]" />
+            {/* the reticle's empty eye — a canvas dot punches the centre gap */}
+            <span className="absolute left-1/2 top-1/2 h-[3px] w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--canvas)]" />
+          </span>
+        ))}
+      </>
+    );
+  }
+
+  if (style === 'trim') {
+    const left = paneLeftCss;
+    const right = `calc(${paneRightCss} - 6.5px)`;
+    const loz = 'h-[5px] w-[5px] rotate-45 border border-[var(--blk-mk)]';
+    return (
+      <>
+        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ left }} />
+        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ right }} />
+        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ left }} />
+        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ right }} />
+      </>
+    );
+  }
+
+  // 'nodes' (default) — 6px hollow square seated just inside each pane corner.
+  // Both columns hug their own edge (not straddling the vertex) so the frame is
+  // symmetric AND the left pair clears the lane's rail + bead.
+  const left = paneLeftCss;
+  const right = paneRightCss;
+  const node = 'h-1.5 w-1.5 rounded-[1px] border border-[var(--blk-mk)] bg-[var(--canvas)]';
+  return (
+    <>
+      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ left }} />
+      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ right }} />
+      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ left }} />
+      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ right }} />
+    </>
+  );
+}
+
+/**
+ * The visible grip inside a resize hit-zone, in the user's chosen style. Seated
+ * on the edge centre — the hit-zone straddles the edge, its line 9px in from the
+ * zone's outer side. Colour rides --blk-mk (neutral on hover, lime when the
+ * block is selected). A SECOND lime glyph — the reticle eye / centre patch —
+ * lights only while THIS edge is being dragged: colour spent on one small active
+ * glyph, and lime never dims. 'nodes' stays neutral apart from the select tint.
+ */
+function HandleGrip({
+  style,
+  edge,
+  active,
+  selected,
+}: {
+  style: ScheduleMarkStyle;
+  edge: 'top' | 'bottom';
+  active: boolean;
+  selected: boolean;
+}) {
+  const reveal = selected
+    ? 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-100'
+    : 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-0 transition-opacity group-hover/blk:opacity-100';
+  const seat = edge === 'top' ? 'top-[9px] -translate-y-1/2' : 'bottom-[9px] translate-y-1/2';
+
+  if (style === 'target') {
+    return (
+      <span aria-hidden className={cn(reveal, seat, 'h-3 w-3 rounded-full border border-[var(--blk-mk)]')}>
+        <span className="absolute -top-1 -bottom-1 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
+        <span
+          className={cn(
+            'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full',
+            active ? 'h-[3px] w-[3px] bg-[var(--primary)]' : 'h-[2px] w-[2px] bg-[var(--blk-mk)]'
+          )}
+        />
+      </span>
+    );
+  }
+
+  if (style === 'trim') {
+    return (
+      <span aria-hidden className={cn(reveal, seat, 'flex h-[3px] w-[14px] gap-px')}>
+        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
+        <span className={cn('h-full w-1 rounded-[0.5px]', active ? 'bg-[var(--primary)]' : 'bg-[var(--blk-mk)]')} />
+        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
+      </span>
+    );
+  }
+
+  // 'nodes' (default) — a solid square grip matching the corner nodes.
+  return (
+    <span
+      aria-hidden
+      className={cn(reveal, seat, 'h-1.5 w-1.5 rounded-[1px] bg-[var(--blk-mk)] shadow-[0_0_0_1px_var(--canvas)]')}
+    />
+  );
+}
+
 export function ScheduleBlock({
   entry,
   gridStartMin,
@@ -390,6 +537,11 @@ export function ScheduleBlock({
     updateHabit,
   } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
+  // Multi-select membership for this block. Modifier-click selects; a plain
+  // click still opens the editor. The grid has no hover checkbox (the list
+  // surfaces do) — its dense pane leaves no safe slot — so selection here is a
+  // ring + modifier-click, discoverable once a selection exists elsewhere.
+  const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(entry.item.id));
   const isWeek = variant === 'week';
   const { item, itemType } = entry;
   const isTask = itemType === 'task';
@@ -428,6 +580,10 @@ export function ScheduleBlock({
   );
   const canResize = typeConfig.schedule.resizable && !!item.startTime && !task?.inProjectBlock;
   const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
+  // Which edge is under an active resize — drives the one lime glyph the target/
+  // trim mark styles light on the handle being dragged (see HandleGrip). A ref
+  // alone won't do: the grip has to re-render to recolour.
+  const [activeEdge, setActiveEdge] = useState<'top' | 'bottom' | null>(null);
   const effStartMin = preview?.startMin ?? entry.startMin;
   const effDuration = preview?.duration ?? entry.duration;
 
@@ -513,6 +669,7 @@ export function ScheduleBlock({
     };
     pointerYRef.current = e.clientY;
     setPreview({ startMin: entry.startMin, duration: entry.duration });
+    setActiveEdge(edge);
     setResizing(true);
     rafRef.current = requestAnimationFrame(autoScrollTick);
   };
@@ -530,6 +687,7 @@ export function ScheduleBlock({
     const p = preview;
     resizeRef.current = null;
     setPreview(null);
+    setActiveEdge(null);
     setResizing(false);
     if (!r || !p) return;
     // The write has to go through the action for the item's OWN type: the store
@@ -585,16 +743,17 @@ export function ScheduleBlock({
 
   /*
    * The pane's own edges, as CSS lengths, for everything that has to register
-   * against them from outside: the four crop marks and both resize strips. When a
-   * conflict member's pane starts at `calc(50% + 6px)`, marks pinned to the
-   * literal LANE_PX would annotate empty grid.
+   * against them from outside: the corner registration and both resize handles.
+   * When a conflict member's pane starts at `calc(50% + 6px)`, marks pinned to
+   * the literal LANE_PX would annotate empty grid, so they anchor off these.
    */
   const paneLeftCss = L?.paneLeft ?? `${LANE_PX}px`;
   const paneRightCss = L?.paneRight ?? '0px';
-  const cropLeft = `calc(${paneLeftCss} - 4px)`;
-  const cropRight = `calc(${paneRightCss} - 4px)`;
   const handleLeft = paneLeftCss;
   const handleRight = paneRightCss;
+  // Which corner + handle treatment to draw (Settings → Appearance → Schedule
+  // handles). The forms are defined in BlockCorners / HandleGrip below.
+  const scheduleMarkStyle = useViewStore((s) => s.scheduleMarkStyle);
 
   /*
    * NARROW is a width, not a view.
@@ -679,6 +838,7 @@ export function ScheduleBlock({
       data-item-id={item.id}
       data-item-kind={itemType}
       data-completed={done ? 'true' : 'false'}
+      data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both
       // are otherwise encoded only in inline pixel styles. These make the
       // hour-drop and resize outcomes assertable.
@@ -703,6 +863,10 @@ export function ScheduleBlock({
         {
           top,
           '--blk-h': `${height}px`,
+          // The registration marks' ink: neutral --ink-1 normally, lime when the
+          // block is selected. This is how selection reads THROUGH a hover — the
+          // pane brightness is shared, but the mark colour is not (see BlockCorners).
+          '--blk-mk': isMultiSelected && !done ? 'var(--primary)' : 'var(--ink-1)',
           '--blk-z': L?.z ?? 2,
           // A container lifts by ONE on hover, never to the leaf lift: raising it
           // to the top would put it above its own child, and since the pointer
@@ -764,8 +928,18 @@ export function ScheduleBlock({
         data-slot="pane"
         {...attributes}
         {...listeners}
-        onClick={() => {
+        onClick={(e) => {
           if (wasDraggedRef.current) return;
+          const selection = useSelectionStore.getState();
+          if (e.metaKey || e.ctrlKey) {
+            selection.toggle(item.id);
+            return;
+          }
+          if (e.shiftKey) {
+            selection.selectRange(rangeIds(selection.anchorId, item.id));
+            return;
+          }
+          selection.replace([item.id]);
           openEditFor(item, itemType);
         }}
         className={cn(
@@ -793,7 +967,11 @@ export function ScheduleBlock({
           // checkbox down to olive. The text carries the rest of the fade.
           done
             ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
-            : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]'
+            : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
+          // Selected brightens the pane — lit brighter than hover, its own
+          // latched state (the list rows latch a wash; a grid block latches the
+          // lamp). Kept off `done` blocks, whose lamp is deliberately out.
+          isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-hover)]'
         )}
         style={{ marginLeft: L?.paneLeft ?? LANE_PX, marginRight: L?.paneRight ?? 0 }}
       >
@@ -926,40 +1104,24 @@ export function ScheduleBlock({
         </div>
       </div>
 
-      {/* Registration corners — crop marks sitting 4px OFF the pane, annotating
-          the block rather than drawing a second, misaligned border inside it.
-
-          They anchor off the PANE's own inset, not off the literal LANE_PX: a
-          tiled conflict member's pane starts at 50%, and marks left behind at
-          x=8 would register a pane that is not there. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -top-1 h-1.5 w-1.5 border-l border-t border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ left: cropLeft }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -top-1 h-1.5 w-1.5 border-r border-t border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ right: cropRight }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-1 h-1.5 w-1.5 border-b border-l border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ left: cropLeft }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-1 h-1.5 w-1.5 border-b border-r border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ right: cropRight }}
+      {/* Registration corners — the block's hover/select chrome, in whichever
+          style the user picked (Settings → Appearance → Schedule handles). Each
+          anchors off the PANE's own inset, not the literal LANE_PX: a tiled
+          conflict member's pane starts at 50%, and marks left behind at x=8 would
+          register a pane that is not there. Aria-hidden; revealed on hover. */}
+      <BlockCorners
+        style={scheduleMarkStyle}
+        paneLeftCss={paneLeftCss}
+        paneRightCss={paneRightCss}
+        selected={isMultiSelected}
       />
 
-      {/* Resize handles — drag the top or bottom edge to set start/duration.
-          The mark lives OUTSIDE the pane on the corners' own -4px line: a caliper
-          datum centred on the edge with its stem pointing into the block, in the
-          same 1px hairline as the corners. Hover therefore reads as ONE set of
-          marks laid over the pane rather than as a grabber bar sitting inside it.
-          The hit zone still straddles the edge (9px out, 3px in) so the target
-          stays reachable without hunting for the hairline.
+      {/* Resize handles — drag the top or bottom edge to set start/duration. The
+          hit zone straddles the edge (9px out, 3px in) so the target stays
+          reachable; the visible grip inside it (HandleGrip) follows the chosen
+          mark style and lights one lime glyph on the edge being dragged.
+
+          A FLUSH shared edge — a container and its child both ending 17:00 — would
 
           A FLUSH shared edge — a container and its child both ending 17:00 — would
           otherwise put two full-width strips 0px apart and make the parent's edge
@@ -982,12 +1144,7 @@ export function ScheduleBlock({
             }
             aria-label="Resize start"
           >
-            <span
-              aria-hidden
-              className="absolute left-1/2 top-[5px] h-px w-4 -translate-x-1/2 bg-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-            >
-              <span className="absolute left-1/2 top-px h-1 w-px bg-[var(--ink-1)]" />
-            </span>
+            <HandleGrip style={scheduleMarkStyle} edge="top" active={activeEdge === 'top'} selected={isMultiSelected} />
           </div>
           <div
             onPointerDown={(e) => onResizeDown('bottom', e)}
@@ -1002,12 +1159,7 @@ export function ScheduleBlock({
             }
             aria-label="Resize duration"
           >
-            <span
-              aria-hidden
-              className="absolute bottom-[5px] left-1/2 h-px w-4 -translate-x-1/2 bg-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-            >
-              <span className="absolute bottom-px left-1/2 h-1 w-px bg-[var(--ink-1)]" />
-            </span>
+            <HandleGrip style={scheduleMarkStyle} edge="bottom" active={activeEdge === 'bottom'} selected={isMultiSelected} />
           </div>
         </>
       )}

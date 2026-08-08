@@ -46,6 +46,7 @@ import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { useUIStore, openAddDialog } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
+import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
@@ -694,6 +695,21 @@ export const STATIC_COMMANDS: Command[] = [
       }
       useUIStore.getState().focusOmnibar();
     },
+  },
+  {
+    id: 'workspace.selectAll',
+    label: 'Select all items',
+    description: 'Select every item currently on screen',
+    group: 'workspace',
+    icon: Rows3,
+    keywords: 'select all everything highlight multi',
+    // No palette row: "select all" from a palette that then closes reads as a
+    // no-op, and the binding is the point. It still lists in the shortcuts modal.
+    // No allowInInput, so ⌘A inside a text field stays the browser's select-all.
+    shortcut: { id: 'select_all', keys: ['meta', 'a'] },
+    hidden: true,
+    // DOM order == visual order (no virtualization); dedupes ids across surfaces.
+    run: () => useSelectionStore.getState().replace(selectableIdsInDom()),
   },
 
   /* ── Settings ───────────────────────────────────────────────────────── */

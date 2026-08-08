@@ -2,7 +2,6 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { format } from 'date-fns';
 import type {
   Task,
   Habit,
@@ -121,11 +120,33 @@ interface PlannerStore {
   /**
    * Bulk carry: one set(), one history entry, one undo. Same visibility
    * guarantee as moveTaskToDate, but deliberately drops startTime/isScheduled.
+   * `bucket` overrides each item's own bucket (a week-grid group drop targets a
+   * specific bucket); omitted, each item keeps its current bucket.
    */
-  moveTasksToDate: (ids: string[], dateStr: string) => void;
+  moveTasksToDate: (ids: string[], dateStr: string, bucket?: TimeBucket) => void;
   /** Batched unscheduleTask — one set(), one history entry, one undo. */
   unscheduleTasks: (ids: string[]) => void;
   reorderTasks: (taskIds: string[]) => void;
+
+  // Multi-select bulk actions (any kind). Each does exactly ONE set() so the
+  // whole gesture is a single undo, then fans out one DB write per item with
+  // that item's own slug — see moveTasksToDate for the pattern.
+  /** Bulk delete a mixed selection, cascading task-like subtasks. */
+  deleteItems: (ids: string[]) => void;
+  /**
+   * Bulk completion for `date`, routed per kind: per-date completedDates for
+   * habits and recurring task-likes, scalar status for one-off task-likes.
+   * Items already in the target state are skipped (no double-counted streaks).
+   */
+  setItemsCompleted: (ids: string[], completed: boolean, date?: Date) => void;
+  /** Bulk assign a mixed selection to a time bucket, untimed (group drag). */
+  assignItemsToBucket: (ids: string[], bucket: TimeBucket) => void;
+  /**
+   * Bulk schedule a mixed selection AT a clock time (group drag onto a timed
+   * grid slot) so they land as visible blocks, not untimed rows. Task-likes take
+   * the date; habits are date-blind and just take the bucket + time. One undo.
+   */
+  scheduleItemsAt: (ids: string[], bucket: TimeBucket, time: string, dateStr?: string) => void;
 
   // Habit actions
   addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
@@ -738,7 +759,7 @@ export const usePlannerStore = create<PlannerStore>()(
        * recurring task's startDate is its recurrence anchor, so carrying it
        * rewrites the series rather than moving an occurrence.
        */
-      moveTasksToDate: (ids, dateStr) => {
+      moveTasksToDate: (ids, dateStr, bucket) => {
         const idSet = new Set(ids);
         // Resolved before the label is set: setNextActionLabel arms a pending
         // label consumed by the NEXT history save, so labelling a no-op would
@@ -753,8 +774,9 @@ export const usePlannerStore = create<PlannerStore>()(
           dbType: dbTypeOf(item),
           updates: {
             startDate: dateStr,
-            // Same load-bearing visibility guarantee as moveTaskToDate.
-            timeBucket: item.timeBucket ?? 'anytime',
+            // Same load-bearing visibility guarantee as moveTaskToDate. A group
+            // week-grid drop passes the target bucket; otherwise keep own.
+            timeBucket: bucket ?? item.timeBucket ?? 'anytime',
             // Deliberately cleared, unlike the single-item verb: a bulk carry can
             // drag 18 stale clock times (06:00, 22:30, …) onto today at once, and
             // deriveGridRange widens the schedule window to cover them, which
@@ -836,6 +858,208 @@ export const usePlannerStore = create<PlannerStore>()(
 
         changed.forEach((t) =>
           dbUpdateItem(t.id, 'task', { order: t.order }).catch(console.error)
+        );
+      },
+
+      /**
+       * Bulk delete for multi-select. Accepts a mixed selection of any kind
+       * (habits + task-like), cascades task-like subtasks the way deleteTask
+       * does, and does exactly ONE set() so the whole gesture is a single undo.
+       * Ids are unique across the items table, so id-only membership is safe.
+       */
+      deleteItems: (ids) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+
+        // Subtasks of any deleted task-like parent (habits carry none). Soft
+        // delete doesn't fire the DB's ON DELETE SET NULL, so an orphaned
+        // subtask would be unreachable — cascade explicitly, as deleteTask does.
+        const deletedTaskLike = new Set(
+          targets.filter((i) => i.type !== 'habit').map((i) => i.id)
+        );
+        const children = get().items.filter(
+          (i) =>
+            i.type !== 'habit' &&
+            i.parentItemId != null &&
+            deletedTaskLike.has(i.parentItemId) &&
+            !idSet.has(i.id)
+        );
+
+        setNextActionLabel(`Delete items (${targets.length})`);
+
+        const removeIds = new Set<string>([...idSet, ...children.map((c) => c.id)]);
+        set((state) => projectItems(state.items.filter((i) => !removeIds.has(i.id))));
+
+        [...targets, ...children].forEach((item) =>
+          dbDeleteItem(item.id, dbTypeOf(item)).catch(console.error)
+        );
+      },
+
+      /**
+       * Bulk completion for multi-select. Marks every eligible id complete (or
+       * incomplete) for `date`, routed per kind:
+       *   - habit               → per-date completedDates + optimistic streak
+       *                           (the RPC owns streak server-side, as in
+       *                           toggleHabitStatus)
+       *   - recurring task-like → per-date completedDates (never scalar status)
+       *   - one-off task-like   → scalar status
+       * Items already in the target state are skipped, so a re-complete never
+       * double-counts a streak. One set() ⇒ one undo.
+       */
+      setItemsCompleted: (ids, completed, date) => {
+        const idSet = new Set(ids);
+        const dateStr = resolveDateStr(date);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+
+        const patchById = new Map<string, Record<string, unknown>>();
+        const dbWrites: (() => void)[] = [];
+
+        for (const item of targets) {
+          if (item.type === 'habit') {
+            const habit = item as HabitItem;
+            const wasCompleted = habit.completedDates.includes(dateStr);
+            if (wasCompleted === completed) continue;
+            // Completing also clears a skip for the day (mirrors toggleHabitStatus).
+            const newSkippedDates = completed
+              ? (habit.skippedDates ?? []).filter((d) => d !== dateStr)
+              : habit.skippedDates ?? [];
+            const newStatus = completed ? 'done' : 'pending';
+            patchById.set(item.id, {
+              status: newStatus,
+              completedDates: completed
+                ? [...habit.completedDates, dateStr]
+                : habit.completedDates.filter((d) => d !== dateStr),
+              skippedDates: newSkippedDates,
+              streak: completed ? habit.streak + 1 : Math.max(0, habit.streak - 1),
+            });
+            dbWrites.push(() => {
+              // Streak + completedDates are server-owned on the RPC. The companion
+              // update carries status AND skippedDates — the RPC never touches
+              // skipped_dates, so the skip-clear must persist here or it reappears
+              // on reload (matches toggleHabitStatus, which passes skippedDates).
+              dbSetItemCompletion(item.id, 'habit', dateStr, completed).catch(console.error);
+              dbUpdateItem(item.id, 'habit', {
+                status: newStatus,
+                skippedDates: newSkippedDates,
+              }).catch(console.error);
+            });
+          } else {
+            const task = item as TaskItem;
+            const dbType = dbTypeOf(item);
+            if (isRecurring(task)) {
+              if (isCompletedOnDate(task, dateStr) === completed) continue;
+              patchById.set(item.id, {
+                completedDates: completed
+                  ? [...(task.completedDates ?? []), dateStr]
+                  : (task.completedDates ?? []).filter((d) => d !== dateStr),
+              });
+              dbWrites.push(() =>
+                dbSetItemCompletion(item.id, dbType, dateStr, completed).catch(console.error)
+              );
+            } else {
+              const newStatus: TaskStatus = completed ? 'completed' : 'pending';
+              if (task.status === newStatus) continue;
+              patchById.set(item.id, { status: newStatus });
+              dbWrites.push(() =>
+                dbUpdateItem(item.id, dbType, { status: newStatus }).catch(console.error)
+              );
+            }
+          }
+        }
+
+        if (patchById.size === 0) return;
+        setNextActionLabel(`${completed ? 'Complete' : 'Uncomplete'} items (${patchById.size})`);
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) => {
+              const patch = patchById.get(i.id);
+              return patch ? ({ ...i, ...patch } as Item) : i;
+            })
+          )
+        );
+
+        dbWrites.forEach((w) => w());
+      },
+
+      /**
+       * Bulk bucket assignment for a group drag. Mirrors assignTaskToBucket
+       * (untimed) for task-likes and assignHabitToBucket for habits, in one
+       * set() ⇒ one undo. A group dropped on a timed slot degrades to the slot's
+       * bucket, untimed — N items can't share one clock time coherently.
+       */
+      assignItemsToBucket: (ids, bucket) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+        setNextActionLabel(`Move ${targets.length} items to ${bucket}`);
+
+        const taskUpdates: Partial<Task> = {
+          isScheduled: false,
+          timeBucket: bucket,
+          startTime: undefined,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+        };
+        const habitUpdates: Partial<Habit> = { timeBucket: bucket, startTime: undefined };
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) =>
+              idSet.has(i.id)
+                ? ({ ...i, ...(i.type === 'habit' ? habitUpdates : taskUpdates) } as Item)
+                : i
+            )
+          )
+        );
+
+        targets.forEach((item) =>
+          dbUpdateItem(
+            item.id,
+            dbTypeOf(item),
+            item.type === 'habit' ? habitUpdates : taskUpdates
+          ).catch(console.error)
+        );
+      },
+
+      scheduleItemsAt: (ids, bucket, time, dateStr) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+        const corrected = autoCorrectBucket(time, bucket) ?? bucket;
+        setNextActionLabel(`Schedule ${targets.length} items`);
+
+        // All land at the same clock time; the grid's overlap layout tiles them.
+        const taskUpdates: Partial<Task> = {
+          isScheduled: true,
+          timeBucket: corrected,
+          startTime: time,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+          ...(dateStr ? { startDate: dateStr } : {}),
+        };
+        const habitUpdates: Partial<Habit> = { timeBucket: corrected, startTime: time };
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) =>
+              idSet.has(i.id)
+                ? ({ ...i, ...(i.type === 'habit' ? habitUpdates : taskUpdates) } as Item)
+                : i
+            )
+          )
+        );
+
+        targets.forEach((item) =>
+          dbUpdateItem(
+            item.id,
+            dbTypeOf(item),
+            item.type === 'habit' ? habitUpdates : taskUpdates
+          ).catch(console.error)
         );
       },
 
@@ -1034,8 +1258,10 @@ export const usePlannerStore = create<PlannerStore>()(
       moveTaskToProjectBlock: (taskId) => {
         const moved = findItem(taskId, 'task');
         setNextActionLabel(`Move task into project block: ${moved?.title || 'Unknown'}`);
-        const selectedDate = get().selectedDate;
-        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        // resolveDateStr = toDateStr(selectedDate, userTimezone) — the user-tz
+        // day the canvas is derived against, so a machine-tz off-by-one can't
+        // file this into a project block on the wrong day.
+        const selectedDateStr = resolveDateStr();
         let taskUpdates: Partial<Task> | null = null;
 
         set((state) => {
@@ -1065,8 +1291,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
       moveTasksToProjectBlock: (taskIds) => {
         setNextActionLabel(`Move ${taskIds.length} tasks into project block`);
-        const selectedDate = get().selectedDate;
-        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        // resolveDateStr = toDateStr(selectedDate, userTimezone) — the user-tz
+        // day the canvas is derived against, so a machine-tz off-by-one can't
+        // file this into a project block on the wrong day.
+        const selectedDateStr = resolveDateStr();
         const updatesMap = new Map<string, Partial<Task>>();
 
         set((state) => {

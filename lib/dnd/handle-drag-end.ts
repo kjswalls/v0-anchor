@@ -1,4 +1,5 @@
 import type { TimeBucket } from '../planner-types';
+import { toDateStr } from '../recurrence';
 
 /**
  * Pure resolution of a dnd-kit drop into a planner command.
@@ -24,8 +25,16 @@ export interface DropContext {
   itemType: 'task' | 'habit' | null;
   /** Project of the dragged task, for the projectblock guard. */
   draggedTaskProject?: string;
-  /** The date the canvas is showing, yyyy-MM-dd. */
-  selectedDateStr: string;
+  /**
+   * The day the canvas is showing, and the user's timezone. The dropped day
+   * string is resolved HERE via toDateStr(selectedDate, userTimezone) — the same
+   * convention deriveDayItems keys a task's startDate against. Passing a string
+   * pre-formatted with date-fns (the machine's timezone) silently assigned the
+   * MACHINE tz's day, so a user whose saved timezone differed saw a day-view
+   * drop land a day off (drop on "today" → shows tomorrow).
+   */
+  selectedDate: Date;
+  userTimezone: string;
   /** Start time of the reference item in a scheduled:{...}:{before|after} drop. */
   getRefTime: (refType: 'task' | 'habit', refId: string) => string | undefined;
   /** Infer a concrete time for a drop into a scheduled section. */
@@ -37,8 +46,9 @@ export function resolveDrop(
   targetId: string,
   ctx: DropContext
 ): DropCommand | null {
-  const { itemType, selectedDateStr } = ctx;
+  const { itemType } = ctx;
   if (!itemType) return null;
+  const selectedDateStr = toDateStr(ctx.selectedDate, ctx.userTimezone);
 
   // scheduled:{bucket}:{before|after}:{refType}:{refId} | scheduled:{bucket}:empty
   if (targetId.startsWith('scheduled:')) {

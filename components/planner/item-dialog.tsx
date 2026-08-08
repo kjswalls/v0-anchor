@@ -230,7 +230,7 @@ function SurfaceHeader({ panel, children }: { panel: boolean; children: ReactNod
 
 /** `type` is the registry name ('task', 'habit', or a custom slug like 'goal'). */
 export type ItemDialogState =
-  | { mode: 'add'; type: string; bucket?: TimeBucket; date?: Date }
+  | { mode: 'add'; type: string; bucket?: TimeBucket; date?: Date; title?: string }
   | { mode: 'edit'; item: Item };
 
 interface ItemDialogProps {
@@ -563,6 +563,9 @@ export function ItemDialog({
         const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, habitGroups });
         next[t] = {
           ...base,
+          // A quick-add hand-off seeds the title; a plain open keeps whatever
+          // draft title was already there (cancels preserve the draft).
+          title: addPayload.title ?? base.title,
           timeBucket: bucket,
           ...(getItemTypeConfig(t).dateAnchored ? { startDate: addPayload.date } : null),
         };
@@ -1666,15 +1669,11 @@ export function ItemDialog({
                   modeLabel / titleInput), only reordered. */}
               {isPanel && mode === 'edit' ? (
                 <div className="flex flex-col gap-1.5">
+                  {/* The breathing dot that used to lead here (mirroring the
+                      selected row) is retired for now — the persistent row
+                      highlight is the current-row indicator, and the pulse dot
+                      is being reserved for an OpenClaw "working on it" signal. */}
                   <div className="flex items-center gap-2">
-                    {/* The same breathing dot the selected row carries, so the
-                        pane and its row read as one thing. Grey, its own element
-                        so the pulse's transform/opacity touches nothing else. */}
-                    <span
-                      aria-hidden
-                      data-testid="item-panel-selected-indicator"
-                      className="animate-row-selected-pulse size-1.5 shrink-0 rounded-full bg-muted-foreground"
-                    />
                     <div className="min-w-0 flex-1">{titleInput}</div>
                     {headerActions}
                   </div>

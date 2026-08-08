@@ -213,16 +213,17 @@ describe('ScheduleBlock — DOUBLE-BOOKED shares one lane', () => {
     expect(swell(byId('standup')).style.left).toBe('7px');
   });
 
-  it('registers the crop marks against each pane’s real edge', () => {
+  it('registers the corner marks against each pane’s real edge', () => {
     const { byId } = paint(entries);
-    // A mark left at the literal LANE_PX would annotate empty grid for member 1.
+    // Default mark style is 'nodes' — hollow squares filled with --canvas, one
+    // per vertex. A mark left at the literal LANE_PX would annotate empty grid
+    // for member 1, so it must anchor off the pane's real inset (50% + 6px).
     // Asserted on the parts, not the string: the CSS serialiser is free to
     // reorder a calc's terms, and does.
-    const marks = byId('standup').querySelectorAll('[class*="border-l"]');
+    const marks = byId('standup').querySelectorAll('[class*="bg-\\[var(--canvas)\\]"]');
     const left = Array.from(marks).find((m) => (m as HTMLElement).style.left) as HTMLElement;
     expect(left.style.left).toContain('50% + 6px');
-    expect(left.style.left).toContain('4px');
-    expect(left.style.left).not.toBe(`${LANE_PX - 4}px`);
+    expect(left.style.left).not.toBe(`${LANE_PX - 3}px`);
   });
 });
 

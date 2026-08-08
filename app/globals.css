@@ -83,6 +83,9 @@
   --border: oklch(0.9 0.008 272);     /* cool hairline (~#DCDDE1) */
   --input: oklch(0.86 0.012 272);     /* cool control border (~#C7C9D4) */
   --ring: var(--lime-solid);
+  /* Multi-select highlight — the same neutral wash as --accent (hover), one
+     notch stronger so a latched selection reads a touch above a passing hover. */
+  --row-selected: oklch(0.22 0.012 272 / 9%);
 
   /* ── 3b. Anchor semantics ────────────────────────────────────────────── */
   /* The plane every modal stands on — dialogs, alert dialogs, mobile sheets.
@@ -296,6 +299,7 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 8%);
   --ring: var(--lime-solid);
+  --row-selected: oklch(1 0 0 / 12%);
 
   /* Frost tint on a dark ground goes black and a notch heavier — see the
      light block's --scrim note. */
@@ -560,6 +564,17 @@
   --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
   --shadow-elev-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
 
+  /* A recessed surface — the sunken tray in the braindump quick-add. Light gets
+     a soft black inset; dark needs a deeper one, since a black inset barely
+     registers on the dark ground (same reasoning as the elev family). */
+  --shadow-inset-well: inset 0 1px 2px oklch(0 0 0 / 10%);
+
+  /* Lit recess — the sunken quick-add tray's focused fill: the well eased toward
+     white so it brightens IN PLACE without rising to a raised pill. One
+     definition serves both themes; the var()s it mixes resolve per-theme at the
+     point of use (.dark redefines --surface-2/--surface-3, not this). */
+  --surface-3-lit: color-mix(in oklab, var(--surface-3), var(--surface-2) 62%);
+
   /* ── The "key press" pair (omnibar input) ────────────────────────────────
      Rest = a raised pill floating above the dock. Pressed = the same pill sunk
      into it, the drop replaced by an inner shadow.
@@ -646,6 +661,9 @@
      patch covering it. */
   --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
   --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
+  /* Multi-selected: brighter than hover — the pane picks up the lamp. Opaque
+     surface-2 lifted toward white so it reads lit, not merely un-glassed. */
+  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
   /* Done goes the other way — INTO the well. The lamp is off, so the block sinks
      to the grey the whole set used to sit at. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
@@ -703,6 +721,8 @@
   --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
   --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
 
+  --shadow-inset-well: inset 0 1px 3px oklch(0 0 0 / 45%);
+
   /* The key-press pair, dark. Same padding contract as the light one above —
      matched layer order and inset-ness in both states, or the shadow snaps
      instead of animating. Dark needs a 4th inset layer, so the pair is
@@ -759,6 +779,9 @@
   --sched-lit: inset 1px 0 0 oklch(1 0 0 / 10%), inset 0 1px 0 oklch(1 0 0 / 9%);
   --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
   --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  /* Multi-selected, dark: lift surface-2 toward white so the block brightens
+     against the ground instead of just losing its glass. */
+  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
   /* Floors at a real step above the canvas: surface-3/32 resolves to ~0.224 over
      a 0.21 ground, which is vanishing rather than receding. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);

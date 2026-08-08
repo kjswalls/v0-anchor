@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Trash2 } from 'lucide-react';
+import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Trash2, ListChecks } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
+import { useSelectionStore } from '@/lib/selection-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import type { TimeBucket, Task } from '@/lib/planner-types';
@@ -36,6 +37,10 @@ export function ScheduleSheet() {
   const { scheduleTask, assignHabitToBucket, unscheduleTask, deleteTask, deleteHabit, selectedDate, userTimezone } =
     usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
+  // Mobile multi-select entry: no long-press (that gesture belongs to dnd-kit's
+  // TouchSensor drag), so selection is toggled here from the action sheet. Two+
+  // selected raises the same bulk bar as desktop.
+  const isMultiSelected = useSelectionStore((s) => (row ? s.selectedIds.has(row.item.id) : false));
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const task = row?.itemType === 'task' ? (row.item as Task) : null;
@@ -87,6 +92,16 @@ export function ScheduleSheet() {
         </div>
 
         <DrawerFooter>
+          <Button
+            variant="ghost"
+            className="justify-start"
+            onClick={() => {
+              if (row) useSelectionStore.getState().toggle(row.item.id);
+              close();
+            }}
+          >
+            <ListChecks className="mr-2 h-4 w-4" /> {isMultiSelected ? 'Deselect' : 'Select'}
+          </Button>
           {taskScheduled && (
             <Button
               variant="ghost"

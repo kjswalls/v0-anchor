@@ -20,6 +20,9 @@ const SIGNIFICANT_ACTIONS = [
   'Move habit to',
   'Move all tasks',
   'Reset streak:',
+  'Delete items',
+  'Complete items',
+  'Uncomplete items',
 ];
 
 export function useUndoToast() {

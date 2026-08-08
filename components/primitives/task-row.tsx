@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
+import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { SwipeRow } from '@/components/mobile/swipe-row';
@@ -72,6 +73,14 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const habit = !isTask ? (item as Habit) : null;
   const inBraindump = context === 'braindump';
   const compact = density === 'compact';
+
+  // Selected == in the multi-select set. A plain click both opens the row in the
+  // editor AND selects it (see handleRowClick), so the persistent highlight this
+  // drives is also the "current / open row" indicator — it replaces the old
+  // editor-open pulse dot. Boolean selector so only the toggled row re-renders.
+  // (The pulse dot is deliberately gone for now; it will return as the signal
+  // that OpenClaw/Beacon is working an item.)
+  const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(item.id));
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
@@ -181,6 +190,26 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     });
   };
 
+  // A plain click both SELECTS this row (replacing the selection) and opens it
+  // in the editor — the persistent highlight is the "current row" indicator.
+  // Cmd/Ctrl adds/removes a row from a multi-selection WITHOUT opening it, and
+  // Shift extends a range from the anchor (DOM order == visual order, no
+  // virtualization). The wasDragged guard keeps a drop from firing a click.
+  const handleRowClick = (e: ReactMouseEvent) => {
+    if (wasDraggedRef.current) return;
+    const selection = useSelectionStore.getState();
+    if (e.metaKey || e.ctrlKey) {
+      selection.toggle(item.id);
+      return;
+    }
+    if (e.shiftKey) {
+      selection.selectRange(rangeIds(selection.anchorId, item.id));
+      return;
+    }
+    selection.replace([item.id]);
+    openEditFor(item, itemType);
+  };
+
   // Skipped habits render as a slim strip with undo
   if (habit && habitStatus === 'skipped' && !inBraindump) {
     return (
@@ -192,8 +221,14 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // testid — no complete button, no rail. Tests must be able to tell the
         // two apart, or a drill to item-complete-button times out mysteriously.
         data-row-variant="skipped"
-        onClick={() => openEditFor(item, itemType)}
-        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover-wash"
+        // Selected == in the multi-select set; drives the persistent highlight.
+        data-selected={isMultiSelected ? 'true' : 'false'}
+        onClick={handleRowClick}
+        className={cn(
+          'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
+          // Selected keeps a latched wash, a notch above hover (its own indicator).
+          isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/60 hover-wash'
+        )}
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
         <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
@@ -239,6 +274,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       // selector policy.
       data-item-type={typeName}
       data-row-variant="default"
+      // Selected == in the multi-select set; drives the persistent highlight and
+      // marks the current / open row.
+      data-selected={isMultiSelected ? 'true' : 'false'}
       // Completion is otherwise observable only as Tailwind classes on the
       // title and the checkbox, which is exactly the coupling a restyle breaks.
       data-completed={completed ? 'true' : 'false'}
@@ -256,7 +294,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // the token defined for exactly this (a light gray in light mode, a
         // white 6% overlay in dark) so the highlight lifts off the card in dark
         // mode instead of darkening it, which bg-muted/60 did.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-accent',
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2',
+        // Selected keeps a latched wash — the hover wash, one notch stronger
+        // (--row-selected) so a selection reads a touch above a passing hover. It
+        // marks the current / open row and every row in a multi-selection. A
+        // background wash (not opacity) keeps the lime rule: nothing here dims
+        // the lime completion mark through a parent's opacity.
+        isMultiSelected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
         compact ? 'py-1' : 'py-1.5',
         isDragging && 'z-50 opacity-50'
         // The completed fade is NOT applied here. Opacity on the row composites
@@ -265,21 +309,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // click landed. The fade rides the title and the rail instead (below);
         // opacity only ever goes down a tree, so a child can't opt back out.
       )}
-      onClick={() => {
-        if (wasDraggedRef.current) return;
-        openEditFor(item, itemType);
-      }}
+      onClick={handleRowClick}
       onMouseEnter={() => setHoveredItemRef(item.id, itemType)}
       onMouseLeave={() => setHoveredItemRef(null, null)}
     >
-      {/* Grip — pure visual affordance now; the whole row is the drag origin
-          (pointerdown here bubbles to the row's listeners) */}
-      <span
-        aria-hidden="true"
-        className="absolute -left-4 z-10 flex-shrink-0 cursor-grab touch-none opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
-      </span>
 
       {/* Checkbox — 16px on EVERY row of both types in every state, so the
           leading edge is one straight column and nothing downstream of it can

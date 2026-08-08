@@ -1,9 +1,11 @@
 'use client';
 
+import { type MouseEvent as ReactMouseEvent } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Check, GripVertical, ChevronsRight, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import type { Task, Project } from '@/lib/planner-types';
 import { CategoryIcon } from '@/lib/category-icons';
@@ -27,10 +29,31 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
   const recurring = isRecurring(task);
   const done = recurring ? isCompletedOnDate(task, dateStr) : task.status === 'completed';
 
+  // Multi-select: a plain click selects this row (replacing the selection) and
+  // opens it; Cmd/Ctrl adds/removes without opening; Shift extends a range.
+  // Selected shows as a persistent highlight, same as the list rows.
+  const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(task.id));
+  const handleClick = (e: ReactMouseEvent) => {
+    const selection = useSelectionStore.getState();
+    if (e.metaKey || e.ctrlKey) {
+      selection.toggle(task.id);
+      return;
+    }
+    if (e.shiftKey) {
+      selection.selectRange(rangeIds(selection.anchorId, task.id));
+      return;
+    }
+    selection.replace([task.id]);
+    onClick();
+  };
+
   return (
     <div
       ref={setNodeRef}
       style={style}
+      data-item-id={task.id}
+      data-item-kind="task"
+      data-multiselected={isMultiSelected ? 'true' : 'false'}
       className={cn('group/blocktask relative flex items-center gap-1', isDragging && 'z-50 opacity-50')}
     >
       <button
@@ -43,11 +66,16 @@ function BlockTask({ task, onClick }: { task: Task; onClick: () => void }) {
         <GripVertical className="h-4 w-4" />
       </button>
       <div
-        onClick={onClick}
+        onClick={handleClick}
         // No done-fade on this container — it would composite the lime check down
         // with everything else, and 60% lime on the dark ramp is olive. The title
         // carries the fade instead (below).
-        className="flex flex-1 cursor-pointer items-center gap-2 rounded-lg bg-surface-3/70 px-3 py-2 transition-colors hover-wash"
+        className={cn(
+          'flex flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors',
+          // Selected keeps a latched wash, a notch above hover — the same
+          // --row-selected highlight the list rows use (reads over surface-3).
+          isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/70 hover-wash'
+        )}
       >
         <button
           onClick={(e) => {
