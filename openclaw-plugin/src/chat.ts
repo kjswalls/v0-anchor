@@ -56,15 +56,22 @@ export async function handleChatRequest(
     return;
   }
 
-  res.writeHead(200, {
-    ...CORS_HEADERS,
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-
-  const send = (data: string) => res.write(`data: ${data}\n\n`);
+  // Single JSON response. This handler blocks on `waitForRun` until the agent
+  // turn is complete, so there is nothing to stream incrementally — it used to
+  // write SSE framing (`text/event-stream` + `data: …\n\n`) around exactly one
+  // payload, which made clients implement a reader loop for no benefit. If real
+  // token streaming lands later, reintroduce SSE deliberately on both ends.
+  const send = (payload: { content: string } | { error: string }) => {
+    if (res.headersSent) return;
+    const body = JSON.stringify(payload);
+    res.writeHead(200, {
+      ...CORS_HEADERS,
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
+      "Cache-Control": "no-store",
+    });
+    res.end(body);
+  };
 
   try {
     logger.info(`anchor-context: chat turn — session ${sessionKey}`);
@@ -80,7 +87,7 @@ export async function handleChatRequest(
 
     if (result.status === "error") {
       logger.warn(`anchor-context: chat run errored — ${result.error ?? "unknown"}`);
-      send(JSON.stringify({ error: result.error ?? "Agent run failed" }));
+      send({ error: result.error ?? "Agent run failed" });
       return;
     }
 
@@ -92,7 +99,7 @@ export async function handleChatRequest(
     }) as Record<string, unknown> | undefined;
 
     if (!lastAssistant) {
-      send(JSON.stringify({ error: "No response received" }));
+      send({ error: "No response received" });
       return;
     }
 
@@ -109,16 +116,17 @@ export async function handleChatRequest(
     }
 
     if (text) {
-      send(JSON.stringify({ content: text }));
+      send({ content: text });
     } else {
-      send(JSON.stringify({ error: "Empty response" }));
+      send({ error: "Empty response" });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     logger.error(`anchor-context: chat handler error — ${msg}`);
-    send(JSON.stringify({ error: msg }));
+    send({ error: msg });
   } finally {
-    send("[DONE]");
-    res.end();
+    // Safety net: never leave the socket open if some path above returned
+    // without responding. `send` no-ops once headers are committed.
+    send({ error: "No response received" });
   }
 }

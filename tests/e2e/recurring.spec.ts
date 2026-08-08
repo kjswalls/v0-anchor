@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, createTestHabit, cleanupTestData } from './helpers/api';
+import { getAccessToken, createTestTask, createTestHabit, fetchTestTask, cleanupTestData } from './helpers/api';
 import { format, nextSaturday, nextMonday, nextWednesday, addDays } from 'date-fns';
 import { getTodayInTz, getTodayStr } from './helpers/dates';
 import {
@@ -283,6 +283,56 @@ test.describe('Recurring tasks and habits', () => {
       await cleanupTestData(page, accessToken, [], [habitId]);
     }
   });
+
+  test('a recurring task can be skipped for one day and unskipped (#194)', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const todayStr = getTodayStr();
+    const taskId = await createTestTask(page, accessToken, {
+      title: `Daily task skip ${Date.now()}`,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await reloadApp(page);
+
+      const row = itemCard(page, taskId);
+      await expect(row).toHaveAttribute('data-row-variant', 'default');
+
+      // The skip control reveals on hover, exactly as it does for a habit.
+      await row.hover();
+      await row.getByTestId('item-skip-button').click();
+
+      const skipped = itemCard(page, taskId);
+      await expect(skipped).toHaveAttribute('data-row-variant', 'skipped');
+      await expect(skipped.getByTestId('item-complete-button')).toHaveCount(0);
+
+      // Per-DATE: tomorrow's occurrence of the same task is untouched.
+      await navigateToDate(page, addDays(getTodayInTz(), 1));
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-row-variant', 'default');
+      await navigateToDate(page, getTodayInTz());
+
+      await reloadApp(page);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-row-variant', 'skipped');
+
+      // The skip lives in skippedDates and NOWHERE else — 'skipped' is not in
+      // the task status vocabulary the OpenClaw plugin validates.
+      const persisted = await fetchTestTask(page, taskId);
+      expect(persisted?.skippedDates).toContain(todayStr);
+      expect(persisted?.status).toBe('pending');
+
+      await itemCard(page, taskId).getByTestId('item-unskip-button').click();
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-row-variant', 'default');
+      await expectCompleted(page, taskId, false);
+
+      const after = await fetchTestTask(page, taskId);
+      expect((after?.skippedDates as string[]) ?? []).not.toContain(todayStr);
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
 });
 
 test.describe('Mobile @mobile', () => {
@@ -387,6 +437,41 @@ test.describe('Mobile @mobile', () => {
       ).not.toBeVisible();
     } finally {
       await cleanupTestData(page, accessToken, [], [habitId]);
+    }
+  });
+
+  test('mobile: a skipped item renders minimized on the timeline (#195)', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const todayStr = getTodayStr();
+    // A recurring task, so this covers both issues at once: skipping is
+    // reachable on touch (the row's control cluster is hover-only, so the
+    // action lives in the ellipsis sheet) and the skipped row minimizes.
+    const taskId = await createTestTask(page, accessToken, {
+      title: `Mobile skip ${Date.now()}`,
+      repeatFrequency: 'daily',
+      startDate: todayStr,
+      timeBucket: 'morning',
+      isScheduled: true,
+    });
+
+    try {
+      await reloadApp(page);
+      await openMobileSchedule(page);
+
+      const row = itemCard(page, taskId);
+      await expect(row).toHaveAttribute('data-row-variant', 'default');
+
+      await row.getByTestId('item-actions-button').click();
+      await page.getByTestId('sheet-skip-button').click();
+
+      const skipped = itemCard(page, taskId);
+      await expect(skipped).toHaveAttribute('data-row-variant', 'skipped');
+      await expect(skipped.getByTestId('item-complete-button')).toHaveCount(0);
+
+      await skipped.getByTestId('item-unskip-button').click();
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-row-variant', 'default');
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
     }
   });
 

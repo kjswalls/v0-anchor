@@ -6,9 +6,12 @@ import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { BucketCard } from '@/components/primitives/bucket-card';
 import { TaskRow } from '@/components/primitives/task-row';
+import { ProjectBlock } from '@/components/views/project-block';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
+import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -23,10 +26,24 @@ import { cn } from '@/lib/utils';
 function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBucket; activeId: string | null }) {
   const dateStr = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: `week:${dateStr}:${bucket}` });
-  const { tasksByBucket, habitsByBucket } = useDayItems(date);
+  const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
   const tasks = tasksByBucket[bucket];
   const habits = habitsByBucket[bucket];
+  // The header count stays "everything in this bucket", project-block tasks
+  // included — same as day-buckets' `totalItems`.
   const count = tasks.length + habits.length;
+
+  // Recurring project time blocks landing on this day, in this bucket — the
+  // same selection day-buckets makes. Week used to render every task flat and
+  // no blocks at all, so a task the user had filed into a project block came
+  // back as a loose row here and the block itself was invisible (#193).
+  const bucketProjects = recurringProjects.filter((p) => p.timeBucket === bucket);
+  const looseTasks = tasks.filter((t) => !t.inProjectBlock);
+
+  // Placeholder only when there is genuinely nothing — a bucket whose only
+  // content is a project block still renders the block (day-buckets guards its
+  // empty copy with `bucketProjects.length === 0` for the same reason).
+  const isEmpty = looseTasks.length === 0 && habits.length === 0 && bucketProjects.length === 0;
 
   return (
     <div
@@ -35,7 +52,7 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
       data-dnd-over={isOver ? 'true' : 'false'}
     >
       <BucketCard bucket={bucket} count={count} density="mini" isDropTarget={isOver}>
-        {count === 0 ? (
+        {isEmpty ? (
           <div
             className={cn(
               'rounded-md py-1.5 text-center text-2xs transition-colors',
@@ -45,11 +62,31 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
             {activeId ? 'Drop here' : '·'}
           </div>
         ) : (
-          <div className="space-y-0">
+          // Issue #193: a bucket stacked with rows caps out and scrolls its own
+          // content, rather than pushing the rest of the day column down. Plain
+          // overflow-y-auto, not <ScrollArea> — Radix silently drops max-h.
+          // Project blocks live inside this cap too (each capped again by
+          // variant="week"), so "a bunch of tasks AND projects" scrolls as one.
+          <div className="space-y-0 overflow-y-auto" style={{ maxHeight: WEEK_BUCKET_MAX_H }}>
+            {/* Blocks lead the cell. Day view can afford to put them below the
+                untimed rows because nothing is capped there; here the bucket
+                stops at WEEK_BUCKET_MAX_H, and a block trailing a long row list
+                would never be on screen. */}
+            {bucketProjects.map((project) => (
+              <ProjectBlock
+                key={project.name}
+                project={project}
+                tasks={tasks.filter((t) => t.project === project.name)}
+                onTaskClick={(task) => openEditFor(task, 'task')}
+                activeId={activeId}
+                variant="week"
+                date={date}
+              />
+            ))}
             {habits.map((habit) => (
               <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} density="compact" date={date} />
             ))}
-            {tasks.map((task) => (
+            {looseTasks.map((task) => (
               <TaskRow key={task.id} row={{ itemType: 'task', item: task }} density="compact" date={date} />
             ))}
           </div>

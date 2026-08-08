@@ -1,7 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
 import { AnchorChangeEventSchema } from '@anchor-app/types'
-import { fetchContext } from './cache.js'
 
 export async function verifyHmac(secret: string, body: string, sigHeader: string): Promise<boolean> {
   const enc = new TextEncoder()
@@ -87,8 +86,7 @@ export function readBody(req: IncomingMessage): Promise<string> {
 
 /** Parse webhook body and return event name + raw body string */
 export async function parseWebhookBody(
-  req: IncomingMessage,
-  _cfg: PluginConfig
+  req: IncomingMessage
 ): Promise<{ body: string; eventName: string }> {
   const body = await readBody(req)
   let eventName = 'unknown'

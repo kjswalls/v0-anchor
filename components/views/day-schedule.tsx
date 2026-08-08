@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
@@ -28,7 +29,7 @@ import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
-import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
+import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
@@ -533,6 +534,7 @@ export function ScheduleBlock({
     selectedDate,
     userTimezone,
     toggleTaskStatus,
+    setItemSkipped,
     updateTask,
     updateHabit,
   } = usePlannerStore();
@@ -575,10 +577,13 @@ export function ScheduleBlock({
   // delete-confirm resolves it. Project blocks are still excluded outright: they
   // take their extent from the project, not from the item.
   const projected = item as { type?: string; customType?: string };
-  const typeConfig = getItemTypeConfig(
-    projected.type === 'custom' ? projected.customType! : itemType
-  );
+  const typeName = projected.type === 'custom' ? projected.customType! : itemType;
+  const typeConfig = getItemTypeConfig(typeName);
   const canResize = typeConfig.schedule.resizable && !!item.startTime && !task?.inProjectBlock;
+  // Same capability + recurrence gate the row uses (lib/item-registry
+  // isSkippable), resolved against the projection's runtime discriminator.
+  const skipped =
+    typeConfig.skippable && isRecurring(item) && isSkippedOnDate(item, dateStr);
   const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
   // Which edge is under an active resize — drives the one lime glyph the target/
   // trim mark styles light on the handle being dragged (see HandleGrip). A ref
@@ -805,6 +810,81 @@ export function ScheduleBlock({
     }
   }, [isDragging]);
 
+  // A skipped occurrence collapses on the timeline the same way it collapses in
+  // a list row (#194/#195): the bead still pins WHEN it was meant to happen, but
+  // the block stops claiming its duration. Blocks are absolutely positioned, so
+  // shrinking one reflows nothing — the hour it vacates simply reads as free.
+  // Gated on the registry capability, so recurring tasks and recurring custom
+  // types collapse here exactly as habits do.
+  if (skipped) {
+    return (
+      <div
+        data-testid="schedule-block"
+        data-item-id={item.id}
+        data-item-kind={itemType}
+        data-item-type={typeName}
+        data-row-variant="skipped"
+        data-completed="false"
+        data-start-min={entry.startMin}
+        data-duration={entry.duration}
+        // Same pointer contract as a live block: the wrapper (and so the 12px
+        // lane) stays click-through to the hour slot underneath; only the strip
+        // itself opts back in.
+        //
+        // A skipped block still takes its channel from the overlap pass. It
+        // collapses in HEIGHT only — it keeps its horizontal band, so a skipped
+        // occupant of a cluster doesn't stretch back across its neighbours'
+        // channels the way an unpositioned block would.
+        className={cn(
+          'pointer-events-none absolute h-[24px]',
+          !L && 'left-0 right-1',
+          'z-[var(--blk-z)]'
+        )}
+        style={
+          {
+            top,
+            '--blk-z': L?.z ?? 2,
+            ...(L ? { left: L.left, right: L.right } : null),
+          } as React.CSSProperties
+        }
+      >
+        <span
+          aria-hidden
+          className="absolute w-[2px] rounded-[1px] bg-muted-foreground/35"
+          style={{ left: L?.railX ?? 5, top: -PANE_OFFSET, height: 24 }}
+        />
+        <span
+          aria-hidden
+          className="absolute left-[3px] h-[6px] w-[6px] rounded-full bg-muted-foreground/45 shadow-[0_0_0_1px_var(--canvas)]"
+          style={{ top: -PANE_OFFSET - 3 }}
+        />
+        <div
+          onClick={() => openEditFor(item, itemType)}
+          style={{ marginLeft: LANE_PX }}
+          className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
+        >
+          <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
+          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+            {item.title}
+          </span>
+          <button
+            type="button"
+            title="Unskip"
+            aria-label="Unskip"
+            data-testid="item-unskip-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setItemSkipped(item.id, false, rowDate);
+            }}
+            className="-mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-muted-foreground hover-wash hover:text-foreground"
+          >
+            <Undo2 className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const checkbox = isTask ? (
     <button
       onClick={(e) => {
@@ -837,6 +917,10 @@ export function ScheduleBlock({
       data-testid="schedule-block"
       data-item-id={item.id}
       data-item-kind={itemType}
+      data-item-type={typeName}
+      // A skipped block is a different DOM shape under the same testid (no
+      // checkbox, no resize handles) — same disambiguation TaskRow carries.
+      data-row-variant="default"
       data-completed={done ? 'true' : 'false'}
       data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both

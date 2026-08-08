@@ -676,6 +676,10 @@ export function Omnibar({
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   e.preventDefault();
+                  // Consumed here, not left to bubble: an enclosing surface
+                  // (a dialog, a future host) may have its own Escape handler,
+                  // and dismissing search must not also dismiss that.
+                  e.stopPropagation();
                   if (activeCommand) {
                     clearArgument();
                     return;

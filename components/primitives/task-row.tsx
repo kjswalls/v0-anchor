@@ -11,7 +11,7 @@ import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { SwipeRow } from '@/components/mobile/swipe-row';
-import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
+import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
   PriorityGlyph,
@@ -57,6 +57,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const {
     toggleTaskStatus,
     toggleHabitStatus,
+    setItemSkipped,
     deleteTask,
     deleteHabit,
     unscheduleTask,
@@ -105,6 +106,36 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const habitStatus: HabitStatus = habitSkipped ? 'skipped' : habitDoneOnDate ? 'done' : 'pending';
   const habitEffectiveCount = habitDoneOnDate ? habitCount || habit?.timesPerDay || 1 : habitCount;
   const completed = isTask ? taskDone : habitStatus === 'done';
+  // Recurrence, not type — a recurring TASK reaches the braindump the same
+  // way a recurring HABIT would (registry: habit.braindumpEligible is
+  // false, so habits don't reach this list today, but tasks can and do
+  // recur). `completed` above is already correctly per-date (completedDates,
+  // never scalar status — see the CLAUDE.md note on recurring items), so
+  // this isn't a data bug; it's that the braindump has no date column of its
+  // own, so a recurring item's title going gray-and-struck-through there
+  // reads as "permanently done" instead of "done today" (issue #181). The
+  // grid views (context 'bucket') render each row under an explicit date,
+  // where that same signal is unambiguous, so the suppression is scoped to
+  // the sidebar only.
+  const itemRecurring = isTask ? taskRecurring : habit ? isRecurring(habit) : false;
+  const suppressCompletedLook = inBraindump && itemRecurring;
+
+  // Skipping is a registry capability on a recurring occurrence, not a habit
+  // privilege (#194). Habits satisfy both halves by construction, so this is
+  // exactly the old `habit && skipped` test widened to recurring tasks and to
+  // recurring custom types — no new branch, one predicate.
+  const skippable = typeConfig.skippable && itemRecurring;
+  const skipped = skippable && isSkippedOnDate(item, dateStr);
+  /**
+   * The date a skip is written against is the date the ROW is drawn for, not
+   * the globally selected day. In a week column those differ, and using the
+   * selected day there wrote the skip onto a day the user was not looking at —
+   * so the row it was aimed at never minimized.
+   *
+   * Every per-date write in this row now uses `rowDate` for the same reason —
+   * see handleTaskToggle / handleHabitToggle below.
+   */
+  const setSkipped = (next: boolean) => setItemSkipped(item.id, next, rowDate);
 
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
@@ -150,15 +181,31 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     }
   }, [isDragging]);
 
+  /**
+   * Completion is written against `rowDate` — the day this row is DRAWN for —
+   * not the store's selectedDate.
+   *
+   * The two are the same thing in day views (rowDate falls back to
+   * selectedDate), but a week column passes its own `date`, and reading the
+   * per-date state from one day while writing it to another is a straight
+   * mismatch: the checkbox above already computes `taskDone` from
+   * `dateStr` (= rowDate), so ticking Thursday's row used to mark Tuesday and
+   * leave Thursday's box empty. Same rule the skip write follows (#194) and the
+   * schedule block / project block already follow.
+   *
+   * `undefined` for a NON-recurring task is deliberate and unchanged: a one-off
+   * task has no per-date dimension at all — it carries a scalar status — so the
+   * store must not be handed a date it would resolve and ignore.
+   */
   const handleTaskToggle = () =>
-    toggleTaskStatus(item.id, undefined, taskRecurring ? selectedDate : undefined);
+    toggleTaskStatus(item.id, undefined, taskRecurring ? rowDate : undefined);
 
   /** One step up; landing on the target marks the habit done. */
   const handleHabitIncrement = () => {
     if (!habit || multiTarget === 0) return;
     const next = habitEffectiveCount + 1;
-    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, selectedDate);
-    else toggleHabitStatus(habit.id, 'pending', next, selectedDate);
+    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, rowDate);
+    else toggleHabitStatus(habit.id, 'pending', next, rowDate);
   };
 
   /**
@@ -172,10 +219,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const handleHabitToggle = () => {
     if (!habit) return;
     if (multiTarget > 0) {
-      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, selectedDate);
+      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, rowDate);
       else handleHabitIncrement();
     } else {
-      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, selectedDate);
+      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, rowDate);
     }
   };
 
@@ -210,14 +257,21 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     openEditFor(item, itemType);
   };
 
-  // Skipped habits render as a slim strip with undo
-  if (habit && habitStatus === 'skipped' && !inBraindump) {
+  // A skipped occurrence — of ANY skippable recurring type — collapses to a
+  // slim strip with undo. This is the whole visual payload of #194/#195: the
+  // treatment is keyed off the capability, so a recurring task and a recurring
+  // custom type get it for free, on desktop and on mobile alike (the strip is
+  // returned above the SwipeRow wrapper, so its Unskip button is the touch
+  // affordance — there is no hover to hide behind).
+  if (skipped && !inBraindump) {
+
     return (
       <div
         data-testid="item-card"
-        data-item-id={habit.id}
-        data-item-kind="habit"
-        // A skipped habit is a COMPLETELY different DOM shape under the same
+        data-item-id={item.id}
+        data-item-kind={itemType}
+        data-item-type={typeName}
+        // A skipped row is a COMPLETELY different DOM shape under the same
         // testid — no complete button, no rail. Tests must be able to tell the
         // two apart, or a drill to item-complete-button times out mysteriously.
         data-row-variant="skipped"
@@ -231,15 +285,21 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         )}
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
-        <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
+        <span className="flex-1 truncate text-sm text-muted-foreground/70">{item.title}</span>
         <Button
           variant="ghost"
           size="sm"
           data-testid="item-unskip-button"
-          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className={cn(
+            'px-2 text-xs text-muted-foreground hover:text-foreground',
+            // The only control on the strip, and on touch it sits inside a row
+            // whose own tap opens the edit dialog — 24px is too fine a target
+            // to aim at with a thumb.
+            isMobile ? 'h-8 px-3' : 'h-6'
+          )}
           onClick={(e) => {
             e.stopPropagation();
-            toggleHabitStatus(habit.id, 'pending', undefined, selectedDate);
+            setSkipped(false);
           }}
         >
           <Undo2 className="mr-1 h-3 w-3" />
@@ -251,7 +311,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
   const handleHabitDecrement = () => {
     if (!habit || habitEffectiveCount <= 0) return;
-    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, selectedDate);
+    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, rowDate);
   };
 
   const rowContent = (
@@ -366,7 +426,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           // rows and the day view default ones, and a title that changed size
           // between the two would break the token's whole purpose.
           compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-          completed && 'text-muted-foreground line-through opacity-60'
+          completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
         )}
       >
         {item.title}
@@ -414,7 +474,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           between items the run ran straight into its neighbour. 12px is wide
           enough that the between-item gap clearly outranks the within-item one. */}
       <div
-        className={cn('relative z-10 flex flex-shrink-0 items-center gap-3', completed && 'opacity-60')}
+        className={cn(
+          'relative z-10 flex flex-shrink-0 items-center gap-3',
+          completed && !suppressCompletedLook && 'opacity-60'
+        )}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -454,12 +517,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                 onClick={() => unscheduleTask(item.id)}
               />
             )}
-            {habit && habitStatus === 'pending' && (
+            {skippable && !completed && (
               <RowControl
                 icon={SkipForward}
                 label="Skip today"
                 testId="item-skip-button"
-                onClick={() => toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate)}
+                onClick={() => setSkipped(true)}
               />
             )}
             <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />

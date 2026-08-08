@@ -1,12 +1,5 @@
 import { getCache } from './cache.js'
 
-const PLANNING_PHRASES = ['what are my current tasks?']
-
-export function isPlanning(message: string): boolean {
-  const lower = message.toLowerCase()
-  return PLANNING_PHRASES.some((kw) => lower.includes(kw))
-}
-
 function getLocalDate(timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
 }

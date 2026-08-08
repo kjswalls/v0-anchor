@@ -25,6 +25,7 @@ import { IconPicker } from '@/components/primitives/icon-picker';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Project, TimeBucket, RepeatFrequency } from '@/lib/planner-types';
 import { WEEKDAY_LABELS } from '@/lib/planner-types';
+import { currentDayOfWeek } from '@/lib/recurrence';
 import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -62,7 +63,7 @@ const DURATION_OPTIONS = [
 ];
 
 export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDialogProps) {
-  const { updateProject } = usePlannerStore();
+  const { updateProject, userTimezone } = usePlannerStore();
   
   const [emoji, setEmoji] = useState(project?.emoji || makeIconToken('Briefcase'));
   const [hasTimeBlock, setHasTimeBlock] = useState(false);
@@ -267,7 +268,24 @@ export function EditProjectDialog({ project, open, onOpenChange }: EditProjectDi
                   <Repeat className="h-4 w-4 inline mr-1" />
                   Repeat
                 </Label>
-                <Select value={repeatFrequency} onValueChange={(v) => setRepeatFrequency(v as RepeatFrequency)}>
+                <Select
+                  value={repeatFrequency}
+                  onValueChange={(v) => {
+                    const freq = v as RepeatFrequency;
+                    setRepeatFrequency(freq);
+                    // Newly switching into Custom days with nothing chosen yet
+                    // pre-selects today — an item that already has custom days
+                    // saved keeps them untouched (the load effect above is what
+                    // seeds repeatDays from the project).
+                    if (freq === 'custom' && repeatDays.length === 0) {
+                      setRepeatDays([
+                        currentDayOfWeek(
+                          userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+                        ),
+                      ]);
+                    }
+                  }}
+                >
                   <SelectTrigger className="flex-1">
                     <SelectValue />
                   </SelectTrigger>

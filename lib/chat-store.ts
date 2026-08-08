@@ -210,35 +210,12 @@ export function createChatStore(config: ChatThreadConfig) {
                 signal: controller.signal,
                 body: JSON.stringify({ message: trimmed, sessionKey, context }),
               });
-              if (!res.body) throw new Error('No response body');
-              const reader = res.body.getReader();
-              const decoder = new TextDecoder();
-              let buffer = '';
-              let accumulated = '';
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() ?? '';
-                for (const line of lines) {
-                  if (!line.startsWith('data: ')) continue;
-                  const payload = line.slice(6).trim();
-                  if (payload === '[DONE]') break;
-                  try {
-                    const parsed = JSON.parse(payload);
-                    if (parsed.error) {
-                      // Don't clobber existing content; only set error if nothing received yet
-                      if (!accumulated) accumulated = `Error: ${parsed.error}`;
-                      break;
-                    } else if (parsed.content) {
-                      accumulated += parsed.content;
-                    }
-                  } catch {
-                    /* skip malformed */
-                  }
-                }
-              }
+              // The plugin answers with one JSON body, not a stream (#149). It
+              // used to write SSE framing around a single payload it only
+              // emitted once the whole run finished, so there was never
+              // anything incremental to read.
+              const parsed = (await res.json()) as { content?: string; error?: string };
+              const accumulated = parsed.error ? `Error: ${parsed.error}` : (parsed.content ?? '');
               patchLastAssistant((last) => ({
                 ...last,
                 content: stripReasoningTags(accumulated) || 'No response received.',

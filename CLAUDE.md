@@ -17,8 +17,12 @@ pnpm db:push        # supabase db push
 pnpm db:new <name>  # supabase migration new
 ```
 
-pnpm workspace (Node 24). `packages/types` is `@anchor-app/types`; `openclaw-plugin/`
-is a separate consumer of the agent API with its own `dist` that CI gates against `src`.
+pnpm workspace (Node 24). `packages/types` is `@anchor-app/types`, and its `dist/` is
+**committed** — CI rebuilds it and fails on any drift from `src`, so a schema edit
+without `pnpm --filter @anchor-app/types build` is a red build. `openclaw-plugin/` is a
+separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
+so CI does not gate it — a plugin `src` change reaches users only when the npm package
+is republished.
 
 ## Setting up a new machine
 

@@ -24,6 +24,13 @@ export const RecurrenceFieldsSchema = z.object({
   repeatDays: z.array(z.number()).optional(),
   repeatMonthDay: z.number().optional(),
   completedDates: z.array(z.string()).optional(),
+  // Per-date "not this occurrence" — the skip twin of completedDates, and the
+  // ONLY place a skip may live: 'skipped' is not in the task status vocabulary
+  // and the OpenClaw plugin throws on drift there (see the habit branch, which
+  // has carried this field since before unification). Optional and additive,
+  // so a plugin built against the older TaskSchema still parses tasks[] — it
+  // strips the key as unknown.
+  skippedDates: z.array(z.string()).optional(),
 })
 export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
 
@@ -278,6 +285,7 @@ export const TaskUpdateSchema = z
     repeatDays: clearable(z.array(z.number().int())),
     repeatMonthDay: clearable(z.number().int()),
     completedDates: clearable(z.array(z.string())),
+    skippedDates: clearable(z.array(z.string())),
     // Item-surface growth fields — strict on the write side (see taskShape
     // note): agents may only set the pinned aiStatus vocabulary.
     parentItemId: clearable(z.string().uuid()),

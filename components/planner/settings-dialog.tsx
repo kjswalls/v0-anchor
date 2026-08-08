@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus, Check, Loader2, AlertCircle } from 'lucide-react';
+import { Settings, ChevronDown, Globe, Calendar, Bell, Palette, Sun, Keyboard, Sparkles, ExternalLink, RotateCw, MessageSquarePlus, Check, Loader2, AlertCircle, BookOpen } from 'lucide-react';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import {
   Dialog,
@@ -166,10 +166,13 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
     }
   };
 
+  // Three states, not a boolean. A pull-only install (device auth done, no
+  // publicUrl in the plugin config so no chat URL was ever registered) is a
+  // working setup — it must not read as a failure.
   type OpenclawConnState =
     | { kind: 'inactive' }
     | { kind: 'loading' }
-    | { kind: 'resolved'; chatUrl: string | null; agentId: string | null };
+    | { kind: 'resolved'; state: 'not-connected' | 'pull-only' | 'connected'; agentId: string | null };
 
   const [openclawConn, setOpenclawConn] = useState<OpenclawConnState>({ kind: 'inactive' });
 
@@ -182,7 +185,7 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
 
     setOpenclawConn({ kind: 'loading' });
     let cancelled = false;
-    fetch('/api/agent/chat-url')
+    fetch('/api/openclaw/status')
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -191,14 +194,14 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
         if (cancelled) return;
         setOpenclawConn({
           kind: 'resolved',
-          chatUrl: data.chatUrl ?? null,
+          state: data.state === 'connected' || data.state === 'pull-only' ? data.state : 'not-connected',
           agentId: data.agentId ?? null,
         });
       })
       .catch((err) => {
         if (cancelled) return;
-        console.warn('[settings] openclaw chat-url fetch failed:', err);
-        setOpenclawConn({ kind: 'resolved', chatUrl: null, agentId: null });
+        console.warn('[settings] openclaw status fetch failed:', err);
+        setOpenclawConn({ kind: 'resolved', state: 'not-connected', agentId: null });
       });
     return () => {
       cancelled = true;
@@ -490,13 +493,32 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                   <div className="space-y-1 pl-0">
                     {openclawConn.kind !== 'resolved' ? (
                       <p className="text-xs text-muted-foreground">Checking connection…</p>
-                    ) : openclawConn.chatUrl ? (
+                    ) : openclawConn.state === 'connected' ? (
                       <div className="space-y-1">
                         <Badge className="bg-success/15 text-success-text hover:bg-success/20 border-success/30">
                           Connected
                         </Badge>
                         <p className="text-[11px] text-muted-foreground">
                           Agent: {openclawConn.agentId?.trim() || 'main'}
+                        </p>
+                      </div>
+                    ) : openclawConn.state === 'pull-only' ? (
+                      <div className="space-y-1">
+                        <Badge className="bg-success/15 text-success-text hover:bg-success/20 border-success/30">
+                          Connected · pull-only
+                        </Badge>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Your agent is reading your day. Sidebar chat and instant updates also need{' '}
+                          <code className="text-foreground/90">publicUrl</code> in your plugin config —{' '}
+                          <a
+                            href="/docs/openclaw"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            setup guide
+                          </a>
+                          .
                         </p>
                       </div>
                     ) : (
@@ -519,6 +541,16 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     )}
                   </div>
                 )}
+
+                <a
+                  href="/docs/openclaw"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  How to connect OpenClaw
+                </a>
 
                 {/* Beacon fallback — secondary */}
                 <div className="rounded-lg border border-border px-3 py-3 space-y-3">
