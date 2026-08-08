@@ -23,6 +23,15 @@
 -- skipped_dates — see plan decision 2.
 --
 -- Safe to re-run (idempotent guards throughout). No backfill required.
+--
+-- DEPLOY ORDER: apply this before or after the app build, either is safe. The
+-- app code is written to tolerate an un-applied 024 in both directions —
+-- itemToRow omits the pause columns entirely while nothing sets them (see
+-- pauseColumns in lib/db.ts, which exists specifically so a pre-024 database
+-- receives a byte-identical insert row), and fetchRoutines/fetchPrograms return
+-- null on a missing table so the store gates the feature off. That tolerance is
+-- load-bearing, not incidental: Vercel builds on push while `pnpm db:push` is a
+-- manual step, so the window is real. Do not "simplify" either guard away.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ─── 1. Composite-key targets on the parent tables ────────────────────────────
@@ -72,9 +81,21 @@ create table if not exists public.routines (
   -- Soft delete, 30-day trash like items/projects/habit_groups. Membership
   -- rows deliberately SURVIVE a soft delete so a restore brings the routine
   -- back intact; the resolver ignores trashed containers meanwhile.
-  deleted_at timestamptz,
-  unique (id, user_id)
+  deleted_at timestamptz
 );
+
+-- Composite-FK target (see section 1). Guarded rather than inline in the
+-- CREATE above: `create table if not exists` on a table that somehow already
+-- exists skips the constraint silently, and the join tables below would then
+-- abort with "no unique constraint matching given keys" — a confusing failure
+-- for a file that promises to be re-runnable. This repo has applied migrations
+-- out of band before (018-022), so partial state is not hypothetical.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'routines_id_user_id_key') then
+    alter table public.routines add constraint routines_id_user_id_key unique (id, user_id);
+  end if;
+end$$;
 
 create index if not exists routines_user_idx on public.routines (user_id);
 
@@ -117,9 +138,16 @@ create table if not exists public.programs (
   sort_order int,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  deleted_at timestamptz,
-  unique (id, user_id)
+  deleted_at timestamptz
 );
+
+-- Composite-FK target — guarded for the same reason as routines_id_user_id_key.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'programs_id_user_id_key') then
+    alter table public.programs add constraint programs_id_user_id_key unique (id, user_id);
+  end if;
+end$$;
 
 do $$
 begin

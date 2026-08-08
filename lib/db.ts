@@ -159,6 +159,24 @@ function itemFromRow(row: ItemRow): Item {
   };
 }
 
+/**
+ * Pause columns, emitted ONLY when set.
+ *
+ * PostgREST rejects an INSERT naming a column absent from its schema cache
+ * (PGRST204), so writing these unconditionally would break EVERY item create
+ * in the window between this build deploying and migration 024 being applied —
+ * the app deploys on push while `pnpm db:push` is a separate manual step, which
+ * is why migration 019 shipped a cutover runbook. Nothing writes pause state
+ * before Phase 1, so this yields `{}` today and the insert row stays
+ * byte-identical to a pre-024 one.
+ */
+function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_until'>> {
+  return {
+    ...(item.pausedAt !== undefined ? { paused_at: item.pausedAt } : {}),
+    ...(item.pausedUntil !== undefined ? { paused_until: item.pausedUntil } : {}),
+  };
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -181,8 +199,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       times_per_day: item.timesPerDay ?? null,
       current_day_count: item.currentDayCount ?? null,
       notes: item.notes ?? null,
-      paused_at: item.pausedAt ?? null,
-      paused_until: item.pausedUntil ?? null,
+      ...pauseColumns(item),
     };
   }
   // task and custom items share the task-shaped column set; the DB type is
@@ -215,14 +232,21 @@ function itemToRow(userId: string, item: Item): ItemRow {
     assignee: item.assignee ?? null,
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
-    paused_at: item.pausedAt ?? null,
-    paused_until: item.pausedUntil ?? null,
+    ...pauseColumns(item),
   };
 }
 
-// Per-type update allowlists — these are the ONLY field filter for the agent
-// PATCH endpoints (bodies are unvalidated), so they must stay separate: a
-// merged list would let habit fields be written onto tasks and vice versa.
+// Per-type update allowlists — the last field filter before the DB, and the
+// one that gates the APP's own writes (updateItem early-returns on an empty
+// mapped row, so a field missing here is a silent no-op that reverts on
+// reload). They must stay separate: a merged list would let habit fields be
+// written onto tasks and vice versa.
+//
+// NOT the agent gate any more, despite what this comment used to say: agent
+// PATCH bodies are validated first against the hand-enumerated
+// TaskUpdateSchema/HabitUpdateSchema (packages/types), which strip unknown
+// keys. Adding a field here does NOT expose it to agents — reason about agent
+// exposure from those schemas, never from this list.
 // Fields the legacy tables declared NOT NULL keep that semantics via null
 // guards here — the unified table is nullable-superset, so without the guard
 // a PATCH {"group": null} would silently corrupt instead of erroring.
@@ -668,6 +692,23 @@ export async function deleteItemType(id: string, client?: DbClient): Promise<voi
 // isn't applied yet, so the store can gate the WRITE path too — a pre-migration
 // create would otherwise appear to succeed and vanish on reload.
 
+/**
+ * A missing table means "migration 024 hasn't been applied here" — return null
+ * so the store can gate the whole feature off, the fetchItemTypes contract.
+ * ANY OTHER error rethrows: a transient network blip or an RLS misconfiguration
+ * must not be indistinguishable from "the feature does not exist", because the
+ * null latches the feature off (including its write path) until a reload. This
+ * discriminates on the error code the way missingEventsTable already does,
+ * rather than the looser catch-all fetchItemTypes uses.
+ */
+function unavailable(fn: string, error: { code?: string; message?: string }): null {
+  if (error.code === '42P01' || error.code === 'PGRST205') {
+    console.warn(`${fn}: migration 024 not applied yet — programs/routines disabled.`);
+    return null;
+  }
+  throw error;
+}
+
 interface RoutineRow {
   id: string;
   user_id: string;
@@ -718,8 +759,49 @@ async function reconcileMembership(
   if (error) throw error;
 
   const current = new Set((data as Record<string, string>[] ?? []).map((r) => r[memberCol]));
-  const desiredSet = new Set(desired);
+  // Dedupe before building rows: a repeated id makes Postgres abort the whole
+  // statement with 21000 ("ON CONFLICT DO UPDATE command cannot affect row a
+  // second time"), and a multi-add UI can produce one trivially.
+  const members = [...new Set(desired)];
+  const desiredSet = new Set(members);
   const removed = [...current].filter((id) => !desiredSet.has(id));
+
+  // Additions BEFORE removals. The two sets are disjoint by construction
+  // (removed = current \ desired), so the order can never cause a collision —
+  // but PostgREST gives no cross-request transaction, so if the second
+  // statement never runs, this ordering leaves a SUPERSET of the intended
+  // membership (visible in the manager, removable by the user) rather than
+  // silently dropping members the user asked to keep.
+  if (members.length > 0) {
+    // Upsert rather than insert-the-difference: it adds new members AND
+    // rewrites sort_order for existing ones in one statement, so a reorder
+    // costs the same as an add.
+    const rows = members.map((memberId, i) => ({
+      [ownerCol]: ownerId,
+      [memberCol]: memberId,
+      user_id: userId,
+      ...(ordered ? { sort_order: i } : {}),
+    }));
+    const onConflict = `${ownerCol},${memberCol}`;
+    const { error: upsertError } = await supabase.from(table).upsert(rows, { onConflict });
+    if (upsertError) {
+      // Exactly ONE failure class is a per-row casualty worth surviving: a
+      // member hard-purged since the store last read it (23503), which an undo
+      // replaying a membership snapshot hits when the item left the 30-day
+      // trash meanwhile. Everything else — RLS denial, missing table, bad
+      // uuid, transport — is systemic and MUST surface, or the caller's
+      // optimistic state silently diverges until the next reload.
+      // (23505 is unreachable here: upsert resolves a PK conflict to an UPDATE,
+      // and these tables carry no other unique constraint.)
+      if (upsertError.code !== '23503') throw upsertError;
+      for (const row of rows) {
+        const { error: rowError } = await supabase.from(table).upsert(row, { onConflict });
+        if (!rowError) continue;
+        if (rowError.code !== '23503') throw rowError;
+        console.warn(`${table}: member no longer exists, membership skipped`, row);
+      }
+    }
+  }
 
   if (removed.length > 0) {
     const { error: deleteError } = await supabase
@@ -729,29 +811,6 @@ async function reconcileMembership(
       .eq('user_id', userId)
       .in(memberCol, removed);
     if (deleteError) throw deleteError;
-  }
-  if (desired.length === 0) return;
-
-  // Upsert rather than insert-the-difference: it adds new members AND rewrites
-  // sort_order for existing ones in a single statement, so a reorder costs the
-  // same as an add.
-  const rows = desired.map((memberId, i) => ({
-    [ownerCol]: ownerId,
-    [memberCol]: memberId,
-    user_id: userId,
-    ...(ordered ? { sort_order: i } : {}),
-  }));
-  const onConflict = `${ownerCol},${memberCol}`;
-  const { error: upsertError } = await supabase.from(table).upsert(rows, { onConflict });
-  if (!upsertError) return;
-
-  // One dead id must not wedge the batch. A member hard-purged since the store
-  // last read (23503) is the realistic case — an undo can replay a membership
-  // snapshot whose item left the 30-day trash meanwhile. Retry row by row and
-  // skip only the casualties.
-  for (const row of rows) {
-    const { error: rowError } = await supabase.from(table).upsert(row, { onConflict });
-    if (rowError) console.warn(`${table} membership row skipped`, row, rowError.message);
   }
 }
 
@@ -769,15 +828,14 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
       .from('routine_items')
       .select('routine_id, item_id, sort_order')
       .eq('user_id', userId)
-      .order('sort_order', { ascending: true, nullsFirst: false }),
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      // Tiebreak: heap order is unspecified, so without this a future writer
+      // that leaves sort_order null yields a member list that reshuffles
+      // between reloads — which reads to a membership diff as a real change.
+      .order('item_id', { ascending: true }),
   ]);
-  if (routines.error || members.error) {
-    console.warn(
-      'fetchRoutines failed (migration 024 applied?):',
-      (routines.error ?? members.error).message,
-    );
-    return null;
-  }
+  const error = routines.error ?? members.error;
+  if (error) return unavailable('fetchRoutines', error);
   const itemIdsByRoutine = new Map<string, string[]>();
   for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
     const list = itemIdsByRoutine.get(row.routine_id);
@@ -810,9 +868,18 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
   });
   if (error) throw error;
   if (routine.itemIds.length > 0) {
-    await reconcileMembership(
-      supabase, 'routine_items', 'routine_id', routine.id, 'item_id', userId, routine.itemIds, true,
-    );
+    try {
+      await reconcileMembership(
+        supabase, 'routine_items', 'routine_id', routine.id, 'item_id', userId, routine.itemIds, true,
+      );
+    } catch (membershipError) {
+      // The container row is already committed and PostgREST offers no
+      // cross-request transaction, so compensate by hand rather than leaving a
+      // routine the user never asked for. Hard delete, not soft: as far as
+      // anyone outside this function is concerned it never existed.
+      await supabase.from('routines').delete().eq('id', routine.id).eq('user_id', userId);
+      throw membershipError;
+    }
   }
 }
 
@@ -874,16 +941,22 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
       .is('deleted_at', null)
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true }),
-    supabase.from('program_items').select('program_id, item_id').eq('user_id', userId),
-    supabase.from('program_routines').select('program_id, routine_id').eq('user_id', userId),
+    // Program membership carries no sort_order (only routines order their
+    // members), so sort by the member id purely for stability — see the
+    // routine_items tiebreak above.
+    supabase
+      .from('program_items')
+      .select('program_id, item_id')
+      .eq('user_id', userId)
+      .order('item_id', { ascending: true }),
+    supabase
+      .from('program_routines')
+      .select('program_id, routine_id')
+      .eq('user_id', userId)
+      .order('routine_id', { ascending: true }),
   ]);
-  if (programs.error || itemMembers.error || routineMembers.error) {
-    console.warn(
-      'fetchPrograms failed (migration 024 applied?):',
-      (programs.error ?? itemMembers.error ?? routineMembers.error).message,
-    );
-    return null;
-  }
+  const error = programs.error ?? itemMembers.error ?? routineMembers.error;
+  if (error) return unavailable('fetchPrograms', error);
   const groupBy = (rows: Record<string, string>[], key: string) => {
     const map = new Map<string, string[]>();
     for (const row of rows) {
@@ -923,15 +996,23 @@ export async function createProgram(userId: string, program: Program, client?: D
     sort_order: program.sortOrder ?? null,
   });
   if (error) throw error;
-  if (program.itemIds.length > 0) {
-    await reconcileMembership(
-      supabase, 'program_items', 'program_id', program.id, 'item_id', userId, program.itemIds,
-    );
-  }
-  if (program.routineIds.length > 0) {
-    await reconcileMembership(
-      supabase, 'program_routines', 'program_id', program.id, 'routine_id', userId, program.routineIds,
-    );
+  try {
+    if (program.itemIds.length > 0) {
+      await reconcileMembership(
+        supabase, 'program_items', 'program_id', program.id, 'item_id', userId, program.itemIds,
+      );
+    }
+    if (program.routineIds.length > 0) {
+      await reconcileMembership(
+        supabase, 'program_routines', 'program_id', program.id, 'routine_id', userId, program.routineIds,
+      );
+    }
+  } catch (membershipError) {
+    // See createRoutine. Both reconciles sit inside one try because the second
+    // failing must also undo the first — the join rows go with the container
+    // by CASCADE, so deleting it is enough.
+    await supabase.from('programs').delete().eq('id', program.id).eq('user_id', userId);
+    throw membershipError;
   }
 }
 

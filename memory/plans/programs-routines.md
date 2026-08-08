@@ -382,10 +382,28 @@ dateless surfaces resolve at today (decision 3).
 
 ## Phasing (app must work at every step)
 
-- [ ] **Phase 0 — foundations:** migration 024; types package additions + dist
+- [x] **Phase 0 — foundations (built 2026-08-08, `7bbf6df` + `bd0aa1f`; migration
+  NOT yet applied — see below):** migration 024; types package additions + dist
   rebuild (both shapes + Create-schema omits + updatesToRow allowlist entries — the
   db-allowlists test pins the trio); db.ts CRUD/mappers/availability flags. Zero UI.
   App behavior unchanged.
+
+  **Deploy order is a non-issue BY CONSTRUCTION, and that is load-bearing.** The
+  4-lens review's one blocker was that `itemToRow` wrote `paused_at`/`paused_until`
+  unconditionally: PostgREST rejects an INSERT naming a column missing from its
+  schema cache (PGRST204), so between an app deploy and `pnpm db:push` EVERY item
+  create would 400 — silently, since the store's add paths are
+  `.catch(console.error)`, so items would render optimistically and vanish on
+  reload. Fixed by `pauseColumns()` emitting the pair only when set (nothing sets
+  it before Phase 1, so a pre-024 database receives a byte-identical insert row),
+  pinned by tests/unit/db-pause-columns.test.ts, and stated in the migration
+  header. `fetchRoutines`/`fetchPrograms` cover the other direction by returning
+  null on a missing table. Do not "simplify" either guard away.
+
+  **Migration 024 is authored but NOT APPLIED** (live ledger tops out at 023).
+  Apply with `pnpm db:push`, or via the Supabase MCP — and if applied out of band,
+  record version 024 in `supabase_migrations.schema_migrations` immediately
+  (migration-ledger-drift).
 - [ ] **Phase 1 — item pausing end-to-end (#179):** lib/active.ts (item-level rules:
   isPausedOn with lower bound, open-loop predicate); the FULL surface checklist wired
   (grid, overdue with required inactiveIds param, sweep resume-grace (a), EOD,
@@ -508,3 +526,51 @@ coherence, completeness) attacked the pre-review draft: 4 blockers, 22 should-fi
 - Refuted / accepted as-is: the standalone-attach discontinuity is the algebra
   working as designed (mitigated with confirm copy, not a model change); user-card
   streak pill correctly keeps reading paused habits (now recorded as a decision).
+
+## Phase 0 implementation review (2026-08-08)
+
+4 lenses (SQL correctness, type/contract safety, db.ts runtime, scope audit) over
+the committed diff; one lens dry-ran the whole migration against the live database
+inside a rolled-back transaction. 1 blocker, 5 should-fixes, 5 notes — all fixed in
+`bd0aa1f`. Worth keeping:
+
+- **The blocker: unconditional pause columns on INSERT** (see the Phase 0 ledger
+  entry above). Found by all four lenses independently, and confirmed against the
+  live DB rather than argued from the code — the reviewer queried the migration
+  ledger and `information_schema` to prove 024 was unapplied.
+- **`reconcileMembership` swallowed every error class.** The per-row retry logged
+  and continued regardless of cause, so an RLS denial, a missing table, or a
+  transport failure resolved as success while the store kept optimistic membership
+  that vanished on reload. Now exactly one code survives (23503 — a member
+  hard-purged since the store last read, which an undo replaying a membership
+  snapshot genuinely hits); everything else rethrows. Also noted: 23505 is
+  unreachable under `upsert` (a PK conflict resolves to an UPDATE), so half the
+  originally-planned tolerance set was dead code.
+- **Removals ran before additions.** With no cross-request transaction, an
+  interruption mid-reconcile committed the deletes and lost the adds. Swapped: the
+  sets are disjoint by construction, so add-then-remove is free, and an
+  interruption now leaves a visible superset instead of silently dropping members.
+- **Duplicate ids in a desired list** abort the whole upsert with 21000 ("cannot
+  affect row a second time") — trivially producible from a multi-add UI. Deduped.
+- **Program membership had no ORDER BY**, so `itemIds`/`routineIds` came back in
+  heap order and could reshuffle between identical fetches — which a Phase 2
+  membership diff would read as a real change and write back. Both program join
+  queries now sort by member id; `routine_items` gained the same tiebreak under
+  its `sort_order`.
+- **Create was non-atomic**: the container row committed even when its membership
+  write failed. Compensating hard-delete added (join rows follow by CASCADE).
+- **A stale comment claimed the db.ts allowlists are "the ONLY field filter for
+  the agent PATCH endpoints".** That is the exact wrong-layer belief round 1 caught
+  in the plan; left uncorrected it would have taught the next editor to reason
+  about agent exposure from the wrong file. Rewritten to name the real gate (the
+  hand-enumerated Update schemas).
+- Smaller: `unique (id, user_id)` moved out of `create table if not exists` into
+  guarded DO blocks (a skipped CREATE would make the join-table FKs abort with
+  "no unique constraint matching given keys"); fetch errors now discriminate
+  missing-table from transient, so a network blip can't latch the feature off.
+- Verified clean by the review: the composite FKs genuinely close the cross-tenant
+  hole (other-user item → 23503, foreign user_id → 42501, non-existent uuid → the
+  same 23503, so no existence oracle); the migration is idempotent across two runs
+  in one transaction; the FOREACH/format()/execute() policy block parses; the cron
+  rewrite drops no table the 019 job purged; `update_updated_at()` touches only
+  NEW.updated_at and is correctly absent from the trigger-less join tables.
