@@ -434,11 +434,47 @@ dateless surfaces resolve at today (decision 3).
   legacy projections that Phase 1 now filters, so a paused fixture became invisible
   to cleanup and leaked silently on the shared test user — both moved to `items[]`,
   and a `fetchTestItem` helper was added.
-- [ ] **Phase 2 — routines:** store slice + manager (Routines tab) + membership
-  editing from both sides (chips + memberships payload on create) + resolver grows
-  routine paths + **/api/agent/context fetches routines + join tables so the
-  server-side filter sees routine-caused suppression** + sweep grace (c) container
-  proxy + dynamic palette commands.
+- [x] **Phase 2 — routines** (built 2026-08-09, `ec441e1` + `177d743`). Resolver
+  path algebra (disjunctive: one live path is enough); store slice with CRUD,
+  `setRoutinePaused`, `collectionsAvailable`, and routines in HistoryState; every
+  resolver call site threaded incl. the agent context route fetching routines
+  server-side; sweep grace (c); manager UI; Routine chip both sides; per-routine
+  palette commands. 460 unit tests.
+
+  **Layout decision (studied, then chosen):** three directions were mocked as an
+  artifact — stacked drill-in, two-pane, inline expand. Chosen: **stacked with
+  the two-pane editor above `sm`**. The argument was not aesthetic. Because the
+  list may stand alone, the ROW must carry colour + name + paused pill + count
+  rather than leaning on an editor that might not be rendered — that pressure
+  produces the better list, and the list is what gets looked at. The two-pane
+  half then contributes the thing the stacked half cannot: members render greyed
+  *inside the editor* while the routine is paused, which is the only place in the
+  app where cause and consequence are visible in one frame. Inline expand was
+  dropped — a fifteen-member routine pushes everything below it off-screen, and
+  it is exactly the layout that trips on `<ScrollArea>` silently dropping `max-h`.
+
+  **`persistNewItem` is not a refactor.** `routine_items` carries a composite FK
+  to `items(id, user_id)`, so a join insert that lands before the item row fails
+  with 23503 and the membership is lost SILENTLY — present in the store, gone on
+  reload. The join writes must chain off the create, never fire beside it.
+
+  **The manager is deliberately not in the braindump header.** That row is
+  width-critical at the 280px minimum; the collapse control was moved off it to
+  buy the title ~30px, and a fifth button spends exactly that back. Routes in are
+  the palette and the chip's own "Manage routines…" row.
+
+  **Also found:** six unit test files hand-enumerate `lib/db` in `vi.mock`
+  factories, so adding `fetchRoutines` to initializeStore's `Promise.all` broke 63
+  tests at once — the mock returned `undefined`, the `Promise.all` threw, and the
+  store silently loaded empty rather than failing loudly. Phase 3 adds
+  `fetchPrograms` to that same call and will hit it again; update all six first.
+
+  **And the sweep needed no new gate.** `fetchRoutines` rides the same
+  `Promise.all` and lands in the same `set()` that clears `isLoading`, so gate 1
+  already guarantees membership is known. That is now documented in
+  use-overdue-sweep.ts, because moving routines out of that Promise.all would
+  break it silently — every member of a paused routine would read as unprotected
+  and get unscheduled in one batch.
 - [ ] **Phase 3 — programs:** state machine (auto/active/paused + ranges) + program
   membership (items and routines) + resolver completes (paths algebra, soft-delete
   rule, attach-discontinuity copy) + **context route fetches programs** + sweep
