@@ -1,6 +1,7 @@
 import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
 import { isOpenLoopSuppressedOn } from './active'
+import { toDateStr } from './recurrence'
 import type { Item, Project, HabitGroupType } from './planner-types'
 
 /**
@@ -21,8 +22,14 @@ export function buildAnchorContext(state: {
   userTimezone?: string | null
 }): string {
   const today = new Date()
-  const todayStr = format(today, 'yyyy-MM-dd')
+  // tz first: `todayStr` is compared against pause intervals that isPausedOn
+  // resolves in the USER's zone, so deriving the day in the RUNTIME's zone
+  // (which is all date-fns `format` can do) made the two disagree across a date
+  // boundary — Beacon would answer differently from the grid and the braindump
+  // beside it on the pause-start day. Every other surface passes
+  // toDateStr(new Date(), tz); this one now does too.
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const todayStr = toDateStr(today, tz)
   const lines: string[] = []
 
   lines.push('## Anchor Context')

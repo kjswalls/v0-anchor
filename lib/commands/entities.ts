@@ -206,17 +206,35 @@ export function itemIcon(item: Item): LucideIcon {
  * the store's items array (rebuilt on every mutation) plus the selected date,
  * so a palette-wide pass over N item commands costs one scan each per edit
  * rather than one per keypress.
+ *
+ * The key also carries WALL-CLOCK today. Every other predicate here (isDoneOn,
+ * isSkippedOn) is a pure function of (items, dateStr), which is why that pair
+ * was the whole key; isPausedNow is the first that reads `new Date()` itself,
+ * because pausing is dateless (plan decision 3). Without today in the key, an
+ * app left open overnight keeps answering with yesterday's verdict — offering
+ * "Resume" for a pause that expired at midnight, then an empty picker.
  */
-let eligibilityCache: { items: readonly Item[]; dateStr: string; results: Map<string, boolean> } = {
+let eligibilityCache: {
+  items: readonly Item[];
+  dateStr: string;
+  today: string;
+  results: Map<string, boolean>;
+} = {
   items: [],
   dateStr: '',
+  today: '',
   results: new Map(),
 };
 
 function anyEligible(id: string, eligible: Eligible, dateStr: string): boolean {
-  const { items } = usePlannerStore.getState();
-  if (eligibilityCache.items !== items || eligibilityCache.dateStr !== dateStr) {
-    eligibilityCache = { items, dateStr, results: new Map() };
+  const { items, userTimezone } = usePlannerStore.getState();
+  const today = toDateStr(new Date(), userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (
+    eligibilityCache.items !== items ||
+    eligibilityCache.dateStr !== dateStr ||
+    eligibilityCache.today !== today
+  ) {
+    eligibilityCache = { items, dateStr, today, results: new Map() };
   }
   const cached = eligibilityCache.results.get(id);
   if (cached !== undefined) return cached;

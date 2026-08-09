@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { reloadApp, itemCardIn, runCommand } from './helpers/app';
+import { reloadApp, itemCardIn, runEntityCommand } from './helpers/app';
 import {
 
   testTitle,
@@ -154,6 +154,14 @@ test.describe('pausing', () => {
     await setUserSetting(page, { morning_check_enabled: true });
     const title = testTitle('pause-overdue');
     const taskId = await createTestTask(page, { title, startDate: getDateStr(-3) });
+    // An anchor, so the bar survives the pause. At count 0 with the tray shut,
+    // `visible` goes false (morning-check.tsx) and the ENTIRE bar unmounts —
+    // there would be nothing left to click, and the test would die on the
+    // timeout rather than report anything about pausing.
+    const anchorId = await createTestTask(page, {
+      title: testTitle('pause-anchor'),
+      startDate: getDateStr(-2),
+    });
     try {
       await reloadApp(page);
       // Prove the bar counts it before pausing, or the assertion below could
@@ -161,18 +169,22 @@ test.describe('pausing', () => {
       const bar = page.getByTestId('morning-bar');
       await expect(bar).toBeVisible();
       await bar.locator('button').first().click();
-      const tray = page.getByTestId('morning-tray');
-      await expect(itemCardIn(tray, taskId)).toHaveCount(1);
+      // The tray ships a THIRD row shape (see task-row.tsx's header) — these
+      // are `morning-row-<id>`, NOT item-card, and carry no data-item-id.
+      await expect(page.getByTestId(`morning-row-${taskId}`)).toHaveCount(1);
       await page.keyboard.press('Escape');
 
       // Pause through the palette — the verb that reaches an item no view is
-      // currently showing.
-      await runCommand(page, 'items.pause', { query: '/pause', arg: taskId });
+      // currently showing. Entity argument, so it is two interactions.
+      await runEntityCommand(page, 'items.pause', taskId, { query: '/pause' });
 
       await bar.locator('button').first().click();
-      await expect(itemCardIn(tray, taskId)).toHaveCount(0);
+      await expect(page.getByTestId(`morning-row-${taskId}`)).toHaveCount(0);
+      // …and the bar still counts the work that was NOT paused, so the
+      // assertion above cannot pass merely because the tray failed to open.
+      await expect(page.getByTestId(`morning-row-${anchorId}`)).toHaveCount(1);
     } finally {
-      await cleanupTestData(page, [taskId], []);
+      await cleanupTestData(page, [taskId, anchorId], []);
     }
   });
 

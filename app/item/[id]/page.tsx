@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ChevronLeft, Pencil } from 'lucide-react';
+import { ChevronLeft, Moon, Pencil } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import {
@@ -12,6 +13,8 @@ import {
 } from '@/components/planner/item-detail-sections';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { isPausedOn } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,9 +40,12 @@ function Square({ color, className }: { color: string; className?: string }) {
   );
 }
 
-function StaticChip({ children }: { children: React.ReactNode }) {
+function StaticChip({ children, testId }: { children: React.ReactNode; testId?: string }) {
   return (
-    <span className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs">
+    <span
+      data-testid={testId}
+      className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs"
+    >
       {children}
     </span>
   );
@@ -48,7 +54,8 @@ function StaticChip({ children }: { children: React.ReactNode }) {
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-  const { items, userId, isLoading, getProjectColor, getHabitGroupColor } = usePlannerStore();
+  const { items, userId, isLoading, getProjectColor, getHabitGroupColor, userTimezone } =
+    usePlannerStore();
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
 
   const item = items.find((i) => i.id === id);
@@ -85,6 +92,12 @@ export default function ItemPage() {
   }
 
   const config = getItemTypeConfig(itemTypeName(item));
+  // Resolved at TODAY, never at a navigated date — pausing is dateless
+  // (plan decision 3), and this page has no date to navigate anyway. Without
+  // it the header below asserts a startDate and a bucket for an item that is
+  // on no grid column, and nothing on the page says why.
+  const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pausedNow = isPausedOn(item, toDateStr(new Date(), activationTz), activationTz);
   const container = item.type === 'habit' ? item.group : item.project;
   const containerColor =
     item.type === 'habit'
@@ -132,6 +145,16 @@ export default function ItemPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
+          {/* First in the row, ahead of the date and bucket chips it qualifies.
+              Muted, never a warning color — paused is not an error state. */}
+          {pausedNow && (
+            <StaticChip testId="item-page-paused-note">
+              <Moon className="size-3.5 shrink-0" aria-hidden />
+              {item.pausedUntil
+                ? `Paused until ${format(parseISO(item.pausedUntil), 'MMM d')}`
+                : 'Paused'}
+            </StaticChip>
+          )}
           {item.type !== 'habit' && item.priority && (
             <StaticChip>
               <span

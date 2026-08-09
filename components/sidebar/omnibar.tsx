@@ -359,6 +359,12 @@ export function Omnibar({
       <CommandItem
         key={option.value}
         value={`arg:${option.value}`}
+        // Addressable for the same reason renderCommandRow is: an entity row's
+        // only other handle is its label, and item titles are user data. The
+        // command id rides along so a picker row is unambiguous about which
+        // command it would run.
+        data-command-id={activeCommand?.id}
+        data-arg={option.value}
         onSelect={() => activeCommand && runCommand(activeCommand, option.value)}
       >
         <Icon

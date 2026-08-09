@@ -1931,11 +1931,22 @@ export function ItemDialog({
             <div className="flex justify-center">
               <Calendar
                 mode="single"
-                // v9 prop. `fromDate` is v8 and silently inert here, which
-                // would quietly allow a resume date already in the past.
-                disabled={{ before: new Date() }}
+                // v9 prop (`fromDate` is v8 and silently inert here). The bound
+                // is TOMORROW, not today: v9's `before` matcher disables only
+                // strictly-earlier days, and "pause until today" is a no-op —
+                // the upper bound is exclusive, so isPausedOn reads it back as
+                // not paused. The row would take a pausedAt, the action log a
+                // "Pause" entry, and nothing would hide.
+                disabled={{ before: addDays(new Date(), 1) }}
                 onSelect={(date) =>
-                  date && handleSetPaused(true, toDateStr(date, activationTz))
+                  // A picked day is a wall-calendar choice, not an instant —
+                  // read its local fields straight back, the same way startDate
+                  // is written above. Routing it through toDateStr(activationTz)
+                  // re-reads a browser-local midnight in the STORED zone, which
+                  // stores the PREVIOUS day whenever the browser is east of it
+                  // (a travelling user, whose stored zone stays stale for the
+                  // whole session — use-timezone-sync PATCHes the server only).
+                  date && handleSetPaused(true, format(date, 'yyyy-MM-dd'))
                 }
                 initialFocus
               />

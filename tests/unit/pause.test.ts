@@ -38,6 +38,8 @@ import { updatesToRow } from '@/lib/db';
 import * as db from '@/lib/db';
 import { isPausable, isCollectible, ITEM_TYPES, buildCustomTypeConfig } from '@/lib/item-registry';
 import { isPausedOn, isOpenLoopSuppressedOn, inactiveItemIdsOn } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
+import { format } from 'date-fns';
 import type { Item } from '@/lib/planner-types';
 
 const USER = 'user-1';
@@ -262,5 +264,39 @@ describe('the update allowlists persist the pause columns', () => {
       .toEqual({ paused_at: 'x', paused_until: TODAY });
     expect(updatesToRow('habit', { pausedAt: 'x', pausedUntil: TODAY }))
       .toEqual({ paused_at: 'x', paused_until: TODAY });
+  });
+});
+
+describe('"pause until" boundaries', () => {
+  // Both of these were shipped wrong and caught in review. The picker offered
+  // today (react-day-picker's `before` matcher disables only STRICTLY earlier
+  // days), and it converted the picked day with toDateStr(tz), which re-reads a
+  // browser-local midnight in the stored zone. The UI fixes live in the dialog;
+  // these pin the semantics the UI has to honour, so a future "simplification"
+  // back to either form fails here rather than in a user's week.
+
+  it('a resume date of today is a no-op interval — which is why the picker forbids it', () => {
+    store().setItemPaused('habit-1', true, TODAY);
+    // The write happens (nothing downstream rejects it) but reads back as live,
+    // so offering this day would be a visibly dead gesture.
+    expect(isPausedOn(itemById('habit-1'), TODAY, 'UTC')).toBe(false);
+  });
+
+  it('a resume date of tomorrow suppresses today and releases on the day itself', () => {
+    const TOMORROW = '2026-03-11';
+    store().setItemPaused('habit-1', true, TOMORROW);
+    expect(isPausedOn(itemById('habit-1'), TODAY, 'UTC')).toBe(true);
+    // Exclusive upper bound: live again ON the chosen day, not after it.
+    expect(isPausedOn(itemById('habit-1'), TOMORROW, 'UTC')).toBe(false);
+  });
+
+  it('the picked day is stored as its own calendar literal, not re-read through a zone', () => {
+    // The dialog's conversion, both ways, for a browser east of the stored zone.
+    // A user in Auckland whose settings still say New York picks Sep 1.
+    const picked = new Date(2026, 8, 1); // local midnight, whatever the runner's zone
+    expect(format(picked, 'yyyy-MM-dd')).toBe('2026-09-01');
+    // Whereas routing an instant through a western zone can land the day before.
+    expect(toDateStr(new Date('2026-09-01T00:00:00+12:00'), 'America/New_York'))
+      .toBe('2026-08-31');
   });
 });

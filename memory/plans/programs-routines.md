@@ -594,3 +594,72 @@ inside a rolled-back transaction. 1 blocker, 5 should-fixes, 5 notes — all fix
   in one transaction; the FOREACH/format()/execute() policy block parses; the cron
   rewrite drops no table the 019 job purged; `update_updated_at()` touches only
   NEW.updated_at and is correctly absent from the trigger-less join tables.
+
+## Phase 1 implementation review (2026-08-09)
+
+Two rounds over the committed diff (`79f8af1..826a2c4`): 5 lenses (resolver dates/TZ,
+suppression completeness, external contracts, state/data-loss, UI + e2e validity)
+raising 27 raw findings, then adversarial refutation. **Round 1 refuted half of what
+it verified** — invented victims, misread files, findings that were pre-existing
+behaviour — which is the argument for the verify stage, not against it. It is also the
+argument against a tight per-lens verification cap: four themes with 3–4 lens agreement
+fell outside round 1's top-2-per-lens budget and all four survived round 2. Cross-lens
+convergence is a better triage signal than any single lens's severity guess.
+
+Fixed here (`this commit`), all confirmed by an independent trace:
+
+- **"Pause until today" was selectable and silently did nothing.** Found by ALL FIVE
+  lenses. react-day-picker v9's `{before: d}` disables only strictly-earlier days, so
+  today survived `disabled={{ before: new Date() }}` — and today is exactly the date
+  the exclusive upper bound turns into a no-op: the row took a `pausedAt`, the action
+  log took a "Pause" entry, and nothing hid. The comment above that line claimed the
+  guard existed so it could not "allow a resume date already in the past"; it blocked
+  the past and missed the boundary. Bound is now `addDays(new Date(), 1)`.
+- **The same picker stored the PREVIOUS day across a timezone gap.** It converted the
+  picked day with `toDateStr(date, activationTz)`, but react-day-picker hands `onSelect`
+  a browser-LOCAL-midnight `Date`; re-reading that instant in the stored zone shifts it
+  whenever the browser is east of the stored zone. Not a narrow race: `use-timezone-sync`
+  PATCHes the server only and never writes the store, so a travelling user runs a whole
+  session on the stale zone. A picked day is a wall-calendar choice, not an instant —
+  now `format(date, 'yyyy-MM-dd')`, the idiom this same file already uses for `startDate`.
+- **`ai-context.ts` resolved the day and the interval in different zones.** `todayStr`
+  came from date-fns `format` (runtime zone) while `isOpenLoopSuppressedOn` resolved
+  `pausedAt` in the user's — so on the pause-start day Beacon answered differently from
+  the grid beside it. Now `toDateStr(today, tz)`, with `tz` hoisted above it.
+- **`/item/[id]` had no activation state** — the one surface-checklist row Phase 1
+  missed. The page renders its own read-only header, so a paused item deep-linked from
+  search asserted a startDate and a bucket while appearing on no grid column, with
+  nothing explaining why. The dialog's note lives in ItemDialog's body, which the page
+  mounts only behind its Edit button.
+- **The palette's eligibility memo was keyed on (items, dateStr)** — correct for every
+  predicate that existed before, because they were all pure functions of that pair.
+  `isPausedNow` is the first that reads wall-clock `new Date()` (pausing is dateless),
+  so an app left open overnight kept offering "Resume" for an expired pause. Key now
+  carries today.
+- **Three defects in `pause.spec.ts`, which had never been executed.** The past-due tray
+  renders a THIRD row shape (`morning-row-<id>`, no `data-item-id`) that
+  `itemCardIn` can never match; `runCommand`'s `arg` option addresses only FLATTENED
+  ENUM rows, so it cannot reach an entity command at all (two interactions, and the
+  picker rows carried no addressable attribute — added, plus a `runEntityCommand`
+  helper); and pausing the only overdue fixture UNMOUNTS the whole bar, so the test's
+  second click had no element — an anchor fixture now keeps the bar alive and doubles
+  as proof the tray really opened.
+
+Not fixed, deliberately:
+
+- **The collapse button.** `310e762` dropped `hideCollapse` and the ChevronsLeft button
+  from the braindump with a comment pointing at a resize sash that exists only in the
+  uncommitted working tree — real scope leakage from a Phase 1 commit into concurrent
+  sidebar work. Verified the working tree already restores the affordance on the sash
+  and drops the dead prop, so it resolves when that work lands. Left alone rather than
+  committing someone else's in-flight files.
+
+Refuted, and worth recording so they are not re-raised: an unvalidated `X-Timezone`
+header 500ing the context route (the OpenClaw plugin never sends it); the past-due tray
+mutating paused rows (two lenses, both misreading which surface renders where); the
+Paused section writing to the wrong date (two of three evidence items factually wrong);
+pausing offering no undo (it calls `setNextActionLabel` and IS undoable — the missing
+toast is a consistency question, and decision 10's Paused section is the discoverability
+answer); and the entity picker lacking a paused annotation (the picker filters by the
+command's own eligibility predicate, so the annotation would be redundant in one picker
+and never render in the other).

@@ -243,3 +243,41 @@ export async function runCommand(
   ).toBeVisible({ timeout: 5_000 });
   await row.click();
 }
+
+/**
+ * Run a palette command that takes an ENTITY argument, e.g. items.pause.
+ *
+ * Two interactions, not one — which is why runCommand's `arg` option cannot do
+ * it. `arg` addresses a row that already exists in the main list, and that only
+ * happens for FLATTENED ENUM options (lib/commands/match.ts). An entity command
+ * has exactly one row until it is clicked; clicking it CHIPS the command, and
+ * only then does the picker render its item rows.
+ */
+export async function runEntityCommand(
+  page: Page,
+  commandId: string,
+  entityId: string,
+  options: { query?: string } = {}
+): Promise<void> {
+  const input = omnibar(page);
+  await input.click();
+  await input.fill(options.query ?? '/');
+
+  const commandRow = omnibarPanel(page).locator(`[data-command-id="${commandId}"]`).first();
+  await expect(
+    commandRow,
+    `no palette row for command "${commandId}" with query "${options.query ?? '/'}"`
+  ).toBeVisible({ timeout: 5_000 });
+  await commandRow.click();
+
+  // The chip clears the query, so the picker lists every eligible entity.
+  const entityRow = omnibarPanel(page)
+    .locator(`[data-command-id="${commandId}"][data-arg="${entityId}"]`)
+    .first();
+  await expect(
+    entityRow,
+    `command "${commandId}" was chipped but its picker offers no row for entity "${entityId}" — ` +
+      `either the item is not eligible for this command, or it is filtered out`
+  ).toBeVisible({ timeout: 5_000 });
+  await entityRow.click();
+}
