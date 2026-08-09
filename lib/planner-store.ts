@@ -378,11 +378,18 @@ const saveToHistory = (state: HistoryState) => {
     actionLog = actionLog.slice(0, historyIndex + 1);
   }
 
-  // Deep clone the state to avoid reference issues
+  // Deep clone the state to avoid reference issues.
+  //
+  // Every key of HistoryState must appear here. Omitting one does not fail
+  // loudly: applyHistoryState restores the missing slice as [], and
+  // syncContainers reads "present in current, absent in restored" as a DELETE —
+  // so one Cmd+Z silently soft-deletes every row of that container in Supabase.
+  // That is exactly what shipped for `routines` and the review caught it.
   const snapshot: HistoryState = {
     items: JSON.parse(JSON.stringify(state.items)),
     projects: JSON.parse(JSON.stringify(state.projects)),
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
+    routines: JSON.parse(JSON.stringify(state.routines)),
   };
 
   historyStack.push(snapshot);

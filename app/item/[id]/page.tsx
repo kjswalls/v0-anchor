@@ -13,7 +13,7 @@ import {
 } from '@/components/planner/item-detail-sections';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { isPausedOn } from '@/lib/active';
+import { suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -54,7 +54,7 @@ function StaticChip({ children, testId }: { children: React.ReactNode; testId?: 
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-  const { items, userId, isLoading, getProjectColor, getHabitGroupColor, userTimezone } =
+  const { items, userId, isLoading, getProjectColor, getHabitGroupColor, userTimezone, routines } =
     usePlannerStore();
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
 
@@ -97,7 +97,13 @@ export default function ItemPage() {
   // it the header below asserts a startDate and a bucket for an item that is
   // on no grid column, and nothing on the page says why.
   const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const pausedNow = isPausedOn(item, toDateStr(new Date(), activationTz), activationTz);
+  // The full reason, not just the item's own pause: a member of a paused
+  // routine is equally absent from every grid column, and this page's header
+  // otherwise asserts a startDate and a bucket with nothing explaining why.
+  const activationReason = suppressionReason(item, toDateStr(new Date(), activationTz), {
+    userTimezone: activationTz,
+    routines,
+  });
   const container = item.type === 'habit' ? item.group : item.project;
   const containerColor =
     item.type === 'habit'
@@ -147,12 +153,14 @@ export default function ItemPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           {/* First in the row, ahead of the date and bucket chips it qualifies.
               Muted, never a warning color — paused is not an error state. */}
-          {pausedNow && (
+          {activationReason && (
             <StaticChip testId="item-page-paused-note">
               <Moon className="size-3.5 shrink-0" aria-hidden />
-              {item.pausedUntil
-                ? `Paused until ${format(parseISO(item.pausedUntil), 'MMM d')}`
-                : 'Paused'}
+              {activationReason.kind === 'routine'
+                ? `Hidden with ${activationReason.routine.name}`
+                : activationReason.until
+                  ? `Paused until ${format(parseISO(activationReason.until), 'MMM d')}`
+                  : 'Paused'}
             </StaticChip>
           )}
           {item.type !== 'habit' && item.priority && (

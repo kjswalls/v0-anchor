@@ -16,7 +16,7 @@ import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchItems, type SearchGroup } from '@/lib/search';
 import { getItemTypeConfig } from '@/lib/item-registry';
-import { isPausedOn } from '@/lib/active';
+import { suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
@@ -75,7 +75,7 @@ export function Omnibar({
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
 } = {}) {
-  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji, userTimezone } =
+  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji, userTimezone, routines } =
     usePlannerStore();
   // Today, not selectedDate — the omnibar carries no date of its own.
   const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -491,7 +491,7 @@ export function Omnibar({
                       // something up by name is explicit intent, and this is one
                       // of the few places a set-aside item can still be reached.
                       // It just says so, quietly.
-                      const paused = isPausedOn(item, searchTodayStr, searchTz);
+                      const paused = !!suppressionReason(item, searchTodayStr, { userTimezone: searchTz, routines });
                       return (
                         <CommandItem
                           key={item.id}

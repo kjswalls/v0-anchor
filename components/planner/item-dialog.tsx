@@ -78,7 +78,7 @@ import {
   isCollectible,
 } from '@/lib/item-registry';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
-import { isPausedOn } from '@/lib/active';
+import { isPausedOn, suppressionReason } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -433,6 +433,12 @@ function draftFromItem(item: Item): ItemDraft {
     repeatDays: item.repeatDays || [],
     repeatMonthDay: item.repeatMonthDay || 1,
     timesPerDay: item.type === 'habit' ? item.timesPerDay?.toString() || '1' : '1',
+    // Always empty, and that is not an oversight: in edit mode the Routine chip
+    // reads the LIVE join off the store and writes through updateRoutine, so a
+    // draft copy would be a second source of truth that the panel's scoped-write
+    // machinery would then try to persist as a column. Present so the object
+    // satisfies ItemDraft; deliberately never read on the edit path.
+    routineIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -525,7 +531,20 @@ export function ItemDialog({
   // and `editItem` is re-read from the store every render, so this flips the
   // moment a pause lands, in all three presentations.
   const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Deliberately ITEM-LEVEL, and it must stay that way: this drives the
+  // Pause/Resume menu, and setItemPaused early-returns when the item's own
+  // state already matches. Widening it to include container causes would offer
+  // "Resume" on a routine-suppressed item, and that Resume would be a genuine
+  // silent no-op — the item stays hidden because its routine is what hid it.
   const pausedNow = !!editItem && isPausedOn(editItem, toDateStr(new Date(), activationTz), activationTz);
+  // The full reason, for the note only. Covers the container causes the menu
+  // can't act on, so the user at least learns why nothing they do here shows up.
+  const activationReason = editItem
+    ? suppressionReason(editItem, toDateStr(new Date(), activationTz), {
+        userTimezone: activationTz,
+        routines,
+      })
+    : null;
   const canPause = !!editItem && isPausable(editItem);
 
   const [activeType, setActiveType] = useState<string>('task');
@@ -1897,16 +1916,23 @@ export function ItemDialog({
                   normally while never appearing on the grid — every gesture a
                   silent no-op with nothing on screen to explain it. Muted, no
                   warning colour: it states a fact, it doesn't scold. */}
-              {mode === 'edit' && editItem && pausedNow && (
+              {mode === 'edit' && editItem && activationReason && (
                 <div
                   data-testid="item-dialog-paused-note"
+                  data-reason={activationReason.kind}
                   className="flex items-center gap-2.5 rounded-md bg-surface-2 px-2.5 py-2"
                 >
                   <Moon className="size-4 shrink-0 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">
-                    {editItem.pausedUntil
-                      ? `Paused until ${format(parseISO(editItem.pausedUntil), 'MMM d')}`
-                      : 'Paused'}
+                    {activationReason.kind === 'routine'
+                      ? `Hidden with your ${activationReason.routine.name} routine${
+                          activationReason.until
+                            ? ` — back ${format(parseISO(activationReason.until), 'MMM d')}`
+                            : ''
+                        }`
+                      : activationReason.until
+                        ? `Paused until ${format(parseISO(activationReason.until), 'MMM d')}`
+                        : 'Paused'}
                   </span>
                 </div>
               )}

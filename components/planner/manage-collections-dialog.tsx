@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Moon, Repeat, CalendarRange, Trash2, Plus } from 'lucide-react';
 import {
   ResponsiveModal,
@@ -255,6 +255,12 @@ function RoutineList({
   onSelect: (id: string) => void;
 }) {
   const { todayStr, tz } = useToday();
+  const items = usePlannerStore((s) => s.items);
+  // Counted against the LIVE index, like the detail pane's list. itemIds may
+  // name trashed items — join rows outlive an item's soft delete by design —
+  // so raw length would make this row disagree with the editor beside it.
+  const liveIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
+  const liveCount = (r: Routine) => r.itemIds.reduce((n, id) => n + (liveIds.has(id) ? 1 : 0), 0);
 
   if (routines.length === 0) {
     return (
@@ -287,7 +293,7 @@ function RoutineList({
             </span>
             {paused && <PausedPill until={routine.pausedUntil} />}
             <span className="text-muted-foreground text-xs tabular-nums">
-              {routine.itemIds.length}
+              {liveCount(routine)}
             </span>
             <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0 sm:hidden" />
           </button>
@@ -338,6 +344,23 @@ function RoutineDetail({
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
   const { todayStr, tz } = useToday();
 
+  // The name is BUFFERED, not written per keystroke. updateRoutine stamps a
+  // history label and set()s, and the subscriber deep-clones the whole snapshot
+  // on every change — so a live-bound input turns renaming "Morning kickoff"
+  // into 15 undo entries and 15 PATCHes, evicting the user's real history from
+  // a 50-deep stack. Committed on blur and on Enter, the EditProjectDialog
+  // precedent. Keyed on the routine id so switching rows reloads the buffer.
+  const [nameDraft, setNameDraft] = useState(routine.name);
+  useEffect(() => setNameDraft(routine.name), [routine.id, routine.name]);
+  const commitName = () => {
+    const next = nameDraft.trim();
+    if (!next || next === routine.name) {
+      setNameDraft(routine.name);
+      return;
+    }
+    updateRoutine(routine.id, { name: next });
+  };
+
   const paused = isPausedOn(routine, todayStr, tz);
 
   // Member ids may reference trashed items — join rows survive an item's soft
@@ -366,8 +389,17 @@ function RoutineDetail({
           onSelect={(icon) => updateRoutine(routine.id, { icon })}
         />
         <Input
-          value={routine.name}
-          onChange={(e) => updateRoutine(routine.id, { name: e.target.value })}
+          value={nameDraft}
+          onChange={(e) => setNameDraft(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitName();
+              e.currentTarget.blur();
+            }
+            if (e.key === 'Escape') setNameDraft(routine.name);
+          }}
           className="bg-background border-border h-9 flex-1"
           aria-label="Routine name"
           data-testid="routine-name-input"

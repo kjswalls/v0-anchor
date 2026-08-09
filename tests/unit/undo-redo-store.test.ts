@@ -198,3 +198,71 @@ describe('undo db sync (Phase 3 regression coverage)', () => {
     expect(db.restoreProject).not.toHaveBeenCalled();
   });
 });
+
+describe('routines survive undo (Phase 2 review blocker regression)', () => {
+  // saveToHistory hand-enumerates the snapshot fields, and `routines` was
+  // missing from that list. Nothing failed loudly: applyHistoryState restored
+  // the absent slice as [], and syncContainers reads "present in current,
+  // absent in restored" as a DELETE — so a single Cmd+Z emptied the store's
+  // routines AND soft-deleted every routine row in Supabase. The defensive
+  // `?? []` I wrote in applyHistoryState is what turned a loud TypeError into
+  // silent data loss, which is the real lesson.
+  beforeEach(async () => {
+    store().clearStore();
+    vi.clearAllMocks();
+    vi.mocked(db.fetchItems).mockResolvedValue(fixtures());
+    vi.mocked(db.fetchRoutines).mockResolvedValue([
+      { id: 'r1', name: 'Morning', itemIds: ['habit-1'] },
+    ]);
+    await store().initializeStore(USER);
+  });
+
+  // TWO mutations before the undo, deliberately. Undoing after ONE restores the
+  // snapshot initializeStore pushed, which builds its object separately and DID
+  // carry routines — so a single-mutation test passes with the bug still in
+  // place. The defect lives in saveToHistory, and you only land on one of its
+  // snapshots from the second mutation onward.
+  it('an unrelated undo leaves routines untouched', () => {
+    expect(store().routines).toHaveLength(1);
+    store().toggleTaskStatus('task-1');
+    store().updateTask('task-1', { title: 'Renamed' });
+    store().undo();
+    expect(store().routines).toHaveLength(1);
+    expect(store().routines[0].itemIds).toEqual(['habit-1']);
+  });
+
+  it('an unrelated undo does NOT soft-delete the routine in the DB', () => {
+    store().toggleTaskStatus('task-1');
+    store().updateTask('task-1', { title: 'Renamed' });
+    vi.clearAllMocks();
+    store().undo();
+    expect(db.deleteRoutine).not.toHaveBeenCalled();
+  });
+
+  it('undoing a routine rename restores the old name and writes it through', () => {
+    store().updateRoutine('r1', { name: 'Evening' });
+    expect(store().routines[0].name).toBe('Evening');
+    store().undo();
+    expect(store().routines[0].name).toBe('Morning');
+    expect(db.updateRoutine).toHaveBeenCalledWith(
+      USER, 'r1', expect.objectContaining({ name: 'Morning' }),
+    );
+  });
+
+  it('undoing a routine delete restores it', () => {
+    store().removeRoutine('r1');
+    expect(store().routines).toHaveLength(0);
+    store().undo();
+    expect(store().routines).toHaveLength(1);
+    expect(db.restoreRoutine).toHaveBeenCalledWith(USER, 'r1');
+  });
+
+  it('undoing a membership change reaches the join table', () => {
+    store().updateRoutine('r1', { itemIds: ['habit-1', 'task-1'] });
+    store().undo();
+    expect(store().routines[0].itemIds).toEqual(['habit-1']);
+    expect(db.updateRoutine).toHaveBeenCalledWith(
+      USER, 'r1', expect.objectContaining({ itemIds: ['habit-1'] }),
+    );
+  });
+});
