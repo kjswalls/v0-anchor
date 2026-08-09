@@ -1,0 +1,266 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Same harness as skip.test.ts / undo-redo-store.test.ts: the db layer is
+// mocked and the REAL Zustand store is driven, so these assert both the
+// optimistic state and the writes that leave for Supabase. Pausing is the
+// feature whose whole promise is "nothing else moves", so the writes matter as
+// much as the state.
+
+vi.mock('@/lib/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/db')>();
+  return {
+    ...actual,
+    fetchItems: vi.fn(async () => []),
+    fetchProjects: vi.fn(async () => []),
+    fetchHabitGroups: vi.fn(async () => []),
+    fetchItemTypes: vi.fn(async () => []),
+    createItem: vi.fn(async () => {}),
+    updateItem: vi.fn(async () => {}),
+    deleteItem: vi.fn(async () => {}),
+    restoreItem: vi.fn(async () => {}),
+    setItemCompletion: vi.fn(async () => {}),
+    createProject: vi.fn(async () => {}),
+    updateProject: vi.fn(async () => {}),
+    deleteProject: vi.fn(async () => {}),
+    restoreProject: vi.fn(async () => {}),
+    createHabitGroup: vi.fn(async () => {}),
+    updateHabitGroup: vi.fn(async () => {}),
+    deleteHabitGroup: vi.fn(async () => {}),
+    restoreHabitGroup: vi.fn(async () => {}),
+  };
+});
+vi.mock('@/lib/supabase', () => ({ createClient: () => ({}) }));
+vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
+vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+
+import { usePlannerStore } from '@/lib/planner-store';
+import { updatesToRow } from '@/lib/db';
+import * as db from '@/lib/db';
+import { isPausable, isCollectible, ITEM_TYPES, buildCustomTypeConfig } from '@/lib/item-registry';
+import { isPausedOn, isOpenLoopSuppressedOn, inactiveItemIdsOn } from '@/lib/active';
+import type { Item } from '@/lib/planner-types';
+
+const USER = 'user-1';
+const TODAY = '2026-03-10';
+const ctx = { userTimezone: 'UTC' };
+
+const fixtures = (): Item[] => [
+  {
+    type: 'task', id: 'one-shot', title: 'File taxes', status: 'pending',
+    isScheduled: false, order: 0, startDate: '2026-03-01',
+    completedDates: [], skippedDates: [],
+  },
+  {
+    type: 'task', id: 'parent', title: 'Parent', status: 'pending',
+    isScheduled: false, order: 1, completedDates: [], skippedDates: [],
+  },
+  {
+    type: 'task', id: 'subtask', title: 'Child', status: 'pending',
+    isScheduled: false, order: 2, parentItemId: 'parent',
+    completedDates: [], skippedDates: [],
+  },
+  {
+    type: 'habit', id: 'habit-1', title: 'Stretch', group: 'Wellness',
+    streak: 7, status: 'pending', completedDates: ['2026-03-09'], skippedDates: [],
+    dailyCounts: {}, repeatFrequency: 'daily',
+  },
+];
+
+const store = () => usePlannerStore.getState();
+const itemById = (id: string) => store().items.find((i) => i.id === id)!;
+
+beforeEach(async () => {
+  // A pause stamps wall-clock now, and the resolver's LOWER bound then compares
+  // that stamp against the queried day — so a fixture "today" in the past would
+  // read as "the pause hasn't started yet" and nothing would suppress. Pin the
+  // clock instead of dating the fixtures relative to the real one. Only Date is
+  // faked: faking timers too would stall initializeStore's awaits.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+
+  store().clearStore();
+  vi.clearAllMocks();
+  vi.mocked(db.fetchItems).mockResolvedValue(fixtures());
+  await store().initializeStore(USER);
+  usePlannerStore.setState({
+    selectedDate: new Date(`${TODAY}T12:00:00Z`),
+    userTimezone: 'UTC',
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('pausable is a registry capability', () => {
+  it('declares every built-in type pausable and collectible', () => {
+    expect(ITEM_TYPES.task.pausable).toBe(true);
+    expect(ITEM_TYPES.habit.pausable).toBe(true);
+    const custom = buildCustomTypeConfig({ name: 'goal', label: 'Goal', labelPlural: 'Goals' });
+    expect(custom.pausable).toBe(true);
+    expect(custom.collectible).toBe(true);
+  });
+
+  // The deliberate difference from isSkippable, which ANDs with recurrence: a
+  // skip answers one occurrence and needs another to exist; a pause answers a
+  // stretch of time and applies just as well to a single dated task.
+  it('does NOT require recurrence, unlike isSkippable', () => {
+    expect(isPausable(itemById('one-shot'))).toBe(true);
+  });
+
+  it('excludes subtasks, which have no independent presence to suppress', () => {
+    expect(isPausable(itemById('subtask'))).toBe(false);
+    expect(isCollectible(itemById('subtask'))).toBe(false);
+    expect(isPausable(itemById('parent'))).toBe(true);
+  });
+});
+
+describe('setItemPaused', () => {
+  it('pauses an item and writes ONLY the pause columns', () => {
+    store().setItemPaused('habit-1', true);
+
+    const habit = itemById('habit-1');
+    expect(habit.pausedAt).toBeTruthy();
+    expect(isPausedOn(habit, TODAY, 'UTC')).toBe(true);
+
+    expect(db.updateItem).toHaveBeenCalledTimes(1);
+    const [id, type, updates] = vi.mocked(db.updateItem).mock.calls[0];
+    expect(id).toBe('habit-1');
+    expect(type).toBe('habit');
+    expect(Object.keys(updates).sort()).toEqual(['pausedAt', 'pausedUntil']);
+  });
+
+  // The whole promise of the feature. Streaks only move inside the completion
+  // RPC and nothing decays one on a missed day, so a pause that touches nothing
+  // preserves the streak for free — but only if it really touches nothing.
+  it('never moves streak, status, or completion history', () => {
+    const before = itemById('habit-1');
+    store().setItemPaused('habit-1', true);
+    const after = itemById('habit-1');
+
+    expect(after.streak).toBe(before.streak);
+    expect(after.status).toBe(before.status);
+    expect(after.completedDates).toEqual(before.completedDates);
+    expect(after.skippedDates).toEqual(before.skippedDates);
+    expect(db.setItemCompletion).not.toHaveBeenCalled();
+  });
+
+  // An item with no timeBucket is invisible in day views, so a pause that
+  // disturbed scheduling would strand the item on resume.
+  it('never moves scheduling fields', () => {
+    const before = itemById('one-shot');
+    store().setItemPaused('one-shot', true);
+    const after = itemById('one-shot');
+
+    expect(after.startDate).toBe(before.startDate);
+    expect(after.timeBucket).toBe(before.timeBucket);
+    expect(after.isScheduled).toBe(before.isScheduled);
+    expect(after.repeatFrequency).toBe(before.repeatFrequency);
+  });
+
+  it('records an exclusive resume date when given one', () => {
+    store().setItemPaused('habit-1', true, '2026-04-01');
+    const habit = itemById('habit-1');
+    expect(habit.pausedUntil).toBe('2026-04-01');
+    expect(isPausedOn(habit, '2026-03-31', 'UTC')).toBe(true);
+    expect(isPausedOn(habit, '2026-04-01', 'UTC')).toBe(false);
+  });
+
+  // Clearing pausedAt would erase the interval the auto-age sweep's resume
+  // grace is computed from — a returning user's whole backlog would become
+  // sweepable the next morning.
+  it('resume records pausedUntil = today rather than clearing the pair', () => {
+    store().setItemPaused('habit-1', true);
+    store().setItemPaused('habit-1', false);
+
+    const habit = itemById('habit-1');
+    expect(habit.pausedAt).toBeTruthy();
+    expect(habit.pausedUntil).toBe(TODAY);
+    expect(isPausedOn(habit, TODAY, 'UTC')).toBe(false);
+  });
+
+  // Regression: this used to resolve through resolveDateStr(), which reads the
+  // navigable selectedDate — so browsing next month and hitting Resume wrote a
+  // resume date a month out and the item stayed paused (and Pause while parked
+  // on a past day mis-answered "is it already paused?"). Pausing is dateless:
+  // it resolves at today, always.
+  it('resolves at TODAY even when the user is parked on another date', () => {
+    usePlannerStore.setState({ selectedDate: new Date('2026-06-15T12:00:00Z') });
+
+    store().setItemPaused('habit-1', true);
+    expect(isPausedOn(itemById('habit-1'), TODAY, 'UTC')).toBe(true);
+
+    store().setItemPaused('habit-1', false);
+    expect(itemById('habit-1').pausedUntil).toBe(TODAY);
+    expect(isPausedOn(itemById('habit-1'), TODAY, 'UTC')).toBe(false);
+  });
+
+  it('is intent-based: repeating the current state writes nothing', () => {
+    store().setItemPaused('habit-1', false);
+    expect(db.updateItem).not.toHaveBeenCalled();
+
+    store().setItemPaused('habit-1', true);
+    vi.mocked(db.updateItem).mockClear();
+    store().setItemPaused('habit-1', true);
+    expect(db.updateItem).not.toHaveBeenCalled();
+  });
+
+  it('no-ops on a subtask', () => {
+    store().setItemPaused('subtask', true);
+    expect(itemById('subtask').pausedAt).toBeUndefined();
+    expect(db.updateItem).not.toHaveBeenCalled();
+  });
+
+  it('no-ops on an id the store does not have', () => {
+    store().setItemPaused('ghost', true);
+    expect(db.updateItem).not.toHaveBeenCalled();
+  });
+
+  it('undo restores the pre-pause state', () => {
+    store().setItemPaused('habit-1', true);
+    expect(itemById('habit-1').pausedAt).toBeTruthy();
+    store().undo();
+    expect(itemById('habit-1').pausedAt).toBeUndefined();
+  });
+});
+
+describe('pausing feeds the resolver end to end', () => {
+  it('a paused item becomes a suppressed open loop', () => {
+    expect(inactiveItemIdsOn(store().items, TODAY, ctx).size).toBe(0);
+    store().setItemPaused('habit-1', true);
+    expect(inactiveItemIdsOn(store().items, TODAY, ctx)).toEqual(new Set(['habit-1']));
+  });
+
+  // Locked decision 4, through the real store: hide open loops, never history.
+  it('keeps a day that was already marked before the pause', () => {
+    store().toggleHabitStatus('habit-1', 'done');
+    store().setItemPaused('habit-1', true);
+
+    const habit = itemById('habit-1');
+    expect(isOpenLoopSuppressedOn(habit, TODAY, ctx)).toBe(false);
+    expect(inactiveItemIdsOn(store().items, TODAY, ctx).size).toBe(0);
+  });
+
+  it('never suppresses dates before the pause began', () => {
+    store().setItemPaused('habit-1', true);
+    expect(inactiveItemIdsOn(store().items, '2026-03-01', ctx).size).toBe(0);
+  });
+
+  it('stops suppressing once the resume date arrives', () => {
+    store().setItemPaused('habit-1', true, '2026-03-20');
+    expect(inactiveItemIdsOn(store().items, '2026-03-19', ctx).size).toBe(1);
+    expect(inactiveItemIdsOn(store().items, '2026-03-20', ctx).size).toBe(0);
+  });
+});
+
+describe('the update allowlists persist the pause columns', () => {
+  // The seam db-allowlists catches generically. Without these entries the
+  // store's own write maps to an empty row and updateItem early-returns, so a
+  // pause would be optimistic-only and silently undo itself on reload.
+  it('maps both fields for tasks and habits', () => {
+    expect(updatesToRow('task', { pausedAt: 'x', pausedUntil: TODAY }))
+      .toEqual({ paused_at: 'x', paused_until: TODAY });
+    expect(updatesToRow('habit', { pausedAt: 'x', pausedUntil: TODAY }))
+      .toEqual({ paused_at: 'x', paused_until: TODAY });
+  });
+});

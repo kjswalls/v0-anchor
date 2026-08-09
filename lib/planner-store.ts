@@ -1141,11 +1141,20 @@ export const usePlannerStore = create<PlannerStore>()(
         if (!item) return;
         if (!isPausable(item)) return;
         const config = getItemTypeConfig(itemTypeName(item));
-        const todayStr = resolveDateStr();
-        if (isPausedOn(item, todayStr, get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone) === paused) return;
+
+        // TODAY, deliberately — NOT resolveDateStr(), which resolves the
+        // navigable selectedDate. Pausing is not a per-date verb the way
+        // completing or skipping is (plan decision 3: dateless surfaces resolve
+        // at today), so browsing next week and hitting Pause must not write a
+        // resume date from the day you happen to be looking at. Both values
+        // come off one instant so they cannot straddle midnight.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const now = new Date();
+        const todayStr = toDateStr(now, tz);
+        if (isPausedOn(item, todayStr, tz) === paused) return;
 
         const updates: Partial<Task> = paused
-          ? { pausedAt: new Date().toISOString(), pausedUntil: until }
+          ? { pausedAt: now.toISOString(), pausedUntil: until }
           : { pausedUntil: todayStr };
 
         setNextActionLabel(
