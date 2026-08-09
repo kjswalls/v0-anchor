@@ -408,16 +408,32 @@ dateless surfaces resolve at today (decision 3).
   timestamp version (`20260808222831`), which was corrected to `024` in
   `supabase_migrations.schema_migrations` — leaving it would have made `db push`
   replay 024 later (migration-ledger-drift).
-- [ ] **Phase 1 — item pausing end-to-end (#179):** lib/active.ts (item-level rules:
-  isPausedOn with lower bound, open-loop predicate); the FULL surface checklist wired
-  (grid, overdue with required inactiveIds param, sweep resume-grace (a), EOD,
-  braindump Paused section, item-surface state line, Beacon section filter +
-  unfiltered focus lookup, agent projection filter, search annotation, move-verb
-  receipts for item-level pause); pause/resume/pause-until verbs (store action,
-  palette, overflow menu, ScheduleSheet); unit tests (resolver table-driven, overdue
-  exclusion, EOD exclusion, history rule, focus-thread survival) + pause e2e spec.
-  Ships real user value alone, and forces every surface decision while the state
-  model is one field.
+- [x] **Phase 1 — item pausing end-to-end (#179)** (built 2026-08-08, `79f8af1`
+  `5b416c9` `310e762` `989541b` + this commit). lib/active.ts (isPausedOn with the
+  lower bound, open-loop predicate, inactiveItemIdsOn, suppressionReason); the
+  surface checklist wired — grid (deriveDayItems + both constructors, per column),
+  overdue with the REQUIRED inactiveIds param + sweep resume-grace (a), EOD,
+  braindump Paused section, item-panel activation line, Beacon per-type filter with
+  the focus lookup left unfiltered, agent projection filter, search annotation;
+  verbs on the store, the palette, the dialog overflow menu (incl. Pause until…) and
+  the mobile ScheduleSheet. Tests: active.test.ts (31), pause.test.ts (18),
+  overdue suppression cases, db-pause-columns.test.ts (4), pause.spec.ts (5 e2e).
+
+  **Deferred out of Phase 1, deliberately:** the move-verb receipts of decision 11.
+  For item-level pause the only reachable case is dragging a row OUT of the Paused
+  section onto the grid, which lands in lib/dnd/ — a contract-governed file whose
+  changes must ship with their own e2e spec. It becomes properly load-bearing in
+  Phase 3, when a program's date range makes whole week columns suppressed, so it
+  is scheduled there rather than half-built here.
+
+  **Also found and fixed during Phase 1:** `setItemPaused` originally resolved
+  "today" through `resolveDateStr()`, which returns the navigable `selectedDate` —
+  so pausing while browsing another week wrote a resume date from the day you were
+  looking at. Pausing is dateless (decision 3); the store was the one place that
+  didn't know it. And the e2e helpers `cleanupByTitlePrefix` / `fetchTest*` read the
+  legacy projections that Phase 1 now filters, so a paused fixture became invisible
+  to cleanup and leaked silently on the shared test user — both moved to `items[]`,
+  and a `fetchTestItem` helper was added.
 - [ ] **Phase 2 — routines:** store slice + manager (Routines tab) + membership
   editing from both sides (chips + memberships payload on create) + resolver grows
   routine paths + **/api/agent/context fetches routines + join tables so the

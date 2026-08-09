@@ -16,6 +16,8 @@ import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchItems, type SearchGroup } from '@/lib/search';
 import { getItemTypeConfig } from '@/lib/item-registry';
+import { isPausedOn } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
@@ -73,7 +75,11 @@ export function Omnibar({
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
 } = {}) {
-  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
+  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji, userTimezone } =
+    usePlannerStore();
+  // Today, not selectedDate — the omnibar carries no date of its own.
+  const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const searchTodayStr = toDateStr(new Date(), searchTz);
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
 
   const [query, setQuery] = useState('');
@@ -475,6 +481,11 @@ export function Omnibar({
                       const done =
                         item.type !== 'habit' &&
                         item.status === getItemTypeConfig(group.type).doneStatus;
+                      // Search deliberately keeps finding paused items — looking
+                      // something up by name is explicit intent, and this is one
+                      // of the few places a set-aside item can still be reached.
+                      // It just says so, quietly.
+                      const paused = isPausedOn(item, searchTodayStr, searchTz);
                       return (
                         <CommandItem
                           key={item.id}
@@ -482,6 +493,7 @@ export function Omnibar({
                           data-testid="omnibar-result"
                           data-item-id={item.id}
                           data-item-type={group.type}
+                          data-paused={paused || undefined}
                           onSelect={() => {
                             openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                             closeAndClear();
@@ -508,6 +520,9 @@ export function Omnibar({
                           >
                             {item.title}
                           </span>
+                          {/* Short on purpose: the panel is ~320px and the
+                              title truncates against it. */}
+                          {paused && <CommandShortcut>Paused</CommandShortcut>}
                         </CommandItem>
                       );
                     })}

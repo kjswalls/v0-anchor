@@ -158,6 +158,24 @@ export async function fetchTestHabit(
 }
 
 /**
+ * Read any item back through the agent API, INCLUDING suppressed ones.
+ *
+ * fetchTestTask/fetchTestHabit read the legacy projections, which drop
+ * suppressed open loops — so asserting "the streak survived the pause" through
+ * them returns null, indistinguishable from "the habit was deleted". items[] is
+ * unfiltered and carries pausedAt/pausedUntil.
+ */
+export async function fetchTestItem(
+  page: Page | APIRequestContext,
+  id: string
+): Promise<Record<string, unknown> | null> {
+  const res = await ctx(page).get(`${BASE_URL}/api/agent/context`, { headers: authHeaders() });
+  if (!res.ok()) throw new Error(`fetchTestItem failed (${res.status()}): ${await res.text()}`);
+  const body = await res.json();
+  return (body.items ?? []).find((i: { id: string }) => i.id === id) ?? null;
+}
+
+/**
  * Delete fixtures. Never throws — a cleanup failure must not mask the assertion
  * failure that a test is actually reporting.
  */
@@ -277,8 +295,15 @@ export async function cleanupByTitlePrefix(
   }
   const body = await res.json();
 
-  const tasks = (body.tasks ?? []).filter((t: { title?: string }) => t.title?.startsWith(prefix));
-  const habits = (body.habits ?? []).filter((h: { title?: string }) => h.title?.startsWith(prefix));
+  // items[], NOT tasks[]/habits[]. Those projections drop suppressed open loops
+  // (the agent-context filter), so a fixture a spec paused — or one left paused
+  // by a spec that failed mid-flight — is invisible to them, and this helper
+  // never throws, so the leak is silent and permanent on a shared test user.
+  // items[] is unfiltered by design and has carried both kinds since
+  // schemaVersion 3.
+  const litter = (body.items ?? []).filter((i: { title?: string }) => i.title?.startsWith(prefix));
+  const tasks = litter.filter((i: { type?: string }) => i.type !== 'habit');
+  const habits = litter.filter((i: { type?: string }) => i.type === 'habit');
 
   await cleanupTestData(
     page,
