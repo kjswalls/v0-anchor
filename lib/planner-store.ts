@@ -18,6 +18,7 @@ import type {
   Project,
   HabitGroupType,
   ItemTypeDef,
+  Routine,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import {
@@ -41,10 +42,15 @@ import {
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
+  fetchRoutines,
+  createRoutine as dbCreateRoutine,
+  updateRoutine as dbUpdateRoutine,
+  deleteRoutine as dbDeleteRoutine,
+  restoreRoutine as dbRestoreRoutine,
 } from './db';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
 import { isPausedOn } from './active';
-import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
+import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
@@ -196,6 +202,19 @@ interface PlannerStore {
   updateItemType: (id: string, updates: Partial<Omit<ItemTypeDef, 'id' | 'name'>>) => void;
   removeItemType: (id: string) => void;
 
+  // Routines (migration 024). A routine scopes its members: while it is paused,
+  // its items are suppressed even though nothing on the items changed. Part of
+  // undo/redo history, unlike itemTypes — membership is user data.
+  routines: Routine[];
+  /** False when migration 024's tables are unreachable. Every routine UI gates
+   *  on this, or writes look like they landed and vanish on reload. */
+  collectionsAvailable: boolean;
+  addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }) => string;
+  updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
+  removeRoutine: (id: string) => void;
+  /** Pause/resume a routine. Same today-resolved, dateless semantics as items. */
+  setRoutinePaused: (id: string, paused: boolean, until?: string) => void;
+
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
@@ -245,6 +264,11 @@ interface HistoryState {
   items: Item[];
   projects: Project[];
   habitGroups: HabitGroupType[];
+  // Explicit, because the subscriber snapshots only what it is told. Omitting
+  // routines would make every membership edit and every routine pause
+  // un-undoable AND would let an unrelated undo silently revert them, since
+  // applyHistoryState writes the whole snapshot back.
+  routines: Routine[];
 }
 
 export type ActionLogEntry = {
@@ -499,6 +523,60 @@ export const usePlannerStore = create<PlannerStore>()(
         dbDeleteItemType(id).catch(console.error);
       },
 
+      // ── Routines (Phase 2) ─────────────────────────────────────────────────
+      routines: [],
+      collectionsAvailable: true,
+      addRoutine: (routine) => {
+        const userId = get().userId;
+        const full: Routine = { ...routine, id: routine.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add routine: ${full.name}`);
+        set({ routines: [...get().routines, full] });
+        if (userId) dbCreateRoutine(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateRoutine: (id, updates) => {
+        const userId = get().userId;
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        setNextActionLabel(`Edit routine: ${updates.name ?? routine.name}`);
+        set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+      },
+      removeRoutine: (id) => {
+        const userId = get().userId;
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        // Soft delete. The join rows survive, so a restore within the purge
+        // window brings the membership back intact — which is also what makes
+        // undo of a delete a real undo rather than an empty shell.
+        setNextActionLabel(`Delete routine: ${routine.name}`);
+        set({ routines: get().routines.filter((r) => r.id !== id) });
+        if (userId) dbDeleteRoutine(userId, id).catch(console.error);
+      },
+      setRoutinePaused: (id, paused, until) => {
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        // Resolved at TODAY from a single instant, never at selectedDate —
+        // pausing is dateless (decision 3), and this is the bug Phase 1 shipped
+        // and had to fix on the item side. Same reasoning, same shape.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+        if (isPausedOn(routine, todayStr, tz) === paused) return;
+        // Manual resume normalizes pausedUntil to today rather than clearing
+        // the pair — the interval stays on the row for the sweep's grace.
+        const updates: Partial<Routine> = paused
+          ? { pausedAt: new Date().toISOString(), pausedUntil: until }
+          : { pausedUntil: todayStr };
+        // Writes directly rather than delegating to updateRoutine: that action
+        // stamps its own "Edit routine" label, and the history subscriber fires
+        // synchronously on its set(), so a label applied afterwards would land
+        // on whatever the user does NEXT.
+        setNextActionLabel(`${paused ? 'Pause' : 'Resume'} routine: ${routine.name}`);
+        set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        const userId = get().userId;
+        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+      },
+
       initializeStore: async (userId: string) => {
         // Block subscriber during initialization to prevent poisoned history entries
         isUpdatingUndoRedo = true;
@@ -513,18 +591,22 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups, itemTypesResult] = await Promise.all([
+          const [items, projects, habitGroups, itemTypesResult, routinesResult] = await Promise.all([
             fetchItems(userId),
             fetchProjects(userId),
             fetchHabitGroups(userId),
             fetchItemTypes(userId),
+            fetchRoutines(userId),
           ]);
           const itemTypes = itemTypesResult ?? [];
+          // null means the table is unreachable, NOT "no routines" — the flag
+          // gates the UI so a write can't look like it landed and vanish.
+          const routines = routinesResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, habitGroups };
+          const snapshot = { items, projects, habitGroups, routines };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -545,6 +627,8 @@ export const usePlannerStore = create<PlannerStore>()(
             habitGroups,
             itemTypes,
             itemTypesAvailable: itemTypesResult !== null,
+            routines,
+            collectionsAvailable: routinesResult !== null,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -575,6 +659,8 @@ export const usePlannerStore = create<PlannerStore>()(
           projects: [],
           habitGroups: [],
           itemTypes: [],
+          routines: [],
+          collectionsAvailable: true,
           isLoading: false,
           error: null,
           canUndo: false,
@@ -1614,7 +1700,12 @@ export const usePlannerStore = create<PlannerStore>()(
  */
 function applyHistoryState(
   target: HistoryState,
-  currentState: { items: Item[]; projects: Project[]; habitGroups: HabitGroupType[] },
+  currentState: {
+    items: Item[];
+    projects: Project[];
+    habitGroups: HabitGroupType[];
+    routines: Routine[];
+  },
   flags: { canUndo: boolean; canRedo: boolean },
   userId: string | null,
   set: (partial: Partial<PlannerStore>) => void,
@@ -1622,19 +1713,28 @@ function applyHistoryState(
   const restoredItems: Item[] = JSON.parse(JSON.stringify(target.items));
   const restoredProjects: Project[] = JSON.parse(JSON.stringify(target.projects));
   const restoredGroups: HabitGroupType[] = JSON.parse(JSON.stringify(target.habitGroups));
+  // Snapshots predating this field (a history stack built earlier in the
+  // session, before routines were fetched) carry no `routines` key at all.
+  const restoredRoutines: Routine[] = JSON.parse(JSON.stringify(target.routines ?? []));
 
   const info = getHistoryInfo();
   set({
     ...projectItems(restoredItems),
     projects: restoredProjects,
     habitGroups: restoredGroups,
+    routines: restoredRoutines,
     canUndo: flags.canUndo,
     canRedo: flags.canRedo,
     actionLog: info.actionLog,
     historyIndex: info.currentIndex,
   });
 
-  updatePrevStateBaseline({ items: restoredItems, projects: restoredProjects, habitGroups: restoredGroups });
+  updatePrevStateBaseline({
+    items: restoredItems,
+    projects: restoredProjects,
+    habitGroups: restoredGroups,
+    routines: restoredRoutines,
+  });
 
   if (!userId) return;
 
@@ -1692,6 +1792,17 @@ function applyHistoryState(
     (id, patch) => dbUpdateHabitGroup(userId, id, patch),
     (id) => dbDeleteHabitGroup(userId, id),
   );
+  // Routines ride the same diff, but their update callback carries join-table
+  // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
+  // arrives here as an {itemIds} patch and dbUpdateRoutine turns it into
+  // inserts/deletes. A column-mapper-style callback would drop it silently and
+  // membership undo would never reach the DB.
+  syncContainers(
+    currentState.routines, restoredRoutines, ROUTINE_FIELDS,
+    (id) => dbRestoreRoutine(userId, id),
+    (id, patch) => dbUpdateRoutine(userId, id, patch),
+    (id) => dbDeleteRoutine(userId, id),
+  );
 }
 
 function syncContainers<T extends { id: string }>(
@@ -1738,6 +1849,7 @@ let prevStateJson: string | null = JSON.stringify({
   items: initialStoreState.items,
   projects: initialStoreState.projects,
   habitGroups: initialStoreState.habitGroups,
+  routines: initialStoreState.routines,
 });
 
 // Function to update baseline from undo/redo actions
@@ -1752,6 +1864,7 @@ usePlannerStore.subscribe((state) => {
     items: state.items,
     projects: state.projects,
     habitGroups: state.habitGroups,
+    routines: state.routines,
   };
 
   const currentStateJson = JSON.stringify(currentState);

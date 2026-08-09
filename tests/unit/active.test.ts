@@ -8,7 +8,7 @@ import {
   suppressionReason,
   type ActivationContext,
 } from '@/lib/active';
-import type { Item } from '@anchor-app/types';
+import type { Item, Routine } from '@anchor-app/types';
 
 const ctx: ActivationContext = { userTimezone: 'America/New_York' };
 
@@ -212,5 +212,150 @@ describe('suppressionReason', () => {
   it('reports for a paused item even on a day it still renders', () => {
     const h = habit({ pausedAt: AUG10, completedDates: ['2026-08-15'] });
     expect(suppressionReason(h, '2026-08-15', ctx)).not.toBeNull();
+  });
+});
+
+/* ── routine paths (Phase 2) ──────────────────────────────────────────────── */
+
+const routine = (over: Partial<Routine> = {}): Routine => ({
+  id: 'r', name: 'Morning', itemIds: [], ...over,
+});
+
+const withRoutines = (...routines: Routine[]): ActivationContext => ({
+  userTimezone: 'America/New_York',
+  routines,
+});
+
+describe('routine membership scopes an item', () => {
+  const D = '2026-08-15';
+
+  it('a live routine leaves its members alone', () => {
+    const c = withRoutines(routine({ itemIds: ['h'] }));
+    expect(isItemActiveOn(habit(), D, c)).toBe(true);
+  });
+
+  it('a paused routine suppresses its members, though nothing on them changed', () => {
+    const c = withRoutines(routine({ itemIds: ['h'], pausedAt: AUG10 }));
+    expect(isItemActiveOn(habit(), D, c)).toBe(false);
+    expect(inactiveItemIdsOn([habit()], D, c)).toEqual(new Set(['h']));
+  });
+
+  it('leaves NON-members alone', () => {
+    const c = withRoutines(routine({ itemIds: ['someone-else'], pausedAt: AUG10 }));
+    expect(isItemActiveOn(habit(), D, c)).toBe(true);
+    expect(inactiveItemIdsOn([habit()], D, c).size).toBe(0);
+  });
+
+  it('is date-parameterized like every other predicate', () => {
+    const c = withRoutines(routine({ itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-09-01' }));
+    expect(isItemActiveOn(habit(), '2026-08-09', c)).toBe(true);  // before
+    expect(isItemActiveOn(habit(), '2026-08-31', c)).toBe(false); // during
+    expect(isItemActiveOn(habit(), '2026-09-01', c)).toBe(true);  // released, exclusive
+  });
+
+  it('ONE live path is enough — an item in two routines survives one being paused', () => {
+    // The disjunctive rule, and the reason it is disjunctive: belonging to a
+    // second routine is an additional reason to appear, never a new way to vanish.
+    const c = withRoutines(
+      routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 }),
+      routine({ id: 'r2', itemIds: ['h'] }),
+    );
+    expect(isItemActiveOn(habit(), D, c)).toBe(true);
+    expect(inactiveItemIdsOn([habit()], D, c).size).toBe(0);
+  });
+
+  it('hides only when EVERY path is paused', () => {
+    const c = withRoutines(
+      routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 }),
+      routine({ id: 'r2', itemIds: ['h'], pausedAt: AUG10 }),
+    );
+    expect(isItemActiveOn(habit(), D, c)).toBe(false);
+  });
+
+  it('an item paused itself stays hidden even inside a live routine', () => {
+    const c = withRoutines(routine({ itemIds: ['h'] }));
+    expect(isItemActiveOn(habit({ pausedAt: AUG10 }), D, c)).toBe(false);
+  });
+
+  it('still hides only OPEN LOOPS — the history rule survives the container arm', () => {
+    const c = withRoutines(routine({ itemIds: ['h'], pausedAt: AUG10 }));
+    const done = habit({ completedDates: [D] });
+    expect(isItemActiveOn(done, D, c)).toBe(false);          // not live…
+    expect(isOpenLoopSuppressedOn(done, D, c)).toBe(false);  // …but not hidden either
+    expect(inactiveItemIdsOn([done], D, c).size).toBe(0);
+  });
+
+  it('omitting routines entirely keeps Phase 1 behavior', () => {
+    expect(isItemActiveOn(habit(), D, { userTimezone: 'UTC' })).toBe(true);
+    expect(inactiveItemIdsOn([habit()], D, { userTimezone: 'UTC' }).size).toBe(0);
+  });
+});
+
+describe('inactiveItemIdsOn agrees with isItemActiveOn', () => {
+  // The bulk path inverts membership into a tally instead of scanning per item,
+  // so it is a genuinely separate implementation of the same algebra. Drift
+  // between them would mean the grid and the item dialog disagree about the
+  // same item on the same day.
+  const D = '2026-08-15';
+  const cases: [string, ActivationContext][] = [
+    ['no routines', { userTimezone: 'UTC' }],
+    ['live routine', withRoutines(routine({ itemIds: ['h', 't'] }))],
+    ['paused routine', withRoutines(routine({ itemIds: ['h', 't'], pausedAt: AUG10 }))],
+    ['one of two paused', withRoutines(
+      routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 }),
+      routine({ id: 'r2', itemIds: ['h'] }),
+    )],
+    ['expired pause', withRoutines(
+      routine({ itemIds: ['h', 't'], pausedAt: AUG10, pausedUntil: '2026-08-12' }),
+    )],
+  ];
+
+  for (const [label, c] of cases) {
+    it(label, () => {
+      const items = [habit(), task()];
+      const bulk = inactiveItemIdsOn(items, D, c);
+      for (const i of items) {
+        const single = !isItemActiveOn(i, D, c) && isOpenLoopOn(i, D);
+        expect(bulk.has(i.id)).toBe(single);
+      }
+    });
+  }
+});
+
+describe('suppressionReason names the container', () => {
+  const D = '2026-08-15';
+
+  it('reports the routine when the routine is what hides it', () => {
+    const r = routine({ name: 'Morning', itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-09-01' });
+    expect(suppressionReason(habit(), D, withRoutines(r)))
+      .toEqual({ kind: 'routine', routine: r, until: '2026-09-01' });
+  });
+
+  it("prefers the item's OWN pause — that is the control its Resume undoes", () => {
+    const r = routine({ itemIds: ['h'], pausedAt: AUG10 });
+    expect(suppressionReason(habit({ pausedAt: AUG10 }), D, withRoutines(r)))
+      .toEqual({ kind: 'paused', until: undefined });
+  });
+
+  it('names the routine that comes back SOONEST', () => {
+    const late = routine({ id: 'late', name: 'Late', itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-10-01' });
+    const soon = routine({ id: 'soon', name: 'Soon', itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-09-01' });
+    const reason = suppressionReason(habit(), D, withRoutines(late, soon));
+    expect(reason).toEqual({ kind: 'routine', routine: soon, until: '2026-09-01' });
+  });
+
+  it('an open-ended pause loses to any dated one', () => {
+    const openEnded = routine({ id: 'open', itemIds: ['h'], pausedAt: AUG10 });
+    const dated = routine({ id: 'dated', itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-09-01' });
+    const reason = suppressionReason(habit(), D, withRoutines(openEnded, dated));
+    expect(reason).toMatchObject({ kind: 'routine', until: '2026-09-01' });
+  });
+
+  it('is null while any path is live', () => {
+    const c = withRoutines(
+      routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 }),
+      routine({ id: 'r2', itemIds: ['h'] }),
+    );
+    expect(suppressionReason(habit(), D, c)).toBeNull();
   });
 });

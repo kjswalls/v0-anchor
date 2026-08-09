@@ -111,6 +111,7 @@ function usePastDue() {
    * due here while the day view still showed it as today's.
    */
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const routines = usePlannerStore((s) => s.routines);
   const todayStr = toDateStr(
     new Date(),
     userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -121,8 +122,8 @@ function usePastDue() {
   // a dateless surface; plan decision 3).
   const summary = useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return summarizeOverdue(items, todayStr, inactiveItemIdsOn(items, todayStr, { userTimezone: tz }));
-  }, [items, todayStr, userTimezone]);
+    return summarizeOverdue(items, todayStr, inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines }));
+  }, [items, routines, todayStr, userTimezone]);
 
   // n === 0 hides the bar — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from

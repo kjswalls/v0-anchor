@@ -268,6 +268,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     habits,
     projects,
     items: allItems,
+    routines,
     showCompletedTasks,
     userTimezone,
     showCurrentTimeIndicator,
@@ -302,11 +303,11 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           filters: canvasFilters,
           // Per COLUMN, not per week: a pause ending mid-week must show the
           // handoff in the right column rather than blanking all seven.
-          inactiveItemIds: inactiveItemIdsOn(allItems, dateStr, { userTimezone: timezone }),
+          inactiveItemIds: inactiveItemIdsOn(allItems, dateStr, { userTimezone: timezone, routines }),
         });
         return { date: d, dateStr, timed: deriveTimedEntries(items), untimed: deriveUntimedRows(items) };
       }),
-    [weekDays, tasks, habits, projects, allItems, timezone, typeFilter, showCompletedTasks, canvasFilters]
+    [weekDays, tasks, habits, projects, allItems, routines, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the

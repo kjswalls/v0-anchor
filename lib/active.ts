@@ -22,18 +22,30 @@
 
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from './recurrence';
 import { toDateOnly } from './overdue';
-import type { Item } from './planner-types';
+import type { Item, Routine } from './planner-types';
 
 /**
  * Everything the resolver needs beyond the item and the date.
  *
- * Phases 2–3 add `routinesById` / `programsById` / membership lookups here.
- * It is an object rather than a positional argument precisely so that growth
- * is additive at every call site.
+ * Phase 3 adds `programs` here. It is an object rather than a positional
+ * argument precisely so that growth is additive at every call site — every
+ * Phase 1 caller passing `{ userTimezone }` alone still compiles and still
+ * gets correct answers, because an item with no containers is unconditionally
+ * live (decision 3's "no paths = today's behavior, unchanged").
  */
 export interface ActivationContext {
   /** IANA zone — the pause interval's start is a timestamp and must be read in the user's day. */
   userTimezone: string;
+  /**
+   * The user's LIVE routines. Soft-deleted ones must never appear: decision 3
+   * removes trashed containers from resolution *before* the standalone test, so
+   * a routine in the trash neither suppresses its members nor keeps them scoped.
+   * `fetchRoutines` filters `deleted_at`, so the store's array satisfies this.
+   *
+   * Omitted (Phase 1 call sites, and any surface that legitimately has no
+   * container context) means "no memberships known" — item-level pause only.
+   */
+  routines?: readonly Routine[];
 }
 
 /** The pause columns, on an item or (from Phase 2) a routine. */
@@ -79,19 +91,48 @@ function pauseStartDate(pausedAt: string, userTimezone: string): string | null {
 }
 
 /**
+ * The routines holding `item`, live ones only.
+ *
+ * Linear in the routine count, which is fine for the single-item callers (a
+ * dialog, a sheet). Bulk callers go through {@link inactiveItemIdsOn}, which
+ * inverts the membership once instead of scanning per item.
+ */
+export function routinesForItem(
+  itemId: string,
+  routines: readonly Routine[] | undefined,
+): readonly Routine[] {
+  if (!routines?.length) return EMPTY_ROUTINES;
+  return routines.filter((r) => r.itemIds.includes(itemId));
+}
+
+const EMPTY_ROUTINES: readonly Routine[] = [];
+
+/**
  * Is this item live on `dateStr`?
  *
- * Phase 1: an item is live unless it is itself paused. Phases 2–3 add the
- * activation-path algebra (direct program membership, membership via a routine,
- * and a routine belonging to no program), where an item with at least one live
- * path is live and an item with NO paths keeps today's always-live behavior.
+ * Decision 3's path algebra, as far as Phase 2 takes it. An item's activation
+ * paths are the containers that scope it; it is live if it is not itself
+ * paused AND (it has no paths at all, OR at least one path is live).
+ *
+ * The "no paths" arm is what keeps this backwards-compatible: the overwhelming
+ * majority of items belong to nothing, and they behave exactly as they did
+ * before routines existed. Joining a routine is what makes an item's visibility
+ * answerable by something other than itself.
+ *
+ * Phase 3 widens a path from "a routine" to "a routine and/or a program", where
+ * a path is live iff its program (if any) is active AND its routine (if any) is
+ * not paused. Until then every routine is standalone, so a path is live exactly
+ * when its routine is unpaused.
  *
  * Note this answers "is it live", NOT "should it be hidden" — a suppressed item
  * with a completion mark still renders. Hiding surfaces want
  * {@link isOpenLoopSuppressedOn}.
  */
 export function isItemActiveOn(item: Item, dateStr: string, ctx: ActivationContext): boolean {
-  return !isPausedOn(item, dateStr, ctx.userTimezone);
+  if (isPausedOn(item, dateStr, ctx.userTimezone)) return false;
+  const paths = routinesForItem(item.id, ctx.routines);
+  if (paths.length === 0) return true;
+  return paths.some((r) => !isPausedOn(r, dateStr, ctx.userTimezone));
 }
 
 /**
@@ -146,9 +187,30 @@ export function inactiveItemIdsOn(
   dateStr: string,
   ctx: ActivationContext,
 ): Set<string> {
+  // Invert the membership ONCE. Scanning ctx.routines per item would be
+  // O(items × routines) on every rendered column of every week view; this is
+  // O(total memberships + items). The value is the item's live-path count on
+  // this date, which is all the algebra needs: >0 live, or 0 with no paths.
+  const pathsByItem = new Map<string, { total: number; live: number }>();
+  for (const routine of ctx.routines ?? []) {
+    const routineLive = !isPausedOn(routine, dateStr, ctx.userTimezone);
+    for (const itemId of routine.itemIds) {
+      const tally = pathsByItem.get(itemId);
+      if (tally) {
+        tally.total += 1;
+        if (routineLive) tally.live += 1;
+      } else {
+        pathsByItem.set(itemId, { total: 1, live: routineLive ? 1 : 0 });
+      }
+    }
+  }
+
   const ids = new Set<string>();
   for (const item of items) {
-    if (isOpenLoopSuppressedOn(item, dateStr, ctx)) ids.add(item.id);
+    const tally = pathsByItem.get(item.id);
+    const active =
+      !isPausedOn(item, dateStr, ctx.userTimezone) && (!tally || tally.total === 0 || tally.live > 0);
+    if (!active && isOpenLoopOn(item, dateStr)) ids.add(item.id);
   }
   return ids;
 }
@@ -158,20 +220,36 @@ export function inactiveItemIdsOn(
  * panel's activation line and the braindump's Paused section. Returns null when
  * the item is live, so `!reason` doubles as the liveness check.
  *
- * Phase 2–3 widen the return with a container cause ("Hidden with your Summer
- * program"); the shape is a discriminated object so that growth doesn't break
- * the callers written now.
+ * Phase 3 widens this with a program cause; the shape is a discriminated union
+ * so that growth doesn't break the callers written now.
  */
 export type SuppressionReason =
-  | { kind: 'paused'; until?: string };
+  | { kind: 'paused'; until?: string }
+  | { kind: 'routine'; routine: Routine; until?: string };
 
 export function suppressionReason(
   item: Item,
   dateStr: string,
   ctx: ActivationContext,
 ): SuppressionReason | null {
+  // The item's own pause wins the explanation when both are true. It is the
+  // one the user set on this row and the one the row's own Resume undoes —
+  // naming the routine instead would send them to a control that leaves the
+  // item hidden.
   if (isPausedOn(item, dateStr, ctx.userTimezone)) {
     return { kind: 'paused', until: item.pausedUntil };
   }
-  return null;
+  const paths = routinesForItem(item.id, ctx.routines);
+  if (paths.length === 0) return null;
+  if (paths.some((r) => !isPausedOn(r, dateStr, ctx.userTimezone))) return null;
+  // Every path is paused. Name the one that comes back FIRST — it is the date
+  // the item actually returns, and an open-ended pause (no `until`) correctly
+  // loses to any dated one.
+  const soonest = [...paths].sort((a, b) => {
+    if (a.pausedUntil === b.pausedUntil) return 0;
+    if (!a.pausedUntil) return 1;
+    if (!b.pausedUntil) return -1;
+    return a.pausedUntil < b.pausedUntil ? -1 : 1;
+  })[0];
+  return { kind: 'routine', routine: soonest, until: soonest.pausedUntil };
 }

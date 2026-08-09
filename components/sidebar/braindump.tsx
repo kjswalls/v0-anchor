@@ -342,7 +342,7 @@ function PausedSection({ rows }: { rows: RowItem[] }) {
 }
 
 export function Braindump() {
-  const { tasks, habits, items, userTimezone } = usePlannerStore();
+  const { tasks, habits, items, routines, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters } = useViewStore();
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
@@ -363,8 +363,8 @@ export function Braindump() {
    */
   const suppressedIds = useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return inactiveItemIdsOn(items, toDateStr(new Date(), tz), { userTimezone: tz });
-  }, [items, userTimezone]);
+    return inactiveItemIdsOn(items, toDateStr(new Date(), tz), { userTimezone: tz, routines });
+  }, [items, routines, userTimezone]);
 
   const rows: RowItem[] = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
