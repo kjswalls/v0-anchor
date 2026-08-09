@@ -14,7 +14,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
 import { RELAY } from '@/lib/relay-config';
-import { inactiveItemIdsOn } from '@/lib/active';
+import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import type { Priority, Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -302,9 +302,11 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
  * is the whole affordance; it answers "did I leave anything set aside?" without
  * making the answer feel like a debt.
  */
-function PausedSection({ rows }: { rows: RowItem[] }) {
+type PausedGroup = { key: string; label: string; rows: RowItem[] };
+
+function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number }) {
   const [open, setOpen] = useState(false);
-  if (rows.length === 0) return null;
+  if (count === 0) return null;
 
   return (
     <div
@@ -320,7 +322,7 @@ function PausedSection({ rows }: { rows: RowItem[] }) {
       >
         <Moon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="font-content text-content text-muted-foreground">Paused</span>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{rows.length}</span>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{count}</span>
         <ChevronRight
           className={cn(
             'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
@@ -332,8 +334,23 @@ function PausedSection({ rows }: { rows: RowItem[] }) {
           drops max-h and the list would grow without bound. */}
       {open && (
         <div className="max-h-[40vh] overflow-y-auto px-[6px] pb-2">
-          {rows.map((row) => (
-            <TaskRow key={row.item.id} row={row} context="braindump" />
+          {groups.map((group) => (
+            <div key={group.key}>
+              {/* Suppressed only when there is nothing to disambiguate — one
+                  cause needs no heading, and a lone label would read as a
+                  category rather than an explanation. */}
+              {groups.length > 1 && (
+                <p
+                  className="text-muted-foreground px-2 pt-2 pb-0.5 text-[10.5px] font-medium tracking-wider uppercase"
+                  data-testid="braindump-paused-group"
+                >
+                  {group.label}
+                </p>
+              )}
+              {group.rows.map((row) => (
+                <TaskRow key={row.item.id} row={row} context="braindump" />
+              ))}
+            </div>
           ))}
         </div>
       )}
@@ -420,17 +437,41 @@ export function Braindump() {
    * working list, and filtering the recovery surface would reintroduce the very
    * problem this section solves.
    */
-  const pausedRows: RowItem[] = useMemo(
-    () =>
-      items
-        .filter((i) => suppressedIds.has(i.id) && !('parentItemId' in i && i.parentItemId))
-        .map((i) =>
-          i.type === 'habit'
-            ? { itemType: 'habit' as const, item: i as unknown as Habit }
-            : { itemType: 'task' as const, item: i as unknown as Task }
-        ),
-    [items, suppressedIds]
-  );
+  const pausedGroups: PausedGroup[] = useMemo(() => {
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayStr = toDateStr(new Date(), tz);
+    // Grouped BY CAUSE rather than listed flat. With three layers able to hide
+    // an item, a flat list of twelve rows can't tell you whether to resume an
+    // item, a routine or a program — and the heading is the only place to say
+    // so, because the row's trailing rail is width-budgeted down to the pixel
+    // and has no slot to spend (see task-row.tsx's "quiet rail" note).
+    const groups = new Map<string, PausedGroup>();
+    for (const item of items) {
+      if (!suppressedIds.has(item.id)) continue;
+      if ('parentItemId' in item && item.parentItemId) continue;
+      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, programs });
+      const key = !reason
+        ? 'paused'
+        : reason.kind === 'routine'
+          ? `routine:${reason.routine.id}`
+          : reason.kind === 'program'
+            ? `program:${reason.program.id}`
+            : 'paused';
+      const row: RowItem =
+        item.type === 'habit'
+          ? { itemType: 'habit' as const, item: item as unknown as Habit }
+          : { itemType: 'task' as const, item: item as unknown as Task };
+      const group = groups.get(key);
+      if (group) group.rows.push(row);
+      // A null reason can't normally reach here (suppressedIds and
+      // suppressionReason agree), but falling back to the bare "Paused"
+      // heading keeps a row visible rather than dropping it on the floor.
+      else groups.set(key, { key, label: reason ? suppressionLabel(reason) : 'Paused', rows: [row] });
+    }
+    return [...groups.values()];
+  }, [items, suppressedIds, routines, programs, userTimezone]);
+
+  const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 
   const grouped: [string, RowItem[]][] = useMemo(() => {
     if (braindumpGroupBy === 'none') return [['', rows]];
@@ -511,7 +552,7 @@ export function Braindump() {
           // Fill the column only when there is genuinely nothing here — a
           // paused-only sidebar still wants the poem's space collapsed so the
           // Paused strip sits under the header rather than adrift at the foot.
-          rows.length === 0 && pausedRows.length === 0 && 'flex-1',
+          rows.length === 0 && pausedCount === 0 && 'flex-1',
           isOver && 'ring-2 ring-ring/60'
         )}
       >
@@ -532,7 +573,7 @@ export function Braindump() {
             )
           )}
 
-          {rows.length === 0 && pausedRows.length === 0 && (
+          {rows.length === 0 && pausedCount === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.
@@ -562,7 +603,7 @@ export function Braindump() {
         </div>
       </div>
 
-      <PausedSection rows={pausedRows} />
+      <PausedSection groups={pausedGroups} count={pausedCount} />
 
       {/* Quick-add — a floating card at the section foot, peer of the header. */}
       <QuickAddRow scrollRef={listRef} />

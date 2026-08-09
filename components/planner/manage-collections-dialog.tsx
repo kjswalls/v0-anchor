@@ -1,7 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Moon, Repeat, CalendarRange, Trash2, Plus } from 'lucide-react';
+import { format } from 'date-fns';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Moon,
+  Repeat,
+  CalendarRange,
+  Trash2,
+  Plus,
+  X,
+} from 'lucide-react';
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -12,6 +22,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,11 +39,11 @@ import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { accentColorForName } from '@/lib/accent-colors';
-import { isPausedOn } from '@/lib/active';
+import { isPausedOn, isProgramActiveOn } from '@/lib/active';
 import { isCollectible } from '@/lib/item-registry';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
-import type { Item, Routine } from '@/lib/planner-types';
+import type { Item, Routine, Program } from '@/lib/planner-types';
 
 /**
  * "Routines & Programs" — the manager.
@@ -49,16 +61,16 @@ import type { Item, Routine } from '@/lib/planner-types';
  *
  * Same components either way — the only difference is whether the list stays
  * mounted beside the detail. That matters because it means the LIST ROW has to
- * carry the full state (colour, name, paused, count) rather than leaning on an
- * editor that may not be there.
+ * carry the full state (colour, name, state pill, count) rather than leaning on
+ * an editor that may not be there.
  *
- * WHY THE MEMBER LIST GREYS. A paused routine hides its members everywhere else
- * in the app; showing them greyed here — in the same frame as the control that
- * paused them — is the only place cause and consequence are visible together.
+ * WHY THE MEMBER LIST GREYS. An inactive container hides its members everywhere
+ * else in the app; showing them greyed here — in the same frame as the control
+ * that hid them — is the only place cause and consequence are visible together.
  *
- * GUILT-FREE LAW (overlap-blocks decision 1): paused is never a warning colour,
- * never a badge, never a dotted border. A muted pill and a moon glyph, and an
- * ACTIVE routine wears no marker at all — only the exception is labelled.
+ * GUILT-FREE LAW (overlap-blocks decision 1): inactive is never a warning
+ * colour, never a badge, never a dotted border. A muted pill and a moon glyph,
+ * and a LIVE container wears no marker at all — only the exception is labelled.
  */
 export function ManageCollectionsDialog({
   open,
@@ -70,41 +82,45 @@ export function ManageCollectionsDialog({
   defaultTab?: string;
 }) {
   const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const addRoutine = usePlannerStore((s) => s.addRoutine);
   const removeRoutine = usePlannerStore((s) => s.removeRoutine);
+  const addProgram = usePlannerStore((s) => s.addProgram);
+  const removeProgram = usePlannerStore((s) => s.removeProgram);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newName, setNewName] = useState('');
-  const [newIcon, setNewIcon] = useState<string | undefined>(undefined);
-  const [confirmDelete, setConfirmDelete] = useState<Routine | null>(null);
+  // Selection is per-tab. One shared id would make switching tabs open whatever
+  // row happened to share an index, which reads as the dialog losing its place.
+  const [selectedRoutineId, setSelectedRoutineId] = useState<string | null>(null);
+  const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<
+    { kind: 'routine'; routine: Routine } | { kind: 'program'; program: Program } | null
+  >(null);
 
-  const selected = routines.find((r) => r.id === selectedId) ?? null;
+  const selectedRoutine = routines.find((r) => r.id === selectedRoutineId) ?? null;
+  const selectedProgram = programs.find((p) => p.id === selectedProgramId) ?? null;
 
   // Reopening should land on the list, not on whatever was last inspected —
   // the dialog stays mounted between opens.
   useEffect(() => {
     if (!open) {
-      setSelectedId(null);
-      setNewName('');
-      setNewIcon(undefined);
+      setSelectedRoutineId(null);
+      setSelectedProgramId(null);
     }
   }, [open]);
 
-  // A routine deleted from under the selection (or by an undo) must not leave
+  // A container deleted from under the selection (or by an undo) must not leave
   // the detail pane rendering a ghost.
   useEffect(() => {
-    if (selectedId && !routines.some((r) => r.id === selectedId)) setSelectedId(null);
-  }, [routines, selectedId]);
-
-  const handleAdd = () => {
-    const name = newName.trim();
-    if (!name || !collectionsAvailable) return;
-    const id = addRoutine({ name, icon: newIcon, itemIds: [] });
-    setNewName('');
-    setNewIcon(undefined);
-    setSelectedId(id);
-  };
+    if (selectedRoutineId && !routines.some((r) => r.id === selectedRoutineId)) {
+      setSelectedRoutineId(null);
+    }
+  }, [routines, selectedRoutineId]);
+  useEffect(() => {
+    if (selectedProgramId && !programs.some((p) => p.id === selectedProgramId)) {
+      setSelectedProgramId(null);
+    }
+  }, [programs, selectedProgramId]);
 
   return (
     <>
@@ -115,7 +131,7 @@ export function ManageCollectionsDialog({
               Routines &amp; Programs
             </ResponsiveModalTitle>
             <ResponsiveModalDescription className="sr-only">
-              Group items into routines, and pause a whole routine at once.
+              Group items into routines and programs, and switch a whole group off at once.
             </ResponsiveModalDescription>
           </ResponsiveModalHeader>
 
@@ -142,63 +158,83 @@ export function ManageCollectionsDialog({
               {!collectionsAvailable ? (
                 <Unavailable />
               ) : (
-                <div
-                  className="md:grid md:grid-cols-[210px_1fr] md:gap-0"
-                  data-testid="collections-routines"
-                >
-                  {/* On mobile the detail REPLACES the list; above md both are
-                      mounted. One media query, no forked component tree. */}
-                  <div className={cn('md:block md:border-border md:border-r md:pr-3', selected && 'hidden')}>
-                    <RoutineList
-                      routines={routines}
-                      selectedId={selectedId}
-                      onSelect={setSelectedId}
-                    />
-                    <div className="mt-3 flex gap-2">
-                      <IconPicker value={newIcon} name={newName} onSelect={setNewIcon} />
-                      <Input
+                <TwoPane
+                  testId="collections-routines"
+                  hasSelection={!!selectedRoutine}
+                  emptyDetail="Pick a routine to edit it."
+                  list={
+                    <>
+                      <RoutineList
+                        routines={routines}
+                        selectedId={selectedRoutineId}
+                        onSelect={setSelectedRoutineId}
+                      />
+                      <NewContainerRow
                         placeholder="New routine…"
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                        className="bg-background border-border h-9 flex-1"
-                        data-testid="routine-new-name"
+                        addLabel="Add routine"
+                        testPrefix="routine"
+                        onAdd={(name, icon) => setSelectedRoutineId(addRoutine({ name, icon, itemIds: [] }))}
                       />
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        className="h-9 w-9 shrink-0"
-                        onClick={handleAdd}
-                        disabled={!newName.trim()}
-                        aria-label="Add routine"
-                        data-testid="routine-add"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className={cn('md:block md:pl-4', !selected && 'hidden')}>
-                    {selected ? (
+                    </>
+                  }
+                  detail={
+                    selectedRoutine && (
                       <RoutineDetail
-                        routine={selected}
-                        onBack={() => setSelectedId(null)}
-                        onDelete={() => setConfirmDelete(selected)}
+                        routine={selectedRoutine}
+                        onBack={() => setSelectedRoutineId(null)}
+                        onDelete={() =>
+                          setConfirmDelete({ kind: 'routine', routine: selectedRoutine })
+                        }
                       />
-                    ) : (
-                      <p className="text-muted-foreground hidden py-10 text-center text-sm md:block">
-                        Pick a routine to edit it.
-                      </p>
-                    )}
-                  </div>
-                </div>
+                    )
+                  }
+                />
               )}
             </TabsContent>
 
             <TabsContent value="programs" className="mt-4">
-              <p className="text-muted-foreground py-10 text-center text-sm">
-                Programs arrive next — a routine is the smaller piece, and it comes first.
-              </p>
+              {!collectionsAvailable ? (
+                <Unavailable />
+              ) : (
+                <TwoPane
+                  testId="collections-programs"
+                  hasSelection={!!selectedProgram}
+                  emptyDetail="Pick a program to edit it."
+                  list={
+                    <>
+                      <ProgramList
+                        programs={programs}
+                        selectedId={selectedProgramId}
+                        onSelect={setSelectedProgramId}
+                      />
+                      <NewContainerRow
+                        placeholder="New program…"
+                        addLabel="Add program"
+                        testPrefix="program"
+                        onAdd={(name, icon) =>
+                          setSelectedProgramId(
+                            // Born 'auto' with no range, which resolves to
+                            // always-on: a program you just made must not hide
+                            // anything before you have said what it is for.
+                            addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] })
+                          )
+                        }
+                      />
+                    </>
+                  }
+                  detail={
+                    selectedProgram && (
+                      <ProgramDetail
+                        program={selectedProgram}
+                        onBack={() => setSelectedProgramId(null)}
+                        onDelete={() =>
+                          setConfirmDelete({ kind: 'program', program: selectedProgram })
+                        }
+                      />
+                    )
+                  }
+                />
+              )}
             </TabsContent>
           </Tabs>
         </ResponsiveModalContent>
@@ -207,21 +243,20 @@ export function ManageCollectionsDialog({
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this routine?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete this {confirmDelete?.kind === 'program' ? 'program' : 'routine'}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDelete
-                ? `"${confirmDelete.name}" is removed, but its ${confirmDelete.itemIds.length} ${
-                    confirmDelete.itemIds.length === 1 ? 'item' : 'items'
-                  } stay exactly as they are — they just stop being grouped.`
-                : ''}
+              {confirmDelete && <DeleteConsequence target={confirmDelete} />}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              data-testid="routine-delete-confirm"
+              data-testid="collection-delete-confirm"
               onClick={() => {
-                if (confirmDelete) removeRoutine(confirmDelete.id);
+                if (confirmDelete?.kind === 'routine') removeRoutine(confirmDelete.routine.id);
+                if (confirmDelete?.kind === 'program') removeProgram(confirmDelete.program.id);
                 setConfirmDelete(null);
               }}
             >
@@ -234,20 +269,167 @@ export function ManageCollectionsDialog({
   );
 }
 
+/**
+ * What deleting actually does, said plainly.
+ *
+ * A deleted container releases its members rather than taking them with it, and
+ * for an INACTIVE one that means work reappears. Saying so beats letting the
+ * user discover it on the grid: "delete" reads as subtraction, and here it can
+ * add rows back.
+ */
+function DeleteConsequence({
+  target,
+}: {
+  target: { kind: 'routine'; routine: Routine } | { kind: 'program'; program: Program };
+}) {
+  const { todayStr, tz } = useToday();
+  const liveIds = useLiveItemIds();
+
+  if (target.kind === 'routine') {
+    const n = countLive(target.routine.itemIds, liveIds);
+    const paused = isPausedOn(target.routine, todayStr, tz);
+    return (
+      <>
+        &ldquo;{target.routine.name}&rdquo; is removed, but its {n} {n === 1 ? 'item' : 'items'}{' '}
+        stay exactly as they are — they just stop being grouped
+        {paused ? ', and they come back into view' : ''}.
+      </>
+    );
+  }
+
+  const program = target.program;
+  const n = countLive(program.itemIds, liveIds);
+  const r = program.routineIds.length;
+  const live = isProgramActiveOn(program, todayStr);
+  const held = [
+    n > 0 ? `${n} ${n === 1 ? 'item' : 'items'}` : null,
+    r > 0 ? `${r} ${r === 1 ? 'routine' : 'routines'}` : null,
+  ]
+    .filter(Boolean)
+    .join(' and ');
+
+  return (
+    <>
+      &ldquo;{program.name}&rdquo; is removed
+      {held ? `, but the ${held} it holds stay exactly as they are` : ''}
+      {!live && (n > 0 || r > 0) ? ' — and anything it was hiding comes back into view' : ''}.
+    </>
+  );
+}
+
+/**
+ * The list/detail shell both tabs share. Below `md` the detail REPLACES the
+ * list; above it, both are mounted. One media query, no forked component tree.
+ */
+function TwoPane({
+  testId,
+  hasSelection,
+  list,
+  detail,
+  emptyDetail,
+}: {
+  testId: string;
+  hasSelection: boolean;
+  list: React.ReactNode;
+  detail: React.ReactNode;
+  emptyDetail: string;
+}) {
+  return (
+    <div className="md:grid md:grid-cols-[210px_1fr] md:gap-0" data-testid={testId}>
+      <div className={cn('md:block md:border-border md:border-r md:pr-3', hasSelection && 'hidden')}>
+        {list}
+      </div>
+      <div className={cn('md:block md:pl-4', !hasSelection && 'hidden')}>
+        {hasSelection ? (
+          detail
+        ) : (
+          <p className="text-muted-foreground hidden py-10 text-center text-sm md:block">
+            {emptyDetail}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NewContainerRow({
+  placeholder,
+  addLabel,
+  testPrefix,
+  onAdd,
+}: {
+  placeholder: string;
+  addLabel: string;
+  testPrefix: string;
+  onAdd: (name: string, icon: string | undefined) => void;
+}) {
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState<string | undefined>(undefined);
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAdd(trimmed, icon);
+    setName('');
+    setIcon(undefined);
+  };
+
+  return (
+    <div className="mt-3 flex gap-2">
+      <IconPicker value={icon} name={name} onSelect={setIcon} />
+      <Input
+        placeholder={placeholder}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && submit()}
+        className="bg-background border-border h-9 flex-1"
+        data-testid={`${testPrefix}-new-name`}
+      />
+      <Button
+        size="icon"
+        variant="secondary"
+        className="h-9 w-9 shrink-0"
+        onClick={submit}
+        disabled={!name.trim()}
+        aria-label={addLabel}
+        data-testid={`${testPrefix}-add`}
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 function Unavailable() {
   return (
-    <p className="text-muted-foreground py-10 text-center text-sm" data-testid="collections-unavailable">
-      Routines aren&apos;t available on this account yet.
+    <p
+      className="text-muted-foreground py-10 text-center text-sm"
+      data-testid="collections-unavailable"
+    >
+      Routines and programs aren&apos;t available on this account yet.
     </p>
   );
 }
 
-/** Today, in the user's zone. Pausing is dateless — never the selected date. */
+/** Today, in the user's zone. Activation is dateless — never the selected date. */
 function useToday(): { todayStr: string; tz: string } {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   return { todayStr: toDateStr(new Date(), tz), tz };
 }
+
+/**
+ * Member ids may name trashed items — join rows outlive an item's soft delete by
+ * design, so the arrays are pruned only by the purge CASCADE. Every consumer
+ * filters against this live index rather than eagerly cleaning.
+ */
+function useLiveItemIds(): Set<string> {
+  const items = usePlannerStore((s) => s.items);
+  return useMemo(() => new Set(items.map((i) => i.id)), [items]);
+}
+
+const countLive = (ids: readonly string[], live: Set<string>) =>
+  ids.reduce((n, id) => n + (live.has(id) ? 1 : 0), 0);
 
 function RoutineList({
   routines,
@@ -259,12 +441,7 @@ function RoutineList({
   onSelect: (id: string) => void;
 }) {
   const { todayStr, tz } = useToday();
-  const items = usePlannerStore((s) => s.items);
-  // Counted against the LIVE index, like the detail pane's list. itemIds may
-  // name trashed items — join rows outlive an item's soft delete by design —
-  // so raw length would make this row disagree with the editor beside it.
-  const liveIds = useMemo(() => new Set(items.map((i) => i.id)), [items]);
-  const liveCount = (r: Routine) => r.itemIds.reduce((n, id) => n + (liveIds.has(id) ? 1 : 0), 0);
+  const liveIds = useLiveItemIds();
 
   if (routines.length === 0) {
     return (
@@ -279,28 +456,65 @@ function RoutineList({
       {routines.map((routine) => {
         const paused = isPausedOn(routine, todayStr, tz);
         return (
-          <button
+          <ContainerRow
             key={routine.id}
-            type="button"
-            onClick={() => onSelect(routine.id)}
-            data-testid="routine-row"
-            data-routine-id={routine.id}
-            data-paused={paused ? '' : undefined}
-            className={cn(
-              'hover:bg-secondary flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors',
-              selectedId === routine.id && 'bg-secondary'
-            )}
-          >
-            <CategoryIcon glyph={routine.icon} name={routine.name} />
-            <span className="text-foreground flex-1 truncate text-sm font-medium">
-              {routine.name}
-            </span>
-            {paused && <PausedPill until={routine.pausedUntil} />}
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {liveCount(routine)}
-            </span>
-            <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0 md:hidden" />
-          </button>
+            testId="routine-row"
+            idAttr={{ 'data-routine-id': routine.id }}
+            icon={routine.icon}
+            name={routine.name}
+            selected={selectedId === routine.id}
+            dimmed={paused}
+            pill={paused ? <StatePill label={routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused'} testId="routine-paused-pill" /> : null}
+            count={countLive(routine.itemIds, liveIds)}
+            onSelect={() => onSelect(routine.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function ProgramList({
+  programs,
+  selectedId,
+  onSelect,
+}: {
+  programs: Program[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const { todayStr } = useToday();
+  const liveIds = useLiveItemIds();
+
+  if (programs.length === 0) {
+    return (
+      <p className="text-muted-foreground py-8 text-center text-sm">
+        No programs yet. A program is a stretch of life — a summer, a term — that switches whole
+        routines on and off.
+      </p>
+    );
+  }
+
+  return (
+    <div className="max-h-64 space-y-px overflow-y-auto">
+      {programs.map((program) => {
+        const pill = programPillLabel(program, todayStr);
+        return (
+          <ContainerRow
+            key={program.id}
+            testId="program-row"
+            idAttr={{ 'data-program-id': program.id }}
+            icon={program.icon}
+            name={program.name}
+            selected={selectedId === program.id}
+            dimmed={!!pill}
+            pill={pill ? <StatePill label={pill} testId="program-state-pill" /> : null}
+            // Items held directly PLUS whole routines: both are things this
+            // program switches, and a program that holds only routines would
+            // otherwise read as empty.
+            count={countLive(program.itemIds, liveIds) + program.routineIds.length}
+            onSelect={() => onSelect(program.id)}
+          />
         );
       })}
     </div>
@@ -308,17 +522,70 @@ function RoutineList({
 }
 
 /**
- * Muted, with a moon. Never amber, never red, never a dotted border — paused is
- * a decision the user made on purpose and should look like one.
+ * The one-line reason a program is not currently carrying its members, or null
+ * when it is. A live program wears no marker — only the exception is labelled.
  */
-function PausedPill({ until }: { until?: string }) {
+function programPillLabel(program: Program, todayStr: string): string | null {
+  if (isProgramActiveOn(program, todayStr)) return null;
+  if (program.state === 'paused') return 'Paused';
+  if (program.startsOn && todayStr < program.startsOn) return `From ${formatShort(program.startsOn)}`;
+  return 'Ended';
+}
+
+function ContainerRow({
+  testId,
+  idAttr,
+  icon,
+  name,
+  selected,
+  dimmed,
+  pill,
+  count,
+  onSelect,
+}: {
+  testId: string;
+  idAttr: Record<string, string>;
+  icon?: string;
+  name: string;
+  selected: boolean;
+  dimmed: boolean;
+  pill: React.ReactNode;
+  count: number;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      data-testid={testId}
+      data-paused={dimmed ? '' : undefined}
+      {...idAttr}
+      className={cn(
+        'hover:bg-secondary flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors',
+        selected && 'bg-secondary'
+      )}
+    >
+      <CategoryIcon glyph={icon} name={name} />
+      <span className="text-foreground flex-1 truncate text-sm font-medium">{name}</span>
+      {pill}
+      <span className="text-muted-foreground text-xs tabular-nums">{count}</span>
+      <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0 md:hidden" />
+    </button>
+  );
+}
+
+/**
+ * Muted, with a moon. Never amber, never red, never a dotted border — set aside
+ * is a decision the user made on purpose and should look like one.
+ */
+function StatePill({ label, testId }: { label: string; testId: string }) {
   return (
     <span
-      data-testid="routine-paused-pill"
+      data-testid={testId}
       className="bg-muted text-muted-foreground inline-flex h-[19px] shrink-0 items-center gap-1 rounded px-1.5 text-[10.5px] font-medium"
     >
       <Moon className="h-2.5 w-2.5" aria-hidden />
-      {until ? `Until ${formatShort(until)}` : 'Paused'}
+      {label}
     </span>
   );
 }
@@ -326,12 +593,126 @@ function PausedPill({ until }: { until?: string }) {
 function formatShort(dateStr: string): string {
   // Parsed as local noon rather than through Date(yyyy-mm-dd) — that overload
   // is UTC midnight, which formats as the PREVIOUS day west of Greenwich.
+  const d = parseDay(dateStr);
+  if (!d) return dateStr;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** `yyyy-MM-dd` → a local-noon Date, or undefined. Same anti-UTC reasoning. */
+function parseDay(dateStr: string | undefined): Date | undefined {
+  if (!dateStr) return undefined;
   const [y, m, d] = dateStr.split('-').map(Number);
-  if (!y || !m || !d) return dateStr;
-  return new Date(y, m - 1, d, 12).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d, 12);
+}
+
+/** Buffered rename — see the long note in ContainerNameRow's caller. */
+function useNameDraft(id: string, name: string, commit: (next: string) => void) {
+  const [draft, setDraft] = useState(name);
+  useEffect(() => setDraft(name), [id, name]);
+  return {
+    draft,
+    setDraft,
+    reset: () => setDraft(name),
+    commit: () => {
+      const next = draft.trim();
+      if (!next || next === name) {
+        setDraft(name);
+        return;
+      }
+      commit(next);
+    },
+  };
+}
+
+/**
+ * Icon + name + colour, shared by both detail panes.
+ *
+ * The name is BUFFERED, not written per keystroke. The update actions stamp a
+ * history label and set(), and the subscriber deep-clones the whole snapshot on
+ * every change — so a live-bound input turns renaming "Morning kickoff" into 15
+ * undo entries and 15 PATCHes, evicting the user's real history from a 50-deep
+ * stack. Committed on blur and on Enter, the EditProjectDialog precedent.
+ */
+function IdentityRow({
+  id,
+  name,
+  icon,
+  color,
+  label,
+  testPrefix,
+  onPatch,
+}: {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  label: string;
+  testPrefix: string;
+  onPatch: (patch: { name?: string; icon?: string; color?: string }) => void;
+}) {
+  const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }));
+
+  return (
+    <div className="flex gap-2">
+      <IconPicker value={icon} name={name} onSelect={(next) => onPatch({ icon: next })} />
+      <Input
+        value={nameDraft.draft}
+        onChange={(e) => nameDraft.setDraft(e.target.value)}
+        onBlur={nameDraft.commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            nameDraft.commit();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') nameDraft.reset();
+        }}
+        className="bg-background border-border h-9 flex-1"
+        aria-label={`${label} name`}
+        data-testid={`${testPrefix}-name-input`}
+      />
+      <ColorSwatchPicker
+        value={color}
+        fallback={accentColorForName(name)}
+        onSelect={(next) => onPatch({ color: next })}
+        aria-label={`${label} color`}
+      />
+    </div>
+  );
+}
+
+function Segmented({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-secondary inline-grid grid-flow-col gap-0.5 rounded-lg p-0.5">{children}</div>
+  );
+}
+
+function SegmentedOption({
+  active,
+  onClick,
+  testId,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      data-active={active ? '' : undefined}
+      className={cn(
+        'rounded-md px-3 py-1 text-xs transition-colors',
+        active ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 function RoutineDetail({
@@ -348,109 +729,43 @@ function RoutineDetail({
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
   const { todayStr, tz } = useToday();
 
-  // The name is BUFFERED, not written per keystroke. updateRoutine stamps a
-  // history label and set()s, and the subscriber deep-clones the whole snapshot
-  // on every change — so a live-bound input turns renaming "Morning kickoff"
-  // into 15 undo entries and 15 PATCHes, evicting the user's real history from
-  // a 50-deep stack. Committed on blur and on Enter, the EditProjectDialog
-  // precedent. Keyed on the routine id so switching rows reloads the buffer.
-  const [nameDraft, setNameDraft] = useState(routine.name);
-  useEffect(() => setNameDraft(routine.name), [routine.id, routine.name]);
-  const commitName = () => {
-    const next = nameDraft.trim();
-    if (!next || next === routine.name) {
-      setNameDraft(routine.name);
-      return;
-    }
-    updateRoutine(routine.id, { name: next });
-  };
-
   const paused = isPausedOn(routine, todayStr, tz);
-
-  // Member ids may reference trashed items — join rows survive an item's soft
-  // delete by design, so the arrays are pruned only by the purge CASCADE.
-  // Every consumer filters against the live index rather than eagerly cleaning.
   const members = routine.itemIds
     .map((id) => items.find((i) => i.id === id))
     .filter((i): i is Item => !!i);
 
   return (
     <div className="flex flex-col gap-4" data-testid="routine-detail" data-routine-id={routine.id}>
-      <button
-        type="button"
-        onClick={onBack}
-        className="text-muted-foreground -ml-1 flex items-center gap-1.5 self-start text-sm md:hidden"
-        data-testid="routine-detail-back"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Routines
-      </button>
+      <BackRow onBack={onBack} label="Routines" testId="routine-detail-back" />
 
-      <div className="flex gap-2">
-        <IconPicker
-          value={routine.icon}
-          name={routine.name}
-          onSelect={(icon) => updateRoutine(routine.id, { icon })}
-        />
-        <Input
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={commitName}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commitName();
-              e.currentTarget.blur();
-            }
-            if (e.key === 'Escape') setNameDraft(routine.name);
-          }}
-          className="bg-background border-border h-9 flex-1"
-          aria-label="Routine name"
-          data-testid="routine-name-input"
-        />
-        <ColorSwatchPicker
-          value={routine.color}
-          fallback={accentColorForName(routine.name)}
-          onSelect={(color) => updateRoutine(routine.id, { color })}
-          aria-label="Routine color"
-        />
-      </div>
+      <IdentityRow
+        id={routine.id}
+        name={routine.name}
+        icon={routine.icon}
+        color={routine.color}
+        label="Routine"
+        testPrefix="routine"
+        onPatch={(patch) => updateRoutine(routine.id, patch)}
+      />
 
       <div className="flex items-center justify-between">
-        <div className="bg-secondary inline-grid grid-flow-col gap-0.5 rounded-lg p-0.5">
-          <button
-            type="button"
+        <Segmented>
+          <SegmentedOption
+            active={!paused}
             onClick={() => setRoutinePaused(routine.id, false)}
-            data-testid="routine-state-active"
-            className={cn(
-              'rounded-md px-3 py-1 text-xs transition-colors',
-              !paused ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'
-            )}
+            testId="routine-state-active"
           >
             Active
-          </button>
-          <button
-            type="button"
+          </SegmentedOption>
+          <SegmentedOption
+            active={paused}
             onClick={() => setRoutinePaused(routine.id, true)}
-            data-testid="routine-state-paused"
-            className={cn(
-              'rounded-md px-3 py-1 text-xs transition-colors',
-              paused ? 'bg-card text-foreground font-medium shadow-sm' : 'text-muted-foreground'
-            )}
+            testId="routine-state-paused"
           >
             Paused
-          </button>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-destructive h-8 w-8"
-          onClick={onDelete}
-          aria-label="Delete routine"
-          data-testid="routine-delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          </SegmentedOption>
+        </Segmented>
+        <DeleteButton onDelete={onDelete} label="Delete routine" testId="routine-delete" />
       </div>
 
       {paused && (
@@ -462,30 +777,489 @@ function RoutineDetail({
         </p>
       )}
 
-      <MemberList routine={routine} members={members} paused={paused} />
+      <ItemMemberList
+        ownerName={routine.name}
+        memberIds={routine.itemIds}
+        members={members}
+        dimmed={paused}
+        testPrefix="routine"
+        onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
+      />
     </div>
   );
 }
 
-function MemberList({
-  routine,
-  members,
-  paused,
+function BackRow({
+  onBack,
+  label,
+  testId,
 }: {
-  routine: Routine;
-  members: Item[];
-  paused: boolean;
+  onBack: () => void;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onBack}
+      className="text-muted-foreground -ml-1 flex items-center gap-1.5 self-start text-sm md:hidden"
+      data-testid={testId}
+    >
+      <ChevronLeft className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+function DeleteButton({
+  onDelete,
+  label,
+  testId,
+}: {
+  onDelete: () => void;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="text-muted-foreground hover:text-destructive h-8 w-8"
+      onClick={onDelete}
+      aria-label={label}
+      data-testid={testId}
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
+  );
+}
+
+function ProgramDetail({
+  program,
+  onBack,
+  onDelete,
+}: {
+  program: Program;
+  onBack: () => void;
+  onDelete: () => void;
 }) {
   const items = usePlannerStore((s) => s.items);
-  const updateRoutine = usePlannerStore((s) => s.updateRoutine);
+  const programs = usePlannerStore((s) => s.programs);
+  const updateProgram = usePlannerStore((s) => s.updateProgram);
+  const setProgramState = usePlannerStore((s) => s.setProgramState);
+  const swapToProgram = usePlannerStore((s) => s.swapToProgram);
+  const { todayStr } = useToday();
+
+  const live = isProgramActiveOn(program, todayStr);
+  const members = program.itemIds
+    .map((id) => items.find((i) => i.id === id))
+    .filter((i): i is Item => !!i);
+
+  // The swap verb only earns its place when there is something to swap AWAY
+  // from. With no other program on, "Switch to this" and "Active" would be the
+  // same button wearing two labels.
+  const displaced = programs.filter((p) => p.id !== program.id && isProgramActiveOn(p, todayStr));
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="program-detail" data-program-id={program.id}>
+      <BackRow onBack={onBack} label="Programs" testId="program-detail-back" />
+
+      <IdentityRow
+        id={program.id}
+        name={program.name}
+        icon={program.icon}
+        color={program.color}
+        label="Program"
+        testPrefix="program"
+        onPatch={(patch) => updateProgram(program.id, patch)}
+      />
+
+      <div className="flex items-center justify-between">
+        <Segmented>
+          <SegmentedOption
+            active={program.state === 'active'}
+            onClick={() => setProgramState(program.id, 'active')}
+            testId="program-state-active"
+          >
+            On
+          </SegmentedOption>
+          <SegmentedOption
+            active={program.state === 'paused'}
+            onClick={() => setProgramState(program.id, 'paused')}
+            testId="program-state-paused"
+          >
+            Off
+          </SegmentedOption>
+          <SegmentedOption
+            active={program.state === 'auto'}
+            onClick={() => setProgramState(program.id, 'auto')}
+            testId="program-state-auto"
+          >
+            Dates
+          </SegmentedOption>
+        </Segmented>
+        <DeleteButton onDelete={onDelete} label="Delete program" testId="program-delete" />
+      </div>
+
+      {/* The range only renders under 'Dates'. On/Off are manual overrides that
+          always win, so showing pickers beside them would offer a control with
+          no effect — and the dates are still on the row, waiting, when the user
+          switches back. */}
+      {program.state === 'auto' && (
+        <DateRangeRow
+          startsOn={program.startsOn}
+          endsOn={program.endsOn}
+          onChange={(patch) => updateProgram(program.id, patch)}
+        />
+      )}
+
+      <p className="text-muted-foreground text-xs" data-testid="program-state-note">
+        <ProgramStateNote program={program} live={live} />
+      </p>
+
+      {!live && displaced.length > 0 && (
+        <button
+          type="button"
+          onClick={() => swapToProgram(program.id)}
+          data-testid="program-swap"
+          className="text-foreground hover:bg-secondary -mx-1 flex flex-col items-start gap-0.5 rounded-lg px-1 py-1.5 text-left text-xs transition-colors"
+        >
+          <span className="font-medium">Switch to this program</span>
+          <span className="text-muted-foreground">
+            Turns off {displaced.map((p) => p.name).join(', ')}. One undo puts it all back.
+          </span>
+        </button>
+      )}
+
+      <RoutineMemberList program={program} live={live} />
+
+      <ItemMemberList
+        ownerName={program.name}
+        memberIds={program.itemIds}
+        members={members}
+        dimmed={!live}
+        testPrefix="program"
+        onChange={(itemIds) => updateProgram(program.id, { itemIds })}
+      />
+    </div>
+  );
+}
+
+function ProgramStateNote({ program, live }: { program: Program; live: boolean }) {
+  if (program.state === 'active') {
+    return <>On until you say otherwise — dates are ignored while it is set this way.</>;
+  }
+  if (program.state === 'paused') {
+    return <>Off. Everything it holds is hidden, and streaks and history stay exactly as they are.</>;
+  }
+  if (!program.startsOn && !program.endsOn) {
+    return <>Always on. Give it a start or an end to make it follow the calendar.</>;
+  }
+  const from = program.startsOn ? formatShort(program.startsOn) : null;
+  const to = program.endsOn ? formatShort(program.endsOn) : null;
+  const span = from && to ? `${from} to ${to}` : from ? `from ${from}` : `until ${to}`;
+  return (
+    <>
+      Runs {span}, inclusive. {live ? 'On now.' : 'Off right now — nothing it holds is showing.'}
+    </>
+  );
+}
+
+function DateRangeRow({
+  startsOn,
+  endsOn,
+  onChange,
+}: {
+  startsOn?: string;
+  endsOn?: string;
+  onChange: (patch: { startsOn?: string; endsOn?: string }) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <DayField
+        label="Starts"
+        value={startsOn}
+        testId="program-starts-on"
+        onChange={(next) => onChange({ startsOn: next })}
+      />
+      <span className="text-muted-foreground text-xs">→</span>
+      <DayField
+        label="Ends"
+        value={endsOn}
+        testId="program-ends-on"
+        onChange={(next) => onChange({ endsOn: next })}
+      />
+    </div>
+  );
+}
+
+function DayField({
+  label,
+  value,
+  testId,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  testId: string;
+  onChange: (next: string | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = parseDay(value);
+
+  return (
+    <div className="flex items-center gap-1">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-border h-8 gap-1.5 text-xs font-normal"
+            data-testid={testId}
+          >
+            <span className="text-muted-foreground">{label}</span>
+            {value ? formatShort(value) : <span className="text-muted-foreground">any day</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={selected}
+            onSelect={(date) => {
+              // `format`, not toDateStr: react-day-picker hands back a
+              // browser-LOCAL-midnight Date, and re-reading that instant in
+              // another zone shifts it to the previous day. A picked day is a
+              // wall-calendar choice, not an instant. (Phase 1 shipped the bug.)
+              onChange(date ? format(date, 'yyyy-MM-dd') : undefined);
+              setOpen(false);
+            }}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange(undefined)}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label={`Clear ${label.toLowerCase()} date`}
+          data-testid={`${testId}-clear`}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The routines a program holds.
+ *
+ * Attaching is the one membership write in the app with a NON-OBVIOUS
+ * consequence, so it is the one that confirms first — see AttachRoutineConfirm.
+ */
+function RoutineMemberList({ program, live }: { program: Program; live: boolean }) {
+  const routines = usePlannerStore((s) => s.routines);
+  const allPrograms = usePlannerStore((s) => s.programs);
+  const updateProgram = usePlannerStore((s) => s.updateProgram);
+  const liveIds = useLiveItemIds();
+  const { todayStr } = useToday();
+  const [adding, setAdding] = useState(false);
+  const [pendingAttach, setPendingAttach] = useState<Routine | null>(null);
+
+  const members = program.routineIds
+    .map((id) => routines.find((r) => r.id === id))
+    .filter((r): r is Routine => !!r);
+
+  const attach = (routine: Routine) =>
+    updateProgram(program.id, { routineIds: [...program.routineIds, routine.id] });
+
+  const requestAttach = (routine: Routine) => {
+    setAdding(false);
+    // Only the FIRST program a routine joins rescopes it. A second is purely
+    // additive — the path algebra is disjunctive — so warning there would train
+    // the user to dismiss the dialog that matters.
+    const heldElsewhere = allPrograms.some(
+      (p) => p.id !== program.id && p.routineIds.includes(routine.id)
+    );
+    const consequential = !heldElsewhere && !live && countLive(routine.itemIds, liveIds) > 0;
+    if (consequential) setPendingAttach(routine);
+    else attach(routine);
+  };
+
+  const candidates = routines.filter((r) => !program.routineIds.includes(r.id));
+
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-muted-foreground text-[10.5px] font-medium tracking-wider uppercase">
+          {members.length} {members.length === 1 ? 'routine' : 'routines'}
+        </span>
+
+        <div className="max-h-32 space-y-px overflow-y-auto">
+          {members.map((routine) => (
+            <div
+              key={routine.id}
+              data-testid="program-routine-member"
+              data-routine-id={routine.id}
+              className="hover:bg-secondary group flex h-9 items-center gap-2.5 rounded-lg px-2.5"
+            >
+              <CategoryIcon glyph={routine.icon} name={routine.name} />
+              <span
+                className={cn(
+                  'flex-1 truncate text-sm',
+                  live ? 'text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {routine.name}
+              </span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {countLive(routine.itemIds, liveIds)}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  updateProgram(program.id, {
+                    routineIds: program.routineIds.filter((id) => id !== routine.id),
+                  })
+                }
+                className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                aria-label={`Remove ${routine.name} from ${program.name}`}
+                data-testid="program-routine-remove"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {adding && candidates.length > 0 ? (
+          <div className="flex flex-col gap-1">
+            {candidates.map((routine) => (
+              <button
+                key={routine.id}
+                type="button"
+                onClick={() => requestAttach(routine)}
+                data-testid="program-routine-candidate"
+                data-routine-id={routine.id}
+                className="hover:bg-secondary flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-sm"
+              >
+                <CategoryIcon glyph={routine.icon} name={routine.name} />
+                <span className="truncate">{routine.name}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            disabled={candidates.length === 0}
+            className="text-muted-foreground hover:text-foreground flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm disabled:opacity-50"
+            data-testid="program-routine-add"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {candidates.length === 0 ? 'Every routine is already here' : 'Add a routine'}
+          </button>
+        )}
+      </div>
+
+      <AttachRoutineConfirm
+        routine={pendingAttach}
+        program={program}
+        todayStr={todayStr}
+        liveIds={liveIds}
+        onCancel={() => setPendingAttach(null)}
+        onConfirm={() => {
+          if (pendingAttach) attach(pendingAttach);
+          setPendingAttach(null);
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The attach discontinuity, said out loud (plan decision 3).
+ *
+ * A routine that belongs to NO program answers for itself. Put it in its first
+ * program and the program answers too — so attaching a live routine to a program
+ * that is off makes its items vanish from today as a side effect of a join
+ * write. That is the algebra working as designed (scoping a routine IS the
+ * point), but an unannounced "5 items disappeared" reads as a bug, so the one
+ * membership write with a non-obvious consequence states it before committing.
+ */
+function AttachRoutineConfirm({
+  routine,
+  program,
+  todayStr,
+  liveIds,
+  onCancel,
+  onConfirm,
+}: {
+  routine: Routine | null;
+  program: Program;
+  todayStr: string;
+  liveIds: Set<string>;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const n = routine ? countLive(routine.itemIds, liveIds) : 0;
+  const returns =
+    program.state === 'auto' && program.startsOn && todayStr < program.startsOn
+      ? formatShort(program.startsOn)
+      : null;
+
+  return (
+    <AlertDialog open={!!routine} onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            This will hide {n} {n === 1 ? 'item' : 'items'} for now
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {routine && (
+              <>
+                &ldquo;{routine.name}&rdquo; looks after itself today. Putting it in{' '}
+                {program.name} hands that over — and {program.name} is off, so its {n}{' '}
+                {n === 1 ? 'item' : 'items'}{' '}
+                {returns ? `come back on ${returns}` : 'stay hidden until you switch it on'}.
+                Nothing is deleted, and taking it back out restores them.
+              </>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction data-testid="program-routine-attach-confirm" onClick={onConfirm}>
+            Add it anyway
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function ItemMemberList({
+  ownerName,
+  memberIds,
+  members,
+  dimmed,
+  testPrefix,
+  onChange,
+}: {
+  ownerName: string;
+  memberIds: string[];
+  members: Item[];
+  dimmed: boolean;
+  testPrefix: string;
+  onChange: (ids: string[]) => void;
+}) {
+  const items = usePlannerStore((s) => s.items);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
 
-  const remove = (id: string) =>
-    updateRoutine(routine.id, { itemIds: routine.itemIds.filter((m) => m !== id) });
-
   const add = (id: string) => {
-    updateRoutine(routine.id, { itemIds: [...routine.itemIds, id] });
+    onChange([...memberIds, id]);
     setQuery('');
     setAdding(false);
   };
@@ -493,12 +1267,7 @@ function MemberList({
   const q = query.trim().toLowerCase();
   const candidates = q
     ? items
-        .filter(
-          (i) =>
-            isCollectible(i) &&
-            !routine.itemIds.includes(i.id) &&
-            i.title.toLowerCase().includes(q)
-        )
+        .filter((i) => isCollectible(i) && !memberIds.includes(i.id) && i.title.toLowerCase().includes(q))
         .slice(0, 6)
     : [];
 
@@ -513,26 +1282,23 @@ function MemberList({
         {members.map((item) => (
           <div
             key={item.id}
-            data-testid="routine-member"
+            data-testid={`${testPrefix}-member`}
             data-item-id={item.id}
             className="hover:bg-secondary group flex h-9 items-center gap-2.5 rounded-lg px-2.5"
           >
-            {/* Greyed while the routine is paused, NOT struck through — struck
+            {/* Greyed while the container is off, NOT struck through — struck
                 through means done, and this isn't done, it's set aside. */}
             <span
-              className={cn(
-                'flex-1 truncate text-sm',
-                paused ? 'text-muted-foreground' : 'text-foreground'
-              )}
+              className={cn('flex-1 truncate text-sm', dimmed ? 'text-muted-foreground' : 'text-foreground')}
             >
               {item.title}
             </span>
             <button
               type="button"
-              onClick={() => remove(item.id)}
+              onClick={() => onChange(memberIds.filter((m) => m !== item.id))}
               className="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              aria-label={`Remove ${item.title} from ${routine.name}`}
-              data-testid="routine-member-remove"
+              aria-label={`Remove ${item.title} from ${ownerName}`}
+              data-testid={`${testPrefix}-member-remove`}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -555,14 +1321,14 @@ function MemberList({
               if (e.key === 'Enter' && candidates[0]) add(candidates[0].id);
             }}
             className="bg-background border-border h-8"
-            data-testid="routine-member-search"
+            data-testid={`${testPrefix}-member-search`}
           />
           {candidates.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => add(item.id)}
-              data-testid="routine-member-candidate"
+              data-testid={`${testPrefix}-member-candidate`}
               data-item-id={item.id}
               className="hover:bg-secondary flex h-8 items-center rounded-lg px-2.5 text-left text-sm"
             >
@@ -575,7 +1341,7 @@ function MemberList({
           type="button"
           onClick={() => setAdding(true)}
           className="text-muted-foreground hover:text-foreground flex h-8 items-center gap-2 rounded-lg px-2.5 text-sm"
-          data-testid="routine-member-add"
+          data-testid={`${testPrefix}-member-add`}
         >
           <Plus className="h-3.5 w-3.5" />
           Add an item

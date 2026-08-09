@@ -17,7 +17,7 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { getItemTypeConfig, isPausable } from '@/lib/item-registry';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
-import { isPausedOn } from '@/lib/active';
+import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import type { TimeBucket, Task } from '@/lib/planner-types';
 
 const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
@@ -48,6 +48,8 @@ export function ScheduleSheet() {
     selectedDate,
     userTimezone,
     items,
+    routines,
+    programs,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   // Mobile multi-select entry: no long-press (that gesture belongs to dnd-kit's
@@ -85,6 +87,15 @@ export function ScheduleSheet() {
   const todayStr = toDateStr(new Date(), tz);
   const canPause = !!liveItem && isPausable(liveItem);
   const isPaused = !!liveItem && isPausedOn(liveItem, todayStr, tz);
+  // The button above stays ITEM-level on purpose — it is what Pause/Resume can
+  // actually act on, and offering Resume for a container-caused hide would be a
+  // genuine no-op. But the sheet is the only place a paused row is reachable on
+  // touch, so when the cause is a container it has to SAY so: otherwise the
+  // user taps Resume, the row stays hidden, and nothing anywhere explains it.
+  const reason = liveItem
+    ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, programs })
+    : null;
+  const containerReason = reason && reason.kind !== 'paused' ? reason : null;
 
   const schedule = (bucket: TimeBucket) => {
     if (!row) return;
@@ -183,6 +194,14 @@ export function ScheduleSheet() {
                 </>
               )}
             </Button>
+          )}
+          {containerReason && (
+            <p
+              className="text-muted-foreground px-3 py-1 text-xs"
+              data-testid="sheet-suppression-note"
+            >
+              {suppressionLabel(containerReason, { long: true })}
+            </p>
           )}
           {taskScheduled && (
             <Button

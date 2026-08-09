@@ -62,7 +62,7 @@ import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
-import { inactiveItemIdsOn, isPausedOn } from '../active';
+import { inactiveItemIdsOn, isPausedOn, isProgramActiveOn } from '../active';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
@@ -85,7 +85,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { Priority, TimeBucket, Routine } from '../planner-types';
+import type { Priority, TimeBucket, Routine, Program } from '../planner-types';
 
 /**
  * The command registry.
@@ -1122,7 +1122,60 @@ const routineCommands: CommandProvider = () => {
   return cachedRoutineCommands;
 };
 
-const PROVIDERS: CommandProvider[] = [customTypeCommands, routineCommands];
+let cachedPrograms: readonly Program[] | null = null;
+let cachedProgramCommands: Command[] = [];
+
+/**
+ * Two commands per program, and both can render at once — unlike the routine
+ * pair, where exactly one is a no-op.
+ *
+ * - "Turn on/off X" is the direct flip, and only the one that would CHANGE
+ *   something appears, same reasoning as routines.
+ * - "Switch to X" is the swap: it turns X on and everything else off. It only
+ *   appears when there is something to turn off, because with nothing else on
+ *   it would be the first command wearing a second name.
+ *
+ * No aliases, for the reason spelled out above routineCommands: program names
+ * are free text and a program called "settings" must not steal /settings.
+ */
+const programCommands: CommandProvider = () => {
+  const { programs, collectionsAvailable } = planner();
+  if (!collectionsAvailable) return [];
+  if (programs === cachedPrograms) return cachedProgramCommands;
+
+  cachedPrograms = programs;
+  const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const todayStr = toDateStr(new Date(), tz);
+  const liveCount = programs.filter((p) => isProgramActiveOn(p, todayStr)).length;
+
+  cachedProgramCommands = programs.flatMap((program) => {
+    const live = isProgramActiveOn(program, todayStr);
+    const commands: Command[] = [
+      {
+        id: `program.${live ? 'pause' : 'activate'}.${program.id}`,
+        label: `Turn ${live ? 'off' : 'on'} ${program.name}`,
+        group: 'items',
+        icon: live ? PauseIcon : PlayIcon,
+        keywords: `program ${program.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
+        run: () => planner().setProgramState(program.id, live ? 'paused' : 'active'),
+      },
+    ];
+    if (!live && liveCount > 0) {
+      commands.push({
+        id: `program.swap.${program.id}`,
+        label: `Switch to ${program.name}`,
+        group: 'items',
+        icon: CalendarRange,
+        keywords: `program ${program.name} switch swap change season only`,
+        run: () => planner().swapToProgram(program.id),
+      });
+    }
+    return commands;
+  });
+  return cachedProgramCommands;
+};
+
+const PROVIDERS: CommandProvider[] = [customTypeCommands, routineCommands, programCommands];
 
 /**
  * The registry as every palette surface sees it. Call this rather than reading

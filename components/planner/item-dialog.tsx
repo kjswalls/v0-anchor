@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
   Plus,
   Repeat,
+  CalendarRange,
   Repeat2,
   RotateCcw,
   Trash2,
@@ -293,6 +294,8 @@ export interface ItemDraft {
    * Deliberately absent from DRAFT_KEYS for the same reason.
    */
   routineIds: string[];
+  /** Program ids, ADD MODE ONLY — same two-write-paths reasoning as routineIds. */
+  programIds: string[];
   newContainer: { show: boolean; name: string; icon: string };
 }
 
@@ -393,6 +396,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     repeatMonthDay: 1,
     timesPerDay: '1',
     routineIds: [],
+    programIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -433,12 +437,14 @@ function draftFromItem(item: Item): ItemDraft {
     repeatDays: item.repeatDays || [],
     repeatMonthDay: item.repeatMonthDay || 1,
     timesPerDay: item.type === 'habit' ? item.timesPerDay?.toString() || '1' : '1',
-    // Always empty, and that is not an oversight: in edit mode the Routine chip
-    // reads the LIVE join off the store and writes through updateRoutine, so a
-    // draft copy would be a second source of truth that the panel's scoped-write
-    // machinery would then try to persist as a column. Present so the object
-    // satisfies ItemDraft; deliberately never read on the edit path.
+    // Always empty, and that is not an oversight: in edit mode the membership
+    // chips read the LIVE join off the store and write through
+    // updateRoutine/updateProgram, so a draft copy would be a second source of
+    // truth that the panel's scoped-write machinery would then try to persist
+    // as a column. Present so the object satisfies ItemDraft; deliberately
+    // never read on the edit path.
     routineIds: [],
+    programIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -479,8 +485,10 @@ export function ItemDialog({
     userTimezone,
     setItemPaused,
     routines,
+    programs,
     collectionsAvailable,
     updateRoutine,
+    updateProgram,
   } = usePlannerStore();
 
   const router = useRouter();
@@ -543,6 +551,7 @@ export function ItemDialog({
     ? suppressionReason(editItem, toDateStr(new Date(), activationTz), {
         userTimezone: activationTz,
         routines,
+        programs,
       })
     : null;
   const canPause = !!editItem && isPausable(editItem);
@@ -676,6 +685,13 @@ export function ItemDialog({
           repeatFrequency: chosenFrequency ? from.repeatFrequency : base.repeatFrequency,
           repeatDays: chosenFrequency ? from.repeatDays : base.repeatDays,
           repeatMonthDay: chosenFrequency ? from.repeatMonthDay : base.repeatMonthDay,
+          // Membership is type-agnostic — a routine holds whatever is
+          // collectible — so a chosen container survives the hop, unlike the
+          // per-type fields above. It is dropped only when the TARGET can't
+          // hold membership at all, which would otherwise write join rows for
+          // an item whose chip is hidden.
+          routineIds: config.collectible ? from.routineIds : [],
+          programIds: config.collectible ? from.programIds : [],
         },
       };
     });
@@ -739,7 +755,7 @@ export function ItemDialog({
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
-      }, { routineIds: d.routineIds });
+      }, { routineIds: d.routineIds, programIds: d.programIds });
     } else {
       addHabit({
         title: d.title.trim(),
@@ -752,7 +768,7 @@ export function ItemDialog({
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
-      }, { routineIds: d.routineIds });
+      }, { routineIds: d.routineIds, programIds: d.programIds });
     }
 
     resetAddDrafts();
@@ -948,6 +964,41 @@ export function ItemDialog({
         itemIds: on
           ? [...routine.itemIds, editingItem.id]
           : routine.itemIds.filter((x) => x !== editingItem.id),
+      });
+    };
+
+    // ── program membership ────────────────────────────────────────────────
+    // Only DIRECT membership, deliberately. An item can also be inside a
+    // program through a routine, but this chip both reads and WRITES, and
+    // unticking an indirect program here could only mean "pull the routine
+    // out", which would silently rescope every other member of that routine.
+    // The manager is where a routine's programs are edited.
+    const memberPrograms = editingItem
+      ? programs.filter((p) => p.itemIds.includes(editingItem.id))
+      : programs.filter((p) => d.programIds.includes(p.id));
+    const memberProgramIds = memberPrograms.map((p) => p.id);
+    const programChipValue =
+      memberPrograms.length === 0
+        ? undefined
+        : memberPrograms.length === 1
+          ? memberPrograms[0].name
+          : `${memberPrograms[0].name} +${memberPrograms.length - 1}`;
+
+    const toggleProgram = (programId: string, on: boolean) => {
+      if (!editingItem) {
+        patch({
+          programIds: on
+            ? [...d.programIds, programId]
+            : d.programIds.filter((x) => x !== programId),
+        });
+        return;
+      }
+      const program = programs.find((p) => p.id === programId);
+      if (!program) return;
+      updateProgram(programId, {
+        itemIds: on
+          ? [...program.itemIds, editingItem.id]
+          : program.itemIds.filter((x) => x !== editingItem.id),
       });
     };
 
@@ -1178,6 +1229,57 @@ export function ItemDialog({
                 >
                   <Plus className="size-3.5" />
                   Manage routines…
+                </ChipOption>
+              </div>
+            )}
+          </PropertyChip>
+        )}
+
+        {/* Programs get their own chip rather than sharing the routine one.
+            They are different questions — "which routine is this part of" vs
+            "which stretch of life does this belong to" — and a merged picker
+            would have to invent a grouping the user never asked for. */}
+        {collectionsAvailable && programs.length > 0 && collectible && (
+          <PropertyChip
+            icon={CalendarRange}
+            label="Program"
+            value={programChipValue}
+            swatch={memberPrograms[0]?.color ?? undefined}
+            swatchShape="square"
+            contentClassName="w-56"
+            testId="item-dialog-program-chip"
+          >
+            {(close) => (
+              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+                {programs.map((program) => {
+                  const on = memberProgramIds.includes(program.id);
+                  return (
+                    <ChipOption
+                      key={program.id}
+                      selected={on}
+                      onSelect={() => toggleProgram(program.id, !on)}
+                      testId="item-dialog-program-option"
+                      value={program.id}
+                    >
+                      <ColorSquare color={program.color ?? accentColorForName(program.name)} />
+                      <span className="truncate">{program.name}</span>
+                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                    </ChipOption>
+                  );
+                })}
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    close();
+                    useUIStore.getState().openDialog({
+                      type: 'manage-collections',
+                      tab: 'programs',
+                    });
+                  }}
+                  testId="item-dialog-program-manage"
+                >
+                  <Plus className="size-3.5" />
+                  Manage programs…
                 </ChipOption>
               </div>
             )}
