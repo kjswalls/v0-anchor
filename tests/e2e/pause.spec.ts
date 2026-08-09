@@ -175,8 +175,10 @@ test.describe('pausing', () => {
       await page.keyboard.press('Escape');
 
       // Pause through the palette — the verb that reaches an item no view is
-      // currently showing. Entity argument, so it is two interactions.
-      await runEntityCommand(page, 'items.pause', taskId, { query: '/pause' });
+      // currently showing. Entity argument, so it is two interactions, and the
+      // picker must be narrowed by title or the fixture falls outside
+      // PICKER_LIMIT on the shared user.
+      await runEntityCommand(page, 'items.pause', taskId, title, { query: '/pause' });
 
       await bar.locator('button').first().click();
       await expect(page.getByTestId(`morning-row-${taskId}`)).toHaveCount(0);

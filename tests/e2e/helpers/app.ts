@@ -252,11 +252,20 @@ export async function runCommand(
  * happens for FLATTENED ENUM options (lib/commands/match.ts). An entity command
  * has exactly one row until it is clicked; clicking it CHIPS the command, and
  * only then does the picker render its item rows.
+ *
+ * `pick` is REQUIRED, and it is the whole reason this helper is careful: the
+ * chip clears the query, and the picker then slices the eligible set down to
+ * PICKER_LIMIT ordered by proximity to today (lib/commands/entities.ts). On the
+ * shared e2e user — which accumulates rows from every other spec — a fixture is
+ * very unlikely to survive that slice. Typing narrows the candidate set the way
+ * a real user would, and makes the assertion about THIS item rather than about
+ * how many items happen to exist.
  */
 export async function runEntityCommand(
   page: Page,
   commandId: string,
   entityId: string,
+  pick: string,
   options: { query?: string } = {}
 ): Promise<void> {
   const input = omnibar(page);
@@ -270,14 +279,18 @@ export async function runEntityCommand(
   ).toBeVisible({ timeout: 5_000 });
   await commandRow.click();
 
-  // The chip clears the query, so the picker lists every eligible entity.
+  // Chipping clears the query (omnibar's runCommand), so this types into an
+  // empty picker rather than appending to the command alias.
+  await input.fill(pick);
+
   const entityRow = omnibarPanel(page)
     .locator(`[data-command-id="${commandId}"][data-arg="${entityId}"]`)
     .first();
   await expect(
     entityRow,
-    `command "${commandId}" was chipped but its picker offers no row for entity "${entityId}" — ` +
-      `either the item is not eligible for this command, or it is filtered out`
+    `command "${commandId}" was chipped and its picker filtered by "${pick}", but no row for ` +
+      `entity "${entityId}" — either the item is not eligible for this command, or the filter ` +
+      `does not match its title`
   ).toBeVisible({ timeout: 5_000 });
   await entityRow.click();
 }
