@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, SkipForward, Trash2, Undo2, ListChecks } from 'lucide-react';
+import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, SkipForward, Trash2, Undo2, ListChecks, Pause, Play } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -14,9 +14,10 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useSelectionStore } from '@/lib/selection-store';
-import { getItemTypeConfig } from '@/lib/item-registry';
+import { getItemTypeConfig, isPausable } from '@/lib/item-registry';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { isPausedOn } from '@/lib/active';
 import type { TimeBucket, Task } from '@/lib/planner-types';
 
 const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
@@ -41,10 +42,12 @@ export function ScheduleSheet() {
     assignHabitToBucket,
     unscheduleTask,
     setItemSkipped,
+    setItemPaused,
     deleteTask,
     deleteHabit,
     selectedDate,
     userTimezone,
+    items,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   // Mobile multi-select entry: no long-press (that gesture belongs to dnd-kit's
@@ -65,6 +68,23 @@ export function ScheduleSheet() {
   const canSkip =
     !!row && !!typeName && getItemTypeConfig(typeName).skippable && isRecurring(row.item);
   const isSkipped = canSkip && isSkippedOnDate(row.item, dateStr);
+
+  // Pause, same parity reasoning as skip above. Two deliberate differences:
+  //
+  // The live item is re-resolved from the store rather than read off `row`,
+  // which is a snapshot taken when the sheet opened and never refreshed. Every
+  // other row here closes the sheet immediately so nobody notices; pause state
+  // has to be right the moment it is read.
+  //
+  // And it resolves at TODAY, not `dateStr`. That variable is the navigated
+  // day, which is correct for a per-occurrence skip and wrong for a pause —
+  // Resume would disappear whenever the user walked to a day outside the pause
+  // interval, and the sheet also opens from braindump rows, which have no date
+  // at all.
+  const liveItem = row ? items.find((i) => i.id === row.item.id) : undefined;
+  const todayStr = toDateStr(new Date(), tz);
+  const canPause = !!liveItem && isPausable(liveItem);
+  const isPaused = !!liveItem && isPausedOn(liveItem, todayStr, tz);
 
   const schedule = (bucket: TimeBucket) => {
     if (!row) return;
@@ -139,6 +159,27 @@ export function ScheduleSheet() {
               ) : (
                 <>
                   <SkipForward className="mr-2 h-4 w-4" /> Skip today
+                </>
+              )}
+            </Button>
+          )}
+          {canPause && (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid={isPaused ? 'sheet-resume-button' : 'sheet-pause-button'}
+              onClick={() => {
+                if (row) setItemPaused(row.item.id, !isPaused);
+                close();
+              }}
+            >
+              {isPaused ? (
+                <>
+                  <Play className="mr-2 h-4 w-4" /> Resume
+                </>
+              ) : (
+                <>
+                  <Pause className="mr-2 h-4 w-4" /> Pause
                 </>
               )}
             </Button>

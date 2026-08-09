@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { addDays, format, startOfDay, subDays } from 'date-fns';
+import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
 import {
   CalendarIcon,
   Check,
@@ -10,6 +10,9 @@ import {
   Flag,
   Flame,
   Folder,
+  Moon,
+  Pause as PauseIcon,
+  Play as PlayIcon,
   Maximize2,
   MoreHorizontal,
   Plus,
@@ -66,8 +69,9 @@ import type {
   TimeBucket,
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { currentDayOfWeek } from '@/lib/recurrence';
+import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName, isPausable } from '@/lib/item-registry';
+import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
+import { isPausedOn } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -452,6 +456,7 @@ export function ItemDialog({
     defaultTimeBucket,
     itemTypes,
     userTimezone,
+    setItemPaused,
   } = usePlannerStore();
 
   const router = useRouter();
@@ -465,6 +470,7 @@ export function ItemDialog({
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showPauseUntil, setShowPauseUntil] = useState(false);
 
   // Latch the last payload so content doesn't flicker to defaults while the
   // close animation plays (same render-phase pattern app-shell used for add).
@@ -475,6 +481,9 @@ export function ItemDialog({
     setLast(state);
     setShowDeleteConfirm(false);
     setShowResetConfirm(false);
+    // Disarmed with its siblings for the same reason: a picker left open across
+    // a payload change would pause the wrong item.
+    setShowPauseUntil(false);
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
@@ -493,6 +502,13 @@ export function ItemDialog({
     ? (items.find((i) => i.id === latched.id) ?? latched)
     : null;
   const editConfig = editItem ? getItemTypeConfig(itemTypeName(editItem)) : null;
+
+  // Resolved at TODAY, not selectedDate — pausing is dateless (plan decision 3),
+  // and `editItem` is re-read from the store every render, so this flips the
+  // moment a pause lands, in all three presentations.
+  const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pausedNow = !!editItem && isPausedOn(editItem, toDateStr(new Date(), activationTz), activationTz);
+  const canPause = !!editItem && isPausable(editItem);
 
   const [activeType, setActiveType] = useState<string>('task');
   const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
@@ -813,6 +829,21 @@ export function ItemDialog({
     if (!state || state.mode !== 'edit' || !editItem) return;
     resetHabitStreak(editItem.id);
     setShowResetConfirm(false);
+  };
+
+  /**
+   * Pause / resume — a direct store call, deliberately NOT a draft property.
+   *
+   * Routing it through ItemDraft/DRAFT_KEYS would make pausing a whole-item
+   * save, which is exactly what the panel's scoped-write rule forbids: it would
+   * stamp every other field back over whatever a drag, a resize, an undo or an
+   * agent wrote since the panel opened. Delete and Reset streak are direct
+   * calls for the same reason.
+   */
+  const handleSetPaused = (paused: boolean, until?: string) => {
+    if (!state || state.mode !== 'edit' || !editItem) return;
+    setItemPaused(editItem.id, paused, until);
+    setShowPauseUntil(false);
   };
 
   // ── Registry-driven chips ─────────────────────────────────────────────────
@@ -1474,6 +1505,35 @@ export function ItemDialog({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
+            {/* No destructive variant, no warning colour: setting something
+                aside is a plan, not a failure. */}
+            {canPause &&
+              (pausedNow ? (
+                <DropdownMenuItem
+                  data-testid="item-dialog-resume"
+                  onSelect={() => handleSetPaused(false)}
+                >
+                  <PlayIcon className="size-3.5" />
+                  Resume
+                </DropdownMenuItem>
+              ) : (
+                <>
+                  <DropdownMenuItem
+                    data-testid="item-dialog-pause"
+                    onSelect={() => handleSetPaused(true)}
+                  >
+                    <PauseIcon className="size-3.5" />
+                    Pause
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="item-dialog-pause-until"
+                    onSelect={() => setShowPauseUntil(true)}
+                  >
+                    <CalendarIcon className="size-3.5" />
+                    Pause until…
+                  </DropdownMenuItem>
+                </>
+              ))}
             {editConfig?.counters.streak && (
               <DropdownMenuItem
                 data-testid="item-dialog-reset-streak"
@@ -1713,6 +1773,25 @@ export function ItemDialog({
               {/* Streak — the habit's history in the row's own dot vocabulary,
                   reading the open-time snapshot (stale after a reset until
                   reopen, as before). */}
+              {/* Why an item you can see isn't anywhere else. Without this, a
+                  paused item found through search opens, edits and schedules
+                  normally while never appearing on the grid — every gesture a
+                  silent no-op with nothing on screen to explain it. Muted, no
+                  warning colour: it states a fact, it doesn't scold. */}
+              {mode === 'edit' && editItem && pausedNow && (
+                <div
+                  data-testid="item-dialog-paused-note"
+                  className="flex items-center gap-2.5 rounded-md bg-surface-2 px-2.5 py-2"
+                >
+                  <Moon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">
+                    {editItem.pausedUntil
+                      ? `Paused until ${format(parseISO(editItem.pausedUntil), 'MMM d')}`
+                      : 'Paused'}
+                  </span>
+                </div>
+              )}
+
               {editConfig?.counters.streak && editItem && (
                 <div className="bg-warning/10 flex items-center gap-2.5 rounded-md px-2.5 py-2">
                   <Flame className="text-warning size-4 shrink-0" />
@@ -1831,6 +1910,38 @@ export function ItemDialog({
               >
                 Reset Streak
               </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Mounted out here with the other satellites, so it renders nothing at
+          all while closed — the docked panel deliberately carries no dialog
+          role, and the e2e suite asserts on that. */}
+      {canPause && (
+        <AlertDialog open={showPauseUntil} onOpenChange={setShowPauseUntil}>
+          <AlertDialogContent data-testid="pause-until-picker">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Pause until…</AlertDialogTitle>
+              <AlertDialogDescription>
+                It comes back on the day you pick, on its own. Nothing is lost
+                meanwhile — your streak and history stay exactly as they are.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex justify-center">
+              <Calendar
+                mode="single"
+                // v9 prop. `fromDate` is v8 and silently inert here, which
+                // would quietly allow a resume date already in the past.
+                disabled={{ before: new Date() }}
+                onSelect={(date) =>
+                  date && handleSetPaused(true, toDateStr(date, activationTz))
+                }
+                initialFocus
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
