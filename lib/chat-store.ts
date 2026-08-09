@@ -174,10 +174,10 @@ export function createChatStore(config: ChatThreadConfig) {
         setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
         try {
-          const { items, projects, habitGroups, itemTypes, routines, userTimezone } =
+          const { items, projects, habitGroups, itemTypes, routines, programs, userTimezone } =
             usePlannerStore.getState();
           const context = buildAnchorContext({
-            items, projects, habitGroups, routines, focusItemId, userTimezone,
+            items, projects, habitGroups, routines, programs, focusItemId, userTimezone,
           });
           // Fresh values via getState() to avoid stale closures.
           const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();

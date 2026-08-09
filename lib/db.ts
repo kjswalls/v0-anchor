@@ -739,6 +739,8 @@ interface ProgramRow {
   starts_on?: string | null;
   ends_on?: string | null;
   sort_order?: number | null;
+  /** Trigger-maintained; read-only here. See ProgramSchema.updatedAt. */
+  updated_at?: string | null;
 }
 
 /**
@@ -988,6 +990,7 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
     sortOrder: row.sort_order ?? undefined,
     itemIds: itemIdsByProgram.get(row.id) ?? [],
     routineIds: routineIdsByProgram.get(row.id) ?? [],
+    updatedAt: row.updated_at ?? undefined,
   }));
 }
 

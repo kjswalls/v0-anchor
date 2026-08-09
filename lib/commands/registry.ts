@@ -484,12 +484,12 @@ export const STATIC_COMMANDS: Command[] = [
       // the sweep in hooks/use-overdue-sweep.ts. Bare `format(new Date(), …)`
       // would read the machine tz and could grey this row out on a day the bar
       // is visibly showing overdue items.
-      const { items, routines, userTimezone } = planner();
+      const { items, routines, programs, userTimezone } = planner();
       const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const todayStr = toDateStr(new Date(), tz);
       // Dateless surface: resolve suppression at TODAY, never at the store's
       // navigable selectedDate (plan decision 3).
-      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines });
+      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs });
       return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard openChat,

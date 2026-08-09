@@ -44,6 +44,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
+  fetchPrograms: vi.fn(async () => []),
+  createProgram: vi.fn(async () => {}),
+  updateProgram: vi.fn(async () => {}),
+  deleteProgram: vi.fn(async () => {}),
+  restoreProgram: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));

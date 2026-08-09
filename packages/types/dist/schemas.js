@@ -127,6 +127,20 @@ export const ProgramSchema = z.object({
     itemIds: z.array(z.string()),
     /** Held routine ids (program_routines) — their members ride along. */
     routineIds: z.array(z.string()),
+    /**
+     * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
+     * overdue sweep's grace (c). A manual `paused` → `active` flip has no
+     * recorded date — the tri-state keeps no history — so this is the only
+     * evidence that a program recently stopped hiding its members, and without it
+     * the morning after someone turns a program back on the sweep unschedules
+     * every member at once.
+     *
+     * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
+     * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+     * container diff, where a stale value would otherwise be written back over
+     * the trigger's.
+     */
+    updatedAt: z.string().optional(),
 });
 // Field shapes are shared between the legacy per-kind schemas (TaskSchema /
 // HabitSchema — the pinned external contract the OpenClaw plugin validates

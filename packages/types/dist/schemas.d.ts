@@ -138,6 +138,20 @@ export declare const ProgramSchema: z.ZodObject<{
     itemIds: z.ZodArray<z.ZodString, "many">;
     /** Held routine ids (program_routines) — their members ride along. */
     routineIds: z.ZodArray<z.ZodString, "many">;
+    /**
+     * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
+     * overdue sweep's grace (c). A manual `paused` → `active` flip has no
+     * recorded date — the tri-state keeps no history — so this is the only
+     * evidence that a program recently stopped hiding its members, and without it
+     * the morning after someone turns a program back on the sweep unschedules
+     * every member at once.
+     *
+     * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
+     * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+     * container diff, where a stale value would otherwise be written back over
+     * the trigger's.
+     */
+    updatedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     id: string;
     name: string;
@@ -149,6 +163,7 @@ export declare const ProgramSchema: z.ZodObject<{
     sortOrder?: number | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
+    updatedAt?: string | undefined;
 }, {
     id: string;
     name: string;
@@ -160,6 +175,7 @@ export declare const ProgramSchema: z.ZodObject<{
     sortOrder?: number | undefined;
     startsOn?: string | undefined;
     endsOn?: string | undefined;
+    updatedAt?: string | undefined;
 }>;
 export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     /**

@@ -2,7 +2,7 @@ import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
 import { isOpenLoopSuppressedOn } from './active'
 import { toDateStr } from './recurrence'
-import type { Item, Project, HabitGroupType, Routine } from './planner-types'
+import type { Item, Project, HabitGroupType, Routine, Program } from './planner-types'
 
 /**
  * Builds the Beacon chat context. Each item type contributes its own section
@@ -22,6 +22,8 @@ export function buildAnchorContext(state: {
   userTimezone?: string | null
   /** Live routines, so a routine's pause suppresses its members here too. */
   routines?: Routine[]
+  /** Live programs, same reason — an out-of-season program hides its members here too. */
+  programs?: Program[]
 }): string {
   const today = new Date()
   // tz first: `todayStr` is compared against pause intervals that isPausedOn
@@ -87,7 +89,11 @@ export function buildAnchorContext(state: {
         state.items.filter(
           (i) =>
             itemTypeName(i) === type &&
-            !isOpenLoopSuppressedOn(i, todayStr, { userTimezone: tz, routines: state.routines })
+            !isOpenLoopSuppressedOn(i, todayStr, {
+              userTimezone: tz,
+              routines: state.routines,
+              programs: state.programs,
+            })
         ),
         { today, todayStr }
       )

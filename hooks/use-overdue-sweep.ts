@@ -6,7 +6,7 @@ import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-
 import { toDateStr } from '@/lib/recurrence';
 import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
 import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
-import type { Item, Routine } from '@/lib/planner-types';
+import type { Item, Routine, Program } from '@/lib/planner-types';
 
 /** Did this pause interval end within the trailing `windowDays`? */
 function pauseEndedRecently(x: Pausable, todayStr: string, windowDays: number): boolean {
@@ -17,33 +17,82 @@ function pauseEndedRecently(x: Pausable, todayStr: string, windowDays: number): 
   return daysOverdue({ startDate: resumed }, todayStr) <= windowDays;
 }
 
+/** Did `dateStr` fall inside the trailing `windowDays`, today included? */
+function withinTrailingWindow(dateStr: string, todayStr: string, windowDays: number): boolean {
+  const day = toDateOnly(dateStr);
+  if (day > todayStr) return true; // boundary still ahead (belt-and-braces)
+  return daysOverdue({ startDate: day }, todayStr) <= windowDays;
+}
+
 /**
- * Did this item come off a pause within the trailing `windowDays` — its OWN, or
- * one of its containers'?
+ * Did this PROGRAM stop suppressing its members within the trailing window?
  *
- * Reads recorded intervals: `pausedUntil` is the resume date, and it survives a
- * manual resume precisely so this is answerable. The container arm is grace (c):
- * a routine's pause suppresses its members just as thoroughly as an item's own,
- * so coming back from a paused routine has to earn the same window — otherwise
- * the sweep unschedules the whole routine the morning after it resumes, which
- * is the exact disaster the exclusion exists to prevent, merely relocated from
- * the item to the container.
+ * Two arms, both deliberately over-broad:
  *
- * Phase 3 adds the program causes (a `startsOn` boundary, and a container
- * `updated_at` as a conservative proxy for manual state flips). Every arm errs
- * toward NOT sweeping, which is the safe direction: the cost of a false grace
- * is one more day of a stale row, and the cost of a false sweep is a silent
- * mass-unschedule of work the user never stopped caring about.
+ * (b) An `auto` program's `startsOn` is a resume boundary in exactly the way a
+ *     pause's `pausedUntil` is — the day the range opened is the day its members
+ *     came back, and they accrued overdue age the whole time they were hidden.
+ * (c) `updatedAt` on any container, as a conservative proxy for a MANUAL state
+ *     flip. Nothing records when someone switched a program from paused to
+ *     active — the tri-state has no history — so there is no honest date to
+ *     grace against, and the only alternative to this proxy is no grace at all
+ *     for the single most likely way a program gets turned back on. It is wrong
+ *     in the safe direction: renaming a program merely delays sweeping its
+ *     members by the window.
+ */
+function programEndedSuppressionRecently(
+  program: Program,
+  todayStr: string,
+  windowDays: number,
+): boolean {
+  if (
+    program.state === 'auto' &&
+    program.startsOn &&
+    withinTrailingWindow(program.startsOn, todayStr, windowDays)
+  ) {
+    return true;
+  }
+  return !!program.updatedAt && withinTrailingWindow(program.updatedAt.slice(0, 10), todayStr, windowDays);
+}
+
+/**
+ * Did this item come off a suppression within the trailing `windowDays` — its
+ * OWN, or one of its containers'?
+ *
+ * Reads recorded intervals where they exist: `pausedUntil` is the resume date,
+ * and it survives a manual resume precisely so this is answerable. The container
+ * arms matter for the same reason the item arm does — a routine's pause or a
+ * program's off-season suppresses members just as thoroughly as an item's own
+ * pause, so coming back has to earn the same window. Without them the sweep
+ * unschedules a whole program the morning after it resumes: the exact disaster
+ * the exclusion exists to prevent, merely relocated from the item to the
+ * container.
+ *
+ * Every arm errs toward NOT sweeping. The cost of a false grace is one more day
+ * of a stale row; the cost of a false sweep is a silent mass-unschedule of work
+ * the user never stopped caring about.
  */
 function resumedRecently(
   item: Item,
   todayStr: string,
   windowDays: number,
   routines: readonly Routine[],
+  programs: readonly Program[],
 ): boolean {
   if (pauseEndedRecently(item, todayStr, windowDays)) return true;
-  return routines.some(
-    (r) => r.itemIds.includes(item.id) && pauseEndedRecently(r, todayStr, windowDays),
+
+  const holdingRoutines = routines.filter((r) => r.itemIds.includes(item.id));
+  if (holdingRoutines.some((r) => pauseEndedRecently(r, todayStr, windowDays))) return true;
+
+  // A program reaches this item directly OR through any routine holding it —
+  // the same two membership shapes the resolver walks. Missing the indirect one
+  // would leave every routine-in-a-program member ungraced, which is the common
+  // case once programs are used at all.
+  const routineIds = new Set(holdingRoutines.map((r) => r.id));
+  return programs.some(
+    (p) =>
+      (p.itemIds.includes(item.id) || p.routineIds.some((id) => routineIds.has(id))) &&
+      programEndedSuppressionRecently(p, todayStr, windowDays),
   );
 }
 
@@ -135,15 +184,15 @@ export function useOverdueSweep() {
     // Promise.all followed by a single set() — but if that ever changes, this
     // gate is the place that has to grow.
     //
-    // That single-set() property is now load-bearing for ROUTINES too, not just
-    // items. `fetchRoutines` rides the same Promise.all and `routines` lands in
+    // That single-set() property is now load-bearing for ROUTINES and PROGRAMS
+    // too, not just items. Both fetches ride the same Promise.all and land in
     // the same set() that clears `isLoading`, so passing this gate guarantees
     // membership is known — which the suppression exclusion and the container
-    // resume-grace below both depend on. Hydrate routines separately (a lazy
+    // resume-grace below both depend on. Hydrate either separately (a lazy
     // fetch, a second effect) and this sweep starts running against an empty
-    // routine list: every member of a paused routine reads as unprotected and
-    // gets unscheduled in one silent batch. If routines ever move out of that
-    // Promise.all, they need their own gate here FIRST.
+    // container list: every member of a paused routine or an off-season program
+    // reads as unprotected and gets unscheduled in one silent batch. If they
+    // ever move out of that Promise.all, they need their own gate here FIRST.
     if (!userId || isLoading || loadError) return;
 
     // ── Gate 2: the SETTINGS in memory demonstrably belong to THIS user ───────
@@ -225,7 +274,12 @@ export function useOverdueSweep() {
     // carryForwardEligible/dateAnchored capabilities. Never re-implement it here.
     // `> autoAgeDays` is exactly "past due by MORE than N days".
     const routines = planner.routines;
-    const inactive = inactiveItemIdsOn(planner.items, todayStr, { userTimezone, routines });
+    const programs = planner.programs;
+    const inactive = inactiveItemIdsOn(planner.items, todayStr, {
+      userTimezone,
+      routines,
+      programs,
+    });
     const stale = selectOverdue(planner.items, todayStr, inactive).filter(
       (item) => daysOverdue(item, todayStr) > autoAgeDays,
     );
@@ -245,7 +299,9 @@ export function useOverdueSweep() {
     // is why a manual resume normalizes to `pausedUntil = today` instead of
     // clearing the pause pair — the interval has to survive on the row for this
     // to be computable at all.
-    const graced = stale.filter((item) => !resumedRecently(item, todayStr, autoAgeDays, routines));
+    const graced = stale.filter(
+      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, programs)
+    );
     if (graced.length === 0) return;
 
     // ── Gate 7: no sibling tab beat us to it ─────────────────────────────────

@@ -19,6 +19,7 @@ import type {
   HabitGroupType,
   ItemTypeDef,
   Routine,
+  Program,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import {
@@ -47,10 +48,15 @@ import {
   updateRoutine as dbUpdateRoutine,
   deleteRoutine as dbDeleteRoutine,
   restoreRoutine as dbRestoreRoutine,
+  fetchPrograms,
+  createProgram as dbCreateProgram,
+  updateProgram as dbUpdateProgram,
+  deleteProgram as dbDeleteProgram,
+  restoreProgram as dbRestoreProgram,
 } from './db';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
-import { isPausedOn } from './active';
-import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS } from '@anchor-app/types';
+import { isPausedOn, isProgramActiveOn } from './active';
+import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
@@ -222,6 +228,26 @@ interface PlannerStore {
   /** Pause/resume a routine. Same today-resolved, dateless semantics as items. */
   setRoutinePaused: (id: string, paused: boolean, until?: string) => void;
 
+  // Programs (migration 024). A period of life — summer, a school year — holding
+  // items and/or whole routines. Same undo/redo treatment as routines, and
+  // gated by the same `collectionsAvailable` flag.
+  programs: Program[];
+  addProgram: (program: Omit<Program, 'id'> & { id?: string }) => string;
+  updateProgram: (id: string, updates: Partial<Omit<Program, 'id'>>) => void;
+  removeProgram: (id: string) => void;
+  /**
+   * Set a program's tri-state. Separate from `updateProgram` for the same reason
+   * `setRoutinePaused` is: it stamps its own action-log label, and the history
+   * subscriber fires synchronously inside set().
+   */
+  setProgramState: (id: string, state: Program['state']) => void;
+  /**
+   * Activate one program and pause every other one that is currently on, in a
+   * SINGLE set() — decision 3's "swap programs is just pause A + activate B",
+   * made one gesture so it is also one ⌘Z.
+   */
+  swapToProgram: (id: string) => void;
+
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
@@ -277,17 +303,18 @@ const projectItems = (items: Item[]) => ({
  */
 export interface Memberships {
   routineIds?: string[];
+  programIds?: string[];
 }
 
 /**
  * Create the item row, THEN its join rows.
  *
- * The order is load-bearing and cannot be parallelised: routine_items carries a
- * composite FK (item_id, user_id) -> items(id, user_id), so a join insert that
- * lands before the item does fails with 23503 and the membership is silently
- * lost — the store would show it, and a reload would not. Chaining off the
- * create is the whole point of this helper existing rather than two call sites
- * firing side by side.
+ * The order is load-bearing and cannot be parallelised: routine_items and
+ * program_items each carry a composite FK (item_id, user_id) -> items(id,
+ * user_id), so a join insert that lands before the item does fails with 23503
+ * and the membership is silently lost — the store would show it, and a reload
+ * would not. Chaining off the create is the whole point of this helper existing
+ * rather than two call sites firing side by side.
  */
 function persistNewItem(
   userId: string,
@@ -299,32 +326,41 @@ function persistNewItem(
   created.catch(console.error);
 
   const routineIds = memberships?.routineIds ?? [];
-  if (routineIds.length === 0) return;
+  const programIds = memberships?.programIds ?? [];
+  if (routineIds.length === 0 && programIds.length === 0) return;
 
   created
     .then(() =>
-      Promise.all(
-        routineIds.map((rid) => {
-          // Re-read: the optimistic set() already appended, and this is the
-          // array the reconciler diffs against.
+      Promise.all([
+        // Re-read in both loops: the optimistic set() already appended, and
+        // these are the arrays the reconciler diffs against.
+        ...routineIds.map((rid) => {
           const routine = get().routines.find((r) => r.id === rid);
           return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
         }),
-      ),
+        ...programIds.map((pid) => {
+          const program = get().programs.find((p) => p.id === pid);
+          return program ? dbUpdateProgram(userId, pid, { itemIds: program.itemIds }) : undefined;
+        }),
+      ]),
     )
     .catch(console.error);
 }
 
-/** Add `itemId` to each named routine. Returns the same array when there's nothing to do. */
-function withMembership(
-  routines: Routine[],
+/**
+ * Add `itemId` to each named container. Returns the SAME array reference when
+ * there is nothing to do, so the common no-membership add doesn't churn
+ * identity and re-render every consumer of the list.
+ */
+function withMembership<T extends { id: string; itemIds: string[] }>(
+  containers: T[],
   itemId: string,
-  routineIds: string[] | undefined,
-): Routine[] {
-  if (!routineIds?.length) return routines;
-  const want = new Set(routineIds);
-  return routines.map((r) =>
-    want.has(r.id) && !r.itemIds.includes(itemId) ? { ...r, itemIds: [...r.itemIds, itemId] } : r,
+  containerIds: string[] | undefined,
+): T[] {
+  if (!containerIds?.length) return containers;
+  const want = new Set(containerIds);
+  return containers.map((c) =>
+    want.has(c.id) && !c.itemIds.includes(itemId) ? { ...c, itemIds: [...c.itemIds, itemId] } : c,
   );
 }
 
@@ -333,10 +369,11 @@ interface HistoryState {
   projects: Project[];
   habitGroups: HabitGroupType[];
   // Explicit, because the subscriber snapshots only what it is told. Omitting
-  // routines would make every membership edit and every routine pause
-  // un-undoable AND would let an unrelated undo silently revert them, since
-  // applyHistoryState writes the whole snapshot back.
+  // either container would make every membership edit and every pause/state
+  // change un-undoable AND would let an unrelated undo silently revert them,
+  // since applyHistoryState writes the whole snapshot back.
   routines: Routine[];
+  programs: Program[];
 }
 
 export type ActionLogEntry = {
@@ -390,6 +427,7 @@ const saveToHistory = (state: HistoryState) => {
     projects: JSON.parse(JSON.stringify(state.projects)),
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
     routines: JSON.parse(JSON.stringify(state.routines)),
+    programs: JSON.parse(JSON.stringify(state.programs)),
   };
 
   historyStack.push(snapshot);
@@ -652,6 +690,103 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
       },
 
+      // ── Programs (Phase 3) ─────────────────────────────────────────────────
+      programs: [],
+      addProgram: (program) => {
+        const userId = get().userId;
+        const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add program: ${full.name}`);
+        set({ programs: [...get().programs, full] });
+        if (userId) dbCreateProgram(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateProgram: (id, updates) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program) return;
+        setNextActionLabel(`Edit program: ${updates.name ?? program.name}`);
+        set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
+        if (userId) dbUpdateProgram(userId, id, updates).catch(console.error);
+      },
+      removeProgram: (id) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program) return;
+        // Soft delete, and the join rows survive it — so a restore inside the
+        // 30-day purge window brings the membership back intact, and undo of a
+        // delete is a real undo rather than an empty shell. Note the members
+        // REAPPEAR while the program is trashed: a routine it was the only
+        // holder of falls back to standalone (resolver decision 3). That is the
+        // designed behaviour — a container in the trash must not keep hiding
+        // work behind a control nobody can reach.
+        setNextActionLabel(`Delete program: ${program.name}`);
+        set({ programs: get().programs.filter((p) => p.id !== id) });
+        if (userId) dbDeleteProgram(userId, id).catch(console.error);
+      },
+      setProgramState: (id, state) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program || program.state === state) return;
+        const verb =
+          state === 'active' ? 'Activate' : state === 'paused' ? 'Pause' : 'Auto-schedule';
+        // Written directly rather than through updateProgram for the same
+        // reason setRoutinePaused is: that action stamps its own "Edit program"
+        // label, and the history subscriber fires synchronously inside its
+        // set(), so a label applied afterwards lands on the user's NEXT action.
+        setNextActionLabel(`${verb} program: ${program.name}`);
+        // `updatedAt` is stamped optimistically to mirror what the DB trigger is
+        // about to do. Without it the store keeps the value it loaded with, and
+        // the overdue sweep's grace (c) — whose ONLY evidence that a program
+        // recently stopped hiding its members is this timestamp — would not fire
+        // until the next reload. Turning a program on and leaving the tab open
+        // overnight is exactly the case it protects.
+        const stamped = { state, updatedAt: new Date().toISOString() };
+        set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...stamped } : p)) });
+        if (userId) dbUpdateProgram(userId, id, { state }).catch(console.error);
+      },
+      swapToProgram: (id) => {
+        const userId = get().userId;
+        const target = get().programs.find((p) => p.id === id);
+        if (!target) return;
+        // Resolved at TODAY, never at selectedDate — switching programs is a
+        // statement about now, not about the week being browsed.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+
+        const patches = new Map<string, Partial<Program>>();
+        // Only write the target if it is not ALREADY on. An `auto` program
+        // inside its own date range is already carrying its members, and
+        // stamping 'active' would silently convert a self-managing program into
+        // one the user must remember to turn off.
+        if (!isProgramActiveOn(target, todayStr)) patches.set(id, { state: 'active' });
+        for (const program of get().programs) {
+          if (program.id === id) continue;
+          if (isProgramActiveOn(program, todayStr)) patches.set(program.id, { state: 'paused' });
+        }
+        if (patches.size === 0) return;
+
+        // ONE set() for the whole swap: one history entry, one ⌘Z. A loop over
+        // setProgramState would cost one undo press per program that happened
+        // to be on, which for a verb the user experiences as a single switch is
+        // effectively not undoable.
+        setNextActionLabel(`Switch to program: ${target.name}`);
+        const now = new Date().toISOString();
+        set({
+          programs: get().programs.map((p) => {
+            const patch = patches.get(p.id);
+            // Same optimistic `updatedAt` as setProgramState, and needed most
+            // here: a swap is precisely the moment a dormant program's members
+            // flood back in, already carrying weeks of accrued overdue age.
+            return patch ? { ...p, ...patch, updatedAt: now } : p;
+          }),
+        });
+        if (userId) {
+          for (const [programId, patch] of patches) {
+            dbUpdateProgram(userId, programId, patch).catch(console.error);
+          }
+        }
+      },
+
       initializeStore: async (userId: string) => {
         // Block subscriber during initialization to prevent poisoned history entries
         isUpdatingUndoRedo = true;
@@ -666,22 +801,31 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups, itemTypesResult, routinesResult] = await Promise.all([
-            fetchItems(userId),
-            fetchProjects(userId),
-            fetchHabitGroups(userId),
-            fetchItemTypes(userId),
-            fetchRoutines(userId),
-          ]);
+          const [items, projects, habitGroups, itemTypesResult, routinesResult, programsResult] =
+            await Promise.all([
+              fetchItems(userId),
+              fetchProjects(userId),
+              fetchHabitGroups(userId),
+              fetchItemTypes(userId),
+              fetchRoutines(userId),
+              // Rides the SAME Promise.all as items, deliberately: the overdue
+              // sweep's only hydration gate is `!isLoading`, which is cleared by
+              // the single set() below. Fetch programs anywhere else — a lazy
+              // load, a second effect — and the sweep runs against an empty
+              // list, reads every member of an inactive program as unprotected,
+              // and unschedules them in one silent batch. See use-overdue-sweep.
+              fetchPrograms(userId),
+            ]);
           const itemTypes = itemTypesResult ?? [];
-          // null means the table is unreachable, NOT "no routines" — the flag
-          // gates the UI so a write can't look like it landed and vanish.
+          // null means the table is unreachable, NOT "no rows" — the flag gates
+          // the UI so a write can't look like it landed and vanish.
           const routines = routinesResult ?? [];
+          const programs = programsResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, habitGroups, routines };
+          const snapshot = { items, projects, habitGroups, routines, programs };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -703,7 +847,11 @@ export const usePlannerStore = create<PlannerStore>()(
             itemTypes,
             itemTypesAvailable: itemTypesResult !== null,
             routines,
-            collectionsAvailable: routinesResult !== null,
+            programs,
+            // Both tables arrive with migration 024, so either coming back
+            // unreachable means the same thing: the whole collections feature
+            // is not deployed and its UI must stay hidden.
+            collectionsAvailable: routinesResult !== null && programsResult !== null,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -735,6 +883,7 @@ export const usePlannerStore = create<PlannerStore>()(
           habitGroups: [],
           itemTypes: [],
           routines: [],
+          programs: [],
           collectionsAvailable: true,
           isLoading: false,
           error: null,
@@ -774,6 +923,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, item]),
           routines: withMembership(state.routines, item.id, memberships?.routineIds),
+          programs: withMembership(state.programs, item.id, memberships?.programIds),
         }));
 
         const userId = get().userId;
@@ -796,6 +946,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, task]),
           routines: withMembership(state.routines, task.id, memberships?.routineIds),
+          programs: withMembership(state.programs, task.id, memberships?.programIds),
         }));
 
         const userId = get().userId;
@@ -1355,6 +1506,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, habit]),
           routines: withMembership(state.routines, habit.id, memberships?.routineIds),
+          programs: withMembership(state.programs, habit.id, memberships?.programIds),
         }));
 
         const userId = get().userId;
@@ -1789,6 +1941,7 @@ function applyHistoryState(
     projects: Project[];
     habitGroups: HabitGroupType[];
     routines: Routine[];
+    programs: Program[];
   },
   flags: { canUndo: boolean; canRedo: boolean },
   userId: string | null,
@@ -1797,9 +1950,12 @@ function applyHistoryState(
   const restoredItems: Item[] = JSON.parse(JSON.stringify(target.items));
   const restoredProjects: Project[] = JSON.parse(JSON.stringify(target.projects));
   const restoredGroups: HabitGroupType[] = JSON.parse(JSON.stringify(target.habitGroups));
-  // Snapshots predating this field (a history stack built earlier in the
-  // session, before routines were fetched) carry no `routines` key at all.
+  // The `?? []` here is a tolerance for snapshots that predate a field, NOT a
+  // licence to omit one from saveToHistory: an absent slice reads downstream as
+  // "every row deleted" and syncContainers will faithfully soft-delete them all.
+  // Every key of HistoryState must be snapshotted; this only softens the crash.
   const restoredRoutines: Routine[] = JSON.parse(JSON.stringify(target.routines ?? []));
+  const restoredPrograms: Program[] = JSON.parse(JSON.stringify(target.programs ?? []));
 
   const info = getHistoryInfo();
   set({
@@ -1807,6 +1963,7 @@ function applyHistoryState(
     projects: restoredProjects,
     habitGroups: restoredGroups,
     routines: restoredRoutines,
+    programs: restoredPrograms,
     canUndo: flags.canUndo,
     canRedo: flags.canRedo,
     actionLog: info.actionLog,
@@ -1818,6 +1975,7 @@ function applyHistoryState(
     projects: restoredProjects,
     habitGroups: restoredGroups,
     routines: restoredRoutines,
+    programs: restoredPrograms,
   });
 
   if (!userId) return;
@@ -1887,6 +2045,16 @@ function applyHistoryState(
     (id, patch) => dbUpdateRoutine(userId, id, patch),
     (id) => dbDeleteRoutine(userId, id),
   );
+  // Programs carry TWO member arrays (itemIds and routineIds), both in
+  // PROGRAM_FIELDS and both reconciled by dbUpdateProgram against their own
+  // join table. Undoing "added Morning to Summer" therefore arrives here as a
+  // {routineIds} patch and deletes exactly that one join row.
+  syncContainers(
+    currentState.programs, restoredPrograms, PROGRAM_FIELDS,
+    (id) => dbRestoreProgram(userId, id),
+    (id, patch) => dbUpdateProgram(userId, id, patch),
+    (id) => dbDeleteProgram(userId, id),
+  );
 }
 
 function syncContainers<T extends { id: string }>(
@@ -1934,6 +2102,7 @@ let prevStateJson: string | null = JSON.stringify({
   projects: initialStoreState.projects,
   habitGroups: initialStoreState.habitGroups,
   routines: initialStoreState.routines,
+  programs: initialStoreState.programs,
 });
 
 // Function to update baseline from undo/redo actions
@@ -1949,6 +2118,7 @@ usePlannerStore.subscribe((state) => {
     projects: state.projects,
     habitGroups: state.habitGroups,
     routines: state.routines,
+    programs: state.programs,
   };
 
   const currentStateJson = JSON.stringify(currentState);

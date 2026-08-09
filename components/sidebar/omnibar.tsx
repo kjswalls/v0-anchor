@@ -75,8 +75,16 @@ export function Omnibar({
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
 } = {}) {
-  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji, userTimezone, routines } =
-    usePlannerStore();
+  const {
+    tasks,
+    habits,
+    addTask,
+    getProjectEmoji,
+    getHabitGroupEmoji,
+    userTimezone,
+    routines,
+    programs,
+  } = usePlannerStore();
   // Today, not selectedDate — the omnibar carries no date of its own.
   const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const searchTodayStr = toDateStr(new Date(), searchTz);
@@ -491,7 +499,11 @@ export function Omnibar({
                       // something up by name is explicit intent, and this is one
                       // of the few places a set-aside item can still be reached.
                       // It just says so, quietly.
-                      const paused = !!suppressionReason(item, searchTodayStr, { userTimezone: searchTz, routines });
+                      const paused = !!suppressionReason(item, searchTodayStr, {
+                        userTimezone: searchTz,
+                        routines,
+                        programs,
+                      });
                       return (
                         <CommandItem
                           key={item.id}

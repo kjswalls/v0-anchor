@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Moon, Pencil } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import {
@@ -13,7 +12,7 @@ import {
 } from '@/components/planner/item-detail-sections';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { suppressionReason } from '@/lib/active';
+import { suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -54,8 +53,16 @@ function StaticChip({ children, testId }: { children: React.ReactNode; testId?: 
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-  const { items, userId, isLoading, getProjectColor, getHabitGroupColor, userTimezone, routines } =
-    usePlannerStore();
+  const {
+    items,
+    userId,
+    isLoading,
+    getProjectColor,
+    getHabitGroupColor,
+    userTimezone,
+    routines,
+    programs,
+  } = usePlannerStore();
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
 
   const item = items.find((i) => i.id === id);
@@ -98,11 +105,13 @@ export default function ItemPage() {
   // on no grid column, and nothing on the page says why.
   const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   // The full reason, not just the item's own pause: a member of a paused
-  // routine is equally absent from every grid column, and this page's header
-  // otherwise asserts a startDate and a bucket with nothing explaining why.
+  // routine or an out-of-season program is equally absent from every grid
+  // column, and this page's header otherwise asserts a startDate and a bucket
+  // with nothing explaining why.
   const activationReason = suppressionReason(item, toDateStr(new Date(), activationTz), {
     userTimezone: activationTz,
     routines,
+    programs,
   });
   const container = item.type === 'habit' ? item.group : item.project;
   const containerColor =
@@ -156,11 +165,7 @@ export default function ItemPage() {
           {activationReason && (
             <StaticChip testId="item-page-paused-note">
               <Moon className="size-3.5 shrink-0" aria-hidden />
-              {activationReason.kind === 'routine'
-                ? `Hidden with ${activationReason.routine.name}`
-                : activationReason.until
-                  ? `Paused until ${format(parseISO(activationReason.until), 'MMM d')}`
-                  : 'Paused'}
+              {suppressionLabel(activationReason)}
             </StaticChip>
           )}
           {item.type !== 'habit' && item.priority && (

@@ -13,8 +13,17 @@ import { inactiveItemIdsOn } from '@/lib/active';
  * views can call it per column.
  */
 export function useDayItems(date?: Date): DayItems {
-  const { tasks, habits, projects, items, routines, selectedDate, showCompletedTasks, userTimezone } =
-    usePlannerStore();
+  const {
+    tasks,
+    habits,
+    projects,
+    items,
+    routines,
+    programs,
+    selectedDate,
+    showCompletedTasks,
+    userTimezone,
+  } = usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
   const canvasFilters = useViewStore((s) => s.canvasFilters);
 
@@ -36,7 +45,11 @@ export function useDayItems(date?: Date): DayItems {
       // Resolved against THIS column's date, not the store's selectedDate: a
       // week view renders seven days at once, and a pause that ends mid-week
       // must show the handoff in the right column.
-      inactiveItemIds: inactiveItemIdsOn(items, dateStr, { userTimezone: timezone, routines }),
+      inactiveItemIds: inactiveItemIdsOn(items, dateStr, {
+        userTimezone: timezone,
+        routines,
+        programs,
+      }),
     });
-  }, [tasks, habits, projects, items, routines, target, timezone, typeFilter, showCompletedTasks, canvasFilters]);
+  }, [tasks, habits, projects, items, routines, programs, target, timezone, typeFilter, showCompletedTasks, canvasFilters]);
 }
