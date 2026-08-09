@@ -58,6 +58,7 @@ import {
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { accentColorForName } from '@/lib/accent-colors';
 import { useUIStore } from '@/lib/ui-store';
 import type {
   Habit,
@@ -69,7 +70,13 @@ import type {
   TimeBucket,
 } from '@/lib/planner-types';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { ALL_ITEM_TYPES, getItemTypeConfig, itemTypeName, isPausable } from '@/lib/item-registry';
+import {
+  ALL_ITEM_TYPES,
+  getItemTypeConfig,
+  itemTypeName,
+  isPausable,
+  isCollectible,
+} from '@/lib/item-registry';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
@@ -279,6 +286,13 @@ export interface ItemDraft {
   repeatDays: number[];
   repeatMonthDay: number;
   timesPerDay: string;
+  /**
+   * Routine ids, ADD MODE ONLY. In edit mode the chip writes membership live
+   * through the store, because a routine is not a column on the item — it is a
+   * join row, and the panel's scoped-write machinery only knows about columns.
+   * Deliberately absent from DRAFT_KEYS for the same reason.
+   */
+  routineIds: string[];
   newContainer: { show: boolean; name: string; icon: string };
 }
 
@@ -378,6 +392,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     repeatDays: [],
     repeatMonthDay: 1,
     timesPerDay: '1',
+    routineIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -457,6 +472,9 @@ export function ItemDialog({
     itemTypes,
     userTimezone,
     setItemPaused,
+    routines,
+    collectionsAvailable,
+    updateRoutine,
   } = usePlannerStore();
 
   const router = useRouter();
@@ -700,7 +718,9 @@ export function ItemDialog({
         repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
-      });
+      // One gesture, one history entry: the item row and its join rows land in
+      // the same set(), so ⌘Z reverses the whole add rather than half of it.
+      }, { routineIds: d.routineIds });
     } else {
       addHabit({
         title: d.title.trim(),
@@ -713,7 +733,7 @@ export function ItemDialog({
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
-      });
+      }, { routineIds: d.routineIds });
     }
 
     resetAddDrafts();
@@ -871,6 +891,44 @@ export function ItemDialog({
         repeatDays: d.repeatDays.includes(day)
           ? d.repeatDays.filter((x) => x !== day)
           : [...d.repeatDays, day].sort(),
+      });
+    };
+
+    // ── routine membership ────────────────────────────────────────────────
+    // Edit reads the live join (so a change made in the manager shows here
+    // immediately); add reads the draft, which the create payload carries.
+    const editingItem = editItem;
+    const memberRoutines = editingItem
+      ? routines.filter((r) => r.itemIds.includes(editingItem.id))
+      : routines.filter((r) => d.routineIds.includes(r.id));
+    const memberIds = memberRoutines.map((r) => r.id);
+    const routineChipValue =
+      memberRoutines.length === 0
+        ? undefined
+        : memberRoutines.length === 1
+          ? memberRoutines[0].name
+          : `${memberRoutines[0].name} +${memberRoutines.length - 1}`;
+    // A subtask can't join a routine (the registry's rule), and in add mode
+    // there is no item yet — the type's capability is the whole answer.
+    const collectible = editingItem
+      ? isCollectible(editingItem)
+      : getItemTypeConfig(type).collectible;
+
+    const toggleRoutine = (routineId: string, on: boolean) => {
+      if (!editingItem) {
+        patch({
+          routineIds: on
+            ? [...d.routineIds, routineId]
+            : d.routineIds.filter((x) => x !== routineId),
+        });
+        return;
+      }
+      const routine = routines.find((r) => r.id === routineId);
+      if (!routine) return;
+      updateRoutine(routineId, {
+        itemIds: on
+          ? [...routine.itemIds, editingItem.id]
+          : routine.itemIds.filter((x) => x !== editingItem.id),
       });
     };
 
@@ -1043,6 +1101,67 @@ export function ItemDialog({
                 </div>
               )
             }
+          </PropertyChip>
+        )}
+
+        {/* Routine membership. Multi-valued, so this is check-rows rather than
+            the single-select the container chip uses — joining a second routine
+            is an additional reason to appear, never a replacement.
+
+            Two write paths on purpose. In ADD mode the ids sit on the draft and
+            ride the create as a `memberships` payload, so one gesture is one
+            history entry. In EDIT mode they write LIVE through updateRoutine,
+            because membership is a join row rather than a column on the item,
+            and the panel's scoped-write draft machinery only tracks columns —
+            routing it through there would either drop the write or widen the
+            panel's write surface, and that invariant is load-bearing. */}
+        {collectionsAvailable && routines.length > 0 && collectible && (
+          <PropertyChip
+            icon={Repeat}
+            label="Routine"
+            value={routineChipValue}
+            swatch={memberRoutines[0]?.color ?? undefined}
+            swatchShape="square"
+            contentClassName="w-56"
+            testId="item-dialog-routine-chip"
+          >
+            {(close) => (
+              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+                {routines.map((routine) => {
+                  const on = memberIds.includes(routine.id);
+                  return (
+                    <ChipOption
+                      key={routine.id}
+                      selected={on}
+                      onSelect={() => toggleRoutine(routine.id, !on)}
+                      testId="item-dialog-routine-option"
+                      value={routine.id}
+                    >
+                      <ColorSquare color={routine.color ?? accentColorForName(routine.name)} />
+                      <span className="truncate">{routine.name}</span>
+                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                    </ChipOption>
+                  );
+                })}
+                {/* The manager's home. It is NOT in the braindump header —
+                    that row is width-critical at the 280px minimum — so the
+                    routes in are here, the palette, and mobile's sheet. */}
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    close();
+                    // Replaces this dialog rather than stacking on it —
+                    // openDialog swaps the single active slot. Same escape the
+                    // type chip's "Manage types…" row makes.
+                    useUIStore.getState().openDialog({ type: 'manage-collections' });
+                  }}
+                  testId="item-dialog-routine-manage"
+                >
+                  <Plus className="size-3.5" />
+                  Manage routines…
+                </ChipOption>
+              </div>
+            )}
           </PropertyChip>
         )}
 

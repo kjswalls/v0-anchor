@@ -475,6 +475,11 @@ export function Braindump() {
           >
             <FolderOpen className="h-4 w-4" />
           </Button>
+          {/* No routines button here on purpose. This row is width-critical at
+              the 280px minimum — the collapse control moved off it to buy the
+              title ~30px, and a fifth control spends exactly that back. The
+              manager is reached from the palette and from the item dialog's
+              Routine chip instead. */}
           {/* Collapse used to sit here, as a fifth control. It moved onto the
               resize sash (components/sidebar/sidebar.tsx) so all the chrome
               that acts on the COLUMN — its width and whether it's there at all

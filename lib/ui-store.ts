@@ -14,6 +14,8 @@ export type ActiveDialog =
   | { type: 'edit-item'; item: Item }
   /** `tab` opens a specific panel — 'projects' | 'groups' | 'types'. */
   | { type: 'manage-categories'; tab?: string }
+  /** `tab` opens a specific panel — 'routines' | 'programs'. */
+  | { type: 'manage-collections'; tab?: string }
   | { type: 'settings' }
   | { type: 'keyboard-shortcuts' }
   | { type: 'bug-report' };

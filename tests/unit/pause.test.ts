@@ -305,3 +305,95 @@ describe('"pause until" boundaries', () => {
       .toBe('2026-08-31');
   });
 });
+
+describe('routines in the store', () => {
+  const routineOf = (id: string) => store().routines.find((r) => r.id === id)!;
+
+  it('adds a routine and returns its id', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    expect(routineOf(id).name).toBe('Morning');
+    expect(db.createRoutine).toHaveBeenCalledTimes(1);
+  });
+
+  it('pausing a routine suppresses its members, and resuming restores them', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+
+    store().setRoutinePaused(id, true);
+    expect(isPausedOn(routineOf(id), TODAY, 'UTC')).toBe(true);
+    expect(inactiveItemIdsOn(store().items, TODAY, { ...ctx, routines: store().routines }))
+      .toEqual(new Set(['habit-1']));
+
+    store().setRoutinePaused(id, false);
+    expect(inactiveItemIdsOn(store().items, TODAY, { ...ctx, routines: store().routines }).size)
+      .toBe(0);
+  });
+
+  it('resume normalizes pausedUntil to today rather than clearing the pair', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().setRoutinePaused(id, true);
+    store().setRoutinePaused(id, false);
+    // The interval has to survive on the row — the sweep's container grace
+    // reads it to decide whether members just came back.
+    expect(routineOf(id).pausedAt).toBeTruthy();
+    expect(routineOf(id).pausedUntil).toBe(TODAY);
+  });
+
+  it('is idempotent — pausing an already-paused routine writes nothing', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().setRoutinePaused(id, true);
+    vi.clearAllMocks();
+    store().setRoutinePaused(id, true);
+    expect(db.updateRoutine).not.toHaveBeenCalled();
+  });
+
+  it('pausing a routine NEVER touches its members', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    const before = JSON.stringify(itemById('habit-1'));
+    store().setRoutinePaused(id, true);
+    expect(JSON.stringify(itemById('habit-1'))).toBe(before);
+    // Specifically: the streak and the per-date marks are untouched, which is
+    // the whole promise of pausing rather than deleting.
+    expect(itemById('habit-1').streak).toBe(7);
+    expect(itemById('habit-1').completedDates).toEqual(['2026-03-09']);
+  });
+
+  it('a paused routine leaves NON-members alone', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    store().setRoutinePaused(id, true);
+    const inactive = inactiveItemIdsOn(store().items, TODAY, { ...ctx, routines: store().routines });
+    expect(inactive.has('one-shot')).toBe(false);
+  });
+});
+
+describe('create-with-membership is one gesture', () => {
+  it('lands the item and its join rows in a single history entry', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    const before = store().actionLog.length;
+
+    store().addTask({ title: 'New task' }, { routineIds: [id] });
+
+    const created = store().items.find((i) => i.title === 'New task')!;
+    expect(store().routines.find((r) => r.id === id)!.itemIds).toContain(created.id);
+    // One entry, so one Cmd+Z reverses the whole add rather than half of it.
+    expect(store().actionLog.length).toBe(before + 1);
+  });
+
+  it('omitting memberships changes nothing about the add', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().addTask({ title: 'Loner' });
+    expect(store().routines.find((r) => r.id === id)!.itemIds).toEqual([]);
+  });
+
+  it('works for habits too', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().addHabit({ title: 'New habit', group: 'Wellness', repeatFrequency: 'daily' });
+    expect(store().routines.find((r) => r.id === id)!.itemIds).toEqual([]);
+
+    store().addHabit(
+      { title: 'Joined habit', group: 'Wellness', repeatFrequency: 'daily' },
+      { routineIds: [id] },
+    );
+    const created = store().items.find((i) => i.title === 'Joined habit')!;
+    expect(store().routines.find((r) => r.id === id)!.itemIds).toEqual([created.id]);
+  });
+});

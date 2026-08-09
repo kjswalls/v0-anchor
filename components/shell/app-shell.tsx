@@ -20,6 +20,7 @@ import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
+import { ManageCollectionsDialog } from '@/components/planner/manage-collections-dialog';
 import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
@@ -502,6 +503,12 @@ export function AppShell() {
       <ManageCategoriesDialog
         open={activeDialog?.type === 'manage-categories'}
         defaultTab={activeDialog?.type === 'manage-categories' ? activeDialog.tab : undefined}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      <ManageCollectionsDialog
+        open={activeDialog?.type === 'manage-collections'}
+        defaultTab={activeDialog?.type === 'manage-collections' ? activeDialog.tab : undefined}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

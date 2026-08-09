@@ -43,6 +43,7 @@ import {
   Unlink,
   Wand2,
   Zap,
+  Repeat as RepeatIcon,
   Pause as PauseIcon,
   Play as PlayIcon,
 } from 'lucide-react';
@@ -61,7 +62,7 @@ import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
-import { inactiveItemIdsOn } from '../active';
+import { inactiveItemIdsOn, isPausedOn } from '../active';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
@@ -84,7 +85,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { Priority, TimeBucket } from '../planner-types';
+import type { Priority, TimeBucket, Routine } from '../planner-types';
 
 /**
  * The command registry.
@@ -971,6 +972,18 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => useUIStore.getState().openDialog({ type: 'manage-categories' }),
   },
   {
+    id: 'app.collections',
+    label: 'Manage routines & programs',
+    group: 'app',
+    icon: RepeatIcon,
+    keywords: 'routines programs collections manage group pause',
+    aliases: ['routines'],
+    // Not gated on collectionsAvailable: the dialog explains the situation
+    // better than a missing row does, and a row that silently disappears reads
+    // as a broken palette rather than an unavailable feature.
+    run: () => useUIStore.getState().openDialog({ type: 'manage-collections' }),
+  },
+  {
     id: 'app.shortcuts',
     label: 'Keyboard shortcuts',
     group: 'app',
@@ -1065,7 +1078,51 @@ const customTypeCommands: CommandProvider = () => {
  * ties — provider output is appended after the static list, so a generated row
  * never outranks a hand-authored one at the same score.
  */
-const PROVIDERS: CommandProvider[] = [customTypeCommands];
+let cachedRoutines: readonly Routine[] | null = null;
+let cachedRoutineCommands: Command[] = [];
+
+/**
+ * "Pause Morning" / "Resume Exercise", one pair per routine.
+ *
+ * The customTypeCommands pattern: memoized on the routine array's identity
+ * (rebuilt on every mutation), so a palette-wide pass costs nothing per
+ * keystroke. Deliberately different from it in two ways, both because these
+ * are STATE commands rather than create commands:
+ *
+ * - No aliases. A routine is user-named, and an alias is a promise that typing
+ *   it lands in exactly one place; a routine called "settings" must not steal
+ *   /settings. customTypeCommands can afford a collision check because a type
+ *   name is a slug — routine names are free text and far likelier to collide.
+ * - Only ONE of the pair renders, chosen by the routine's state resolved at
+ *   TODAY. Offering both would make the palette lie about which is a no-op,
+ *   and resolving at the selected date would make them trade places as the
+ *   user walks the week past a resume boundary (the bug items.pause/resume
+ *   had to be written around in Phase 1).
+ */
+const routineCommands: CommandProvider = () => {
+  const { routines, collectionsAvailable } = planner();
+  if (!collectionsAvailable) return [];
+  if (routines === cachedRoutines) return cachedRoutineCommands;
+
+  cachedRoutines = routines;
+  cachedRoutineCommands = routines.map((routine) => {
+    // Resolved per BUILD rather than per render, which is safe precisely
+    // because the memo key is the routine array — and a pause writes to it.
+    const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const paused = isPausedOn(routine, toDateStr(new Date(), tz), tz);
+    return {
+      id: `routine.${paused ? 'resume' : 'pause'}.${routine.id}`,
+      label: `${paused ? 'Resume' : 'Pause'} ${routine.name}`,
+      group: 'items',
+      icon: paused ? PlayIcon : PauseIcon,
+      keywords: `routine ${routine.name} ${paused ? 'resume unpause start' : 'pause hide stop'}`,
+      run: () => planner().setRoutinePaused(routine.id, !paused),
+    } satisfies Command;
+  });
+  return cachedRoutineCommands;
+};
+
+const PROVIDERS: CommandProvider[] = [customTypeCommands, routineCommands];
 
 /**
  * The registry as every palette surface sees it. Call this rather than reading

@@ -110,8 +110,15 @@ interface PlannerStore {
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
   /** Create an item of a user-defined type (task-shaped). */
-  addItem: (customType: string, item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
-  addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
+  addItem: (
+    customType: string,
+    item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
+    memberships?: Memberships,
+  ) => void;
+  addTask: (
+    task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
+    memberships?: Memberships,
+  ) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
@@ -165,7 +172,7 @@ interface PlannerStore {
   setItemPaused: (id: string, paused: boolean, until?: string) => void;
 
   // Habit actions
-  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
+  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus, count?: number, date?: Date) => void;
@@ -260,6 +267,67 @@ const projectItems = (items: Item[]) => ({
 });
 
 // History management for undo/redo
+/**
+ * Container membership handed to an add action, so the item row and its join
+ * rows land in ONE set() and therefore one history entry.
+ *
+ * The add actions mint ids internally and return void, so "create, then apply
+ * membership" has no id to apply to — and would cost a second undo step, which
+ * makes one user gesture take two ⌘Z to reverse.
+ */
+export interface Memberships {
+  routineIds?: string[];
+}
+
+/**
+ * Create the item row, THEN its join rows.
+ *
+ * The order is load-bearing and cannot be parallelised: routine_items carries a
+ * composite FK (item_id, user_id) -> items(id, user_id), so a join insert that
+ * lands before the item does fails with 23503 and the membership is silently
+ * lost — the store would show it, and a reload would not. Chaining off the
+ * create is the whole point of this helper existing rather than two call sites
+ * firing side by side.
+ */
+function persistNewItem(
+  userId: string,
+  row: Item,
+  memberships: Memberships | undefined,
+  get: () => PlannerStore,
+) {
+  const created = dbCreateItem(userId, row);
+  created.catch(console.error);
+
+  const routineIds = memberships?.routineIds ?? [];
+  if (routineIds.length === 0) return;
+
+  created
+    .then(() =>
+      Promise.all(
+        routineIds.map((rid) => {
+          // Re-read: the optimistic set() already appended, and this is the
+          // array the reconciler diffs against.
+          const routine = get().routines.find((r) => r.id === rid);
+          return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
+        }),
+      ),
+    )
+    .catch(console.error);
+}
+
+/** Add `itemId` to each named routine. Returns the same array when there's nothing to do. */
+function withMembership(
+  routines: Routine[],
+  itemId: string,
+  routineIds: string[] | undefined,
+): Routine[] {
+  if (!routineIds?.length) return routines;
+  const want = new Set(routineIds);
+  return routines.map((r) =>
+    want.has(r.id) && !r.itemIds.includes(itemId) ? { ...r, itemIds: [...r.itemIds, itemId] } : r,
+  );
+}
+
 interface HistoryState {
   items: Item[];
   projects: Project[];
@@ -672,7 +740,7 @@ export const usePlannerStore = create<PlannerStore>()(
         isUpdatingUndoRedo = false;
       },
 
-      addItem: (customType, itemData) => {
+      addItem: (customType, itemData, memberships) => {
         // Only hydrated custom slugs: 'task'/'habit' would write a corrupt
         // row through the task-shaped mapper, 'custom' is the envelope
         // discriminant, and unknown slugs shouldn't be minted by a typo.
@@ -696,13 +764,16 @@ export const usePlannerStore = create<PlannerStore>()(
           isScheduled: !!timeBucket,
           order: 0, // custom types aren't manually orderable (created_at sorts)
         };
-        set((state) => projectItems([...state.items, item]));
+        set((state) => ({
+          ...projectItems([...state.items, item]),
+          routines: withMembership(state.routines, item.id, memberships?.routineIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, item).catch(console.error);
+        if (userId) persistNewItem(userId, item, memberships, get);
       },
 
-      addTask: (taskData) => {
+      addTask: (taskData, memberships) => {
         setNextActionLabel(`Add task: ${taskData.title}`);
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
@@ -715,10 +786,13 @@ export const usePlannerStore = create<PlannerStore>()(
           isScheduled: !!timeBucket,
           order: get().tasks.length,
         };
-        set((state) => projectItems([...state.items, task]));
+        set((state) => ({
+          ...projectItems([...state.items, task]),
+          routines: withMembership(state.routines, task.id, memberships?.routineIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, task).catch(console.error);
+        if (userId) persistNewItem(userId, task, memberships, get);
       },
 
       updateTask: (id, updates) => {
@@ -1255,7 +1329,7 @@ export const usePlannerStore = create<PlannerStore>()(
         dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
       },
 
-      addHabit: (habitData) => {
+      addHabit: (habitData, memberships) => {
         setNextActionLabel(`Add habit: ${habitData.title}`);
         const timeBucket = autoCorrectBucket(habitData.startTime, habitData.timeBucket);
 
@@ -1271,10 +1345,13 @@ export const usePlannerStore = create<PlannerStore>()(
           dailyCounts: {},
           currentDayCount: 0,
         };
-        set((state) => projectItems([...state.items, habit]));
+        set((state) => ({
+          ...projectItems([...state.items, habit]),
+          routines: withMembership(state.routines, habit.id, memberships?.routineIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, habit).catch(console.error);
+        if (userId) persistNewItem(userId, habit, memberships, get);
       },
 
       updateHabit: (id, updates) => {
