@@ -706,6 +706,15 @@ function unavailable(fn: string, error: { code?: string; message?: string }): nu
     console.warn(`${fn}: migration 024 not applied yet — programs/routines disabled.`);
     return null;
   }
+  // Anything else rethrows, and from Phase 2 that propagates out of
+  // initializeStore's Promise.all and fails the WHOLE load — deliberately.
+  //
+  // Swallowing it looks kinder and is the dangerous option: routines would
+  // arrive empty, every member of a paused routine would resolve as live, and
+  // the auto-age sweep would see a pile of suddenly-unprotected overdue items
+  // and unschedule them in one batch. Failing the load instead sets `error`,
+  // which is one of the sweep's own gates (use-overdue-sweep.ts:147), so a
+  // transient blip costs a retry rather than a silent mass-unschedule.
   throw error;
 }
 
