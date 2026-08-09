@@ -37,11 +37,15 @@ import type { Item, Routine } from '@/lib/planner-types';
  * "Routines & Programs" — the manager.
  *
  * LAYOUT (chosen from the three studied directions: stacked drill-in, two-pane,
- * inline expand). It is B with A's editor grafted on above `sm`:
+ * inline expand). It is B with A's editor grafted on above `md`:
  *
- *   < 640px   list OR detail, one at a time, with a back row. This is also the
+ *   < 768px   list OR detail, one at a time, with a back row. This is also the
  *             mobile bottom sheet, so nothing forks.
- *   >= 640px  list AND detail side by side; selecting never navigates.
+ *   >= 768px  list AND detail side by side; selecting never navigates.
+ *
+ * The breakpoint is `md`, NOT `sm`, and that is load-bearing: ResponsiveModal
+ * switches to a vaul bottom sheet at useIsMobile's 768px. Using `sm` (640px) put
+ * the two-pane desktop layout INSIDE a bottom sheet for a 128px band.
  *
  * Same components either way — the only difference is whether the list stays
  * mounted beside the detail. That matters because it means the LIST ROW has to
@@ -139,12 +143,12 @@ export function ManageCollectionsDialog({
                 <Unavailable />
               ) : (
                 <div
-                  className="sm:grid sm:grid-cols-[210px_1fr] sm:gap-0"
+                  className="md:grid md:grid-cols-[210px_1fr] md:gap-0"
                   data-testid="collections-routines"
                 >
-                  {/* On mobile the detail REPLACES the list; above sm both are
+                  {/* On mobile the detail REPLACES the list; above md both are
                       mounted. One media query, no forked component tree. */}
-                  <div className={cn('sm:block sm:border-border sm:border-r sm:pr-3', selected && 'hidden')}>
+                  <div className={cn('md:block md:border-border md:border-r md:pr-3', selected && 'hidden')}>
                     <RoutineList
                       routines={routines}
                       selectedId={selectedId}
@@ -174,7 +178,7 @@ export function ManageCollectionsDialog({
                     </div>
                   </div>
 
-                  <div className={cn('sm:block sm:pl-4', !selected && 'hidden')}>
+                  <div className={cn('md:block md:pl-4', !selected && 'hidden')}>
                     {selected ? (
                       <RoutineDetail
                         routine={selected}
@@ -182,7 +186,7 @@ export function ManageCollectionsDialog({
                         onDelete={() => setConfirmDelete(selected)}
                       />
                     ) : (
-                      <p className="text-muted-foreground hidden py-10 text-center text-sm sm:block">
+                      <p className="text-muted-foreground hidden py-10 text-center text-sm md:block">
                         Pick a routine to edit it.
                       </p>
                     )}
@@ -295,7 +299,7 @@ function RoutineList({
             <span className="text-muted-foreground text-xs tabular-nums">
               {liveCount(routine)}
             </span>
-            <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0 sm:hidden" />
+            <ChevronRight className="text-muted-foreground h-3.5 w-3.5 shrink-0 md:hidden" />
           </button>
         );
       })}
@@ -375,7 +379,7 @@ function RoutineDetail({
       <button
         type="button"
         onClick={onBack}
-        className="text-muted-foreground -ml-1 flex items-center gap-1.5 self-start text-sm sm:hidden"
+        className="text-muted-foreground -ml-1 flex items-center gap-1.5 self-start text-sm md:hidden"
         data-testid="routine-detail-back"
       >
         <ChevronLeft className="h-4 w-4" />
