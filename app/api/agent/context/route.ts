@@ -3,6 +3,8 @@ import type { HabitItem, TaskItem } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { fetchItems, fetchProjects, fetchHabitGroups, toLegacyTask, toLegacyHabit } from '@/lib/db'
+import { isOpenLoopSuppressedOn } from '@/lib/active'
+import { toDateStr } from '@/lib/recurrence'
 
 /**
  * GET /api/agent/context
@@ -37,20 +39,38 @@ export async function GET(req: NextRequest) {
       .single(),
   ])
 
-  // The pinned tasks[]/habits[] arrays are projections of the same items
-  // fetch — filtering preserves the per-type relative order the old
-  // fetchTasks/fetchHabits queries produced. Future custom types appear in
-  // items[] only.
-  const tasks = items.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
-  const habits = items.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
-
   // Timezone priority: stored user setting → X-Timezone header fallback → UTC
   // The client syncs the browser timezone to user_settings on every app load,
   // so the stored value stays current even when users travel.
+  //
+  // Resolved BEFORE the projections below, which read it: this is a dateless
+  // surface, so "today" is the user's day per plan decision 3.
   const userTimezone =
     settingsResult.data?.timezone ??
     req.headers.get('x-timezone') ??
     'UTC'
+  const todayStr = toDateStr(new Date(), userTimezone)
+
+  // The pinned tasks[]/habits[] arrays are projections of the same items
+  // fetch — filtering preserves the per-type relative order the old
+  // fetchTasks/fetchHabits queries produced. Future custom types appear in
+  // items[] only.
+  //
+  // Suppressed OPEN LOOPS are dropped: a deployed plugin would otherwise
+  // narrate paused work as pending and nag about it, since the plugin has no
+  // concept of pausing and cannot get one without an npm republish. Arrays may
+  // shrink freely — that is schema-safe for every build ever published, whereas
+  // a new field or status value is not.
+  //
+  // Dropping whole rows takes their history with them, which is the ONE
+  // recorded waiver of the history rule (plan decision 6). It is acceptable
+  // only because items[] below stays unfiltered and carries the same rows
+  // complete, pause metadata included, for future plugin builds. A paused item
+  // that was already marked today is NOT an open loop, so it stays in these
+  // arrays and the plugin's narration keeps matching the EOD review.
+  const visible = items.filter((i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone }))
+  const tasks = visible.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
+  const habits = visible.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
 
   return NextResponse.json({
     userId,

@@ -1,5 +1,6 @@
 import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
+import { isOpenLoopSuppressedOn } from './active'
 import type { Item, Project, HabitGroupType } from './planner-types'
 
 /**
@@ -16,9 +17,12 @@ export function buildAnchorContext(state: {
   projects: Project[]
   habitGroups: HabitGroupType[]
   focusItemId?: string
+  /** Optional: the five test call sites pass bare literals, and the store's value is nullable. */
+  userTimezone?: string | null
 }): string {
   const today = new Date()
   const todayStr = format(today, 'yyyy-MM-dd')
+  const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
   const lines: string[] = []
 
   lines.push('## Anchor Context')
@@ -60,10 +64,22 @@ export function buildAnchorContext(state: {
     }
   }
 
+  // Suppressed open loops are filtered HERE, before dispatch — one edit covers
+  // task, habit and every hydrated custom type, and it keeps the byte-pinned
+  // renderers pure (their output is unchanged for unchanged input).
+  //
+  // Note this is deliberately NOT applied to the focused-item lookup above:
+  // opening a thread on a paused item is explicit intent, and filtering it
+  // would leave Beacon unable to see the very item the thread is about — and
+  // silently, since an unresolvable focus id just omits the section.
   for (const type of getAllItemTypeNames()) {
     lines.push(
       ...getItemTypeConfig(type).ai.renderContextSection(
-        state.items.filter((i) => itemTypeName(i) === type),
+        state.items.filter(
+          (i) =>
+            itemTypeName(i) === type &&
+            !isOpenLoopSuppressedOn(i, todayStr, { userTimezone: tz })
+        ),
         { today, todayStr }
       )
     )

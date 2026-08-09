@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { usePlannerStore } from '../planner-store';
 import { parseSearchQuery, searchItems } from '../search';
 import { isCompletedOnDate, isRecurring, toDateStr } from '../recurrence';
+import { isPausedOn } from '../active';
 import { getItemTypeConfig, itemTypeName } from '../item-registry';
 import { resolveCategoryIcon } from '../category-icons';
 import { scoreText } from './score';
@@ -88,6 +89,22 @@ export function isDoneOn(item: Item, dateStr: string): boolean {
  */
 export function isSkippedOn(item: Item, dateStr: string): boolean {
   return (item.skippedDates ?? []).includes(dateStr);
+}
+
+/**
+ * Is this item paused RIGHT NOW?
+ *
+ * Deliberately takes no dateStr, unlike its skip sibling above. Every other
+ * item predicate here answers about the SELECTED day, which is right for
+ * per-occurrence state — but a pause is a stretch of time, not an occurrence,
+ * and the palette is a dateless surface (plan decision 3). Keyed on the
+ * selected day instead, Pause and Resume would swap places as the user walked
+ * the week across a resume boundary.
+ */
+export function isPausedNow(item: Item): boolean {
+  const { userTimezone } = usePlannerStore.getState();
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isPausedOn(item, toDateStr(new Date(), tz), tz);
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */

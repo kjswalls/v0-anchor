@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, ChevronsLeft, FolderOpen, ListFilter, X, Check } from 'lucide-react';
+import { AlignLeft, FolderOpen, ListFilter, X, Check, Moon, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
@@ -13,9 +13,10 @@ import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
-import { useSidebarStore } from '@/lib/sidebar-store';
 import { RELAY } from '@/lib/relay-config';
-import type { Priority } from '@/lib/planner-types';
+import { inactiveItemIdsOn } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
+import type { Priority, Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -285,19 +286,89 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
   );
 }
 
-export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } = {}) {
-  const { tasks, habits } = usePlannerStore();
+/**
+ * The foot-of-the-sidebar home for everything currently paused.
+ *
+ * It sits OUTSIDE the scroll port, as a peer of the quick-add card, for two
+ * reasons. It stays reachable without scrolling past the working list, which is
+ * what makes it a recovery surface rather than another place to lose things.
+ * And QuickAddRow parks a freshly captured row by scrolling the port to its
+ * bottom — with this block inside, every capture would scroll past the new row
+ * to land on a heading, which would break the type-Enter-type-Enter rhythm the
+ * capture row exists for.
+ *
+ * Collapsed by default, and quiet: paused is not an error state, so no badge,
+ * no warning colour, no dotted border — a muted heading and a count. The count
+ * is the whole affordance; it answers "did I leave anything set aside?" without
+ * making the answer feel like a debt.
+ */
+function PausedSection({ rows }: { rows: RowItem[] }) {
+  const [open, setOpen] = useState(false);
+  if (rows.length === 0) return null;
+
+  return (
+    <div
+      data-testid="braindump-paused-section"
+      className="mx-[10px] mb-2 shrink-0 rounded-[10px] bg-surface-2"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        data-testid="braindump-paused-toggle"
+        className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left hover-wash"
+      >
+        <Moon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="font-content text-content text-muted-foreground">Paused</span>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{rows.length}</span>
+        <ChevronRight
+          className={cn(
+            'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
+            open && 'rotate-90'
+          )}
+        />
+      </button>
+      {/* Plain overflow-y-auto, never <ScrollArea> — the Radix wrapper silently
+          drops max-h and the list would grow without bound. */}
+      {open && (
+        <div className="max-h-[40vh] overflow-y-auto px-[6px] pb-2">
+          {rows.map((row) => (
+            <TaskRow key={row.item.id} row={row} context="braindump" />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Braindump() {
+  const { tasks, habits, items, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters } = useViewStore();
-  const toggleLeftSidebar = useSidebarStore((s) => s.toggleLeftSidebar);
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });
 
+  /**
+   * Suppressed ids, resolved at TODAY.
+   *
+   * Today, not `selectedDate`: the braindump carries no date of its own, so a
+   * paused row must not appear and vanish as the user walks the week (plan
+   * decision 3). The set feeds two places — it is subtracted from the live list
+   * below, and it builds the Paused section — because an item may satisfy both
+   * predicates and rendering it twice makes the second copy a ghost that
+   * shift-range and ⌘A silently skip.
+   */
+  const suppressedIds = useMemo(() => {
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return inactiveItemIdsOn(items, toDateStr(new Date(), tz), { userTimezone: tz });
+  }, [items, userTimezone]);
+
   const rows: RowItem[] = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
+      if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
       if (braindumpFilters.hideCompleted && task.status === 'completed') return false;
       if (braindumpFilters.priorities.length && (!task.priority || !braindumpFilters.priorities.includes(task.priority)))
@@ -313,6 +384,7 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
       braindumpFilters.priorities.length || braindumpFilters.projects.length
         ? []
         : habits.filter((habit) => {
+            if (suppressedIds.has(habit.id)) return false;
             if (habit.timeBucket) return false;
             if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
             if (braindumpFilters.hideCompleted && habit.status === 'done') return false;
@@ -323,7 +395,38 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
       ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
     ];
-  }, [tasks, habits, braindumpFilters]);
+  }, [tasks, habits, braindumpFilters, suppressedIds]);
+
+  /**
+   * Everything currently set aside — the home paused work would otherwise not
+   * have.
+   *
+   * Without this, "hidden entirely" means an indefinitely-paused item is absent
+   * from the grid, the review, the past-due bar AND this list, and the only way
+   * back is remembering it exists and searching its name. That is data loss
+   * wearing a feature's clothes.
+   *
+   * Reads `items` rather than the projections on purpose: the section spans
+   * dated and scheduled work that the braindump's own membership predicate
+   * would never admit. That means re-applying the projection's subtask rule by
+   * hand — a subtask has no standalone row anywhere else, and one surfacing
+   * here as a free-floating item is exactly what that filter exists to prevent.
+   *
+   * Deliberately ignores braindumpFilters and braindumpGroupBy: those shape the
+   * working list, and filtering the recovery surface would reintroduce the very
+   * problem this section solves.
+   */
+  const pausedRows: RowItem[] = useMemo(
+    () =>
+      items
+        .filter((i) => suppressedIds.has(i.id) && !('parentItemId' in i && i.parentItemId))
+        .map((i) =>
+          i.type === 'habit'
+            ? { itemType: 'habit' as const, item: i as unknown as Habit }
+            : { itemType: 'task' as const, item: i as unknown as Task }
+        ),
+    [items, suppressedIds]
+  );
 
   const grouped: [string, RowItem[]][] = useMemo(() => {
     if (braindumpGroupBy === 'none') return [['', rows]];
@@ -372,23 +475,18 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           >
             <FolderOpen className="h-4 w-4" />
           </Button>
+          {/* Collapse used to sit here, as a fifth control. It moved onto the
+              resize sash (components/sidebar/sidebar.tsx) so all the chrome
+              that acts on the COLUMN — its width and whether it's there at all
+              — lives on the column's own edge, and this row is left holding
+              only things that act on the LIST. It also buys the title back
+              ~30px, which is the difference between fitting and truncating at
+              the 280px minimum width. ⌘[ is unchanged. */}
           <AddIconButton
             size="md"
             onClick={() => openAddDialog('task')}
             aria-label="Add task"
           />
-          {!hideCollapse && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-muted-foreground hover:text-foreground"
-              onClick={toggleLeftSidebar}
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar (⌘[)"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </Button>
-          )}
         </div>
       </div>
 
@@ -401,7 +499,10 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
         ref={listRef}
         className={cn(
           'min-h-0 overflow-y-auto rounded-card transition-colors',
-          rows.length === 0 && 'flex-1',
+          // Fill the column only when there is genuinely nothing here — a
+          // paused-only sidebar still wants the poem's space collapsed so the
+          // Paused strip sits under the header rather than adrift at the foot.
+          rows.length === 0 && pausedRows.length === 0 && 'flex-1',
           isOver && 'ring-2 ring-ring/60'
         )}
       >
@@ -422,7 +523,7 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
             )
           )}
 
-          {rows.length === 0 && (
+          {rows.length === 0 && pausedRows.length === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.
@@ -451,6 +552,8 @@ export function Braindump({ hideCollapse = false }: { hideCollapse?: boolean } =
           )}
         </div>
       </div>
+
+      <PausedSection rows={pausedRows} />
 
       {/* Quick-add — a floating card at the section foot, peer of the header. */}
       <QuickAddRow scrollRef={listRef} />

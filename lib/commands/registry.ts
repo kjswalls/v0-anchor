@@ -43,6 +43,8 @@ import {
   Unlink,
   Wand2,
   Zap,
+  Pause as PauseIcon,
+  Play as PlayIcon,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
@@ -57,7 +59,7 @@ import { useEODStore } from '../eod-store';
 import { useChatStore } from '../chat-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig, isSkippable, itemTypeName } from '../item-registry';
+import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn } from '../active';
 import { toDateStr } from '../recurrence';
@@ -74,6 +76,7 @@ import {
   isCancelled,
   isDoneOn,
   isHabit,
+  isPausedNow,
   isSkippedOn,
   isTaskLike,
   itemCommand,
@@ -336,6 +339,37 @@ export const STATIC_COMMANDS: Command[] = [
     // custom types are out even though they are otherwise task-shaped.
     eligible: (item) => item.type === 'task' && !!item.inProjectBlock,
     run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
+  }),
+  // Pause / Resume deliberately ignore the dateStr these predicates are handed:
+  // that is the SELECTED day, and pausing is dateless (plan decision 3). Keying
+  // on it would make the two commands trade places as the user walks the week
+  // past a resume boundary, and the picker's contents change with them.
+  //
+  // "Pause until…" is absent on purpose — itemCommand supports exactly one
+  // argument and it is the entity, so a date belongs to the dialog's overflow
+  // menu and the mobile sheet, which can host a picker.
+  itemCommand({
+    id: 'items.pause',
+    label: 'Pause',
+    description: 'Sets it aside — hidden until you resume, streak untouched',
+    icon: PauseIcon,
+    keywords: 'pause hold suspend set aside break vacation hide later',
+    aliases: ['pause'],
+    emptyLabel: 'Nothing to pause',
+    eligible: (item) => isPausable(item) && !isPausedNow(item),
+    run: (item) => planner().setItemPaused(item.id, true),
+  }),
+  itemCommand({
+    id: 'items.resume',
+    label: 'Resume',
+    description: 'Brings it back where you left it',
+    icon: PlayIcon,
+    keywords: 'resume unpause restart continue bring back restore',
+    aliases: ['resume'],
+    placeholder: 'Which paused item?',
+    emptyLabel: 'Nothing is paused',
+    eligible: (item) => isPausedNow(item),
+    run: (item) => planner().setItemPaused(item.id, false),
   }),
   ...priorityCommands(),
   ...bucketCommands(),

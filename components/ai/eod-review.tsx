@@ -18,6 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
+import { isOpenLoopSuppressedOn } from '@/lib/active';
 import type { Item, Task, TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -119,6 +120,13 @@ export function EODReview() {
     const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const todayTasks = tasks.filter((t) => {
       if (t.status === 'cancelled') return false;
+      // Paused work is set aside, not owed — the review must not ask about it.
+      // This guard sits here rather than on the two partitions below because
+      // `isOpenLoopSuppressedOn` is already false for anything carrying a mark
+      // or a terminal status, so `completedTasks` passes through untouched:
+      // an item paused after being ticked today still shows under Done today
+      // (the history rule).
+      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz })) return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
       // A recurring task skipped for today was already decided on — the review
