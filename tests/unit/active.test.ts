@@ -478,8 +478,15 @@ describe('program membership scopes an item', () => {
   // Trashed containers are absent from these arrays, and that absence IS the
   // mechanism: a program in the trash stops scoping, so a routine it was the
   // only holder of falls back to standalone and its members return.
+  //
+  // Asserted as a DIFFERENCE, not as a single `true`. The trashed half alone
+  // passes with the whole path algebra reverted — it is just "a standalone
+  // routine is live", which Phase 2 already guaranteed — so it has to be shown
+  // against the live-program case it is supposed to differ from.
   it('a trashed program releases the routine it was the only holder of', () => {
     const r = routine({ id: 'r1', itemIds: ['h'] });
+    const held = program({ id: 'p1', state: 'paused', routineIds: ['r1'] });
+    expect(isItemActiveOn(habit(), D, withBoth([r], [held]))).toBe(false);
     expect(isItemActiveOn(habit(), D, withBoth([r], []))).toBe(true);
   });
 
@@ -576,6 +583,21 @@ describe('suppressionReason names the BINDING container', () => {
 
   it('gives NO return date for a program that has ended — it is over, not pending', () => {
     const p = program({ itemIds: ['h'], endsOn: '2026-08-01' });
+    expect(suppressionReason(habit(), D, withPrograms(p))).toMatchObject({
+      kind: 'program',
+      until: undefined,
+    });
+  });
+
+  // An inverted range is live on NO date: every day before startsOn fails the
+  // start test and every day after endsOn fails the end test, and those two
+  // sets cover the calendar. So its start is not a return date — it is a date
+  // on which nothing will happen, and promising it is the exact failure the
+  // binding-constraint rule exists to prevent.
+  it('promises no return date for an inverted range', () => {
+    const p = program({ itemIds: ['h'], startsOn: '2026-09-01', endsOn: '2026-08-01' });
+    expect(isProgramActiveOn(p, '2026-08-15')).toBe(false);
+    expect(isProgramActiveOn(p, '2026-09-15')).toBe(false);
     expect(suppressionReason(habit(), D, withPrograms(p))).toMatchObject({
       kind: 'program',
       until: undefined,

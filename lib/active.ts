@@ -369,6 +369,11 @@ export type SuppressionReason =
  */
 function programResumeDate(program: Program, dateStr: string): string | undefined {
   if (program.state !== 'auto' || !program.startsOn) return undefined;
+  // An INVERTED range (startsOn after endsOn) is never live on any date, so its
+  // start is not a return date — it is a date on which nothing will happen.
+  // Promising it would be the exact failure the binding-constraint rule exists
+  // to prevent, one layer down: the user waits for Sep 1 and Sep 1 does nothing.
+  if (program.endsOn && toDateOnly(program.startsOn) > toDateOnly(program.endsOn)) return undefined;
   return toDateOnly(dateStr) < toDateOnly(program.startsOn) ? program.startsOn : undefined;
 }
 

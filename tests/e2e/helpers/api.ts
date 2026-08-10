@@ -231,11 +231,30 @@ export async function cleanupTestCollections(prefix: string): Promise<void> {
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
   for (const table of ['programs', 'routines']) {
     try {
+      // Read then delete by id, rather than pushing the prefix into a LIKE.
+      // `_` is a single-character WILDCARD in SQL LIKE and TEST_TITLE_PREFIX is
+      // `e2e_`, so `name=like.e2e_%` would also match `e2eX…`, `e2e-…` and
+      // anything else with a fourth character — a hard DELETE matching more
+      // than this function's own doc promises. A JS startsWith has no such
+      // second reading.
       const res = await fetch(
-        `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&name=like.${encodeURIComponent(`${prefix}%`)}`,
-        { method: 'DELETE', headers }
+        `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name`,
+        { headers }
       );
-      if (!res.ok) console.warn(`[cleanup] ${table}: ${res.status} ${await res.text()}`);
+      if (!res.ok) {
+        console.warn(`[cleanup] ${table}: ${res.status} ${await res.text()}`);
+        continue;
+      }
+      const litter = ((await res.json()) as { id: string; name: string }[]).filter((row) =>
+        row.name?.startsWith(prefix)
+      );
+      if (litter.length === 0) continue;
+      const ids = litter.map((row) => row.id).join(',');
+      const del = await fetch(`${url}/rest/v1/${table}?id=in.(${ids})`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!del.ok) console.warn(`[cleanup] ${table}: ${del.status} ${await del.text()}`);
     } catch (err) {
       console.warn(`[cleanup] ${table}:`, err);
     }

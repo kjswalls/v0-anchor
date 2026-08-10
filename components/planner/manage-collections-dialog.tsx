@@ -39,7 +39,7 @@ import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { accentColorForName } from '@/lib/accent-colors';
-import { isPausedOn, isProgramActiveOn } from '@/lib/active';
+import { isPausedOn, isProgramActiveOn, inactiveItemIdsOn } from '@/lib/active';
 import { isCollectible } from '@/lib/item-registry';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
@@ -284,6 +284,7 @@ function DeleteConsequence({
 }) {
   const { todayStr, tz } = useToday();
   const liveIds = useLiveItemIds();
+  const liveRoutineIds = useLiveRoutineIds();
 
   if (target.kind === 'routine') {
     const n = countLive(target.routine.itemIds, liveIds);
@@ -299,7 +300,7 @@ function DeleteConsequence({
 
   const program = target.program;
   const n = countLive(program.itemIds, liveIds);
-  const r = program.routineIds.length;
+  const r = countLive(program.routineIds, liveRoutineIds);
   const live = isProgramActiveOn(program, todayStr);
   const held = [
     n > 0 ? `${n} ${n === 1 ? 'item' : 'items'}` : null,
@@ -428,6 +429,12 @@ function useLiveItemIds(): Set<string> {
   return useMemo(() => new Set(items.map((i) => i.id)), [items]);
 }
 
+/** The same rule one layer up: `program.routineIds` may name a trashed routine. */
+function useLiveRoutineIds(): Set<string> {
+  const routines = usePlannerStore((s) => s.routines);
+  return useMemo(() => new Set(routines.map((r) => r.id)), [routines]);
+}
+
 const countLive = (ids: readonly string[], live: Set<string>) =>
   ids.reduce((n, id) => n + (live.has(id) ? 1 : 0), 0);
 
@@ -485,6 +492,12 @@ function ProgramList({
 }) {
   const { todayStr } = useToday();
   const liveIds = useLiveItemIds();
+  // Routine ids need the same live-index filter the item ids get. A routine's
+  // soft delete leaves the program_routines join row alone (restore-intact, by
+  // design), so a raw length keeps counting a routine nobody can see — and the
+  // detail pane one click away filters it out, so the manager disagreed with
+  // itself permanently rather than for a frame.
+  const liveRoutineIds = useLiveRoutineIds();
 
   if (programs.length === 0) {
     return (
@@ -512,7 +525,9 @@ function ProgramList({
             // Items held directly PLUS whole routines: both are things this
             // program switches, and a program that holds only routines would
             // otherwise read as empty.
-            count={countLive(program.itemIds, liveIds) + program.routineIds.length}
+            count={
+              countLive(program.itemIds, liveIds) + countLive(program.routineIds, liveRoutineIds)
+            }
             onSelect={() => onSelect(program.id)}
           />
         );
@@ -976,10 +991,16 @@ function DateRangeRow({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* Each field bounds the other. Without this the two are independent
+          single-day pickers and an inverted range (starts after ends) is one
+          careless click away — a range that is live on NO date, so every member
+          vanishes permanently with the manager still cheerfully reporting
+          "Runs Sep 1 to Aug 1, inclusive." */}
       <DayField
         label="Starts"
         value={startsOn}
         testId="program-starts-on"
+        disabledDays={endsOn ? { after: parseDay(endsOn)! } : undefined}
         onChange={(next) => onChange({ startsOn: next })}
       />
       <span className="text-muted-foreground text-xs">→</span>
@@ -987,6 +1008,7 @@ function DateRangeRow({
         label="Ends"
         value={endsOn}
         testId="program-ends-on"
+        disabledDays={startsOn ? { before: parseDay(startsOn)! } : undefined}
         onChange={(next) => onChange({ endsOn: next })}
       />
     </div>
@@ -997,11 +1019,19 @@ function DayField({
   label,
   value,
   testId,
+  disabledDays,
   onChange,
 }: {
   label: string;
   value?: string;
   testId: string;
+  /**
+   * A react-day-picker v9 matcher. Typed as the two single-key shapes rather
+   * than `{before?, after?}`, because both-optional matches no member of the
+   * library's Matcher union — `DateInterval` requires BOTH, and it would also
+   * be the wrong semantics here (that one disables the days between them).
+   */
+  disabledDays?: { before: Date } | { after: Date };
   onChange: (next: string | undefined) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -1025,6 +1055,10 @@ function DayField({
           <Calendar
             mode="single"
             selected={selected}
+            // v9 matcher. `{before}`/`{after}` are STRICT, which is what an
+            // inclusive range wants: starts and ends may legitimately be the
+            // same day (a one-day program), and only crossing is forbidden.
+            disabled={disabledDays}
             onSelect={(date) => {
               // `format`, not toDateStr: react-day-picker hands back a
               // browser-LOCAL-midnight Date, and re-reading that instant in
@@ -1061,11 +1095,14 @@ function DayField({
 function RoutineMemberList({ program, live }: { program: Program; live: boolean }) {
   const routines = usePlannerStore((s) => s.routines);
   const allPrograms = usePlannerStore((s) => s.programs);
+  const items = usePlannerStore((s) => s.items);
   const updateProgram = usePlannerStore((s) => s.updateProgram);
   const liveIds = useLiveItemIds();
-  const { todayStr } = useToday();
+  const { todayStr, tz } = useToday();
   const [adding, setAdding] = useState(false);
-  const [pendingAttach, setPendingAttach] = useState<Routine | null>(null);
+  const [pendingAttach, setPendingAttach] = useState<{ routine: Routine; hides: number } | null>(
+    null
+  );
 
   const members = program.routineIds
     .map((id) => routines.find((r) => r.id === id))
@@ -1073,6 +1110,31 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
 
   const attach = (routine: Routine) =>
     updateProgram(program.id, { routineIds: [...program.routineIds, routine.id] });
+
+  /**
+   * How many items this attach would ACTUALLY hide, asked of the resolver by
+   * simulating the join rather than counting members.
+   *
+   * A raw member count is wrong three ways at once: members already hidden by
+   * the routine's own pause, members the user paused by hand, and members held
+   * by a second live program all count toward it while none of them would move.
+   * At worst that produces a confirm saying "this will hide 5 items" for a
+   * write that hides nothing — which teaches the user to dismiss the dialog
+   * unread, and this is the one dialog in the app that has something to say.
+   */
+  const wouldHide = (routine: Routine): number => {
+    const ctx = { userTimezone: tz, routines, programs: allPrograms };
+    const before = inactiveItemIdsOn(items, todayStr, ctx);
+    const after = inactiveItemIdsOn(items, todayStr, {
+      ...ctx,
+      programs: allPrograms.map((p) =>
+        p.id === program.id ? { ...p, routineIds: [...p.routineIds, routine.id] } : p
+      ),
+    });
+    let n = 0;
+    for (const id of after) if (!before.has(id)) n += 1;
+    return n;
+  };
 
   const requestAttach = (routine: Routine) => {
     setAdding(false);
@@ -1082,8 +1144,8 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
     const heldElsewhere = allPrograms.some(
       (p) => p.id !== program.id && p.routineIds.includes(routine.id)
     );
-    const consequential = !heldElsewhere && !live && countLive(routine.itemIds, liveIds) > 0;
-    if (consequential) setPendingAttach(routine);
+    const hides = heldElsewhere ? 0 : wouldHide(routine);
+    if (hides > 0) setPendingAttach({ routine, hides });
     else attach(routine);
   };
 
@@ -1164,13 +1226,12 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
       </div>
 
       <AttachRoutineConfirm
-        routine={pendingAttach}
+        pending={pendingAttach}
         program={program}
         todayStr={todayStr}
-        liveIds={liveIds}
         onCancel={() => setPendingAttach(null)}
         onConfirm={() => {
-          if (pendingAttach) attach(pendingAttach);
+          if (pendingAttach) attach(pendingAttach.routine);
           setPendingAttach(null);
         }}
       />
@@ -1189,21 +1250,20 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
  * membership write with a non-obvious consequence states it before committing.
  */
 function AttachRoutineConfirm({
-  routine,
+  pending,
   program,
   todayStr,
-  liveIds,
   onCancel,
   onConfirm,
 }: {
-  routine: Routine | null;
+  pending: { routine: Routine; hides: number } | null;
   program: Program;
   todayStr: string;
-  liveIds: Set<string>;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const n = routine ? countLive(routine.itemIds, liveIds) : 0;
+  const routine = pending?.routine ?? null;
+  const n = pending?.hides ?? 0;
   const returns =
     program.state === 'auto' && program.startsOn && todayStr < program.startsOn
       ? formatShort(program.startsOn)

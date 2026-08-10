@@ -17,6 +17,9 @@ const SIGNIFICANT_ACTIONS = [
   'Unschedule task:',
   'Move task to',
   'Schedule task:',
+  // The multi-select group drag. It wrote startDate and isScheduled on every
+  // selected item and raised nothing — not even an undo affordance.
+  'Schedule items:',
   'Move habit to',
   'Move all tasks',
   'Reset streak:',

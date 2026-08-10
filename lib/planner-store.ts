@@ -1081,7 +1081,16 @@ export const usePlannerStore = create<PlannerStore>()(
 
       updateTask: (id, updates) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
+        // A date change through the generic edit action IS a move verb, and two
+        // of the surfaces decision 11 names by name arrive here rather than at
+        // moveTaskToDate: the EOD review's "Tomorrow" button and date picker
+        // (which is also how "Move all to tomorrow" works, one row at a time),
+        // and the item dialog's date chip. Attaching the receipt to the update
+        // itself is what stops the next such surface from being missed too.
+        setNextActionLabel(
+          `Edit task: ${task?.title || 'Unknown'}`,
+          'startDate' in updates ? landingReceipt(get(), [id], updates.startDate) : undefined
+        );
 
         const newUpdates = { ...updates };
         // Auto-correct bucket if start time changes
@@ -1496,7 +1505,14 @@ export const usePlannerStore = create<PlannerStore>()(
         const targets = get().items.filter((i) => idSet.has(i.id));
         if (targets.length === 0) return;
         const corrected = autoCorrectBucket(time, bucket) ?? bucket;
-        setNextActionLabel(`Schedule ${targets.length} items`);
+        // 'Schedule items' — plural — is its own SIGNIFICANT_ACTIONS prefix in
+        // hooks/use-undo-toast.ts. The old label matched none of them, so a
+        // group drag onto the grid produced no toast at ALL: no undo affordance
+        // and, once decision 11 arrived, nowhere for the receipt to appear.
+        setNextActionLabel(
+          `Schedule items: ${targets.length} items`,
+          landingReceipt(get(), ids, dateStr)
+        );
 
         // All land at the same clock time; the grid's overlap layout tiles them.
         const taskUpdates: Partial<Task> = {

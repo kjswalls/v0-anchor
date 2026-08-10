@@ -450,13 +450,20 @@ export function Braindump() {
       if (!suppressedIds.has(item.id)) continue;
       if ('parentItemId' in item && item.parentItemId) continue;
       const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, programs });
+      // Self-paused items key on their RESUME DATE as well as the cause. The
+      // heading is taken from whichever row lands in the bucket first, and
+      // store order is sort_order/created_at — nothing to do with pause dates —
+      // so a single 'paused' bucket puts "Paused until Sep 1" over an item that
+      // has no scheduled return at all, or the bare "Paused" over one that does.
+      // Container causes need no such split: every member of a routine shares
+      // its one resume date by construction.
       const key = !reason
         ? 'paused'
         : reason.kind === 'routine'
           ? `routine:${reason.routine.id}`
           : reason.kind === 'program'
             ? `program:${reason.program.id}`
-            : 'paused';
+            : `paused:${reason.until ?? ''}`;
       const row: RowItem =
         item.type === 'habit'
           ? { itemType: 'habit' as const, item: item as unknown as Habit }

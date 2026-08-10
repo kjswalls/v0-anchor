@@ -1123,6 +1123,7 @@ const routineCommands: CommandProvider = () => {
 };
 
 let cachedPrograms: readonly Program[] | null = null;
+let cachedProgramDay: string | null = null;
 let cachedProgramCommands: Command[] = [];
 
 /**
@@ -1141,11 +1142,17 @@ let cachedProgramCommands: Command[] = [];
 const programCommands: CommandProvider = () => {
   const { programs, collectionsAvailable } = planner();
   if (!collectionsAvailable) return [];
-  if (programs === cachedPrograms) return cachedProgramCommands;
-
-  cachedPrograms = programs;
   const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const todayStr = toDateStr(new Date(), tz);
+  // The day is part of the key, not just the array. An `auto` program flips
+  // liveness at midnight with NO store write, so array identity alone cannot
+  // express the passage of time — a tab left open overnight would keep serving
+  // yesterday's "Turn on Summer" for a program the calendar already turned on.
+  // Same reasoning as the entity-eligibility memo, which had to learn this too.
+  if (programs === cachedPrograms && todayStr === cachedProgramDay) return cachedProgramCommands;
+
+  cachedPrograms = programs;
+  cachedProgramDay = todayStr;
   const liveCount = programs.filter((p) => isProgramActiveOn(p, todayStr)).length;
 
   cachedProgramCommands = programs.flatMap((program) => {
@@ -1157,7 +1164,20 @@ const programCommands: CommandProvider = () => {
         group: 'items',
         icon: live ? PauseIcon : PlayIcon,
         keywords: `program ${program.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
-        run: () => planner().setProgramState(program.id, live ? 'paused' : 'active'),
+        // Re-resolved at RUN time, and belt-and-braces even with the day in the
+        // key above. The label promises an OUTCOME ("on"), not a transition, so
+        // if the world already reached it there is nothing to do — and doing it
+        // anyway would write a manual state onto an `auto` program, silently
+        // destroying the date-following the user configured. `swapToProgram`
+        // refuses the same write for the same reason.
+        run: () => {
+          const desiredOn = !live;
+          const current = planner().programs.find((p) => p.id === program.id);
+          if (!current) return;
+          const onNow = isProgramActiveOn(current, toDateStr(new Date(), tz));
+          if (onNow === desiredOn) return;
+          planner().setProgramState(program.id, desiredOn ? 'active' : 'paused');
+        },
       },
     ];
     if (!live && liveCount > 0) {

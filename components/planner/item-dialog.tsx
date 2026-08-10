@@ -79,7 +79,7 @@ import {
   isCollectible,
 } from '@/lib/item-registry';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
-import { isPausedOn, suppressionReason } from '@/lib/active';
+import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -2025,16 +2025,15 @@ export function ItemDialog({
                   className="flex items-center gap-2.5 rounded-md bg-surface-2 px-2.5 py-2"
                 >
                   <Moon className="size-4 shrink-0 text-muted-foreground" />
+                  {/* suppressionLabel, not a local ternary. A hand-rolled one
+                      here had only a `routine` arm, so a program-caused
+                      suppression fell through to the item-pause wording and
+                      told the user "Paused until Sep 1" about an item they
+                      never paused — while the overflow menu beside it offered
+                      Pause, not Resume. Every new cause the resolver learns has
+                      to reach this line without anyone remembering to come. */}
                   <span className="text-xs text-muted-foreground">
-                    {activationReason.kind === 'routine'
-                      ? `Hidden with your ${activationReason.routine.name} routine${
-                          activationReason.until
-                            ? ` — back ${format(parseISO(activationReason.until), 'MMM d')}`
-                            : ''
-                        }`
-                      : activationReason.until
-                        ? `Paused until ${format(parseISO(activationReason.until), 'MMM d')}`
-                        : 'Paused'}
+                    {suppressionLabel(activationReason, { long: true })}
                   </span>
                 </div>
               )}
