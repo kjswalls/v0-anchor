@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isPausedOn, resolvePauseWrite } from '@/lib/active';
+import { withTrashedMembersKept } from '@/lib/agent-api';
 import {
   TaskUpdateSchema,
   HabitUpdateSchema,
@@ -193,6 +194,29 @@ describe('program range and membership at the schema boundary', () => {
     expect(ProgramCreateSchema.safeParse({ name: 'A', state: 'off' }).success).toBe(false);
   });
 
+  it('REFUSES the pause verb on a program instead of silently dropping it', () => {
+    // Zod strips unknown keys, which is right for a field that means nothing.
+    // `paused` means something everywhere else in this API, so an agent that
+    // learned it on routines will try it here — and a stripped key returns
+    // 200 {success:true} with the program still live, which is how an agent
+    // concludes the job is done. Same reasoning that rejects a bare
+    // pausedUntil on an unpaused item.
+    for (const schema of [ProgramCreateSchema, ProgramUpdateSchema]) {
+      expect(schema.safeParse({ name: 'A', paused: true }).success).toBe(false);
+      expect(schema.safeParse({ name: 'A', pausedUntil: '2026-09-01' }).success).toBe(false);
+    }
+    // …and the message names the control that does work.
+    const err = ProgramUpdateSchema.safeParse({ paused: true });
+    expect(err.success).toBe(false);
+    expect(JSON.stringify(err.error?.issues)).toContain('state');
+  });
+
+  it('still accepts the tri-state that replaces it', () => {
+    for (const state of ['auto', 'active', 'paused']) {
+      expect(ProgramUpdateSchema.safeParse({ state }).success).toBe(true);
+    }
+  });
+
   it('requires membership ids to be uuids', () => {
     expect(ProgramCreateSchema.safeParse({ name: 'A', itemIds: ['not-a-uuid'] }).success).toBe(
       false
@@ -211,5 +235,50 @@ describe('program range and membership at the schema boundary', () => {
     expect(RoutineCreateSchema.safeParse({}).success).toBe(false);
     expect(ProgramCreateSchema.safeParse({}).success).toBe(false);
     expect(RoutineCreateSchema.safeParse({ name: '' }).success).toBe(false);
+  });
+});
+
+describe('withTrashedMembersKept', () => {
+  /**
+   * The plan's locked dangling-id rule: "member arrays may reference trashed
+   * items … arrays are pruned only by the purge CASCADE, never eagerly."
+   *
+   * The UI honours it for free, editing the raw stored array. An agent cannot:
+   * items[] on the wire is deleted_at-filtered, so a model rebuilding
+   * membership from what it can SEE omits the trashed id, and whole-set
+   * replacement then deletes its join row — silently, and unrecoverably,
+   * because restoring the item afterwards returns it as a non-member.
+   */
+  const live = (...ids: string[]) => new Set(ids);
+
+  it('adds back a member that is absent only because it is in the trash', () => {
+    expect(withTrashedMembersKept(['a', 'c'], ['a', 'b'], live('a'))).toEqual(['a', 'c', 'b']);
+  });
+
+  it('still honours a deliberate removal of a LIVE member', () => {
+    // 'b' is live and was left out, so the caller could see it and chose to
+    // drop it. Keeping it would make removal impossible through the API.
+    expect(withTrashedMembersKept(['a'], ['a', 'b'], live('a', 'b'))).toEqual(['a']);
+  });
+
+  it('returns the input untouched when nothing is being dropped', () => {
+    const desired = ['a', 'b', 'c'];
+    expect(withTrashedMembersKept(desired, ['a', 'b'], live('a', 'b'))).toBe(desired);
+  });
+
+  it('does not duplicate a trashed member the caller kept', () => {
+    // The documented flow — echo the array context published, which INCLUDES
+    // trashed ids. A duplicate here would make Postgres abort the whole upsert
+    // with 21000 ("cannot affect row a second time").
+    expect(withTrashedMembersKept(['a', 'b'], ['a', 'b'], live('a'))).toEqual(['a', 'b']);
+  });
+
+  it('handles clearing the whole set', () => {
+    // itemIds: [] means "remove everyone" — everyone the caller could see.
+    expect(withTrashedMembersKept([], ['a', 'b'], live('a'))).toEqual(['b']);
+  });
+
+  it('keeps several trashed members at once', () => {
+    expect(withTrashedMembersKept(['a'], ['a', 'b', 'c'], live('a'))).toEqual(['a', 'b', 'c']);
   });
 });

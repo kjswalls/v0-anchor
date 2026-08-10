@@ -600,7 +600,55 @@ dateless surfaces resolve at today (decision 3).
   names the work, groups by cause through the existing `suppressionLabel`, and says
   plainly that these are not a backlog.
 
+- [x] **Phase 4 adversarial review** (2026-08-10, 37 agents / 2.4M tokens, 8 finder
+  dimensions × 2 verification lenses). 35 raw findings → 14 verified → **1 survivor**,
+  no blocker. All 10 high-severity findings were verified; the 21 dropped unverified
+  were 10 medium + 11 low.
+
+  **The survivor, confirmed live before fixing and again after:** route-level
+  membership validation was stricter than the data the same API publishes.
+  `validateItemMembers` filtered `.is('deleted_at', null)`, but item soft-delete
+  deliberately keeps join rows and `fetchRoutines`/`fetchPrograms` read them
+  unfiltered — so `/api/agent/context` handed out an `itemIds` array containing a
+  trashed id and then **400'd on an identity write of that same array**. It landed
+  squarely on the plan's own locked dangling-id rule: *"arrays are pruned only by
+  the purge CASCADE, never eagerly."*
+
+  Two halves, and the second is worse than the one that was reported. Removing the
+  filter fixes the 400, but `items[]` on the wire IS `deleted_at`-filtered, so a
+  model rebuilding membership from what it can SEE omits the trashed id,
+  `reconcileMembership` computes it as removed, and the join row is DELETED —
+  silently, and unrecoverably, because restoring the item then returns it as a
+  non-member. Fixed with `withTrashedMembersKept`: at the agent boundary only, a
+  membership replacement re-adds members that are absent *only because they are
+  invisible to the caller*. A deliberate removal of a LIVE member still works. The
+  UI needed nothing — it edits the raw stored array and honours the rule for free;
+  the agent is the one caller that cannot see these ids.
+
+  **Also fixed, raised by four finders independently and under-weighted by the
+  verification pass:** `PATCH /api/agent/programs/:id {paused:true}` returned
+  `200 {success:true}` and did nothing, because Zod strips unknown keys and
+  programs switch through `state`. The verifiers refuted it as "unknown-key
+  stripping is the documented refusal mechanism" — true in general, but `paused`
+  means something everywhere else in this API, and a write with no effect that
+  reports success is the exact failure a bare `pausedUntil` on a live item is
+  rejected for, one function away. Both program schemas now carry the keys solely
+  to refuse them, with a message naming `state`.
+
+  **Refuted and not to be re-raised** (each checked against the code, not waved
+  off): the `resolvePauseWrite` "already paused" branches skipping the
+  past-resume-date guard (that write IS a resume, and the guard is correctly
+  scoped to the fresh-pause branch); whole-set replacement "silently dropping"
+  members (the locked choice, for retry idempotency); `causeFor` blaming a program
+  over a paused routine inside it (needs return dates the plugin deliberately does
+  not carry); container PATCH ignoring its pause-read error (unreachable —
+  `verifyContainerOwnership` reads the same row one line earlier and 404s first);
+  and agent writes not emitting webhooks (false premise — every 4d tool calls
+  `markCacheDirty()`).
+
 - [x] **Phase 4d — the OpenClaw plugin** (built 2026-08-10, version bumped to 0.2.0).
+  **Republish deliberately deferred** (Kirby, 2026-08-10) — more plugin changes are
+  expected, so 0.2.0 sits unpublished rather than shipping twice.
   **Reaches nobody until `npm publish` runs** — the plugin's `dist/` is gitignored
   and built at publish time, so CI gates none of this.
 
@@ -639,6 +687,31 @@ dateless surfaces resolve at today (decision 3).
   precedent — the Paused section already covers discoverability), group-by routine
   (view-options + GroupSection id lookup), routine-internal ordering UI (sort_order
   column exists from day one), bulk membership add.
+
+  **The manager has no unconditional entry point, and that is the priority item**
+  (found 2026-08-10 — Kirby could not locate the feature he had just commissioned).
+  Four routes in, three of them gated on state a new user does not have:
+  the item dialog's Routine chip needs `routines.length > 0`
+  (item-dialog.tsx:1188), the Program chip needs `programs.length > 0` (:1242),
+  and ProgramNotice only renders while a program is actively hiding something. So
+  from zero the command palette (`app.collections`, alias `/routines`) is the ONLY
+  door — and the chips that would reveal that door only appear after you have
+  already been through it. Meanwhile `manage-categories` has a permanent icon
+  button in the braindump header (braindump.tsx:525).
+
+  The asymmetry was deliberate and its reasoning is recorded at
+  item-dialog.tsx:1216 — *"that row is width-critical at the 280px minimum"*. That
+  premise EXPIRED with the draggable sidebar (`a339b4c`): 280px is now a floor the
+  user can leave, not the normal case.
+
+  **Kirby's call (2026-08-10): fix it as part of a unified manager redesign**, not
+  as a bolted-on second button. Five tabs across two dialogs
+  (projects / groups / types, and routines / programs) reached by different routes
+  is the real defect; the missing entry point is its symptom. Design exploration
+  ran as a research workflow over six reference-app families. **Management stays
+  OUT of Settings** — see the artifact and the line argued there: settings are
+  preferences that change how the app behaves, containers are data whose state
+  changes what work exists. Settings' own redesign is a separate project.
 
 ## Deferred for a decision (recorded, not designed)
 

@@ -554,7 +554,39 @@ const rejectInvertedRange = (
   }
 }
 
+/**
+ * A program does not pause; it switches. Say so instead of dropping the keys.
+ *
+ * Zod strips unknown keys, which is the right default for a field that means
+ * nothing — but `paused` means something everywhere else in this API, so an
+ * agent that learned it on routines will reasonably try it here and get
+ * 200 {success:true} with the program still live. That is precisely the failure
+ * a bare `pausedUntil` on a live item is rejected for: a write with no effect
+ * that reports success is how an agent concludes the job is done and moves on.
+ * The keys are in the shape ONLY so this refine can see them.
+ */
+const rejectProgramPauseVerb = (
+  data: { paused?: unknown; pausedUntil?: unknown; state?: unknown },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.paused === undefined && data.pausedUntil === undefined) return
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message:
+      'programs switch through `state`, not paused/pausedUntil — use ' +
+      "state: 'paused' to turn one off, 'active' to force it on, or 'auto' to " +
+      'hand it back to its date range.',
+    path: ['state'],
+  })
+}
+
 const programRangeShape = {
+  // Present only to be refused with a pointer to `state` — see
+  // rejectProgramPauseVerb. z.unknown() rather than the real types so a
+  // malformed value still produces THAT message rather than a type error that
+  // reads as though the field were supported.
+  paused: z.unknown().optional(),
+  pausedUntil: z.unknown().optional(),
   /**
    * 'auto' follows the range; 'active'/'paused' are manual overrides that win
    * over it. Omitted on create → 'auto', which with no range means "always on".
@@ -575,6 +607,7 @@ export const ProgramCreateSchema = z
     ...programRangeShape,
   })
   .superRefine(rejectInvertedRange)
+  .superRefine(rejectProgramPauseVerb)
 
 export const ProgramUpdateSchema = z
   .object({
@@ -587,6 +620,7 @@ export const ProgramUpdateSchema = z
   // reaches the store unchecked — the same limitation requireCustomDays has,
   // and for the same reason: a refine cannot read the row.
   .superRefine(rejectInvertedRange)
+  .superRefine(rejectProgramPauseVerb)
 
 // ── API response schemas ───────────────────────────────────────────────────────
 

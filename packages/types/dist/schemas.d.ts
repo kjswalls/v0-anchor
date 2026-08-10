@@ -2016,7 +2016,9 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }>;
-export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
+export declare const ProgramCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    paused: z.ZodOptional<z.ZodUnknown>;
+    pausedUntil: z.ZodOptional<z.ZodUnknown>;
     /**
      * 'auto' follows the range; 'active'/'paused' are manual overrides that win
      * over it. Omitted on create → 'auto', which with no range means "always on".
@@ -2038,9 +2040,11 @@ export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
     name: string;
     id?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2049,9 +2053,11 @@ export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
     name: string;
     id?: string | null | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2060,9 +2066,11 @@ export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
     name: string;
     id?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2071,15 +2079,45 @@ export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
     name: string;
     id?: string | null | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
     routineIds?: string[] | undefined;
 }>;
-export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
+export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    paused: z.ZodOptional<z.ZodUnknown>;
+    pausedUntil: z.ZodOptional<z.ZodUnknown>;
     /**
      * 'auto' follows the range; 'active'/'paused' are manual overrides that win
      * over it. Omitted on create → 'auto', which with no range means "always on".
@@ -2099,9 +2137,11 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2109,9 +2149,11 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
 }, {
     name?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2119,9 +2161,11 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
 }>, {
     name?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;
@@ -2129,9 +2173,35 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
 }, {
     name?: string | undefined;
     color?: string | null | undefined;
+    paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
     itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: unknown;
     state?: "auto" | "active" | "paused" | undefined;
     startsOn?: string | null | undefined;
     endsOn?: string | null | undefined;

@@ -177,8 +177,8 @@ interface MemberRow {
 }
 
 /**
- * Every id in a membership array must be one of this user's live items, and one
- * the registry says may join a collection.
+ * Every id in a membership array must be one of this user's items, and one the
+ * registry says may join a collection.
  *
  * Checked here rather than left to the database because the two failure modes
  * are both silent otherwise. The composite (id, user_id) foreign keys reject a
@@ -188,6 +188,15 @@ interface MemberRow {
  * And the subtask rule (plan decision 7) is not expressible as a constraint at
  * all: a subtask surfaces only inside its parent, so collecting one produces
  * membership the user can neither see nor undo.
+ *
+ * "Exists" deliberately INCLUDES trashed items. Join rows outlive an item's
+ * soft delete by design so a restore inside the 30-day window brings membership
+ * back intact, and fetchRoutines/fetchPrograms read the join tables unfiltered
+ * — so /api/agent/context publishes those ids. Filtering them here made the API
+ * refuse an array it had just handed out: the documented read-modify-write
+ * ("read the current members, send the full list") 400'd, and so did an
+ * identity write. Ownership is enforced by the user_id filter, not by
+ * deleted_at, and a purged or foreign id is still absent and still rejected.
  */
 async function validateItemMembers(
   client: DbClient,
@@ -200,7 +209,6 @@ async function validateItemMembers(
     .from('items')
     .select('id, type, parent_item_id')
     .eq('user_id', userId)
-    .is('deleted_at', null)
     .in('id', unique)
   if (error) throw error
 
@@ -221,7 +229,10 @@ async function validateItemMembers(
   return null
 }
 
-/** Same contract for a program's routineIds. Routines have no subtask analog. */
+/**
+ * Same contract for a program's routineIds — trashed included, for the same
+ * reason. Routines have no subtask analog, so existence is the whole check.
+ */
 async function validateRoutineMembers(
   client: DbClient,
   userId: string,
@@ -233,7 +244,6 @@ async function validateRoutineMembers(
     .from('routines')
     .select('id')
     .eq('user_id', userId)
-    .is('deleted_at', null)
     .in('id', unique)
   if (error) throw error
   const found = new Set(((data ?? []) as { id: string }[]).map((r) => r.id))
@@ -241,6 +251,82 @@ async function validateRoutineMembers(
   return missing.length > 0
     ? `routineIds reference routines that do not exist: ${missing.join(', ')}`
     : null
+}
+
+/**
+ * Membership arrays are whole-set replacements, so anything absent is removed.
+ * Add back the members that are absent only because the caller could not SEE
+ * them.
+ *
+ * The plan's dangling-id rule is explicit: "member arrays may reference trashed
+ * items … arrays are pruned only by the purge CASCADE, never eagerly." The UI
+ * honours it for free — ItemMemberList edits the raw stored array, so a trashed
+ * member's id rides along untouched. An agent cannot: `items[]` on the wire is
+ * `deleted_at`-filtered, so a model rebuilding the list from what it can see
+ * omits the trashed id, reconcileMembership computes it as removed, and DELETEs
+ * the join row. Restoring the item then returns it as a NON-member, silently,
+ * and the restore-brings-membership-back guarantee is gone.
+ *
+ * Applied only at the agent boundary, not inside reconcileMembership: the agent
+ * is the one caller that cannot see these ids, and the db layer's other callers
+ * would pay two queries per membership write for a case they cannot hit.
+ *
+ * The cost is that an agent cannot REMOVE a trashed member. Neither can the UI
+ * (the picker does not render them), and the purge clears them at 30 days.
+ */
+export function withTrashedMembersKept(
+  desired: string[],
+  current: string[],
+  liveIds: ReadonlySet<string>,
+): string[] {
+  const asked = new Set(desired)
+  const trashed = current.filter((id) => !asked.has(id) && !liveIds.has(id))
+  return trashed.length === 0 ? desired : [...desired, ...trashed]
+}
+
+interface JoinTable {
+  table: string
+  ownerCol: string
+  memberCol: string
+  /** Where the member itself lives, so liveness can be resolved. */
+  memberTable: 'items' | 'routines'
+}
+
+/** Gather what {@link withTrashedMembersKept} needs, then apply it. */
+async function keepTrashedMembers(
+  client: DbClient,
+  userId: string,
+  join: JoinTable,
+  ownerId: string,
+  desired: string[],
+): Promise<string[]> {
+  const { data, error } = await client
+    .from(join.table)
+    .select(join.memberCol)
+    .eq(join.ownerCol, ownerId)
+    .eq('user_id', userId)
+  if (error) throw error
+  // `unknown` first: the column name is dynamic, so the client cannot infer a
+  // row shape and types the select as its error branch.
+  const current = ((data ?? []) as unknown as Record<string, string>[]).map(
+    (r) => r[join.memberCol],
+  )
+
+  const asked = new Set(desired)
+  const candidates = current.filter((id) => !asked.has(id))
+  // Nothing is being dropped, so nothing can be dropped WRONGLY — skip the
+  // liveness read entirely on the common path (an add, or an unchanged set).
+  if (candidates.length === 0) return desired
+
+  const { data: live, error: liveError } = await client
+    .from(join.memberTable)
+    .select('id')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .in('id', candidates)
+  if (liveError) throw liveError
+  const liveIds = new Set(((live ?? []) as { id: string }[]).map((r) => r.id))
+  return withTrashedMembersKept(desired, current, liveIds)
 }
 
 /**
@@ -446,6 +532,10 @@ interface ContainerApiConfig {
   holdsRoutines: boolean
   /** True when this container's suppression is expressed as pause columns. */
   usesPauseVerb: boolean
+  /** Where this container's item membership lives, for the trashed-member rule. */
+  itemJoin: JoinTable
+  /** Only programs hold routines. */
+  routineJoin?: JoinTable
 }
 
 const CONTAINER_API: Record<ContainerKind, ContainerApiConfig> = {
@@ -463,6 +553,12 @@ const CONTAINER_API: Record<ContainerKind, ContainerApiConfig> = {
     remove: (userId, id, client) => deleteRoutine(userId, id, client),
     holdsRoutines: false,
     usesPauseVerb: true,
+    itemJoin: {
+      table: 'routine_items',
+      ownerCol: 'routine_id',
+      memberCol: 'item_id',
+      memberTable: 'items',
+    },
   },
   program: {
     payloadKey: 'program',
@@ -482,6 +578,18 @@ const CONTAINER_API: Record<ContainerKind, ContainerApiConfig> = {
     // derived timestamp and therefore needs no verb translation: `state` IS the
     // verb. See isProgramActiveOn for why the two containers differ.
     usesPauseVerb: false,
+    itemJoin: {
+      table: 'program_items',
+      ownerCol: 'program_id',
+      memberCol: 'item_id',
+      memberTable: 'items',
+    },
+    routineJoin: {
+      table: 'program_routines',
+      ownerCol: 'program_id',
+      memberCol: 'routine_id',
+      memberTable: 'routines',
+    },
   },
 }
 
@@ -622,6 +730,27 @@ export function makeContainerItemHandlers(kind: ContainerKind) {
         config,
       )
       if (problem) return badRequest(problem)
+
+      // Whole-set replacement, minus the members the caller could not see —
+      // see withTrashedMembersKept.
+      if (fields.itemIds) {
+        updates.itemIds = await keepTrashedMembers(
+          auth.serviceClient,
+          auth.userId,
+          config.itemJoin,
+          id,
+          fields.itemIds,
+        )
+      }
+      if (fields.routineIds && config.routineJoin) {
+        updates.routineIds = await keepTrashedMembers(
+          auth.serviceClient,
+          auth.userId,
+          config.routineJoin,
+          id,
+          fields.routineIds,
+        )
+      }
 
       if (config.usesPauseVerb && (paused !== undefined || pausedUntil !== undefined)) {
         const { data } = await auth.serviceClient
