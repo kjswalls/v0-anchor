@@ -311,6 +311,64 @@ const OptionalIdSchema = z
   .nullish()
   .transform((v) => v ?? undefined)
 
+/**
+ * yyyy-MM-dd, enforced.
+ *
+ * Deliberately NOT retrofitted onto the older loose fields (`startDate` and
+ * friends stay `z.string()`) — tightening those could 400 a deployed agent that
+ * has been sending something sloppy-but-workable for months. New fields carry
+ * the constraint from birth, and pause/range dates in particular need it: they
+ * are compared LEXICALLY against `toDateStr` output, so "Sep 1" or an ISO
+ * timestamp does not error, it silently resolves to the wrong side of every
+ * boundary.
+ */
+const DateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected a yyyy-MM-dd date')
+
+/**
+ * Pausing, expressed as the VERB the UI offers rather than the two columns it
+ * writes.
+ *
+ * `pausedAt` is absent on purpose and is derived server-side. It is the
+ * resolver's lower bound, and a value an agent picks is wrong in both
+ * directions: backdated, it retro-suppresses history that actually happened;
+ * postdated, the item stays visible and the pause looks like it silently
+ * failed. `paused: true/false` cannot be incoherent, so the API only accepts
+ * that. See resolvePauseWrite in lib/active.ts for the translation.
+ */
+const pauseVerbShape = {
+  /** true → pause from now; false → resume today. Omit to leave pause state alone. */
+  paused: z.boolean().optional(),
+  /**
+   * Resume date (EXCLUSIVE — live again ON this date). Sent with `paused: true`
+   * it sets the end of the pause; sent alone it moves the resume date of a
+   * pause already running. `null` means "paused with no end date".
+   */
+  pausedUntil: clearable(DateOnlySchema),
+}
+
+/**
+ * `paused: false` says "resume now", which leaves no resume date to set — so a
+ * body carrying both is not a partially-honoured request, it is two
+ * instructions that contradict. Rejecting beats picking one, because the
+ * plausible reading ("resume ON this date") is the one thing it does NOT do.
+ */
+const rejectResumeWithDate = (
+  data: { paused?: boolean | null; pausedUntil?: string | null },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.paused === false && data.pausedUntil !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'pausedUntil cannot accompany paused: false — resuming happens now. ' +
+        'To schedule a later resume, send paused: true with pausedUntil.',
+      path: ['pausedUntil'],
+    })
+  }
+}
+
 export const TaskCreateSchema = z
   .object({
     ...taskShape,
@@ -403,8 +461,10 @@ export const TaskUpdateSchema = z
     // stays cheap forever; the read side is deliberately loose.
     aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
     aiResult: clearable(z.string()),
+    ...pauseVerbShape,
   })
   .superRefine(requireCustomDays)
+  .superRefine(rejectResumeWithDate)
 
 export const HabitUpdateSchema = z
   .object({
@@ -426,8 +486,107 @@ export const HabitUpdateSchema = z
     timesPerDay: clearable(z.number().int()),
     currentDayCount: clearable(z.number().int()),
     notes: clearable(z.string()),
+    ...pauseVerbShape,
   })
   .superRefine(requireCustomDays)
+  .superRefine(rejectResumeWithDate)
+
+// ── Agent API: routines & programs ─────────────────────────────────────────────
+// Containers are agent-writable from schemaVersion 4. v1 deliberately shipped no
+// write surface here (same posture custom types took); the call is that an agent
+// acting for the user should reach what the user reaches, and hiding/unhiding a
+// block of work is squarely that.
+//
+// Membership arrives as whole id ARRAYS, not add/remove deltas, matching
+// db.ts reconcileMembership and the store. It costs a read-before-write on the
+// caller, and buys idempotence: a retried PATCH cannot double-add, and two
+// agents converge on the last full state rather than interleaving into a set
+// neither asked for.
+//
+// The composite (id, user_id) foreign keys on the join tables make a
+// cross-user member reference impossible at the DB level, so the route's own
+// membership checks are about the rules Postgres CANNOT state: a subtask is not
+// collectible (plan decision 7), and a 23503 should read as a 400 naming the
+// offending id rather than a 500.
+
+const containerIdentityShape = {
+  name: z.string().min(1),
+  /** icon:<LucideName> token, matching the container convention. */
+  icon: clearable(z.string()),
+  color: clearable(z.string()),
+  sortOrder: clearable(z.number().int()),
+}
+
+export const RoutineCreateSchema = z
+  .object({
+    ...containerIdentityShape,
+    id: OptionalIdSchema,
+    itemIds: z.array(z.string().uuid()).optional(),
+    ...pauseVerbShape,
+  })
+  .superRefine(rejectResumeWithDate)
+
+export const RoutineUpdateSchema = z
+  .object({
+    ...containerIdentityShape,
+    name: z.string().min(1).optional(),
+    itemIds: z.array(z.string().uuid()).optional(),
+    ...pauseVerbShape,
+  })
+  .superRefine(rejectResumeWithDate)
+
+/**
+ * An `auto` program whose range starts after it ends is live on no date at all,
+ * so it hides every member permanently while reading as "seasonal, currently
+ * out of season" — indistinguishable from a program that will come back. The
+ * pickers bound each other in the UI; the API has to say so itself.
+ */
+const rejectInvertedRange = (
+  data: { startsOn?: string | null; endsOn?: string | null },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.startsOn && data.endsOn && data.startsOn > data.endsOn) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'startsOn must not be after endsOn — that range is active on no date',
+      path: ['endsOn'],
+    })
+  }
+}
+
+const programRangeShape = {
+  /**
+   * 'auto' follows the range; 'active'/'paused' are manual overrides that win
+   * over it. Omitted on create → 'auto', which with no range means "always on".
+   */
+  state: ProgramStateSchema.optional(),
+  /** Inclusive bounds, either end open. Only read while state is 'auto'. */
+  startsOn: clearable(DateOnlySchema),
+  endsOn: clearable(DateOnlySchema),
+  itemIds: z.array(z.string().uuid()).optional(),
+  /** Held routines — their members ride along. */
+  routineIds: z.array(z.string().uuid()).optional(),
+}
+
+export const ProgramCreateSchema = z
+  .object({
+    ...containerIdentityShape,
+    id: OptionalIdSchema,
+    ...programRangeShape,
+  })
+  .superRefine(rejectInvertedRange)
+
+export const ProgramUpdateSchema = z
+  .object({
+    ...containerIdentityShape,
+    name: z.string().min(1).optional(),
+    ...programRangeShape,
+  })
+  // Sees only what the PATCH carries, so it catches a body that INTRODUCES an
+  // inverted range. Half a range patched against a stored other half still
+  // reaches the store unchecked — the same limitation requireCustomDays has,
+  // and for the same reason: a refine cannot read the row.
+  .superRefine(rejectInvertedRange)
 
 // ── API response schemas ───────────────────────────────────────────────────────
 
@@ -443,8 +602,17 @@ export const AnchorContextResponseSchema = z.object({
   // the whole response with one safeParse and would brick the cache against an
   // older server if this were required. Old builds strip it as an unknown key.
   items: z.array(ItemSchema).optional(),
+  // The containers that decide whether an item is suppressed (schemaVersion 4+).
+  // Same optionality rule as items[], and for a second reason here: the route
+  // OMITS these keys when the tables are unreachable, because `[]` would assert
+  // "you have no programs" to a consumer that might helpfully offer to create
+  // one. Absent means "this server did not say".
+  routines: z.array(RoutineSchema).optional(),
+  programs: z.array(ProgramSchema).optional(),
   // Additive (old clients strip unknown keys). 2 = tasks/habits are
-  // projections of the unified items table; 3 = items[] present.
+  // projections of the unified items table; 3 = items[] present; 4 = routines[]
+  // and programs[] present, so a consumer can explain WHY an item it remembers
+  // is missing from tasks[] instead of concluding it was deleted.
   schemaVersion: z.number().optional(),
 })
 

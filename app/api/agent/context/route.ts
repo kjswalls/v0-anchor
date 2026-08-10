@@ -46,6 +46,11 @@ export async function GET(req: NextRequest) {
     ])
   // null means the tables are unreachable — degrade to item-level pause rather
   // than 500ing a read the plugin depends on.
+  //
+  // The nullable results stay in scope: the FILTER wants `[]` (resolve what we
+  // can), but the RESPONSE must not, because emitting an empty array asserts
+  // "you have no programs" to a consumer that could act on it. Those are
+  // different answers to different questions off one fetch.
   const routines = routinesResult ?? []
   const programs = programsResult ?? []
 
@@ -96,7 +101,17 @@ export async function GET(req: NextRequest) {
     // are projections of the unified items table (migration 019); version 3 =
     // unified items[] included alongside the legacy projections.
     items,
-    schemaVersion: 3,
+    // The suppression CAUSES, so a consumer can explain an absence instead of
+    // guessing at it. Without these, an item that leaves tasks[] because its
+    // program went out of season is indistinguishable from one that was
+    // deleted — and the sensible-looking repair (recreate it) is the wrong
+    // move on every count.
+    //
+    // Spread, not `routines: routinesResult ?? []`: see the note above the
+    // coalesce. An unreachable table omits the key rather than claiming zero.
+    ...(routinesResult ? { routines: routinesResult } : {}),
+    ...(programsResult ? { programs: programsResult } : {}),
+    schemaVersion: 4,
   })
 }
 

@@ -1,8 +1,11 @@
 import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
-import { isOpenLoopSuppressedOn } from './active'
+import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
 import type { Item, Project, HabitGroupType, Routine, Program } from './planner-types'
+
+/** Per cause, before the list collapses to a count. */
+const MAX_PAUSED_TITLES = 5
 
 /**
  * Builds the Beacon chat context. Each item type contributes its own section
@@ -83,22 +86,66 @@ export function buildAnchorContext(state: {
   // opening a thread on a paused item is explicit intent, and filtering it
   // would leave Beacon unable to see the very item the thread is about — and
   // silently, since an unresolvable focus id just omits the section.
+  const activation = {
+    userTimezone: tz,
+    routines: state.routines,
+    programs: state.programs,
+  }
+  // Resolved ONCE and shared with the Paused section below, so the two can
+  // never disagree about which items are hidden — the section's whole job is to
+  // account for exactly what the sections above dropped.
+  const suppressed = state.items.filter((i) => isOpenLoopSuppressedOn(i, todayStr, activation))
+  const suppressedIds = new Set(suppressed.map((i) => i.id))
+
   for (const type of getAllItemTypeNames()) {
     lines.push(
       ...getItemTypeConfig(type).ai.renderContextSection(
-        state.items.filter(
-          (i) =>
-            itemTypeName(i) === type &&
-            !isOpenLoopSuppressedOn(i, todayStr, {
-              userTimezone: tz,
-              routines: state.routines,
-              programs: state.programs,
-            })
-        ),
+        state.items.filter((i) => itemTypeName(i) === type && !suppressedIds.has(i.id)),
         { today, todayStr }
       )
     )
     lines.push('')
+  }
+
+  // --- Paused ---
+  //
+  // Filtering suppressed work out of the sections above is right — Beacon must
+  // not plan around a habit the user put down for the summer. But silence has
+  // its own failure mode: asked "what happened to my gym habit?", Beacon could
+  // only answer from an absence, and the fluent thing to say about an absence
+  // is that it was finished, dropped, or never existed. All three are wrong,
+  // and the last two invite the repair (recreate it) that duplicates the row.
+  //
+  // So the work is named, with its cause, under a heading that says plainly it
+  // is not a backlog. Emitted only when something IS suppressed, which keeps
+  // the byte-pinned context tests exact for every input that has none.
+  if (suppressed.length > 0) {
+    const byCause = new Map<string, string[]>()
+    for (const item of suppressed) {
+      const reason = suppressionReason(item, todayStr, activation)
+      if (!reason) continue
+      const label = suppressionLabel(reason, { long: true })
+      const titles = byCause.get(label)
+      if (titles) titles.push(item.title)
+      else byCause.set(label, [item.title])
+    }
+    if (byCause.size > 0) {
+      lines.push('### Paused')
+      lines.push(
+        'Deliberately set aside — NOT overdue, not missed, and not on the lists ' +
+          'above. Do not suggest these, schedule them, or count them as slipping. ' +
+          'They come back on their own.'
+      )
+      for (const [label, titles] of byCause) {
+        // Titles, not just a count: "3 items are away" cannot answer a question
+        // about one of them by name, which is the question this section exists
+        // for. Capped so a large program cannot crowd out the live list.
+        const shown = titles.slice(0, MAX_PAUSED_TITLES).join(', ')
+        const rest = titles.length - MAX_PAUSED_TITLES
+        lines.push(`- ${label} (${titles.length}): ${shown}${rest > 0 ? `, +${rest} more` : ''}`)
+      }
+      lines.push('')
+    }
   }
 
   // --- Projects ---

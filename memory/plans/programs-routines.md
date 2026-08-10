@@ -540,10 +540,68 @@ dateless surfaces resolve at today (decision 3).
   path today — a future verb that writes `startDate` without going through
   them would need its own call.
 
-- [ ] **Phase 4 — external/AI:** context programs[]/routines[] + schemaVersion 4;
-  Beacon narration of pause state ("3 items are paused with your Summer program");
-  decide agent write surface (Update-schema extension, create-with-pause, plugin
-  republish for pause-aware narration).
+- [x] **Phase 4 — external/AI** (built 2026-08-10). Context serves `routines[]` and
+  `programs[]` at schemaVersion 4, Beacon narrates what it is hiding, and agents got
+  a write surface. Verified by 39 live calls against a running server, not just types.
+
+  **Kirby's call on the write surface (2026-08-10), reversing decision 6's v1
+  posture:** agents get it. "Agents should ideally have all (or most) of the control
+  the user has, on behalf of that user." So: `POST/PATCH/DELETE /api/agent/routines`
+  and `/programs`, plus item pausing on the existing PATCH routes.
+
+  **Pausing is exposed as the VERB, not the columns.** `paused: true|false` and
+  `pausedUntil`; `pausedAt` is derived server-side and stripped from every write
+  schema. An agent-chosen lower bound is wrong in both directions — backdated it
+  retro-suppresses history that actually happened, postdated the item stays visible
+  and the pause looks like it silently failed. The translation is
+  `resolvePauseWrite` in lib/active.ts, deliberately beside `isPausedOn`: the write
+  and read sides of one interval must not be derived twice. Programs need no
+  equivalent because their tri-state `state` IS the verb and carries no derived
+  timestamp.
+
+  **Create-with-pause stays omitted** (the open question from the packages/types
+  notes). It is not parity: the user has no affordance that creates an
+  already-invisible item, so this would be control the agent has and the user does
+  not, and the 201 echo would report pause state for an item nobody can find.
+
+  **Refusals, each because the silent alternative is worse than a 400:**
+  re-pausing something already paused returns an empty patch rather than restamping
+  `pausedAt` (which would drag the lower bound forward and un-hide the days
+  between); `paused: false` with a `pausedUntil` is rejected because its plausible
+  reading — "resume ON this date" — is the one thing it does not do; a bare
+  `pausedUntil` on a live item is rejected because it would change nothing and
+  return 200; a resume date at or before today is rejected because a pause that ends
+  before it begins is indistinguishable from one that failed to apply; an inverted
+  program range is rejected because it is live on NO date while reading as "out of
+  season"; and `paused: false` on something already live writes nothing, because the
+  interval it would leave behind grants the auto-age sweep a resume grace nobody
+  earned. Dates are `yyyy-MM-dd`-validated at the boundary — they are compared
+  LEXICALLY against `toDateStr` output, so "Sep 1" does not error, it lands on the
+  wrong side of every comparison forever.
+
+  **Membership is validated in the route, not left to the database.** The composite
+  `(id, user_id)` foreign keys already make a cross-user reference impossible, but
+  `reconcileMembership` deliberately swallows 23503 per row (an undo replaying a
+  snapshot whose member left the trash meanwhile must not fail wholesale) — so an
+  agent's typo would have returned 200 having stored nothing. The subtask rule
+  (decision 7) is not expressible as a constraint at all, and is asked of the
+  registry via `isCollectible`/`isPausable` rather than re-derived from the row.
+
+  **Both container arrays are OMITTED, not `[]`, when the tables are unreachable.**
+  `[]` asserts "you have no programs" to a consumer that might offer to create one;
+  absent says "this server did not tell you". The filter still coalesces to `[]` —
+  same fetch, two different questions.
+
+  **Beacon gained a `### Paused` section**, emitted only when something is actually
+  suppressed, so every byte-pinned context test stays exact. Filtering suppressed
+  work out was right, but silence has its own failure mode: asked about a paused
+  item by name, a model answering from an absence says it was finished, dropped, or
+  never existed — and the last two invite a recreate that duplicates the row. It
+  names the work, groups by cause through the existing `suppressionLabel`, and says
+  plainly that these are not a backlog.
+
+  **Still needs an npm republish to reach users:** the OpenClaw plugin's own
+  narration and tools (see Phase 4d).
 - [ ] **Phase 5 — polish:** show-paused-in-place view toggle (showCompletedTasks
   precedent — the Paused section already covers discoverability), group-by routine
   (view-options + GroupSection id lookup), routine-internal ordering UI (sort_order

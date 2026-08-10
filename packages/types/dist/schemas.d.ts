@@ -1586,7 +1586,15 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
-export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
+export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** true → pause from now; false → resume today. Omit to leave pause state alone. */
+    paused: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * Resume date (EXCLUSIVE — live again ON this date). Sent with `paused: true`
+     * it sets the end of the pause; sent alone it moves the resume date of a
+     * pause already running. `null` means "paused with no end date".
+     */
+    pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     title: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodEnum<["pending", "completed", "cancelled"]>>;
     priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
@@ -1620,6 +1628,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1644,6 +1654,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1668,6 +1680,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1692,6 +1706,60 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    project?: string | null | undefined;
+    startDate?: string | null | undefined;
+    isScheduled?: boolean | undefined;
+    order?: number | undefined;
+    inProjectBlock?: boolean | null | undefined;
+    previousStartTime?: string | null | undefined;
+    previousStartDate?: string | null | undefined;
+    notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
+}>, {
+    status?: "pending" | "completed" | "cancelled" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | null | undefined;
+    repeatDays?: number[] | null | undefined;
+    repeatMonthDay?: number | null | undefined;
+    completedDates?: string[] | null | undefined;
+    skippedDates?: string[] | null | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    project?: string | null | undefined;
+    startDate?: string | null | undefined;
+    isScheduled?: boolean | undefined;
+    order?: number | undefined;
+    inProjectBlock?: boolean | null | undefined;
+    previousStartTime?: string | null | undefined;
+    previousStartDate?: string | null | undefined;
+    notes?: string | null | undefined;
+    parentItemId?: string | null | undefined;
+    assignee?: string | null | undefined;
+    aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
+    aiResult?: string | null | undefined;
+}, {
+    status?: "pending" | "completed" | "cancelled" | undefined;
+    repeatFrequency?: unknown;
+    repeatDays?: number[] | null | undefined;
+    repeatMonthDay?: number | null | undefined;
+    completedDates?: string[] | null | undefined;
+    skippedDates?: string[] | null | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1707,7 +1775,15 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodObject<{
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
     aiResult?: string | null | undefined;
 }>;
-export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
+export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** true → pause from now; false → resume today. Omit to leave pause state alone. */
+    paused: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * Resume date (EXCLUSIVE — live again ON this date). Sent with `paused: true`
+     * it sets the end of the pause; sent alone it moves the resume date of a
+     * pause already running. `null` means "paused with no end date".
+     */
+    pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     title: z.ZodOptional<z.ZodString>;
     status: z.ZodOptional<z.ZodEnum<["pending", "done", "skipped"]>>;
     group: z.ZodOptional<z.ZodString>;
@@ -1734,6 +1810,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1751,6 +1829,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1768,6 +1848,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1785,6 +1867,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -1792,6 +1876,266 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodObject<{
     dailyCounts?: Record<string, number> | undefined;
     timesPerDay?: number | null | undefined;
     currentDayCount?: number | null | undefined;
+}>, {
+    status?: "pending" | "done" | "skipped" | undefined;
+    repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
+    repeatDays?: number[] | null | undefined;
+    repeatMonthDay?: number | null | undefined;
+    completedDates?: string[] | undefined;
+    skippedDates?: string[] | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
+    title?: string | undefined;
+    notes?: string | null | undefined;
+    group?: string | undefined;
+    streak?: number | undefined;
+    dailyCounts?: Record<string, number> | undefined;
+    timesPerDay?: number | null | undefined;
+    currentDayCount?: number | null | undefined;
+}, {
+    status?: "pending" | "done" | "skipped" | undefined;
+    repeatFrequency?: unknown;
+    repeatDays?: number[] | null | undefined;
+    repeatMonthDay?: number | null | undefined;
+    completedDates?: string[] | undefined;
+    skippedDates?: string[] | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    duration?: number | null | undefined;
+    paused?: boolean | undefined;
+    pausedUntil?: string | null | undefined;
+    title?: string | undefined;
+    notes?: string | null | undefined;
+    group?: string | undefined;
+    streak?: number | undefined;
+    dailyCounts?: Record<string, number> | undefined;
+    timesPerDay?: number | null | undefined;
+    currentDayCount?: number | null | undefined;
+}>;
+export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
+    /** true → pause from now; false → resume today. Omit to leave pause state alone. */
+    paused: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * Resume date (EXCLUSIVE — live again ON this date). Sent with `paused: true`
+     * it sets the end of the pause; sent alone it moves the resume date of a
+     * pause already running. `null` means "paused with no end date".
+     */
+    pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    name: z.ZodString;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}>;
+export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
+    /** true → pause from now; false → resume today. Omit to leave pause state alone. */
+    paused: z.ZodOptional<z.ZodBoolean>;
+    /**
+     * Resume date (EXCLUSIVE — live again ON this date). Sent with `paused: true`
+     * it sets the end of the pause; sent alone it moves the resume date of a
+     * pause already running. `null` means "paused with no end date".
+     */
+    pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    name: z.ZodOptional<z.ZodString>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: boolean | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    pausedUntil?: string | null | undefined;
+}>;
+export declare const ProgramCreateSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * 'auto' follows the range; 'active'/'paused' are manual overrides that win
+     * over it. Omitted on create → 'auto', which with no range means "always on".
+     */
+    state: z.ZodOptional<z.ZodEnum<["auto", "active", "paused"]>>;
+    /** Inclusive bounds, either end open. Only read while state is 'auto'. */
+    startsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    endsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /** Held routines — their members ride along. */
+    routineIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    name: z.ZodString;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}>;
+export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * 'auto' follows the range; 'active'/'paused' are manual overrides that win
+     * over it. Omitted on create → 'auto', which with no range means "always on".
+     */
+    state: z.ZodOptional<z.ZodEnum<["auto", "active", "paused"]>>;
+    /** Inclusive bounds, either end open. Only read while state is 'auto'. */
+    startsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    endsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    /** Held routines — their members ride along. */
+    routineIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    name: z.ZodOptional<z.ZodString>;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: string[] | undefined;
+    state?: "auto" | "active" | "paused" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: string | null | undefined;
+    routineIds?: string[] | undefined;
 }>;
 export declare const AnchorContextResponseSchema: z.ZodObject<{
     userId: z.ZodString;
@@ -2544,6 +2888,107 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
     }>, "many">>;
+    routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** Member item ids (routine_items), in routine-internal order. */
+        itemIds: z.ZodArray<z.ZodString, "many">;
+        /**
+         * ISO timestamp the pause began. Load-bearing, not decorative: it is the
+         * resolver's LOWER bound, without which a pause started in August would
+         * retro-suppress every unmarked occurrence back through July.
+         */
+        pausedAt: z.ZodOptional<z.ZodString>;
+        /**
+         * Resume date (yyyy-MM-dd), EXCLUSIVE — live again ON this date, so
+         * auto-resume needs no cron. A manual resume sets this to today rather than
+         * clearing pausedAt, keeping the interval on the row for the auto-age
+         * sweep's resume grace.
+         */
+        pausedUntil: z.ZodOptional<z.ZodString>;
+        id: z.ZodString;
+        name: z.ZodString;
+        /** icon:<LucideName> token, matching the container convention. */
+        icon: z.ZodOptional<z.ZodString>;
+        /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+        color: z.ZodOptional<z.ZodString>;
+        sortOrder: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        itemIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+    }, {
+        id: string;
+        name: string;
+        itemIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+    }>, "many">>;
+    programs: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        icon: z.ZodOptional<z.ZodString>;
+        color: z.ZodOptional<z.ZodString>;
+        sortOrder: z.ZodOptional<z.ZodNumber>;
+        /**
+         * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
+         * are manual overrides that always win, because flipping a program by hand
+         * must never be second-guessed by a date. Several programs may be active at
+         * once — the resolver unions their members.
+         */
+        state: z.ZodEnum<["auto", "active", "paused"]>;
+        /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
+        startsOn: z.ZodOptional<z.ZodString>;
+        endsOn: z.ZodOptional<z.ZodString>;
+        /** Directly-held item ids (program_items). */
+        itemIds: z.ZodArray<z.ZodString, "many">;
+        /** Held routine ids (program_routines) — their members ride along. */
+        routineIds: z.ZodArray<z.ZodString, "many">;
+        /**
+         * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
+         * overdue sweep's grace (c). A manual `paused` → `active` flip has no
+         * recorded date — the tri-state keeps no history — so this is the only
+         * evidence that a program recently stopped hiding its members, and without it
+         * the morning after someone turns a program back on the sweep unschedules
+         * every member at once.
+         *
+         * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
+         * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+         * container diff, where a stale value would otherwise be written back over
+         * the trigger's.
+         */
+        updatedAt: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        itemIds: string[];
+        state: "auto" | "active" | "paused";
+        routineIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        updatedAt?: string | undefined;
+    }, {
+        id: string;
+        name: string;
+        itemIds: string[];
+        state: "auto" | "active" | "paused";
+        routineIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        updatedAt?: string | undefined;
+    }>, "many">>;
     schemaVersion: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     userId: string;
@@ -2695,6 +3140,29 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
     })[] | undefined;
+    routines?: {
+        id: string;
+        name: string;
+        itemIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+    }[] | undefined;
+    programs?: {
+        id: string;
+        name: string;
+        itemIds: string[];
+        state: "auto" | "active" | "paused";
+        routineIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        updatedAt?: string | undefined;
+    }[] | undefined;
     schemaVersion?: number | undefined;
 }, {
     userId: string;
@@ -2846,6 +3314,29 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
     })[] | undefined;
+    routines?: {
+        id: string;
+        name: string;
+        itemIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+    }[] | undefined;
+    programs?: {
+        id: string;
+        name: string;
+        itemIds: string[];
+        state: "auto" | "active" | "paused";
+        routineIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        endsOn?: string | undefined;
+        updatedAt?: string | undefined;
+    }[] | undefined;
     schemaVersion?: number | undefined;
 }>;
 export declare const AnchorChangeEventSchema: z.ZodObject<{

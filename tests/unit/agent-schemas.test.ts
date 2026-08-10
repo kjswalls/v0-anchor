@@ -199,4 +199,39 @@ describe('AnchorContextResponseSchema (items[] additivity)', () => {
     });
     expect(r.success).toBe(true);
   });
+
+  it('parses a v4 response with routines[] and programs[]', () => {
+    const r = AnchorContextResponseSchema.safeParse({
+      ...base,
+      schemaVersion: 4,
+      routines: [{ id: 'r1', name: 'Morning', itemIds: ['t1'] }],
+      programs: [
+        {
+          id: 'p1',
+          name: 'Summer',
+          state: 'auto',
+          startsOn: '2026-06-01',
+          endsOn: '2026-08-31',
+          itemIds: [],
+          routineIds: ['r1'],
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('still parses a v3 response against the v4 schema (new plugin ↔ old server)', () => {
+    // Both arrays MUST stay optional. The plugin validates the whole response
+    // with one safeParse, so requiring a key the deployed server does not send
+    // does not degrade the containers — it bricks the entire cached context.
+    expect(AnchorContextResponseSchema.safeParse({ ...base, schemaVersion: 3 }).success).toBe(true);
+  });
+
+  it('accepts a v4 response that OMITS the arrays rather than sending []', () => {
+    // The route omits them when the tables are unreachable, because `[]` would
+    // assert "you have no programs" to a consumer that might offer to make one.
+    const r = AnchorContextResponseSchema.safeParse({ ...base, schemaVersion: 4 });
+    expect(r.success).toBe(true);
+    expect((r as { data: Record<string, unknown> }).data.programs).toBeUndefined();
+  });
 });

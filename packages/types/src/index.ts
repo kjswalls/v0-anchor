@@ -22,6 +22,10 @@ export {
   HabitCreateSchema,
   TaskUpdateSchema,
   HabitUpdateSchema,
+  RoutineCreateSchema,
+  RoutineUpdateSchema,
+  ProgramCreateSchema,
+  ProgramUpdateSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'

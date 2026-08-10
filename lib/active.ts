@@ -91,6 +91,74 @@ export function isPausedOn(x: Pausable, dateStr: string, userTimezone: string): 
   return true;
 }
 
+/**
+ * The write counterpart of {@link isPausedOn} — turn the pause VERB into the
+ * two columns that express it.
+ *
+ * It lives here, beside the predicate, because the interval's meaning has to be
+ * stated once. The UI writes these columns through planner-store's
+ * setItemPaused; the agent API writes them through this. Two callers deriving
+ * `pausedAt` independently is exactly how the lower bound would drift out of
+ * agreement with the resolver that reads it.
+ *
+ * Returns the column patch, or a `reason` when the request cannot be honoured.
+ * Never returns both, and returns an EMPTY patch for a request that is already
+ * satisfied — re-pausing something already paused must not restamp `pausedAt`,
+ * which would drag the lower bound forward and un-hide the days between.
+ *
+ * @param current   the row's existing pause columns
+ * @param req       the parsed verb: `paused` and/or `pausedUntil`
+ * @param todayStr  today in the USER's zone (the resolver's frame of reference)
+ * @param nowIso    the instant a new pause begins
+ */
+export function resolvePauseWrite(
+  current: Pausable,
+  req: { paused?: boolean; pausedUntil?: string | null },
+  todayStr: string,
+  nowIso: string,
+  userTimezone: string,
+): { patch: Pausable } | { reason: string } {
+  const pausedNow = isPausedOn(current, todayStr, userTimezone);
+  const until = req.pausedUntil ?? undefined;
+
+  if (req.paused === false) {
+    // Already live → nothing to do. Writing pausedUntil = today anyway would be
+    // harmless for the resolver but would move the interval the auto-age
+    // sweep's resume grace reads, granting a grace nobody earned.
+    return { patch: pausedNow ? { pausedUntil: todayStr } : {} };
+  }
+
+  if (req.paused === true) {
+    // Already paused: honour a new resume date, but leave pausedAt where it is.
+    if (pausedNow) {
+      return { patch: req.pausedUntil !== undefined ? { pausedUntil: until } : {} };
+    }
+    // A resume date already in the past would create a pause that is over
+    // before it starts — accepted silently, it looks exactly like a pause that
+    // failed to apply.
+    if (until && until <= todayStr) {
+      return {
+        reason: `pausedUntil ${until} is not after today (${todayStr}), so the pause would end immediately`,
+      };
+    }
+    return { patch: { pausedAt: nowIso, pausedUntil: until } };
+  }
+
+  // pausedUntil alone — move the end of a pause already running.
+  if (req.pausedUntil !== undefined) {
+    if (!pausedNow) {
+      return {
+        reason:
+          'pausedUntil was sent without paused: true, but this is not currently paused — ' +
+          'a resume date on its own would change nothing',
+      };
+    }
+    return { patch: { pausedUntil: until } };
+  }
+
+  return { patch: {} };
+}
+
 /** The user-local calendar day a pause began, or null if the stamp is junk. */
 function pauseStartDate(pausedAt: string, userTimezone: string): string | null {
   const at = new Date(pausedAt);
