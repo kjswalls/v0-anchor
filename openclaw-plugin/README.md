@@ -62,12 +62,40 @@ That's it. Your agent now sees your tasks from Discord, webchat, Signal — ever
 ## Projects
 - 🪝 Anchor
 - 🎮 Side project
+
+## Collections
+- Routine: Morning [id: …]
+- Program: Summer [id: …] (auto 2026-06-01 → 2026-08-31)
+
+## Set aside
+Deliberately paused — NOT overdue and not missed. …
+- Read 30 min [id: …] — paused until 2026-09-01
+- Swim [id: …] — set aside with the Summer program
 ```
+
+**Set aside** is there so an absence never has to be guessed at. Paused work is
+filtered out of the lists above — an agent shouldn't plan around a habit you put
+down for the summer — but an agent asked about one BY NAME with no other
+information will answer that it was finished, dropped, or never existed, and the
+last two invite a "helpful" recreate that duplicates the row.
 
 Alongside it the plugin registers write tools, so the agent can act on what it
 reads rather than just describe it: `anchor_create_task`, `anchor_update_task`,
 `anchor_delete_task`, and the matching `anchor_*_habit` trio. Deletes are soft —
 Anchor keeps them in the trash for 30 days.
+
+`anchor_pause` puts a task, habit, or routine down without deleting it —
+streak, history and dates all survive, and resuming brings it back exactly as it
+was. `anchor_create_collection` / `anchor_update_collection` /
+`anchor_delete_collection` manage routines and programs. Membership arrays
+REPLACE the whole set rather than adding to it, so a retried call can't
+double-add.
+
+Programs aren't switched through `anchor_pause`, deliberately: they carry a
+tri-state where `auto` follows the date range and `active`/`paused` override it
+until changed back. Writing `active` onto a program that was following its dates
+would silently end that, so switching one is an explicit `state` on
+`anchor_update_collection` rather than a boolean that hides the difference.
 
 ## Configuration
 

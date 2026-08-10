@@ -1,4 +1,4 @@
-import type { Task, Habit, Project, HabitGroupType } from '@anchor-app/types'
+import type { Task, Habit, Project, HabitGroupType, Item, Routine, Program } from '@anchor-app/types'
 
 /** Plugin-internal cache shape */
 export interface AnchorCache {
@@ -8,6 +8,16 @@ export interface AnchorCache {
   habits: Habit[]
   projects: Project[]
   habitGroups: HabitGroupType[]
+  /**
+   * Unified items (schemaVersion 3+), UNFILTERED — where tasks[]/habits[] have
+   * had suppressed open loops removed by the server. The difference between
+   * them is exactly the set of work that is deliberately set aside, which is
+   * how context.ts accounts for it without reimplementing the resolver.
+   */
+  items: Item[]
+  /** schemaVersion 4+. Absent (not empty) when the server did not say. */
+  routines: Routine[]
+  programs: Program[]
   fetchedAt: number
 }
 

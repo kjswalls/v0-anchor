@@ -107,6 +107,13 @@ async function doFetch(cfg: PluginConfig): Promise<void> {
     habits: data.habits,
     projects: data.projects,
     habitGroups: data.habitGroups,
+    // All three are optional on the wire and default to empty here, so this
+    // build keeps working verbatim against a schemaVersion 2 or 3 server: the
+    // difference-based "paused" accounting simply finds nothing, which is the
+    // correct answer when the server never told us about suppression.
+    items: data.items ?? [],
+    routines: data.routines ?? [],
+    programs: data.programs ?? [],
     fetchedAt: Date.now(),
   }
 }

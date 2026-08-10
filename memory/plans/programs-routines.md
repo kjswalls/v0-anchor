@@ -600,8 +600,41 @@ dateless surfaces resolve at today (decision 3).
   names the work, groups by cause through the existing `suppressionLabel`, and says
   plainly that these are not a backlog.
 
-  **Still needs an npm republish to reach users:** the OpenClaw plugin's own
-  narration and tools (see Phase 4d).
+- [x] **Phase 4d — the OpenClaw plugin** (built 2026-08-10, version bumped to 0.2.0).
+  **Reaches nobody until `npm publish` runs** — the plugin's `dist/` is gitignored
+  and built at publish time, so CI gates none of this.
+
+  Its context had the same blind spot Beacon did, and the fix reads the server's
+  answer instead of recomputing it: `items[]` arrives unfiltered while
+  `tasks[]`/`habits[]` have had suppressed open loops removed server-side, so the
+  SET DIFFERENCE between them is exactly the set-aside work. Reimplementing the
+  path algebra in the plugin would be a second resolver, and the two would
+  disagree the first time either changed. Restricted to task/habit, because a
+  custom type appears in `items[]` and in neither projection by design and a naive
+  difference announces every one of them as paused.
+
+  The cause is named but **no container return DATE is offered** — an item can be
+  blocked by a routine inside an out-of-season program at once, and naming the one
+  that clears first would promise a comeback it will not honour. The app settles
+  that with the binding-constraint rule; half of that rule out here is worse than
+  none. The item's own pause still wins the explanation (matching lib/active.ts),
+  guarded on the interval still being open, because a resume normalizes to
+  `pausedUntil = today` rather than clearing the pair — so both columns survive on
+  a live row and reading `pausedAt` alone would report a date already past.
+
+  Four tools, not seven: `anchor_pause` covers the three entities that pause
+  through the same two columns, plus create/update/delete for collections behind a
+  `kind` discriminator. **Programs are deliberately excluded from `anchor_pause`** —
+  writing `active` onto a program that was following its dates silently ends the
+  date-following (the Phase 3 review's sharpest bug), so switching one is an
+  explicit `state` rather than a boolean that hides the difference. The Collections
+  section reports program state as STORED for the same reason: the model has to see
+  `auto` to preserve it.
+
+  Ten tests live in the APP repo (`tests/unit/plugin-context.test.ts`) precisely
+  because CI does not gate the plugin: the logic depends on a property of the
+  server's response, so a change on the app side is what would break it — silently,
+  in a package nobody rebuilds until release.
 - [ ] **Phase 5 — polish:** show-paused-in-place view toggle (showCompletedTasks
   precedent — the Paused section already covers discoverability), group-by routine
   (view-options + GroupSection id lookup), routine-internal ordering UI (sort_order

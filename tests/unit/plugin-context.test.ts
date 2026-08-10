@@ -1,0 +1,182 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+/**
+ * The OpenClaw plugin's context rendering (plan Phase 4d).
+ *
+ * Worth testing from the app repo even though the plugin ships separately: its
+ * dist is gitignored and built at publish time, so CI gates nothing here, and
+ * the one piece with real logic — deciding which items are set aside — depends
+ * on a property of the SERVER's response (tasks[] is filtered, items[] is not).
+ * A change on this side is exactly what would break it, silently, in a package
+ * nobody rebuilds until release.
+ */
+
+import { getCache } from '@/openclaw-plugin/src/cache';
+import { buildFullContext } from '@/openclaw-plugin/src/context';
+
+vi.mock('@/openclaw-plugin/src/cache', () => ({ getCache: vi.fn() }));
+
+const TODAY = '2026-08-10';
+
+const task = (id: string, title: string, over: Record<string, unknown> = {}) => ({
+  type: 'task',
+  id,
+  title,
+  status: 'pending',
+  isScheduled: false,
+  order: 0,
+  ...over,
+});
+
+function seed(over: Record<string, unknown> = {}) {
+  const items = (over.items as Record<string, unknown>[]) ?? [];
+  const visibleIds = new Set((over.visible as string[]) ?? items.map((i) => i.id as string));
+  vi.mocked(getCache).mockReturnValue({
+    userId: 'u1',
+    userTimezone: 'UTC',
+    // The server's own filter, reproduced: tasks[] is items[] minus suppressed.
+    tasks: items.filter((i) => i.type === 'task' && visibleIds.has(i.id as string)),
+    habits: [],
+    projects: [],
+    habitGroups: [],
+    items,
+    routines: [],
+    programs: [],
+    fetchedAt: Date.now(),
+    ...over,
+  } as never);
+}
+
+describe('plugin buildFullContext — set aside', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('says nothing when every item is visible', () => {
+    seed({ items: [task('t1', 'Write report')] });
+    expect(buildFullContext()).not.toContain('## Set aside');
+  });
+
+  it('reports an item present in items[] but absent from tasks[]', () => {
+    // The whole mechanism: the server already decided, and this reads its
+    // answer rather than recomputing suppression out here.
+    seed({
+      items: [task('t1', 'Write report'), task('t2', 'Gym', { pausedAt: '2026-08-01T00:00:00Z' })],
+      visible: ['t1'],
+    });
+    const out = buildFullContext();
+    expect(out).toContain('## Set aside');
+    expect(out).toContain('Gym');
+    expect(out).toContain('paused');
+    expect(out).toMatch(/do not recreate them/i);
+  });
+
+  it('names the resume date from the item’s own pause', () => {
+    seed({
+      items: [task('t1', 'Gym', { pausedAt: '2026-08-01T00:00:00Z', pausedUntil: '2026-09-01' })],
+      visible: [],
+    });
+    expect(buildFullContext()).toContain('paused until 2026-09-01');
+  });
+
+  it('does NOT claim an expired pause as the cause', () => {
+    // A resume normalizes to pausedUntil = today rather than clearing the pair,
+    // so both columns survive on a live row. Reading pausedAt alone would
+    // report a comeback date already in the past for an item that is actually
+    // hidden by something else.
+    seed({
+      items: [task('t1', 'Gym', { pausedAt: '2026-07-01T00:00:00Z', pausedUntil: '2026-07-15' })],
+      visible: [],
+      programs: [
+        { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['t1'], routineIds: [] },
+      ],
+    });
+    const out = buildFullContext();
+    expect(out).not.toContain('2026-07-15');
+    expect(out).toContain('set aside with the Summer program');
+  });
+
+  it('blames the program when the path runs item → routine → program', () => {
+    seed({
+      items: [task('t1', 'Swim')],
+      visible: [],
+      routines: [{ id: 'r1', name: 'Morning', itemIds: ['t1'] }],
+      programs: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: ['r1'] }],
+    });
+    // The outer container is the one that has to change for the item to return.
+    expect(buildFullContext()).toContain('set aside with the Summer program');
+  });
+
+  it('falls back to a bare "set aside" rather than guessing', () => {
+    // Suppressed with no cause the plugin can see — a container the server
+    // declined to send, for instance. Naming something would be a guess.
+    seed({ items: [task('t1', 'Gym')], visible: [] });
+    expect(buildFullContext()).toContain('Gym [id: t1] — set aside');
+  });
+
+  it('does not mistake a custom type for suppressed work', () => {
+    // Custom types travel in items[] and in NEITHER projection, by design. A
+    // naive difference would announce every one of them as paused.
+    seed({
+      items: [{ ...task('t1', 'Learn Welsh'), type: 'custom', customType: 'goal' }],
+      visible: [],
+    });
+    expect(buildFullContext()).not.toContain('## Set aside');
+  });
+});
+
+describe('plugin buildFullContext — collections', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('is absent when there are none', () => {
+    seed({ items: [task('t1', 'A')] });
+    expect(buildFullContext()).not.toContain('## Collections');
+  });
+
+  it('reports program state as STORED, not resolved to on/off', () => {
+    // Flattening 'auto' + a range to "on" would invite the repair that destroys
+    // it: writing 'active' onto an auto program short-circuits the dates for
+    // good. The model has to see the difference to preserve it.
+    seed({
+      items: [task('t1', 'A')],
+      programs: [
+        {
+          id: 'p1',
+          name: 'Summer',
+          state: 'auto',
+          startsOn: '2026-06-01',
+          endsOn: '2026-08-31',
+          itemIds: [],
+          routineIds: [],
+        },
+      ],
+    });
+    expect(buildFullContext()).toContain('Program: Summer [id: p1] (auto 2026-06-01 → 2026-08-31)');
+  });
+
+  it('marks a paused routine and leaves a live one plain', () => {
+    seed({
+      items: [task('t1', 'A')],
+      routines: [
+        { id: 'r1', name: 'Morning', itemIds: [], pausedAt: '2026-08-01T00:00:00Z' },
+        { id: 'r2', name: 'Evening', itemIds: [] },
+      ],
+    });
+    const out = buildFullContext();
+    expect(out).toContain('Routine: Morning [id: r1] (paused)');
+    // Anchored to end-of-line: a live routine carries no state suffix at all.
+    expect(out).toMatch(/Routine: Evening \[id: r2\]$/m);
+  });
+});

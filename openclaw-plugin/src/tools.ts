@@ -242,4 +242,204 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       return textResult(`Habit deleted.`)
     },
   })
+
+  // ── anchor_pause ──────────────────────────────────────────────────────────
+  //
+  // One tool for the three entities that pause through the same two columns.
+  // Programs are deliberately NOT here: they switch through `state`, and the
+  // difference matters enough to make the caller say it — see
+  // anchor_update_collection.
+  api.registerTool({
+    name: 'anchor_pause',
+    label: 'Anchor: Pause or Resume',
+    description:
+      'Pause or resume a task, habit, or routine. Pausing HIDES it from the ' +
+      'schedule and every list without deleting it, and without touching its ' +
+      'streak, completion history, or dates — resuming brings it back exactly ' +
+      'as it was. Use this instead of deleting when the user is stepping away ' +
+      'from something (travel, illness, a season off) rather than abandoning ' +
+      'it. Pausing a routine hides all of its members at once.',
+    parameters: Type.Object({
+      kind: Type.String({ description: 'task | habit | routine' }),
+      id: Type.String({ description: 'UUID of the task, habit, or routine' }),
+      paused: Type.Boolean({ description: 'true to pause, false to resume now' }),
+      until: Type.Optional(
+        Type.String({
+          description:
+            'YYYY-MM-DD to come back ON (exclusive — live again that morning). ' +
+            'Only with paused: true, and it must be later than today. Omit for ' +
+            'an open-ended pause.',
+        }),
+      ),
+    }),
+    async execute(
+      _toolCallId: string,
+      params: { kind: string; id: string; paused: boolean; until?: string },
+    ) {
+      const path = PAUSE_PATHS[params.kind]
+      if (!path) return errorResult(400, `kind must be task, habit, or routine (got "${params.kind}")`)
+
+      const body: Record<string, unknown> = { paused: params.paused }
+      // Sent only when pausing: the API rejects a resume date alongside
+      // paused: false, because "resume ON this date" is exactly what it would
+      // NOT do.
+      if (params.paused && params.until) body.pausedUntil = params.until
+
+      const res = await fetch(`${cfg.anchorUrl}/api/agent/${path}/${params.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const text = await res.text()
+      if (!res.ok) return errorResult(res.status, text)
+      markCacheDirty()
+      const when = params.until ? ` until ${params.until}` : ''
+      return textResult(params.paused ? `Paused${when}.` : 'Resumed.')
+    },
+  })
+
+  // ── anchor_create_collection ──────────────────────────────────────────────
+  api.registerTool({
+    name: 'anchor_create_collection',
+    label: 'Anchor: Create Routine or Program',
+    description:
+      'Create a ROUTINE (a small reusable set of items — a morning routine — ' +
+      'that can be paused as one) or a PROGRAM (a period of life, like a ' +
+      'summer or a term, holding items and/or routines that appear only while ' +
+      'it is on). Members must already exist; create the items first and pass ' +
+      'their ids. Subtasks cannot be members.',
+    parameters: Type.Object({
+      kind: Type.String({ description: 'routine | program' }),
+      name: Type.String({ description: 'Display name' }),
+      itemIds: Type.Optional(Type.Array(Type.String(), { description: 'Member task/habit UUIDs' })),
+      routineIds: Type.Optional(
+        Type.Array(Type.String(), { description: 'Held routine UUIDs (programs only)' }),
+      ),
+      state: Type.Optional(
+        Type.String({
+          description:
+            'Programs only. auto (default) follows startsOn/endsOn; active and ' +
+            'paused are manual overrides that IGNORE the dates until changed back.',
+        }),
+      ),
+      startsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD, inclusive' })),
+      endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD, inclusive' })),
+    }),
+    async execute(_toolCallId: string, params: CollectionParams) {
+      return writeCollection(cfg, params, 'POST')
+    },
+  })
+
+  // ── anchor_update_collection ──────────────────────────────────────────────
+  api.registerTool({
+    name: 'anchor_update_collection',
+    label: 'Anchor: Update Routine or Program',
+    description:
+      'Update a routine or program. Membership arrays REPLACE the whole set ' +
+      'rather than adding to it — read the current members from context first ' +
+      'and send the full intended list. To switch a program on or off, set ' +
+      'state: active or paused; to hand it back to its dates, set state: auto. ' +
+      'Prefer state: auto when the user describes a period ("all summer") so ' +
+      'it turns itself off on time.',
+    parameters: Type.Object({
+      kind: Type.String({ description: 'routine | program' }),
+      id: Type.String({ description: 'Routine or program UUID' }),
+      name: Type.Optional(Type.String()),
+      itemIds: Type.Optional(
+        Type.Array(Type.String(), { description: 'FULL replacement member list' }),
+      ),
+      routineIds: Type.Optional(
+        Type.Array(Type.String(), { description: 'FULL replacement routine list (programs only)' }),
+      ),
+      state: Type.Optional(Type.String({ description: 'Programs only: auto | active | paused' })),
+      startsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD' })),
+      endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD' })),
+    }),
+    async execute(_toolCallId: string, params: CollectionParams & { id: string }) {
+      return writeCollection(cfg, params, 'PATCH')
+    },
+  })
+
+  // ── anchor_delete_collection ──────────────────────────────────────────────
+  api.registerTool({
+    name: 'anchor_delete_collection',
+    label: 'Anchor: Delete Routine or Program',
+    description:
+      'Soft-delete a routine or program (recoverable for 30 days). Its MEMBERS ' +
+      'are not deleted — they are released and become visible again ' +
+      'immediately. To hide the members instead, pause the collection.',
+    parameters: Type.Object({
+      kind: Type.String({ description: 'routine | program' }),
+      id: Type.String({ description: 'Routine or program UUID' }),
+    }),
+    async execute(_toolCallId: string, params: { kind: string; id: string }) {
+      const path = COLLECTION_PATHS[params.kind]
+      if (!path) return errorResult(400, `kind must be routine or program (got "${params.kind}")`)
+      const res = await fetch(`${cfg.anchorUrl}/api/agent/${path}/${params.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${cfg.apiKey}` },
+      })
+      const text = await res.text()
+      if (!res.ok) return errorResult(res.status, text)
+      markCacheDirty()
+      return textResult(`Deleted — its members are visible again.`)
+    },
+  })
+}
+
+const PAUSE_PATHS: Record<string, string | undefined> = {
+  task: 'tasks',
+  habit: 'habits',
+  routine: 'routines',
+}
+
+const COLLECTION_PATHS: Record<string, string | undefined> = {
+  routine: 'routines',
+  program: 'programs',
+}
+
+interface CollectionParams {
+  kind: string
+  id?: string
+  name?: string
+  itemIds?: string[]
+  routineIds?: string[]
+  state?: string
+  startsOn?: string
+  endsOn?: string
+}
+
+async function writeCollection(
+  cfg: PluginConfig,
+  params: CollectionParams,
+  method: 'POST' | 'PATCH',
+) {
+  const path = COLLECTION_PATHS[params.kind]
+  if (!path) return errorResult(400, `kind must be routine or program (got "${params.kind}")`)
+
+  const { kind, id, ...fields } = params
+  // Program-only keys are dropped rather than forwarded for a routine. The API
+  // strips unknown keys anyway, but sending them makes the plugin's own log
+  // read as though a routine were given a date range it silently lost.
+  const body: Record<string, unknown> = { ...fields }
+  if (kind === 'routine') {
+    delete body.routineIds
+    delete body.state
+    delete body.startsOn
+    delete body.endsOn
+  }
+
+  const url =
+    method === 'POST'
+      ? `${cfg.anchorUrl}/api/agent/${path}`
+      : `${cfg.anchorUrl}/api/agent/${path}/${id}`
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) return errorResult(res.status, text)
+  markCacheDirty()
+  return textResult(`${kind === 'routine' ? 'Routine' : 'Program'} saved: ${text}`)
 }
