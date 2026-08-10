@@ -475,10 +475,71 @@ dateless surfaces resolve at today (decision 3).
   use-overdue-sweep.ts, because moving routines out of that Promise.all would
   break it silently — every member of a paused routine would read as unprotected
   and get unscheduled in one batch.
-- [ ] **Phase 3 — programs:** state machine (auto/active/paused + ranges) + program
-  membership (items and routines) + resolver completes (paths algebra, soft-delete
-  rule, attach-discontinuity copy) + **context route fetches programs** + sweep
-  grace (b) + swap flow + week-view boundary rendering + boundary-drag receipts.
+- [x] **Phase 3 — programs** (built 2026-08-09, `3a828c8` + `874ed02` + `4e2a5eb`).
+  Path algebra complete (direct / via-routine / standalone, disjunctive);
+  `isProgramActiveOn` tri-state with an INCLUSIVE auto range; store slice with
+  CRUD, `setProgramState`, `swapToProgram`, programs in HistoryState and
+  syncContainers, `memberships.programIds`; every resolver call site threaded
+  incl. the context route; sweep grace (b) and (c); Programs tab with the
+  attach-discontinuity confirm; Program chip; per-program palette commands;
+  week boundary rail; decision 11's move receipts. 499 unit tests, 3 e2e.
+
+  **The auto range is inclusive at both ends; a pause's upper bound is
+  exclusive.** Not an inconsistency — the two are written differently in the
+  UI. "Jun 1 to Aug 31" is a period you are inside; "paused until Sep 1" is a
+  date you come back on. Resolving them the same way would make one of the two
+  read wrong by a day, forever.
+
+  **`suppressionReason` has to pick between two blocked containers on one
+  path**, and it names the BINDING one — whichever clears last, with an unknown
+  return counting as latest. Naming the one that clears first would promise a
+  return date the item will not honour: the user resumes the routine on the
+  strength of the note and nothing appears.
+
+  **Grace (c) needed a column that did not exist.** A manual `paused → active`
+  flip has no recorded date — the tri-state keeps no history — so there is
+  nothing to grace against, and without it the morning after someone turns a
+  program back on the sweep unschedules every member at once. `updatedAt` was
+  added to ProgramSchema as a READ-ONLY field (deliberately absent from
+  db.ts `updateProgram`'s column allowlist, because it appears in
+  PROGRAM_FIELDS and therefore in undo's container diff). It is stamped
+  optimistically by `setProgramState`/`swapToProgram`: the trigger's value only
+  reaches the store on the next reload, and "turn a program on, leave the tab
+  open overnight" is exactly the case the grace protects.
+
+  **`swapToProgram` skips writing 'active' onto a target that is already on.**
+  An `auto` program inside its own range is already carrying its members;
+  stamping 'active' would silently convert a self-managing program into one the
+  user must remember to turn off.
+
+  **The boundary rail is all-or-nothing across the week.** It costs 18px, and
+  paying it only on the columns that need it would slew their hour grids
+  against their neighbours. `lib/program-boundaries.ts` is a separate module so
+  week-buckets can adopt it — it was NOT wired there, because that file has
+  uncommitted work in the tree.
+
+  **Found by running the e2e rather than reading it** (the Phase 1 lesson,
+  applied): the palette truncates before `app.collections` once a couple of
+  programs exist, since Phase 3 adds up to two dynamic commands per program;
+  opening the manager from the palette leaves the omnibar's dismissable layer
+  underneath, so the FIRST Escape closes the palette and the second the dialog
+  (pre-existing, affects every palette-opened dialog); and a spec without an
+  "it is on the grid first" baseline hangs, because waitForAppReady returns on
+  hydration and can beat the items fetch — it passed alone and failed only in
+  sequence.
+
+  **Also fixed here:** two carried-over Phase 2 findings — the mobile
+  ScheduleSheet's missing explanatory note (its Pause button stays item-level,
+  which is what it can act on) and `switchType` discarding the add draft's
+  membership. And `tests/unit/item-panel-writes.test.ts`, which had been
+  failing `tsc` since Phase 2 added `routineIds` to ItemDraft without updating
+  its fixture.
+  **Deferred out of Phase 3, deliberately:** the boundary rail is on the week
+  SCHEDULE view only, not week-buckets (uncommitted work in that file); and
+  decision 11's receipt covers the store's move verbs, which is every reachable
+  path today — a future verb that writes `startDate` without going through
+  them would need its own call.
+
 - [ ] **Phase 4 — external/AI:** context programs[]/routines[] + schemaVersion 4;
   Beacon narration of pause state ("3 items are paused with your Summer program");
   decide agent write surface (Update-schema extension, create-with-pause, plugin
