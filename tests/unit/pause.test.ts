@@ -48,6 +48,7 @@ import { updatesToRow } from '@/lib/db';
 import * as db from '@/lib/db';
 import { isPausable, isCollectible, ITEM_TYPES, buildCustomTypeConfig } from '@/lib/item-registry';
 import { isPausedOn, isOpenLoopSuppressedOn, inactiveItemIdsOn } from '@/lib/active';
+import { releasedOn, clearReleased } from '@/lib/sweep-grace';
 import { toDateStr } from '@/lib/recurrence';
 import { format } from 'date-fns';
 import type { Item } from '@/lib/planner-types';
@@ -400,5 +401,123 @@ describe('create-with-membership is one gesture', () => {
     );
     const created = store().items.find((i) => i.title === 'Joined habit')!;
     expect(store().routines.find((r) => r.id === id)!.itemIds).toEqual([created.id]);
+  });
+});
+
+/**
+ * Release grace (plan decision 9, the arm that stored data cannot answer).
+ *
+ * The sweep's other grace arms read a date off a row: an item's or a routine's
+ * `pausedUntil`, a program's `startsOn` or `updatedAt`. Deleting a container —
+ * or pulling a member out of one — releases items with no such record anywhere,
+ * because the row it would have been read from is exactly what was removed. The
+ * item then reappears carrying every day of age it accrued while hidden, and
+ * the next morning's sweep unschedules it.
+ */
+describe('container edits record the suppressions they end', () => {
+  beforeEach(() => clearReleased());
+
+  const pausedRoutineHolding = (...itemIds: string[]) =>
+    store().addRoutine({
+      name: 'Morning',
+      itemIds,
+      pausedAt: new Date(`${TODAY}T00:00:00Z`).toISOString(),
+    });
+
+  it('deleting a paused routine graces the members it was hiding', () => {
+    const id = pausedRoutineHolding('habit-1');
+    // Prove it was actually hidden first, or the assertion below could pass
+    // for an item that was never at risk.
+    const hidden = inactiveItemIdsOn(store().items, TODAY, { ...ctx, routines: store().routines });
+    expect(hidden.has('habit-1')).toBe(true);
+
+    store().removeRoutine(id);
+
+    expect(releasedOn('habit-1')).toBe(TODAY);
+  });
+
+  it('deleting a LIVE routine graces nobody — nothing was hidden', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    store().removeRoutine(id);
+    expect(releasedOn('habit-1')).toBeUndefined();
+  });
+
+  it('removing an item from a paused routine graces that item only', () => {
+    const id = pausedRoutineHolding('habit-1', 'one-shot');
+    store().updateRoutine(id, { itemIds: ['one-shot'] });
+
+    expect(releasedOn('habit-1')).toBe(TODAY);
+    // Still held, still hidden — gracing it would switch the sweep off for
+    // work that has not come back.
+    expect(releasedOn('one-shot')).toBeUndefined();
+  });
+
+  it('a rename records nothing', () => {
+    const id = pausedRoutineHolding('habit-1');
+    store().updateRoutine(id, { name: 'Evening' });
+    expect(releasedOn('habit-1')).toBeUndefined();
+  });
+
+  // The disjunctive path rule means membership can be removed WITHOUT the item
+  // becoming visible. Gracing there would be wrong in the unsafe direction.
+  it('does not grace an item that is still hidden by another path', () => {
+    const a = pausedRoutineHolding('habit-1');
+    pausedRoutineHolding('habit-1');
+    store().removeRoutine(a);
+    expect(releasedOn('habit-1')).toBeUndefined();
+  });
+
+  it('deleting a paused PROGRAM graces its members too', () => {
+    const id = store().addProgram({
+      name: 'Summer',
+      state: 'paused',
+      itemIds: ['habit-1'],
+      routineIds: [],
+    });
+    store().removeProgram(id);
+    expect(releasedOn('habit-1')).toBe(TODAY);
+  });
+
+  // item -> routine -> program: pulling the ROUTINE out of the program hands
+  // the answer back to the routine, which is live, so the members return.
+  it('graces members released by detaching a routine from a program', () => {
+    const routineId = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
+    const programId = store().addProgram({
+      name: 'Summer',
+      state: 'paused',
+      itemIds: [],
+      routineIds: [routineId],
+    });
+    expect(releasedOn('habit-1')).toBeUndefined();
+
+    store().updateProgram(programId, { routineIds: [] });
+    expect(releasedOn('habit-1')).toBe(TODAY);
+  });
+
+  it('graces members released by moving an auto range to cover today', () => {
+    const id = store().addProgram({
+      name: 'Term',
+      state: 'auto',
+      startsOn: '2026-06-01',
+      itemIds: ['habit-1'],
+      routineIds: [],
+    });
+    expect(releasedOn('habit-1')).toBeUndefined();
+
+    store().updateProgram(id, { startsOn: '2026-01-01' });
+    expect(releasedOn('habit-1')).toBe(TODAY);
+  });
+
+  // Only open loops can ever be swept, so anything else in the diff would be
+  // granting grace to work that was never at risk.
+  it('ignores an item that carries a mark today', () => {
+    usePlannerStore.setState({
+      items: store().items.map((i) =>
+        i.id === 'habit-1' ? { ...i, completedDates: [TODAY] } : i
+      ),
+    });
+    const id = pausedRoutineHolding('habit-1');
+    store().removeRoutine(id);
+    expect(releasedOn('habit-1')).toBeUndefined();
   });
 });

@@ -6,6 +6,7 @@ import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-
 import { toDateStr } from '@/lib/recurrence';
 import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
 import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
+import { releasedOn } from '@/lib/sweep-grace';
 import type { Item, Routine, Program } from '@/lib/planner-types';
 
 /** Did this pause interval end within the trailing `windowDays`? */
@@ -80,6 +81,15 @@ function resumedRecently(
   programs: readonly Program[],
 ): boolean {
   if (pauseEndedRecently(item, todayStr, windowDays)) return true;
+
+  // The container that was hiding this item may be GONE — deleted, or no longer
+  // holding it. Then there is no resume date to read anywhere, because the row
+  // it would have been read from is exactly what was removed, and the item
+  // reappears carrying every day of age it accrued while hidden. lib/sweep-grace
+  // records those releases as they happen; see that module for why it is
+  // device-local.
+  const released = releasedOn(item.id);
+  if (released && withinTrailingWindow(released, todayStr, windowDays)) return true;
 
   const holdingRoutines = routines.filter((r) => r.itemIds.includes(item.id));
   if (holdingRoutines.some((r) => pauseEndedRecently(r, todayStr, windowDays))) return true;

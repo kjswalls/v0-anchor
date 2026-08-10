@@ -18,8 +18,8 @@
  * came to exist.
  */
 
-import { isProgramActiveOn } from './active';
-import type { Program } from './planner-types';
+import { isProgramActiveOn, inactiveItemIdsOn, type ActivationContext } from './active';
+import type { Item, Program } from './planner-types';
 
 export interface ProgramBoundary {
   /** Programs that begin carrying their members on this date. */
@@ -63,6 +63,51 @@ export function programBoundaries(
     previous = live;
   }
   return boundaries;
+}
+
+/**
+ * What a SINGLE date needs said about it, if anything.
+ *
+ * A week can show a boundary because it renders the days on either side of it.
+ * A day view cannot — there is no neighbouring column for the change to be a
+ * change *from*, so "Summer ends" would be an assertion the reader has no way
+ * to check. What a day view can honestly say is the consequence: this many
+ * things are not here, and this is what is holding them.
+ *
+ * Returns null on any date where no program is hiding anything, which is the
+ * overwhelming majority of days — the notice must not become furniture.
+ *
+ * `hidden` counts only what the programs named here are responsible for. An
+ * item the user paused by hand is their own decision and already has a home in
+ * the braindump's Paused section; folding it into this count would make the
+ * program look responsible for work it never touched.
+ */
+export interface ProgramSuppression {
+  programs: Program[];
+  hidden: number;
+}
+
+export function programSuppressionOn(
+  dateStr: string,
+  items: readonly Item[],
+  ctx: ActivationContext,
+): ProgramSuppression | null {
+  const off = (ctx.programs ?? []).filter((p) => !isProgramActiveOn(p, dateStr));
+  if (off.length === 0) return null;
+
+  // The difference between "hidden with programs in play" and "hidden with them
+  // all switched on" is exactly what the programs are responsible for. Asking
+  // the resolver twice beats re-deriving the path algebra here — that second
+  // derivation is what lib/overdue.ts exists to warn about.
+  const withPrograms = inactiveItemIdsOn(items, dateStr, ctx);
+  if (withPrograms.size === 0) return null;
+  const withoutPrograms = inactiveItemIdsOn(items, dateStr, { ...ctx, programs: [] });
+
+  let hidden = 0;
+  for (const id of withPrograms) if (!withoutPrograms.has(id)) hidden += 1;
+  if (hidden === 0) return null;
+
+  return { programs: off, hidden };
 }
 
 /**

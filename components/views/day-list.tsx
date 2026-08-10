@@ -8,6 +8,8 @@ import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { ProgramNotice } from '@/components/views/program-notice';
+import { toDateStr } from '@/lib/recurrence';
 import type { Task, Habit, GroupBy, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -87,8 +89,9 @@ export function buildListGroups(
 
 export function DayList() {
   const { tasksByBucket, habitsByBucket, totalCount } = useDayItems();
-  const { selectedDate, navDirection } = usePlannerStore();
+  const { selectedDate, navDirection, userTimezone } = usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy);
 
@@ -101,6 +104,11 @@ export function DayList() {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Before the empty state, not after it: "nothing planned yet" is a
+            lie on a day whose work is real and merely away, and that is exactly
+            the day this line exists for. */}
+        <ProgramNotice dateStr={toDateStr(selectedDate, timezone)} />
+
         {totalCount === 0 ? (
           <div className="py-16 text-center">
             <p className="font-serif text-lg italic text-muted-foreground">

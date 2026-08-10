@@ -31,6 +31,7 @@ import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -1326,6 +1327,11 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Above everything, because it qualifies everything below it: this day
+            is missing work, and here is what is holding it. Renders on no other
+            day — see ProgramNotice. */}
+        <ProgramNotice dateStr={toDateStr(selectedDate, timezone)} className="px-1" />
+
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (
           <div

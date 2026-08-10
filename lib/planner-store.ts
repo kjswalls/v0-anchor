@@ -55,7 +55,14 @@ import {
   restoreProgram as dbRestoreProgram,
 } from './db';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
-import { isPausedOn, isProgramActiveOn, suppressionReason, suppressionLabel } from './active';
+import {
+  isPausedOn,
+  isProgramActiveOn,
+  inactiveItemIdsOn,
+  suppressionReason,
+  suppressionLabel,
+} from './active';
+import { recordReleased } from './sweep-grace';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
@@ -406,6 +413,25 @@ function landingReceipt(
   return `${labels.length} of these are hidden where they landed`;
 }
 
+/**
+ * Suppressed open loops right now, for the release-grace diff below.
+ *
+ * `inactiveItemIdsOn` and not `isItemActiveOn`, deliberately: only open loops
+ * can ever be swept, so anything else appearing in the diff would grant grace
+ * to work that was never at risk.
+ */
+function suppressedNow(
+  state: { items: Item[]; routines: Routine[]; programs: Program[] },
+  todayStr: string,
+  tz: string,
+): Set<string> {
+  return inactiveItemIdsOn(state.items, todayStr, {
+    userTimezone: tz,
+    routines: state.routines,
+    programs: state.programs,
+  });
+}
+
 interface HistoryState {
   items: Item[];
   projects: Project[];
@@ -560,6 +586,32 @@ export const usePlannerStore = create<PlannerStore>()(
       const startDateOf = (item: Item | undefined): string | undefined =>
         item && item.type !== 'habit' ? item.startDate : undefined;
 
+      /**
+       * Run a container write, and record any item whose suppression it ENDED.
+       *
+       * The auto-age sweep reads recorded resume dates to grace work that has
+       * just come back (decision 9). Deleting a container, or pulling a member
+       * out of one, releases items with no such record anywhere — the container
+       * or the join row it would have been read from is precisely what was
+       * removed. Without this, tidying up a paused routine hands every one of
+       * its dated members to the next morning's sweep, already weeks overdue.
+       *
+       * Diffed rather than inferred from the patch: "was hidden, is now
+       * visible" is the only question that matters, and the path algebra makes
+       * it genuinely hard to answer any other way (an item with a second live
+       * path was never hidden; one held by two paused programs still is).
+       */
+      const withReleaseGrace = (mutate: () => void) => {
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+        const before = suppressedNow(get(), todayStr, tz);
+        mutate();
+        if (before.size === 0) return;
+        const after = suppressedNow(get(), todayStr, tz);
+        const released = [...before].filter((id) => !after.has(id));
+        if (released.length > 0) recordReleased(released, todayStr);
+      };
+
       /** DB slug for an item ('task' | 'habit' | custom slug). */
       const dbTypeOf = (item: Item): string =>
         item.type === 'custom' ? item.customType : item.type;
@@ -713,7 +765,12 @@ export const usePlannerStore = create<PlannerStore>()(
         const routine = get().routines.find((r) => r.id === id);
         if (!routine) return;
         setNextActionLabel(`Edit routine: ${updates.name ?? routine.name}`);
-        set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        // Only a membership change can release anything; a rename or a colour
+        // cannot, and the diff costs two resolver passes.
+        const run = () =>
+          set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        if (updates.itemIds) withReleaseGrace(run);
+        else run();
         if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
       },
       removeRoutine: (id) => {
@@ -724,7 +781,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // window brings the membership back intact — which is also what makes
         // undo of a delete a real undo rather than an empty shell.
         setNextActionLabel(`Delete routine: ${routine.name}`);
-        set({ routines: get().routines.filter((r) => r.id !== id) });
+        withReleaseGrace(() => set({ routines: get().routines.filter((r) => r.id !== id) }));
         if (userId) dbDeleteRoutine(userId, id).catch(console.error);
       },
       setRoutinePaused: (id, paused, until) => {
@@ -766,7 +823,15 @@ export const usePlannerStore = create<PlannerStore>()(
         const program = get().programs.find((p) => p.id === id);
         if (!program) return;
         setNextActionLabel(`Edit program: ${updates.name ?? program.name}`);
-        set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
+        const run = () =>
+          set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
+        // Membership OR a date range: moving `startsOn` earlier switches the
+        // program on for today just as surely as adding a member does.
+        if (updates.itemIds || updates.routineIds || 'startsOn' in updates || 'endsOn' in updates) {
+          withReleaseGrace(run);
+        } else {
+          run();
+        }
         if (userId) dbUpdateProgram(userId, id, updates).catch(console.error);
       },
       removeProgram: (id) => {
@@ -781,7 +846,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // designed behaviour — a container in the trash must not keep hiding
         // work behind a control nobody can reach.
         setNextActionLabel(`Delete program: ${program.name}`);
-        set({ programs: get().programs.filter((p) => p.id !== id) });
+        withReleaseGrace(() => set({ programs: get().programs.filter((p) => p.id !== id) }));
         if (userId) dbDeleteProgram(userId, id).catch(console.error);
       },
       setProgramState: (id, state) => {
