@@ -220,6 +220,14 @@
 
   /* ── 4. Geometry ─────────────────────────────────────────────────────── */
   --radius: 1rem;
+
+  /* Drag-resized sidebar column width. Published by components/sidebar/
+     sidebar.tsx, which writes it every frame during a drag — that's how the
+     column resizes without re-rendering the braindump 60 times a second. The
+     literal here is only the pre-hydration value; lib/sidebar-store.ts owns
+     SIDEBAR_DEFAULT_WIDTH and the two must agree. Theme-independent, so it
+     lives in :root only and .dark never restates it. */
+  --sidebar-w: 406px;
 }
 
 .dark {

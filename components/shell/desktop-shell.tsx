@@ -1,15 +1,12 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { ChevronsRight } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { MorningCheck } from '@/components/ai/morning-check';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
-import { Button } from '@/components/ui/button';
-import { useSidebarStore } from '@/lib/sidebar-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -23,7 +20,8 @@ const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
  * the warm backdrop. The views live behind ViewRouter (P5).
  */
 export function DesktopShell() {
-  const { leftSidebarOpen, toggleLeftSidebar, leftSidebarHoverEnabled, setLeftSidebarHovered } = useSidebarStore();
+  // No sidebar state here any more: collapse, expand, resize and hover-peek all
+  // live on the column's own edge in <Sidebar/>. This shell just lays out.
   const activeDialog = useUIStore((s) => s.activeDialog);
   const closeDialog = useUIStore((s) => s.closeDialog);
   const canvasWide = useCanvasWide();
@@ -65,30 +63,17 @@ export function DesktopShell() {
         inert={panelOverlays && !!panelState}
         className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
       >
-        {/* Left hover zone - shows sidebar when collapsed (if enabled) */}
-        {!leftSidebarOpen && leftSidebarHoverEnabled && (
-          <div
-            className="absolute left-0 top-0 bottom-0 z-40 w-3 cursor-pointer transition-colors hover:bg-primary/10"
-            onMouseEnter={() => setLeftSidebarHovered(true)}
-          />
-        )}
+        {/* The hover-peek trigger used to be a 12px strip here, on this panel's
+            left edge. <Sidebar/>'s expand zone now covers those same pixels and
+            sits above them, so this one could only ever have gone dead — the
+            zone fires setLeftSidebarHovered itself. One edge, one owner.
 
-        {/* Expand-sidebar affordance when collapsed — absolutely positioned at
-            the panel's top-left so it never shifts the header capsule (which
-            stays fixed at the canvas-container left edge) and reads as the same
-            control that lived in the sidebar header, just flipped. */}
-        {!leftSidebarOpen && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute left-2 top-[35px] z-30 h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={toggleLeftSidebar}
-            aria-label="Expand sidebar"
-            title="Expand sidebar (⌘[)"
-          >
-            <ChevronsRight className="h-4 w-4" />
-          </Button>
-        )}
+            The expand-sidebar affordance used to live here too, absolutely
+            positioned at the panel's top-left. It moved into <Sidebar/> as the
+            mirror of the collapse grip: same shape, same vertical centre, sat
+            in the shell's gutter instead of inside this panel — so collapsing
+            and reopening happen in one place on screen rather than the control
+            jumping from the seam to over the canvas. */}
 
         {/* Canvas header. canvas-container shares its left edge with every body
             view (Figma x=103 align).
