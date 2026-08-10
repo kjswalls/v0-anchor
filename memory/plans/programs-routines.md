@@ -351,8 +351,9 @@ dateless surfaces resolve at today (decision 3).
   editor (EditProjectDialog precedent): rename (ids make it safe from day one),
   icon, color, state control (programs: Active / Paused / Follow dates + range
   pickers; routines: pause toggle + optional resume date), member list with add via
-  one-at-a-time entity picker (no multi-select exists — #205 stays parked) and
-  per-row remove. Attach-routine-to-program confirm copy states the visibility
+  one-at-a-time entity picker (the DIALOG's picker is one-at-a-time; canvas
+  multi-select is a different thing and it fully exists — see the correction in
+  Phase 5) and per-row remove. Attach-routine-to-program confirm copy states the visibility
   consequence when the program is inactive (decision 3's discontinuity). Reached
   from braindump header, palette, and the item chips' "Manage…" rows.
 - **Braindump Paused section** (decision 10): collapsed GroupSection at the bottom,
@@ -703,6 +704,22 @@ dateless surfaces resolve at today (decision 3).
   item-dialog.tsx:1216 — *"that row is width-critical at the 280px minimum"*. That
   premise EXPIRED with the draggable sidebar (`a339b4c`): 280px is now a floor the
   user can leave, not the normal case.
+
+  **CORRECTION (2026-08-10): "#205 / no multi-select exists" was stale, and it
+  misled a whole round of design research.** Canvas multi-select is fully built and
+  has been for some time: `lib/selection-store.ts` (Set + anchor, new-Set-per-write
+  reactivity contract, DOM-order `rangeIds`/`selectableIdsInDom`),
+  `components/shell/bulk-action-bar.tsx`, wired into task-row, project-block,
+  day-schedule, the mobile schedule sheet, and a `select-all` palette command —
+  with shift-ranges, Escape-to-clear, and pruning after external deletes. The
+  parenthetical at line ~354 is about the manage DIALOG's member picker being
+  one-at-a-time, which is true and much narrower. Six design agents and I all read
+  it as "the primitive is missing" and called it the gating dependency; it was not.
+
+  **What was actually missing — now built (2026-08-10):** the one bulk verb the
+  container work needs, `setItemsCollected(ids, kind, containerId, member)` plus a
+  Collect control in the bulk bar. This is Phase 5's "bulk membership add", and it
+  is the piece that cannot be wasted whichever manager design wins.
 
   **Kirby's call (2026-08-10): fix it as part of a unified manager redesign**, not
   as a bolted-on second button. Five tabs across two dialogs

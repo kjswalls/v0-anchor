@@ -54,7 +54,7 @@ import {
   deleteProgram as dbDeleteProgram,
   restoreProgram as dbRestoreProgram,
 } from './db';
-import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
+import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
   isProgramActiveOn,
@@ -168,6 +168,18 @@ interface PlannerStore {
   setItemsCompleted: (ids: string[], completed: boolean, date?: Date) => void;
   /** Bulk assign a mixed selection to a time bucket, untimed (group drag). */
   assignItemsToBucket: (ids: string[], bucket: TimeBucket) => void;
+  /**
+   * Add or remove a whole selection's membership of one routine or program, in
+   * one set() ⇒ one undo. The registry gates eligibility (subtasks are not
+   * collectible), so a mixed selection collects its eligible subset rather than
+   * refusing wholesale — same posture as the other bulk verbs.
+   */
+  setItemsCollected: (
+    ids: string[],
+    kind: 'routine' | 'program',
+    containerId: string,
+    member: boolean,
+  ) => void;
   /**
    * Bulk schedule a mixed selection AT a clock time (group drag onto a timed
    * grid slot) so they land as visible blocks, not untimed rows. Task-likes take
@@ -1457,6 +1469,89 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         dbWrites.forEach((w) => w());
+      },
+
+      /**
+       * Collect a selection into a routine or program, or release it.
+       *
+       * The membership half of the bulk verbs, and the reason it is one action
+       * rather than N calls to updateRoutine: each of those would push its own
+       * history entry, so undoing "add twelve items to Summer" would take twelve
+       * Cmd+Z. One set(), one entry, same contract the other bulk verbs hold.
+       *
+       * Both directions have a consequence the user must be told about, and they
+       * are opposites:
+       *  · ADDING to a container that is currently off hides the items on the
+       *    spot. Allowed — that is what collecting into a paused program means —
+       *    but never silently, so it carries decision 11's receipt.
+       *  · REMOVING from a container that was hiding them makes them visible
+       *    again, possibly weeks overdue, so it needs the sweep's release grace
+       *    exactly as removeRoutine and updateRoutine do.
+       */
+      setItemsCollected: (ids, kind, containerId, member) => {
+        const userId = get().userId;
+        const idSet = new Set(ids);
+        // Registry, not a type check: the subtask rule lives in isCollectible,
+        // and a second copy here would drift the first time a capability moves.
+        const eligible = get()
+          .items.filter((i) => idSet.has(i.id) && isCollectible(i))
+          .map((i) => i.id);
+        if (eligible.length === 0) return;
+
+        const list = kind === 'routine' ? get().routines : get().programs;
+        const container = list.find((c) => c.id === containerId);
+        if (!container) return;
+
+        const eligibleSet = new Set(eligible);
+        const nextIds = member
+          ? [...container.itemIds, ...eligible.filter((id) => !container.itemIds.includes(id))]
+          : container.itemIds.filter((id) => !eligibleSet.has(id));
+        // Nothing to do — every item was already in the requested state. Bail
+        // before the label, or an undo entry appears for a write that never was.
+        if (nextIds.length === container.itemIds.length) return;
+
+        const changed = Math.abs(nextIds.length - container.itemIds.length);
+        const withNext = <T extends { id: string; itemIds: string[] }>(cs: T[]) =>
+          cs.map((c) => (c.id === containerId ? { ...c, itemIds: nextIds } : c));
+        const nextRoutines = kind === 'routine' ? withNext(get().routines) : get().routines;
+        const nextPrograms = kind === 'program' ? withNext(get().programs) : get().programs;
+
+        // Resolved against the PROSPECTIVE containers, not the current ones.
+        // Every other caller of landingReceipt moves an item's date while the
+        // containers hold still, so asking before the write is the same answer;
+        // here it is the containers that move, and asking before would report
+        // the world the user is leaving. Cheaper and simpler than writing first
+        // and re-labelling, which would need the label read back out.
+        const receipt = member
+          ? landingReceipt(
+              {
+                items: get().items,
+                routines: nextRoutines,
+                programs: nextPrograms,
+                userTimezone: get().userTimezone,
+              },
+              eligible,
+            )
+          : undefined;
+
+        setNextActionLabel(
+          member
+            ? `Add to ${container.name}: ${changed} ${changed === 1 ? 'item' : 'items'}`
+            : `Remove from ${container.name}: ${changed} ${changed === 1 ? 'item' : 'items'}`,
+          receipt,
+        );
+
+        withReleaseGrace(() =>
+          set(kind === 'routine' ? { routines: nextRoutines } : { programs: nextPrograms }),
+        );
+
+        if (userId) {
+          const write =
+            kind === 'routine'
+              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
+              : dbUpdateProgram(userId, containerId, { itemIds: nextIds });
+          write.catch(console.error);
+        }
       },
 
       /**

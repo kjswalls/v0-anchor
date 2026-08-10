@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Circle, Inbox, Trash2, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Check, Circle, Inbox, Layers, Minus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
-import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { getItemTypeConfig, itemTypeName, isCollectible } from '@/lib/item-registry';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
-import type { Item } from '@/lib/planner-types';
+import { accentColorForName } from '@/lib/accent-colors';
+import type { Item, Program, Routine } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -28,6 +29,51 @@ function isItemDone(item: Item, dateStr: string): boolean {
   return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
 }
 
+/**
+ * One row of the Collect menu. Tri-state, because a selection is rarely all-in
+ * or all-out of a container and a plain checkbox would have to lie about the
+ * middle: `all` clears the whole selection out, anything less collects the
+ * whole selection in. That asymmetry is deliberate — the menu is reached from a
+ * selection you just made, so the intent is nearly always "put these there",
+ * and only the already-satisfied case can safely mean the opposite.
+ */
+function CollectRow({
+  container,
+  state,
+  onToggle,
+}: {
+  container: Routine | Program;
+  state: 'none' | 'some' | 'all';
+  onToggle: (member: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={state === 'all' ? 'true' : state === 'some' ? 'mixed' : 'false'}
+      data-testid="bulk-collect-option"
+      data-container-id={container.id}
+      data-state={state}
+      onClick={() => onToggle(state !== 'all')}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs',
+        'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none'
+      )}
+    >
+      <span
+        aria-hidden
+        className="size-2.5 shrink-0 rounded-[2px]"
+        style={{ background: container.color ?? accentColorForName(container.name) }}
+      />
+      <span className="truncate">{container.name}</span>
+      <span className="ml-auto flex size-3.5 shrink-0 items-center justify-center">
+        {state === 'all' && <Check className="size-3.5" />}
+        {state === 'some' && <Minus className="size-3.5 text-muted-foreground" />}
+      </span>
+    </button>
+  );
+}
+
 export function BulkActionBar() {
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const clear = useSelectionStore((s) => s.clear);
@@ -41,8 +87,13 @@ export function BulkActionBar() {
   const moveTasksToDate = usePlannerStore((s) => s.moveTasksToDate);
   const unscheduleTasks = usePlannerStore((s) => s.unscheduleTasks);
   const confirm = useUIStore((s) => s.confirm);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
+  const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
+  const setItemsCollected = usePlannerStore((s) => s.setItemsCollected);
 
   const [dateOpen, setDateOpen] = useState(false);
+  const [collectOpen, setCollectOpen] = useState(false);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dateStr = toDateStr(selectedDate, tz);
@@ -98,6 +149,21 @@ export function BulkActionBar() {
     [selected]
   );
   const allDone = count > 0 && selected.every((i) => isItemDone(i, dateStr));
+
+  // Subtasks are not collectible (they surface only inside their parent), so a
+  // selection swept off the canvas can carry ids no container will take. Same
+  // eligible-subset posture as Move and Braindump above.
+  const collectible = useMemo(() => selected.filter(isCollectible), [selected]);
+  const collectibleIds = useMemo(() => collectible.map((i) => i.id), [collectible]);
+  const membership = useMemo(() => {
+    const of = (c: { itemIds: string[] }): 'none' | 'some' | 'all' => {
+      if (collectibleIds.length === 0) return 'none';
+      const held = new Set(c.itemIds);
+      const n = collectibleIds.filter((id) => held.has(id)).length;
+      return n === 0 ? 'none' : n === collectibleIds.length ? 'all' : 'some';
+    };
+    return { of };
+  }, [collectibleIds]);
 
   // Only a genuine MULTI-selection (>=2) raises the bar. A plain click selects
   // exactly one row (and opens it in the edit pane, which is the single-item
@@ -196,6 +262,68 @@ export function BulkActionBar() {
           <span className="text-muted-foreground">· {braindumpable.length}</span>
         )}
       </Button>
+
+      {/* Hidden entirely when migration 024's tables are unreachable — a
+          disabled control would promise a feature the writes cannot reach, and
+          the store gates on the same flag everywhere else. Also hidden when
+          nothing in the selection can be collected at all, rather than shown
+          disabled: a subtasks-only selection has no story to tell here. */}
+      {collectionsAvailable && collectible.length > 0 && (routines.length > 0 || programs.length > 0) && (
+        <Popover open={collectOpen} onOpenChange={setCollectOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 gap-1.5 rounded-full px-2.5 text-xs"
+              data-testid="bulk-collect"
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Collect
+              {collectible.length < count && (
+                <span className="text-muted-foreground">· {collectible.length}</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="center" className="w-56 p-1">
+            <div className="max-h-64 overflow-y-auto" role="menu" aria-label="Add to routine or program">
+              {routines.length > 0 && (
+                <>
+                  <div className="px-2 pb-1 pt-1.5 text-2xs uppercase tracking-wide text-muted-foreground">
+                    Routines
+                  </div>
+                  {routines.map((r) => (
+                    <CollectRow
+                      key={r.id}
+                      container={r}
+                      state={membership.of(r)}
+                      onToggle={(member) =>
+                        setItemsCollected(collectibleIds, 'routine', r.id, member)
+                      }
+                    />
+                  ))}
+                </>
+              )}
+              {programs.length > 0 && (
+                <>
+                  <div className="px-2 pb-1 pt-1.5 text-2xs uppercase tracking-wide text-muted-foreground">
+                    Programs
+                  </div>
+                  {programs.map((p) => (
+                    <CollectRow
+                      key={p.id}
+                      container={p}
+                      state={membership.of(p)}
+                      onToggle={(member) =>
+                        setItemsCollected(collectibleIds, 'program', p.id, member)
+                      }
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
 
       <Button
         variant="ghost"

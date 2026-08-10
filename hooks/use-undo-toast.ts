@@ -26,6 +26,11 @@ const SIGNIFICANT_ACTIONS = [
   'Delete items',
   'Complete items',
   'Uncomplete items',
+  // Bulk membership. Collecting into a container that is currently off hides
+  // the items on the spot, so this is a move verb in every way that matters and
+  // carries the same receipt — it needs the toast to show it.
+  'Add to ',
+  'Remove from ',
 ];
 
 export function useUndoToast() {
