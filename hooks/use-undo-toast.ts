@@ -58,7 +58,13 @@ export function useUndoToast() {
       // Show toast with undo button
       // Get fresh state at click time to ensure canUndo is accurate
       toastIdRef.current = toast(latestAction.label, {
-        duration: 5000,
+        // Decision 11's receipt, when the store attached one: the move was
+        // allowed, but what it moved is not visible where it landed. Absent on
+        // every other action, so this reads as an exception rather than chrome.
+        description: latestAction.receipt,
+        // A receipt has something to read, so it gets longer than the reflexive
+        // "oops, undo" window the bare label needs.
+        duration: latestAction.receipt ? 8000 : 5000,
         action: {
           label: 'Undo',
           onClick: () => {

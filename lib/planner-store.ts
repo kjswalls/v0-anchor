@@ -55,7 +55,7 @@ import {
   restoreProgram as dbRestoreProgram,
 } from './db';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, hydrateCustomTypes } from './item-registry';
-import { isPausedOn, isProgramActiveOn } from './active';
+import { isPausedOn, isProgramActiveOn, suppressionReason, suppressionLabel } from './active';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
@@ -364,6 +364,48 @@ function withMembership<T extends { id: string; itemIds: string[] }>(
   );
 }
 
+/**
+ * Decision 11's receipt: did the thing the user just moved land somewhere it
+ * will not be seen?
+ *
+ * The move verbs are all ALLOWED to drop work into a suppressed window —
+ * blocking them would fight the boundary week, which deliberately renders live
+ * and hidden columns side by side so you can plan across the handoff. What is
+ * not allowed is doing it silently. A drag that ends with the block simply gone
+ * is indistinguishable from a bug.
+ *
+ * Resolved at the TARGET date, not today: dropping a task on a column after a
+ * program ends is exactly the case this exists for, and today would answer
+ * about the wrong day. Suppression that is dateless (a paused item, a paused
+ * routine) answers the same on every date, so it is covered by the same call.
+ *
+ * Lives here rather than in each caller because there are five of them — DnD,
+ * EOD's move-all, two date pickers and the mobile sheet — and they all funnel
+ * through these actions. One definition, per lib/overdue.ts's founding lesson.
+ */
+function landingReceipt(
+  state: { items: Item[]; routines: Routine[]; programs: Program[]; userTimezone: string | null },
+  ids: readonly string[],
+  dateStr?: string,
+): string | undefined {
+  const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const target = dateStr ?? toDateStr(new Date(), tz);
+  const ctx = { userTimezone: tz, routines: state.routines, programs: state.programs };
+  const labels = ids
+    .map((id) => state.items.find((i) => i.id === id))
+    .filter((item): item is Item => !!item)
+    .map((item) => suppressionReason(item, target, ctx))
+    .filter((reason) => !!reason)
+    .map((reason) => suppressionLabel(reason, { long: true }));
+
+  if (labels.length === 0) return undefined;
+  // One cause, however many items: say it. Mixed causes across a bulk move
+  // can't be summarised without inventing a shared reason, so it counts instead.
+  const unique = new Set(labels);
+  if (unique.size === 1) return labels[0];
+  return `${labels.length} of these are hidden where they landed`;
+}
+
 interface HistoryState {
   items: Item[];
   projects: Project[];
@@ -380,6 +422,12 @@ export type ActionLogEntry = {
   id: string;
   label: string;
   timestamp: number;
+  /**
+   * A second line for the undo toast, set when the action's result is not
+   * visible where the user just put it (plan decision 11). Optional and
+   * ignored everywhere else — the action log itself renders labels only.
+   */
+  receipt?: string;
 };
 
 const MAX_HISTORY_SIZE = 50;
@@ -388,10 +436,12 @@ let historyIndex = -1;
 let isUndoRedoAction = false;
 let actionLog: ActionLogEntry[] = [];
 let pendingActionLabel: string | null = null;
+let pendingActionReceipt: string | undefined;
 
 // Set the label for the next action that will be saved to history
-export const setNextActionLabel = (label: string) => {
+export const setNextActionLabel = (label: string, receipt?: string) => {
   pendingActionLabel = label;
+  pendingActionReceipt = receipt;
 };
 
 // Get the current action log
@@ -437,8 +487,10 @@ const saveToHistory = (state: HistoryState) => {
     id: crypto.randomUUID(),
     label: pendingActionLabel || 'Unknown action',
     timestamp: Date.now(),
+    receipt: pendingActionReceipt,
   });
   pendingActionLabel = null;
+  pendingActionReceipt = undefined;
 
   // Limit history size
   if (historyStack.length > MAX_HISTORY_SIZE) {
@@ -498,6 +550,15 @@ export const usePlannerStore = create<PlannerStore>()(
        */
       const findTaskLike = (id: string): Item | undefined =>
         get().items.find((i) => i.id === id && i.type !== 'habit');
+
+      /**
+       * findTaskLike's runtime filter guarantees non-habit but its declared
+       * return type is the full union, so `startDate` needs the narrowing
+       * spelled out. Habits genuinely have no startDate — they are date-blind
+       * by design — so undefined here is the right answer, not a fallback.
+       */
+      const startDateOf = (item: Item | undefined): string | undefined =>
+        item && item.type !== 'habit' ? item.startDate : undefined;
 
       /** DB slug for an item ('task' | 'habit' | custom slug). */
       const dbTypeOf = (item: Item): string =>
@@ -1020,7 +1081,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
       scheduleTask: (id, bucket, time, date) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
+        setNextActionLabel(
+          `Schedule task: ${task?.title || 'Unknown'}`,
+          landingReceipt(get(), [id], date ?? startDateOf(task))
+        );
         const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
 
         const updates: Partial<Task> = {
@@ -1038,7 +1102,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
       assignTaskToBucket: (id, bucket) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
+        setNextActionLabel(
+          `Move task to ${bucket}: ${task?.title || 'Unknown'}`,
+          landingReceipt(get(), [id], startDateOf(task))
+        );
         const updates: Partial<Task> = {
           isScheduled: false,
           timeBucket: bucket,
@@ -1075,7 +1142,10 @@ export const usePlannerStore = create<PlannerStore>()(
         // 'Move task to' is the prefix hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS
         // matches (shared with assignTaskToBucket) — keep it verbatim or the undo
         // toast silently stops appearing.
-        setNextActionLabel(`Move task to ${dateStr}: ${task.title}`);
+        setNextActionLabel(
+          `Move task to ${dateStr}: ${task.title}`,
+          landingReceipt(get(), [id], dateStr)
+        );
         updateItemAction(id, 'task', {
           startDate: dateStr,
           timeBucket: task.timeBucket ?? 'anytime',
@@ -1095,7 +1165,10 @@ export const usePlannerStore = create<PlannerStore>()(
         const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
         if (targets.length === 0) return;
         // 'Move all tasks' is already in SIGNIFICANT_ACTIONS; this is its first producer.
-        setNextActionLabel(`Move all tasks to ${dateStr} (${targets.length})`);
+        setNextActionLabel(
+          `Move all tasks to ${dateStr} (${targets.length})`,
+          landingReceipt(get(), targets.map((t) => t.id), dateStr)
+        );
 
         const writes = targets.map((item) => ({
           id: item.id,
@@ -1603,7 +1676,12 @@ export const usePlannerStore = create<PlannerStore>()(
 
       assignHabitToBucket: (id, bucket) => {
         const habit = findItem(id, 'habit');
-        setNextActionLabel(`Move habit to ${bucket}: ${habit?.title || 'Unknown'}`);
+        // Habits are date-blind, so the receipt resolves at today — which is
+        // what a dateless surface must use anyway (decision 3).
+        setNextActionLabel(
+          `Move habit to ${bucket}: ${habit?.title || 'Unknown'}`,
+          landingReceipt(get(), [id])
+        );
         updateItemAction(id, 'habit', { timeBucket: bucket, startTime: undefined });
       },
 

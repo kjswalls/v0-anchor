@@ -210,6 +210,39 @@ export async function cleanupTestData(
 }
 
 /**
+ * Delete every routine and program whose name starts with `prefix`.
+ *
+ * Direct service-key REST, following the resetUserSettings precedent, because
+ * there is no agent route for containers — v1 has no agent write surface for
+ * them at all (plan decision 6). A HARD delete, not the app's soft one: a
+ * soft-deleted row still occupies its name and still counts in the manager's
+ * list until the 30-day purge cron gets to it, so a spec that ran twice would
+ * accumulate identically-named rows on the shared test user forever.
+ *
+ * Join rows follow by CASCADE, so member items are released but never touched —
+ * they are cleaned up by title prefix like every other fixture.
+ *
+ * Never throws: a cleanup failure must not mask the assertion a test is
+ * actually reporting.
+ */
+export async function cleanupTestCollections(prefix: string): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  for (const table of ['programs', 'routines']) {
+    try {
+      const res = await fetch(
+        `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&name=like.${encodeURIComponent(`${prefix}%`)}`,
+        { method: 'DELETE', headers }
+      );
+      if (!res.ok) console.warn(`[cleanup] ${table}: ${res.status} ${await res.text()}`);
+    } catch (err) {
+      console.warn(`[cleanup] ${table}:`, err);
+    }
+  }
+}
+
+/**
  * Force the test user's settings back to the values globalSetup seeded.
  *
  * These columns are GLOBAL to the shared test user, so a spec that changes one

@@ -6,9 +6,11 @@ import {
   isOpenLoopSuppressedOn,
   inactiveItemIdsOn,
   suppressionReason,
+  suppressionLabel,
+  isProgramActiveOn,
   type ActivationContext,
 } from '@/lib/active';
-import type { Item, Routine } from '@anchor-app/types';
+import type { Item, Routine, Program } from '@anchor-app/types';
 
 const ctx: ActivationContext = { userTimezone: 'America/New_York' };
 
@@ -357,5 +359,311 @@ describe('suppressionReason names the container', () => {
       routine({ id: 'r2', itemIds: ['h'] }),
     );
     expect(suppressionReason(habit(), D, c)).toBeNull();
+  });
+});
+
+/* ── program paths (Phase 3) ──────────────────────────────────────────────── */
+
+const program = (over: Partial<Program> = {}): Program => ({
+  id: 'p', name: 'Summer', state: 'auto', itemIds: [], routineIds: [], ...over,
+});
+
+const withPrograms = (...programs: Program[]): ActivationContext => ({
+  userTimezone: 'America/New_York',
+  programs,
+});
+
+const withBoth = (routines: Routine[], programs: Program[]): ActivationContext => ({
+  userTimezone: 'America/New_York',
+  routines,
+  programs,
+});
+
+describe('isProgramActiveOn — the tri-state', () => {
+  const D = '2026-08-15';
+
+  it("'active' ignores the range entirely", () => {
+    const p = program({ state: 'active', startsOn: '2030-01-01', endsOn: '2030-02-01' });
+    expect(isProgramActiveOn(p, D)).toBe(true);
+  });
+
+  it("'paused' ignores the range entirely", () => {
+    const p = program({ state: 'paused', startsOn: '2026-01-01', endsOn: '2026-12-31' });
+    expect(isProgramActiveOn(p, D)).toBe(false);
+  });
+
+  it("'auto' with no range is always on", () => {
+    expect(isProgramActiveOn(program(), D)).toBe(true);
+    expect(isProgramActiveOn(program(), '1999-01-01')).toBe(true);
+  });
+
+  // Inclusive at BOTH ends, unlike a pause's exclusive upper bound. "Jun 1 to
+  // Aug 31" is a period you are inside; "paused until Sep 1" is a date you come
+  // back on. The two read differently, so they resolve differently.
+  it('an auto range is inclusive at both ends', () => {
+    const p = program({ startsOn: '2026-06-01', endsOn: '2026-08-31' });
+    expect(isProgramActiveOn(p, '2026-05-31')).toBe(false);
+    expect(isProgramActiveOn(p, '2026-06-01')).toBe(true);
+    expect(isProgramActiveOn(p, '2026-08-31')).toBe(true);
+    expect(isProgramActiveOn(p, '2026-09-01')).toBe(false);
+  });
+
+  it('an open end runs forever, an open start runs from the beginning', () => {
+    expect(isProgramActiveOn(program({ startsOn: '2026-06-01' }), '2099-01-01')).toBe(true);
+    expect(isProgramActiveOn(program({ endsOn: '2026-08-31' }), '1999-01-01')).toBe(true);
+  });
+});
+
+describe('program membership scopes an item', () => {
+  const D = '2026-08-15';
+
+  it("a direct member rides its program's state", () => {
+    expect(isItemActiveOn(habit(), D, withPrograms(program({ itemIds: ['h'] })))).toBe(true);
+    expect(
+      isItemActiveOn(habit(), D, withPrograms(program({ itemIds: ['h'], state: 'paused' })))
+    ).toBe(false);
+  });
+
+  it('a non-member is untouched by a program that is off', () => {
+    const c = withPrograms(program({ itemIds: ['someone-else'], state: 'paused' }));
+    expect(isItemActiveOn(habit(), D, c)).toBe(true);
+  });
+
+  // The path shape that carries the design: item -> routine -> program.
+  it('reaches an item through a routine the program holds', () => {
+    const r = routine({ id: 'r1', itemIds: ['h'] });
+    const c = withBoth([r], [program({ routineIds: ['r1'], state: 'paused' })]);
+    expect(isItemActiveOn(habit(), D, c)).toBe(false);
+  });
+
+  it('a path through a routine needs BOTH containers on', () => {
+    const paused = routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 });
+    const c = withBoth([paused], [program({ routineIds: ['r1'], state: 'active' })]);
+    expect(isItemActiveOn(habit(), D, c)).toBe(false);
+  });
+
+  // The standalone rule, and the attach discontinuity it produces — the one
+  // membership write the manager confirms before committing.
+  it('a routine in NO program answers for itself; joining one hands that over', () => {
+    const r = routine({ id: 'r1', itemIds: ['h'] });
+    expect(isItemActiveOn(habit(), D, withBoth([r], [program({ id: 'p1', state: 'paused' })])))
+      .toBe(true);
+    expect(
+      isItemActiveOn(
+        habit(),
+        D,
+        withBoth([r], [program({ id: 'p1', state: 'paused', routineIds: ['r1'] })])
+      )
+    ).toBe(false);
+  });
+
+  // Disjunctive across paths: a second container is another reason to appear,
+  // never a new way to vanish.
+  it('one live path is enough, whatever kind it is', () => {
+    const c = withBoth(
+      [routine({ id: 'r1', itemIds: ['h'] })],
+      [
+        program({ id: 'off', state: 'paused', routineIds: ['r1'] }),
+        program({ id: 'on', state: 'active', itemIds: ['h'] }),
+      ]
+    );
+    expect(isItemActiveOn(habit(), D, c)).toBe(true);
+  });
+
+  it("the item's own pause still beats every live path", () => {
+    const c = withPrograms(program({ itemIds: ['h'], state: 'active' }));
+    expect(isItemActiveOn(habit({ pausedAt: AUG10 }), D, c)).toBe(false);
+  });
+
+  // Trashed containers are absent from these arrays, and that absence IS the
+  // mechanism: a program in the trash stops scoping, so a routine it was the
+  // only holder of falls back to standalone and its members return.
+  it('a trashed program releases the routine it was the only holder of', () => {
+    const r = routine({ id: 'r1', itemIds: ['h'] });
+    expect(isItemActiveOn(habit(), D, withBoth([r], []))).toBe(true);
+  });
+
+  it('resolves per date across a range boundary', () => {
+    const c = withPrograms(
+      program({ itemIds: ['h'], startsOn: '2026-06-01', endsOn: '2026-08-31' })
+    );
+    expect(isItemActiveOn(habit(), '2026-08-31', c)).toBe(true);
+    expect(isItemActiveOn(habit(), '2026-09-01', c)).toBe(false);
+  });
+});
+
+describe('inactiveItemIdsOn agrees with isItemActiveOn on program paths', () => {
+  const D = '2026-08-15';
+  const items = [habit(), task({ id: 't' })];
+
+  const cases: [string, ActivationContext][] = [
+    ['direct, live', withPrograms(program({ itemIds: ['h', 't'] }))],
+    ['direct, off', withPrograms(program({ itemIds: ['h', 't'], state: 'paused' }))],
+    ['out of range', withPrograms(program({ itemIds: ['h', 't'], startsOn: '2026-09-01' }))],
+    [
+      'via routine, program off',
+      withBoth(
+        [routine({ id: 'r1', itemIds: ['h', 't'] })],
+        [program({ routineIds: ['r1'], state: 'paused' })]
+      ),
+    ],
+    [
+      'via routine, routine paused',
+      withBoth(
+        [routine({ id: 'r1', itemIds: ['h', 't'], pausedAt: AUG10 })],
+        [program({ routineIds: ['r1'], state: 'active' })]
+      ),
+    ],
+    [
+      'standalone routine beside an off program it is not in',
+      withBoth([routine({ id: 'r1', itemIds: ['h', 't'] })], [program({ id: 'p1', state: 'paused' })]),
+    ],
+    [
+      'two paths, one live',
+      withBoth(
+        [routine({ id: 'r1', itemIds: ['h', 't'] })],
+        [
+          program({ id: 'off', state: 'paused', routineIds: ['r1'] }),
+          program({ id: 'on', state: 'active', itemIds: ['h', 't'] }),
+        ]
+      ),
+    ],
+    [
+      'a routine held by TWO programs, one on',
+      withBoth(
+        [routine({ id: 'r1', itemIds: ['h', 't'] })],
+        [
+          program({ id: 'off', state: 'paused', routineIds: ['r1'] }),
+          program({ id: 'on', state: 'active', routineIds: ['r1'] }),
+        ]
+      ),
+    ],
+  ];
+
+  // The bulk path inverts membership once for speed instead of walking each
+  // item's paths, so it is a SECOND implementation of the same algebra — and a
+  // second implementation is exactly the thing that drifts. Every case asserts
+  // against the single-item resolver rather than a hand-written expectation, so
+  // the two cannot disagree without failing here.
+  it.each(cases)('%s', (_label, c) => {
+    const bulk = inactiveItemIdsOn(items, D, c);
+    for (const item of items) {
+      expect(bulk.has(item.id)).toBe(!isItemActiveOn(item, D, c) && isOpenLoopOn(item, D));
+    }
+  });
+});
+
+describe('suppressionReason names the BINDING container', () => {
+  const D = '2026-08-15';
+
+  it('names a program that holds the item directly', () => {
+    const p = program({ itemIds: ['h'], state: 'paused' });
+    expect(suppressionReason(habit(), D, withPrograms(p))).toEqual({
+      kind: 'program',
+      program: p,
+      routine: undefined,
+      until: undefined,
+    });
+  });
+
+  it('gives a return date for an auto program that has not started', () => {
+    const p = program({ itemIds: ['h'], startsOn: '2026-09-01' });
+    expect(suppressionReason(habit(), D, withPrograms(p))).toMatchObject({
+      kind: 'program',
+      until: '2026-09-01',
+    });
+  });
+
+  it('gives NO return date for a program that has ended — it is over, not pending', () => {
+    const p = program({ itemIds: ['h'], endsOn: '2026-08-01' });
+    expect(suppressionReason(habit(), D, withPrograms(p))).toMatchObject({
+      kind: 'program',
+      until: undefined,
+    });
+  });
+
+  // Why the binding constraint wins: naming the one that clears FIRST would
+  // promise a return the item will not honour — the user resumes the routine on
+  // the strength of the note and nothing appears.
+  it('when both block, names the one that clears LAST', () => {
+    const r = routine({
+      id: 'r1', name: 'Morning', itemIds: ['h'], pausedAt: AUG10, pausedUntil: '2026-08-20',
+    });
+    const p = program({ id: 'p1', routineIds: ['r1'], startsOn: '2026-09-01' });
+    expect(suppressionReason(habit(), D, withBoth([r], [p]))).toMatchObject({
+      kind: 'program',
+      until: '2026-09-01',
+    });
+
+    const laterRoutine = routine({ ...r, pausedUntil: '2026-10-01' });
+    expect(suppressionReason(habit(), D, withBoth([laterRoutine], [p]))).toMatchObject({
+      kind: 'routine',
+      until: '2026-10-01',
+    });
+  });
+
+  it('an unknown return counts as latest of all', () => {
+    // The routine is open-ended and the program comes back on a date, so the
+    // routine is what actually holds this item down.
+    const r = routine({ id: 'r1', itemIds: ['h'], pausedAt: AUG10 });
+    const p = program({ id: 'p1', routineIds: ['r1'], startsOn: '2026-09-01' });
+    expect(suppressionReason(habit(), D, withBoth([r], [p]))).toMatchObject({
+      kind: 'routine',
+      until: undefined,
+    });
+  });
+
+  it('across paths, names the one that comes back SOONEST', () => {
+    const soon = program({ id: 'soon', name: 'Soon', itemIds: ['h'], startsOn: '2026-09-01' });
+    const late = program({ id: 'late', name: 'Late', itemIds: ['h'], startsOn: '2026-10-01' });
+    expect(suppressionReason(habit(), D, withPrograms(late, soon))).toMatchObject({
+      kind: 'program',
+      until: '2026-09-01',
+    });
+  });
+
+  it('carries the routine on an indirect path so copy can name both', () => {
+    const r = routine({ id: 'r1', name: 'Morning', itemIds: ['h'] });
+    const p = program({ id: 'p1', routineIds: ['r1'], state: 'paused' });
+    expect(suppressionReason(habit(), D, withBoth([r], [p]))).toMatchObject({
+      kind: 'program',
+      routine: r,
+    });
+  });
+
+  it('is null while any path is live', () => {
+    const c = withPrograms(
+      program({ id: 'off', itemIds: ['h'], state: 'paused' }),
+      program({ id: 'on', itemIds: ['h'], state: 'active' })
+    );
+    expect(suppressionReason(habit(), D, c)).toBeNull();
+  });
+});
+
+describe('suppressionLabel — one definition for three surfaces', () => {
+  it('states the cause without apologising for it', () => {
+    expect(suppressionLabel({ kind: 'paused' })).toBe('Paused');
+    expect(suppressionLabel({ kind: 'paused', until: '2026-09-01' })).toBe('Paused until Sep 1');
+  });
+
+  it('uses the article-and-noun copy rule only in the long form', () => {
+    const r = routine({ name: 'Morning' });
+    expect(suppressionLabel({ kind: 'routine', routine: r })).toBe('Hidden with Morning');
+    expect(
+      suppressionLabel({ kind: 'routine', routine: r, until: '2026-09-01' }, { long: true })
+    ).toBe('Hidden with your Morning routine — back Sep 1');
+
+    const p = program({ name: 'Summer' });
+    expect(suppressionLabel({ kind: 'program', program: p })).toBe('Hidden with Summer');
+    expect(
+      suppressionLabel({ kind: 'program', program: p, until: '2026-09-01' }, { long: true })
+    ).toBe('Hidden with your Summer program — back Sep 1');
+  });
+
+  // Formatted from the string, never through `new Date('2026-09-01')` — that
+  // overload parses UTC midnight and prints the PREVIOUS day west of Greenwich.
+  it('formats a day without going through an instant', () => {
+    expect(suppressionLabel({ kind: 'paused', until: '2026-01-01' })).toBe('Paused until Jan 1');
+    expect(suppressionLabel({ kind: 'paused', until: '2026-12-31' })).toBe('Paused until Dec 31');
   });
 });

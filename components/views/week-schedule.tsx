@@ -34,6 +34,7 @@ import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
 import { deriveDayItems } from '@/lib/day-items';
 import { inactiveItemIdsOn } from '@/lib/active';
+import { programBoundaries, boundaryLabel } from '@/lib/program-boundaries';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,6 +49,14 @@ import { cn } from '@/lib/utils';
 
 const HEADER_H = 60;
 const ANYTIME_H = 88;
+/**
+ * The program-boundary rail. Rendered on EVERY column of a week that has any
+ * boundary at all — including the empty ones, and including the hour gutter —
+ * because the seven hour grids have to stay on the same baseline. Growing one
+ * column by 18px would slew its whole day against its neighbours, which is the
+ * one thing this view cannot afford.
+ */
+const BOUNDARY_H = 18;
 
 function WeekHourCell({
   dateStr,
@@ -87,6 +96,8 @@ interface ColumnData {
   dateStr: string;
   timed: TimedEntry[];
   untimed: RowItem[];
+  /** Set only on a column where a program's cover changes hands. */
+  boundary?: string;
 }
 
 function WeekScheduleColumn({
@@ -99,6 +110,7 @@ function WeekScheduleColumn({
   selected,
   today,
   nowY,
+  showBoundaryRail,
 }: {
   col: ColumnData;
   hours: number[];
@@ -110,6 +122,7 @@ function WeekScheduleColumn({
   activeId: string | null;
   selected: boolean;
   today: boolean;
+  showBoundaryRail: boolean;
   /** Y of the live-time marker, or null when this column isn't today (or the
    *  clock falls outside the visible window). */
   nowY: number | null;
@@ -178,6 +191,26 @@ function WeekScheduleColumn({
        */
       style={{ width: Math.max(colPx, minColPx), minWidth: minColPx }}
     >
+      {/* Program boundary rail. Muted and unbordered — a handover is not a
+          warning, and the guilt-free law applies to the grid too. */}
+      {showBoundaryRail && (
+        <div
+          style={{ height: BOUNDARY_H }}
+          className="flex items-center justify-center overflow-hidden"
+          data-testid={col.boundary ? 'week-program-boundary' : undefined}
+          data-date={col.boundary ? col.dateStr : undefined}
+        >
+          {col.boundary && (
+            <span
+              className="text-muted-foreground truncate text-2xs font-medium"
+              title={col.boundary}
+            >
+              {col.boundary}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Day header card */}
       <button
         onClick={() => setSelectedDate(col.date)}
@@ -288,10 +321,11 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   // Derive all seven days once here (deriveDayItems is pure — no hooks in the
   // loop) so both the shared hour range and the columns come from one pass.
-  const perDay: ColumnData[] = useMemo(
-    () =>
-      weekDays.map((d) => {
-        const dateStr = toDateStr(d, timezone);
+  const perDay: ColumnData[] = useMemo(() => {
+    const dateStrs = weekDays.map((d) => toDateStr(d, timezone));
+    const boundaries = programBoundaries(dateStrs, programs);
+    return weekDays.map((d, i) => {
+        const dateStr = dateStrs[i];
         const items = deriveDayItems({
           tasks,
           habits,
@@ -311,8 +345,16 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             programs,
           }),
         });
-        return { date: d, dateStr, timed: deriveTimedEntries(items), untimed: deriveUntimedRows(items) };
-      }),
+        const boundary = boundaries.get(dateStr);
+        return {
+          date: d,
+          dateStr,
+          timed: deriveTimedEntries(items),
+          untimed: deriveUntimedRows(items),
+          boundary: boundary ? boundaryLabel(boundary) : undefined,
+        };
+      });
+  },
     [weekDays, tasks, habits, projects, allItems, routines, programs, timezone, typeFilter, showCompletedTasks, canvasFilters]
   );
 
@@ -339,6 +381,10 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   // How wide the day columns are, and the ⌘-wheel gesture that changes it.
   const { colPx, scrolledX, ref: weekColsRef } = useWeekColumns('schedule');
+
+  // All-or-nothing across the week: the rail costs 18px, and paying it on only
+  // the columns that need it would misalign the seven hour grids.
+  const showBoundaryRail = perDay.some((col) => !!col.boundary);
 
   const showNow = markerMin !== null && markerMin >= gridStartHour * 60 && markerMin < gridEndHour * 60;
   const nowMinShown = showNow ? markerMin! : null;
@@ -397,6 +443,10 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             paddingLeft: CANVAS_PAD_PX,
           }}
         >
+          {/* The gutter matches the columns' vertical offsets exactly, so it
+              pays the boundary rail's 18px too — otherwise every hour label
+              sits 18px above the grid line it names. */}
+          {showBoundaryRail && <div style={{ height: BOUNDARY_H }} />}
           <div style={{ height: HEADER_H }} />
           <div style={{ height: ANYTIME_H }} className="mt-2" />
           <div ref={anchorRef} className="relative mt-2">
@@ -464,6 +514,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               selected={isSameDay(col.date, selectedDate)}
               today={isToday(col.date)}
               nowY={col.dateStr === todayStr ? nowY : null}
+              showBoundaryRail={showBoundaryRail}
             />
           ))}
         </div>
