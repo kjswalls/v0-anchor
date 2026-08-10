@@ -110,7 +110,7 @@ test.describe('Smoke: core daily loop', () => {
 
   test('scheduled task appears in its bucket', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const title = `Smoke bucket task ${Date.now()}`;
+    const title = testTitle('smoke-bucket');
     const taskId = await createTestTask(page, accessToken, {
       title,
       startDate: getTodayStr(),

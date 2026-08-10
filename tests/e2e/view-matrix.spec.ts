@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import { getAccessToken, createTestTask, cleanupTestData, testTitle } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
 import { reloadApp,     currentDateStr } from './helpers/app';
 
@@ -48,7 +48,7 @@ test.describe('View matrix', () => {
 
   test('type filter hides tasks in every layout', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const title = `Matrix_${Date.now()}`;
+    const title = testTitle('matrix');
     const taskId = await createTestTask(page, accessToken, {
       title,
       startDate: getTodayStr(),

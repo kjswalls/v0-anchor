@@ -5,6 +5,7 @@ import {
   createTestTask,
   cleanupTestData,
   fetchTestTask,
+  testTitle,
 } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
 import { reloadApp, itemCard } from './helpers/app';
@@ -37,7 +38,7 @@ test.describe('Item panel', () => {
 
   test('notes typed in the panel autosave and reach the agent API', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Notes task ${Date.now()}`;
+    const taskTitle = testTitle('notes-task');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: getTodayStr(),
@@ -80,7 +81,7 @@ test.describe('Item panel', () => {
 
   test('the panel is non-modal: the canvas behind it stays operable', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Non-modal task ${Date.now()}`;
+    const taskTitle = testTitle('non-modal-task');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: getTodayStr(),
@@ -112,9 +113,8 @@ test.describe('Item panel', () => {
 
   test('clicking another item retargets the one panel', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const stamp = Date.now();
-    const firstTitle = `Panel first ${stamp}`;
-    const secondTitle = `Panel second ${stamp}`;
+    const firstTitle = testTitle('panel-first');
+    const secondTitle = testTitle('panel-second');
     const today = getTodayStr();
     const firstId = await createTestTask(page, accessToken, {
       title: firstTitle,

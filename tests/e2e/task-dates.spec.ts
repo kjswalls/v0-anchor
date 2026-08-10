@@ -5,6 +5,7 @@ import {
   createTestTask,
   cleanupTestData,
   fetchTestTask,
+  testTitle,
 } from './helpers/api';
 import { getTodayStr, getTomorrowStr } from './helpers/dates';
 import { reloadApp, itemCard, navigateToDate } from './helpers/app';
@@ -17,7 +18,7 @@ test.describe('Task date assignment and display', () => {
   test('task with today as start date appears in the current day view', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Today task ${Date.now()}`;
+    const taskTitle = testTitle('today-task');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -38,7 +39,7 @@ test.describe('Task date assignment and display', () => {
   test('task with a future start date does not appear in today view', async ({ page }) => {
     const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Future task ${Date.now()}`;
+    const taskTitle = testTitle('future-task');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TOMORROW,
@@ -62,7 +63,7 @@ test.describe('Task date assignment and display', () => {
     const TODAY = getTodayStr();
     const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Movable task ${Date.now()}`;
+    const taskTitle = testTitle('movable-task');
     // Create task for today
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,

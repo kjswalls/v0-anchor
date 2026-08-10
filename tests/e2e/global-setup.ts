@@ -92,15 +92,26 @@ export default async function globalSetup() {
   // unrecoverable, so the default is to refuse.
   const looksLikeTestAccount = /e2e|test|playwright/i.test(env.email);
   if (looksLikeTestAccount || process.env.E2E_ALLOW_DB_SWEEP === '1') {
-    const swept = await rest(
-      `items?user_id=eq.${userId}&title=like.${TEST_TITLE_PREFIX}*`,
-      { method: 'DELETE', headers: { Prefer: 'return=representation' } }
-    );
-    if (swept.ok) {
-      const rows = (await swept.json()) as unknown[];
-      if (rows.length) console.log(`[globalSetup] swept ${rows.length} leftover test item(s)`);
+    // Read then delete by id, rather than pushing the prefix into a LIKE.
+    // `_` is a single-character WILDCARD in SQL LIKE and TEST_TITLE_PREFIX is
+    // `e2e_`, so `title=like.e2e_*` also matched `e2eX…` and anything else whose
+    // fourth character happens to differ — a hard DELETE reaching past this
+    // sweep's own stated scope, on the one path (E2E_ALLOW_DB_SWEEP=1) where the
+    // account is NOT known to be disposable. A JS startsWith has no second
+    // reading.
+    const found = await rest(`items?user_id=eq.${userId}&select=id,title`);
+    if (!found.ok) {
+      console.warn(`[globalSetup] sweep skipped (${found.status}): ${await found.text()}`);
     } else {
-      console.warn(`[globalSetup] sweep skipped (${swept.status}): ${await swept.text()}`);
+      const litter = ((await found.json()) as { id: string; title: string | null }[]).filter((row) =>
+        row.title?.startsWith(TEST_TITLE_PREFIX)
+      );
+      if (litter.length) {
+        const ids = litter.map((row) => row.id).join(',');
+        const swept = await rest(`items?id=in.(${ids})`, { method: 'DELETE' });
+        if (swept.ok) console.log(`[globalSetup] swept ${litter.length} leftover test item(s)`);
+        else console.warn(`[globalSetup] sweep failed (${swept.status}): ${await swept.text()}`);
+      }
     }
   } else {
     console.warn(

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, createTestHabit, fetchTestTask, cleanupTestData } from './helpers/api';
+import { getAccessToken, createTestTask, createTestHabit, fetchTestTask, cleanupTestData, testTitle } from './helpers/api';
 import { format, nextSaturday, nextMonday, nextWednesday, addDays } from 'date-fns';
 import { getTodayInTz, getTodayStr } from './helpers/dates';
 import {
@@ -44,7 +44,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('recurring task appears on its start date', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Daily task start ${Date.now()}`;
+    const taskTitle = testTitle('daily-start');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
@@ -67,7 +67,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('recurring task appears on a future matching day (after start date)', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Daily future ${Date.now()}`;
+    const taskTitle = testTitle('daily-future');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
@@ -92,7 +92,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('recurring task does NOT appear before its start date', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Future only ${Date.now()}`;
+    const taskTitle = testTitle('future-only');
     const tomorrow = addDays(getTodayInTz(), 1);
     const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
     const taskId = await createTestTask(page, accessToken, {
@@ -116,7 +116,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('completing a recurring task on one day does not affect other days', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Isolated completion ${Date.now()}`;
+    const taskTitle = testTitle('isolated-completion');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
@@ -152,7 +152,7 @@ test.describe('Recurring tasks and habits', () => {
   test('one-off task is unaffected by recurring task changes', async ({ page }) => {
     const accessToken = await getAccessToken(page);
     const todayStr = getTodayStr();
-    const taskTitle = `One-off task ${Date.now()}`;
+    const taskTitle = testTitle('one-off');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: todayStr,
@@ -186,7 +186,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('weekdays habit does not appear on Saturday', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const habitTitle = `Weekdays only ${Date.now()}`;
+    const habitTitle = testTitle('weekdays-only');
     const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
       repeatFrequency: 'weekdays',
@@ -210,7 +210,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('custom habit shows only on configured repeat days', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const habitTitle = `Mon+Wed only ${Date.now()}`;
+    const habitTitle = testTitle('mon-wed-only');
     // repeatDays=[1,3] → Monday (1) and Wednesday (3)
     const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
@@ -252,7 +252,7 @@ test.describe('Recurring tasks and habits', () => {
 
   test('habit completion persists when navigating away and back', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const habitTitle = `Persist habit ${Date.now()}`;
+    const habitTitle = testTitle('persist-habit');
     const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
       repeatFrequency: 'daily',
@@ -288,7 +288,7 @@ test.describe('Recurring tasks and habits', () => {
     const accessToken = await getAccessToken(page);
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
-      title: `Daily task skip ${Date.now()}`,
+      title: testTitle('daily-skip'),
       repeatFrequency: 'daily',
       startDate: todayStr,
       timeBucket: 'morning',
@@ -350,7 +350,7 @@ test.describe('Mobile @mobile', () => {
 
   test('mobile: recurring task appears on future day', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Mobile daily future ${Date.now()}`;
+    const taskTitle = testTitle('mobile-daily-future');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
@@ -378,7 +378,7 @@ test.describe('Mobile @mobile', () => {
 
   test('mobile: completing recurring task marks it done, stays incomplete on other days', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Mobile complete recurring ${Date.now()}`;
+    const taskTitle = testTitle('mobile-complete-recurring');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
@@ -417,7 +417,7 @@ test.describe('Mobile @mobile', () => {
 
   test('mobile: weekday-only habit does not appear on weekend', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const habitTitle = `Mobile weekdays only ${Date.now()}`;
+    const habitTitle = testTitle('mobile-weekdays-only');
     const habitId = await createTestHabit(page, accessToken, {
       title: habitTitle,
       repeatFrequency: 'weekdays',
@@ -447,7 +447,7 @@ test.describe('Mobile @mobile', () => {
     // reachable on touch (the row's control cluster is hover-only, so the
     // action lives in the ellipsis sheet) and the skipped row minimizes.
     const taskId = await createTestTask(page, accessToken, {
-      title: `Mobile skip ${Date.now()}`,
+      title: testTitle('mobile-skip'),
       repeatFrequency: 'daily',
       startDate: todayStr,
       timeBucket: 'morning',
@@ -477,7 +477,7 @@ test.describe('Mobile @mobile', () => {
 
   test('mobile: task with today start date appears on correct day not yesterday (UTC off-by-one regression)', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Mobile today only ${Date.now()}`;
+    const taskTitle = testTitle('mobile-today-only');
     const todayStr = getTodayStr();
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,

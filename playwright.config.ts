@@ -20,7 +20,24 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Locally, `undefined` means Playwright's default of cores/2 — 10 on a 20-core
+  // box. All ten then queue against ONE `next dev --webpack` server that compiles
+  // routes on first hit, and the contention does not degrade gracefully: tests
+  // time out at 60s with their fixture POST still in flight ("Target page,
+  // context or browser has been closed"), which reads exactly like a broken
+  // selector and is why this suite looked far redder than it was. Full suite,
+  // same tree: 10 workers → 20 passed / 58 failed; 4 → 79 passed / 13 failed in
+  // 6.7m. CI stays at 1 for a different reason — it runs a prod build and
+  // serializes for stability.
+  //
+  // 4 is the floor, not a dial to keep turning: 2 workers scores the same
+  // (79 passed / 12 failed) and takes 8.4m, and it fails a DIFFERENT dozen. That
+  // residue is not CPU — every one of them passes in isolation. It is the shared
+  // test user. One account backs the whole suite, so under fullyParallel one
+  // spec's global write (settings.spec's afterEach reset, view-matrix leaving
+  // default_view on 'week') lands mid-test in another. Fixing it means a user
+  // per worker, or serialising the specs that write user_settings.
+  workers: process.env.CI ? 1 : 4,
   // The github reporter is inert outside Actions, and `html` alone auto-opens a
   // blocking server on failure while printing nothing — so a local run needs `list`.
   reporter: process.env.CI ? [['html'], ['github']] : [['list'], ['html', { open: 'never' }]],
