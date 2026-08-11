@@ -551,11 +551,19 @@ export function Braindump() {
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so
           the quick-add card below can pin to the section foot, and its ref drives
           scroll-to-bottom after each add. It fills the column only when empty, so
-          the empty-state poem stays vertically centered. */}
+          the empty-state poem stays vertically centered.
+
+          overflow-x is pinned hidden, not left alone: CSS promotes an untouched
+          `visible` to `auto` the moment the other axis scrolls, so overflow-y
+          here quietly made the port horizontally scrollable too — and the empty
+          state's relay field, which overhangs its box by design, then poked far
+          enough past the padding to raise a horizontal scrollbar under an empty
+          braindump. It clips a couple of px the field's mask has already faded
+          to nothing. */}
       <div
         ref={listRef}
         className={cn(
-          'min-h-0 overflow-y-auto rounded-card transition-colors',
+          'min-h-0 overflow-y-auto overflow-x-hidden rounded-card transition-colors',
           // Fill the column only when there is genuinely nothing here — a
           // paused-only sidebar still wants the poem's space collapsed so the
           // Paused strip sits under the header rather than adrift at the foot.
