@@ -158,13 +158,32 @@ export function ProjectBlock({
       // A project block only accepts a task whose project matches, so a test
       // asserting the reject path needs to see the distinction.
       data-dnd-accepts={canAcceptDrop ? 'true' : 'false'}
+      // A card floating ON the bucket's card, not a dashed outline drawn on it.
+      // The dashed 2px project-coloured border was the loudest edge inside a
+      // bucket — heavier than the bucket's own — and it read as a dropzone
+      // placeholder rather than as a thing that exists. Now it is a real plate:
+      // ring + cast shadow in light (where the card underneath is already
+      // 1.000 and there is no value left to climb), a surface step plus a
+      // specular edge in dark. See --bkt-block in globals.css.
+      //
+      // The project's colour survives as a 3px rule down the left edge — the
+      // schedule view's accent rail, which is where colour belongs in this app:
+      // a mark, never a container.
       className={cn(
-        'mb-3 overflow-hidden rounded-lg border-2 p-3 transition-all',
-        isOver && canAcceptDrop ? 'border-solid border-primary bg-primary/10' : 'border-dashed',
-        isOver && !canAcceptDrop && 'border-destructive/50 bg-destructive/5'
+        'relative mb-3 overflow-hidden rounded-[10px] p-3 pl-[15px] transition-all',
+        'bg-[var(--bkt-block)] shadow-[var(--bkt-block-shadow)]',
+        isOver && canAcceptDrop && 'bg-[var(--bkt-tray-armed)]',
+        isOver && !canAcceptDrop && 'bg-destructive/5'
       )}
-      style={{ borderColor: isOver ? undefined : projectColor }}
     >
+      {/* The accent rail. Its own element rather than a border so it follows the
+          radius without the box model moving, and so the armed state can light
+          it without touching the plate's geometry. */}
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[3px]"
+        style={{ background: isOver ? 'var(--primary)' : projectColor }}
+      />
       <div className="mb-2 flex items-center gap-2">
         <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4 flex-shrink-0" />
         {/* Truncation is a no-op at day width; in a ~240px week column it is the

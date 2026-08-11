@@ -713,6 +713,86 @@
   /* The lip the child's plate disappears under — same gesture as the pressed-key
      inset, one hair of it. */
   --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 5%);
+
+  /* ── The threaded seam (components/primitives/bucket-card.tsx) ────────────
+     One hairline runs the height of the day; each bucket is a node pinned to it
+     and a caption beside it, and the bucket's BODY is a card the rail passes
+     over — the card's left edge sits 5px outside the rail, so the line bites its
+     top-left shoulder (~4.4px below the tangent at r16) and then runs down a
+     10px blank mat before the rows start. That overlap is the whole design: a
+     comment bubble always sits BESIDE its rail with a gap, and this one's gap is
+     minus five, so it reads as threaded rather than parked alongside.
+
+     This is day-schedule's rail-and-bead rotated onto the day's axis, and the
+     tokens are deliberately its siblings.
+
+     Plain custom properties, not @theme, for the reason stated at the elev
+     family above: a Tailwind arbitrary value compiles the LIGHT numbers into
+     the class and never sees the .dark re-tune. The var() form stays live.
+
+     --bkt-spine is pitched between --sched-rail (explicitly "carries no
+     information of its own" — too quiet for the only line in a view) and
+     --border (too loud run across ~1200px of open canvas). Light composites to
+     ~0.921 over the canvas, Δ0.075. */
+  --bkt-spine: color-mix(in oklab, var(--border) 78%, transparent);
+
+  /* The slot that OPENS under a drag. At rest the view has no filled box at
+     all, which leaves the {bucket} droppable nothing to light up and puts four
+     caption-only rects ~44px apart — too close for closestCenter to separate.
+     So a recess appears for the duration of the drag: it restores ~110px of
+     pitch AND gives the drop target a surface.
+
+     Depth is 0.022 L in both themes. Light does NOT use --surface-0 (0.986):
+     that is Δ0.010 from the canvas, three 8-bit levels at the top of the ramp,
+     and it only ever read in the Figma mockup because a #EEEDED border bounded
+     it. The app's own light recess (--sched-pocket) runs Δ0.024; this matches.
+     Dark has no ready-made rung between canvas 0.210 and backdrop 0.173 —
+     taking --surface-0 straight is −0.037 and reads as a hole punched through
+     to the desktop. */
+  --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));   /* 0.9737 */
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  /* Light shades the far edge, dark lights it — --sched-lit's rule verbatim. */
+  --bkt-walls: inset -1px 0 0 oklch(0 0 0 / 4%), inset 0 -1px 0 oklch(0 0 0 / 3.5%);
+  --bkt-lip: oklch(0 0 0 / 6%);
+  --bkt-lip-armed: oklch(0 0 0 / 11%);
+
+  /* The card the rows sit on at rest, and the reason the view stopped reading
+     as the list view: a bucket is an OBJECT with a moat around it, not a run of
+     full-width bars.
+
+     Light floats on ring + shadow alone, because --surface-2 (1.000) over the
+     canvas (0.996) is ΔL 0.004 — nothing. The ring is the border (Vercel's
+     shadow-as-border: zero offset, zero blur, so the box model is untouched and
+     a 1px edge never costs a layout pass), and the far layer takes a NEGATIVE
+     spread so the card reads as built into the page rather than hovering over
+     it. Warm-grey rather than pure black: a neutral-black shadow on this canvas
+     goes visibly cool next to the lime. */
+  --bkt-card: var(--surface-2);
+  /* Light has nowhere to go above 1.000, so the current card is promoted by
+     shadow alone and its fill is unchanged. Dark re-points this at a real step.  */
+  --bkt-card-now: var(--surface-2);
+  --bkt-card-ring: 0 0 0 1px oklch(0.32 0.005 272 / 7%);
+  --bkt-card-shadow:
+    var(--bkt-card-ring),
+    0 1px 2px oklch(0.32 0.005 272 / 5%),
+    0 4px 10px -4px oklch(0.32 0.005 272 / 7%);
+  /* The current bucket is promoted a step rather than tinted — the lime already
+     lives on the rail, and a second lime mark on the card would be the ring this
+     redesign spent round 1 removing. */
+  --bkt-card-shadow-now: var(--bkt-card-shadow), 0 8px 16px -8px oklch(0.32 0.005 272 / 7%);
+
+  /* A project block, floating ON the bucket card. Light has nowhere left to go
+     — the card underneath is already 1.000 — so the block keeps that value and
+     is separated by a firmer ring and a real cast shadow instead. That is the
+     one case where shadow has to do the whole job, and it is why the ring steps
+     up to 9%: a 7% hairline that reads against the canvas disappears against
+     another white plate. */
+  --bkt-block: var(--surface-2);
+  --bkt-block-shadow:
+    0 0 0 1px oklch(0.32 0.005 272 / 9%),
+    0 1px 2px oklch(0.32 0.005 272 / 6%),
+    0 6px 14px -6px oklch(0.32 0.005 272 / 10%);
+
 }
 
 /* Dark mode: on navy a black drop shadow barely registers, so elevation is
@@ -808,6 +888,52 @@
   --sched-wash-field: 0.34;
   --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
   --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 25%);
+
+  /* Day spine, dark — see the light block for the whole rationale. Note this
+     does NOT mirror light's "quieter than --border" ratio. Light reduces to 78%
+     because a dark hairline on near-white paper holds its weight over a long
+     run; on the near-black ramp a pale hairline at the same relative weight
+     drops to --sched-rail's 7% and disappears, which is the wrong end of the
+     scale for the only structural line in the view. Same asymmetry --day-off
+     and --ring carry, for the same reason. */
+  --bkt-spine: oklch(1 0 0 / 13%);
+  --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));      /* 0.1878 */
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  --bkt-walls: inset -1px 0 0 oklch(1 0 0 / 5%), inset 0 -1px 0 oklch(1 0 0 / 6%);
+  --bkt-lip: oklch(0 0 0 / 30%);
+  --bkt-lip-armed: oklch(0 0 0 / 46%);
+
+  /* The card, dark. NOT light's recipe with darker numbers: a layered black
+     shadow on a 0.210 ground is mud — it darkens a halo around the card without
+     ever reading as lift. Dark floats the way Linear's does, on three cheap
+     layers and no ambient: the surface STEP does the separating (0.210 → 0.278
+     is ΔL 0.068, seventeen times light's), a specular top edge says which way
+     the light is coming from, a hairline ring lighter than the fill closes the
+     shape, and exactly one small contact shadow keeps the bottom edge crisp.
+     The inset highlight is listed FIRST so it paints under the ring rather than
+     over it. */
+  --bkt-card-ring: 0 0 0 1px oklch(1 0 0 / 5%);
+  --bkt-card-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 6%),
+    var(--bkt-card-ring),
+    0 2px 4px oklch(0 0 0 / 35%);
+  /* Dark promotes the current card by raising its own surface (see
+     bucket-card.tsx), so the shadow only strengthens the specular edge — a
+     bigger ambient here would just be more mud. */
+  --bkt-card-shadow-now:
+    inset 0 1px 0 oklch(1 0 0 / 10%),
+    var(--bkt-card-ring),
+    0 2px 4px oklch(0 0 0 / 35%);
+  --bkt-card-now: color-mix(in oklab, white 4%, var(--surface-2));           /* 0.290 */
+
+  /* Dark has the headroom light doesn't: the block takes a real step above the
+     card (0.278 → 0.312) and the shadow goes back to being a contact edge
+     rather than the whole signal. Specular top edge first, as everywhere else. */
+  --bkt-block: color-mix(in oklab, white 6%, var(--surface-2));              /* 0.312 */
+  --bkt-block-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 8%),
+    0 0 0 1px oklch(1 0 0 / 6%),
+    0 2px 6px oklch(0 0 0 / 40%);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
@@ -932,24 +1058,26 @@ body {
 }
 
 /* Timeline day navigation slide animations */
+/* Day/week navigation. Deliberately transform-ONLY: these animate the container
+   that wraps every bucket, and the current-bucket signal inside it is a lime
+   spine segment. An `opacity: 0.5 → 1` here (which is what these used to carry)
+   is the one place in either bucket view where a parent opacity touches the
+   accent, and fading lime through a parent is exactly what the accent rule
+   forbids. The travel already reads; the fade was never doing the work. */
 @keyframes slide-in-from-left {
   from {
-    opacity: 0.5;
     transform: translateX(-40px);
   }
   to {
-    opacity: 1;
     transform: translateX(0);
   }
 }
 
 @keyframes slide-in-from-right {
   from {
-    opacity: 0.5;
     transform: translateX(40px);
   }
   to {
-    opacity: 1;
     transform: translateX(0);
   }
 }

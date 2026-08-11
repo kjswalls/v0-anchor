@@ -565,25 +565,46 @@ export function formatDurationLong(minutes: number): string {
   return m ? `${plural(h, 'hour')} ${plural(m, 'minute')}` : plural(h, 'hour');
 }
 
-/** Item count beside a bucket name. The only metadata that keeps a container —
- *  it's a chip in the header band, not a row datum. 20×20 minimum with 6px side
- *  padding, so a single digit reads as a square and a three-digit count grows
- *  sideways only. */
+/**
+ * A count beside a label — the one piece of metadata in the app that keeps a
+ * container.
+ *
+ * It went bare when the bucket card's 45px header band was deleted, on the
+ * argument that a chip out-weighs the label it belongs to. That was right about
+ * the old 20px chip and wrong about the chip as such: with the bucket caption
+ * muted down to sit under the rows in the reading order, a bare numeral beside a
+ * faint label stops reading as a count at all — it reads as part of the word.
+ * The container is what separates them, so it comes back, sized to the caption
+ * rather than to the band it used to live in.
+ *
+ * `--surface-3` deliberately, not a border: it is the app's well value, so the
+ * chip is recessed in light and raised in dark. That polarity flip is the same
+ * one every other surface-3 chip in the app already has (see DayKeycaps), and it
+ * keeps the count reading as a slot the number sits in rather than as a control.
+ *
+ * `size` tracks the caption it sits in: 18px in the day view's 22px row, 16px in
+ * week's 16px one, where a 20px chip could not fit at all. Both are min-widths —
+ * a three-digit count grows sideways only, so the caption never reflows
+ * vertically.
+ */
 export function CountBadge({
   count,
   className,
   testId,
+  size = 'md',
 }: {
   count: number;
   className?: string;
   testId?: string;
+  size?: 'sm' | 'md';
 }) {
   if (count <= 0) return null;
   return (
     <span
       data-testid={testId}
       className={cn(
-        'inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-surface-3 px-1.5 font-num text-2xs font-medium text-muted-foreground',
+        'inline-flex flex-none items-center justify-center rounded-[5px] bg-surface-3 font-num text-2xs text-muted-foreground tabular-nums',
+        size === 'md' ? 'h-[18px] min-w-[18px] px-1.5' : 'h-4 min-w-4 px-1',
         className
       )}
     >

@@ -57,6 +57,57 @@ the other. They are defined as the same action, so this is harmless, but a test 
 either. `dragItemToBucket(..., 'untimed')` does exactly that. Demanding one specific id is a
 test that cannot pass.
 
+### The bucket droppables only have a rect while a drag is in progress
+
+The day-spine layout (`components/primitives/bucket-card.tsx`) gives a bucket no filled box
+at rest — an empty one is a 22px caption on a hairline. Two consequences the IDs above do not
+show:
+
+1. **Nothing moved.** `setBucketRef` is still on the always-present wrapper in
+   `day-buckets.tsx`, so `{bucket}` always has a measurable rect and every `data-dnd-*`
+   marker still appears on the equivalent element. No ID, marker or action changed.
+2. **The slot opens on activation, by design.** `BucketCard` takes a `dragging` prop and
+   renders a recess for the duration of the drag. Four caption-only buckets would otherwise
+   put their centres ~44px apart — inside the noise floor for `closestCenter` — and give the
+   hover state nothing to paint. The slot must never be *animated* in: `MeasuringStrategy`
+   is `Always`, but the rect has to be stable before the first collision pass, so only its
+   height and fill transition. `helpers/dnd.ts` already relies on this ordering — it waits
+   for the target *after* crossing the activation threshold, with the comment "the target
+   may only have mounted just now."
+
+### A collapsed bucket drops its inner droppables on purpose
+
+A bucket the user has shut (`view-store.collapsedBuckets`, chevron on the caption) renders
+its slot under a drag but **not its children** — so for that bucket
+`unscheduled:{bucket}`, `scheduled:{bucket}:{pos}:…` and `scheduled:{bucket}:empty` do not
+mount at all, and every drop onto it resolves on the bare `{bucket}` id.
+
+That is safe rather than lossy: `resolveDrop` maps bare `{bucket}` and `unscheduled:{bucket}`
+to the *same* command (assign the bucket, no time), so the outcome is identical to dropping
+on the untimed section of an open bucket. It is also the point — a shut card holds one rect
+instead of three, so there is nothing inside it for `closestCenter` to have to separate. The
+alternative (mounting the real rows under a drag) would reflow the column at drag start,
+which the rect-stability rule above forbids.
+
+Two consequences for tests: `dragItemToBucket(..., 'untimed')` must accept the bare id (it
+already does), and a spec that needs a *timed* drop has to ensure the target bucket is
+expanded first — `[data-testid=bucket-card][data-bucket=X][data-collapsed=false]`.
+
+`app-shell.tsx` expands the target bucket after any drop that carries one, so a drop never
+lands behind a closed sliver.
+
+### Known-flaky: leftover rows change every bucket drag's geometry
+
+`global-setup.ts` sweeps litter, but only titles matching `TEST_TITLE_PREFIX` (`e2e_`). Rows
+from older conventions (`Panel first …`, `EOD complete test …`, `Mobile daily future …`)
+accumulate permanently in the shared test user, make the morning bucket arbitrarily tall, and
+push later buckets toward or past the scroll boundary — which is the autoscroll
+non-determinism described at the bottom of this file. Measured on 2026-08-09: with ~23 such
+rows present, `dnd.spec.ts` fails a *different* test on each run, and does so identically on
+a pristine checkout. If a bucket drag flakes, check the account's row count before the diff.
+Locally also pass `--workers=1`: `workers` is only pinned under `CI`, and parallel specs
+share one test user.
+
 ## Sensors (`components/shell/app-shell.tsx`)
 
 - `PointerSensor` — activationConstraint `{ distance: 5 }`

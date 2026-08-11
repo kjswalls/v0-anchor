@@ -4,12 +4,14 @@ import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { BucketCard } from '@/components/primitives/bucket-card';
+import { BucketCard, bucketGap } from '@/components/primitives/bucket-card';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
+import { useCurrentBucket } from '@/hooks/use-current-bucket';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useWeekColumns } from '@/lib/use-week-columns';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
@@ -24,7 +26,19 @@ import { cn } from '@/lib/utils';
  * crushed ones.
  */
 
-function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBucket; activeId: string | null }) {
+function WeekBucketCell({
+  date,
+  bucket,
+  activeId,
+  isCurrent,
+  variant,
+}: {
+  date: Date;
+  bucket: TimeBucket;
+  activeId: string | null;
+  isCurrent: boolean;
+  variant: BucketStyle;
+}) {
   const dateStr = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: `week:${dateStr}:${bucket}` });
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
@@ -52,23 +66,26 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
       data-dnd-id={`week:${dateStr}:${bucket}`}
       data-dnd-over={isOver ? 'true' : 'false'}
     >
-      <BucketCard bucket={bucket} count={count} density="mini" isDropTarget={isOver}>
-        {isEmpty ? (
-          <div
-            className={cn(
-              'rounded-md py-1.5 text-center text-2xs transition-colors',
-              activeId ? 'border border-dashed border-border/60 text-muted-foreground/50' : 'text-transparent'
-            )}
-          >
-            {activeId ? 'Drop here' : '·'}
-          </div>
-        ) : (
-          // Issue #193: a bucket stacked with rows caps out and scrolls its own
-          // content, rather than pushing the rest of the day column down. Plain
-          // overflow-y-auto, not <ScrollArea> — Radix silently drops max-h.
-          // Project blocks live inside this cap too (each capped again by
-          // variant="week"), so "a bunch of tasks AND projects" scrolls as one.
-          <div className="space-y-0 overflow-y-auto" style={{ maxHeight: WEEK_BUCKET_MAX_H }}>
+      {/* The empty placeholder is gone. It used to render a transparent '·' to
+          hold the cell's height; an empty bucket now collapses to its 16px
+          caption, and the drop slot opens from BucketCard when a drag starts —
+          so the column's height tracks its content instead of being four equal
+          boxes whether or not anything is in them.
+          Issue #193's cap lives on BucketCard's own scroller now (contentMaxH),
+          so project blocks and rows still scroll as one capped list. */}
+      <BucketCard
+        bucket={bucket}
+        count={count}
+        density="mini"
+        isDropTarget={isOver}
+        dragging={!!activeId}
+        isEmpty={isEmpty}
+        isCurrent={isCurrent}
+        variant={variant}
+        contentMaxH={isEmpty ? undefined : WEEK_BUCKET_MAX_H}
+      >
+        {!isEmpty && (
+          <>
             {/* Blocks lead the cell. Day view can afford to put them below the
                 untimed rows because nothing is capped there; here the bucket
                 stops at WEEK_BUCKET_MAX_H, and a block trailing a long row list
@@ -90,7 +107,7 @@ function WeekBucketCell({ date, bucket, activeId }: { date: Date; bucket: TimeBu
             {looseTasks.map((task) => (
               <TaskRow key={task.id} row={{ itemType: 'task', item: task }} density="compact" date={date} />
             ))}
-          </div>
+          </>
         )}
       </BucketCard>
     </div>
@@ -101,11 +118,15 @@ function WeekColumn({
   date,
   activeId,
   colPx,
+  currentBucket,
+  variant,
 }: {
   date: Date;
   activeId: string | null;
   /** Width the week scale control asks for; floors at the old fixed w-60. */
   colPx: number;
+  currentBucket: TimeBucket | null;
+  variant: BucketStyle;
 }) {
   const { selectedDate, setSelectedDate } = usePlannerStore();
   const selected = isSameDay(date, selectedDate);
@@ -121,17 +142,26 @@ function WeekColumn({
       data-date={format(date, 'yyyy-MM-dd')}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      className={cn(
-        'flex flex-none snap-start flex-col gap-2 transition-opacity',
-        !selected && 'opacity-75 hover:opacity-100'
-      )}
-      // Was a fixed `w-60 min-w-60`. WEEK_GEOMETRY.buckets floors at that same
-      // 240px, and at seven days the arithmetic doesn't clear it until the
-      // canvas is past ~1940px — so this renders identically to the old fixed
-      // width on every realistic screen until the scale control is actually
-      // moved. A bucket card carries stacked rows under a counted header; it
-      // needs the room a schedule block doesn't.
-      style={{ width: colPx }}
+      // Unselected columns used to carry `opacity-75`. They can't any more:
+      // today's column now renders the lime current-bucket segment, and fading
+      // lime through a parent's opacity is the one thing the accent rule
+      // forbids — it would also have made the accent's strength depend on which
+      // day happened to be selected. `data-dim` drives per-element muting
+      // instead (see the label and header below), so the marks stay at full
+      // strength while the column recedes.
+      data-dim={!selected ? 'true' : 'false'}
+      // Flex gap for the same reason day-buckets uses it: the cell wrapper is
+      // the week:{date}:{bucket} droppable, so spacing must live between the
+      // boxes rather than inside one. Also spaces the day header off the stack.
+      //
+      // The width was a fixed `w-60 min-w-60` until the week scale control
+      // landed. WEEK_GEOMETRY.buckets floors at that same 240px, and at seven
+      // days the arithmetic doesn't clear it until the canvas is past ~1940px —
+      // so this renders identically to the old fixed width on every realistic
+      // screen until the control is actually moved. A bucket card carries
+      // stacked rows under a caption; it needs room a schedule block doesn't.
+      style={{ width: colPx, gap: bucketGap(variant, 'mini') }}
+      className="group/col flex flex-none snap-start flex-col"
     >
       <button
         onClick={() => setSelectedDate(date)}
@@ -139,12 +169,18 @@ function WeekColumn({
         className={cn(
           'flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
           // Ink role on the lime fill — see week-schedule's day header.
-          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
+          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2',
+          // The recede, done on the header's own surface rather than through a
+          // parent opacity (see data-dim above).
+          !selected && 'bg-surface-2/60 hover:bg-surface-2'
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
         <span
-          className={cn('text-sm font-normal uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
+          className={cn(
+            'text-sm font-normal uppercase',
+            selected ? 'text-primary-foreground' : 'text-muted-foreground/70'
+          )}
         >
           {format(date, 'EEEE')}
         </span>
@@ -154,8 +190,10 @@ function WeekColumn({
             selected
               ? 'font-semibold text-primary-foreground'
               : today
-                ? 'font-bold text-success-text'
-                : 'font-semibold text-foreground'
+                ? // `today` stays full-strength lime even on an unselected
+                  // column — it is the same mark the current-bucket bead is.
+                  'font-bold text-success-text'
+                : 'font-semibold text-foreground/70'
           )}
         >
           {format(date, 'MMMM d')}
@@ -163,7 +201,14 @@ function WeekColumn({
       </button>
 
       {BUCKET_ORDER.map((bucket) => (
-        <WeekBucketCell key={bucket} date={date} bucket={bucket} activeId={activeId} />
+        <WeekBucketCell
+          key={bucket}
+          date={date}
+          bucket={bucket}
+          activeId={activeId}
+          isCurrent={currentBucket === bucket}
+          variant={variant}
+        />
       ))}
     </div>
   );
@@ -172,6 +217,12 @@ function WeekColumn({
 export function WeekBuckets({ activeId }: { activeId: string | null }) {
   const { selectedDate, weekStartDay, navDirection } = usePlannerStore();
   const { colPx, ref: weekColsRef } = useWeekColumns('buckets');
+  // ONE clock for the whole grid, unscoped — each column gates it with isToday
+  // below. Seven columns × four cells calling this themselves would be 28
+  // intervals for one wall clock. No `mounted` flag: the hook already returns
+  // null on the first render, which is the hydration guard.
+  const currentBucket = useCurrentBucket();
+  const bucketStyle = useViewStore((s) => s.bucketStyle);
 
   const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
   const weekDays = useMemo(() => {
@@ -191,7 +242,14 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
         )}
       >
         {weekDays.map((day) => (
-          <WeekColumn key={day.toDateString()} date={day} activeId={activeId} colPx={colPx} />
+          <WeekColumn
+            key={day.toDateString()}
+            date={day}
+            activeId={activeId}
+            colPx={colPx}
+            currentBucket={isToday(day) ? currentBucket : null}
+            variant={bucketStyle}
+          />
         ))}
       </div>
       <ScrollBar orientation="horizontal" />

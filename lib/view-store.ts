@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, Priority } from './planner-types';
+import type { GroupBy, Priority, TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
@@ -36,6 +36,22 @@ export type TypeMode = 'sans' | 'serif';
  *   trim   — trim-mark lozenges + a three-patch ink strip for the grip
  */
 export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
+/**
+ * How a bucket is drawn in day/week × buckets. Both variants share everything
+ * that made the redesign worth doing — the header band is vacated in each, an
+ * empty bucket collapses to its caption, a drag opens a recess, and both are
+ * collapsible — so this only picks where the bucket's glyph lives and what the
+ * body is at rest.
+ *   spine — "threaded seam". One hairline runs the height of the day; the glyph
+ *           is a bead pinned to it, and the body is a floating card the rail
+ *           passes OVER, biting its top-left shoulder. "Now" is a lime segment
+ *           of the rail with the bucket's own extent.
+ *   tray  — no rail; the glyph sits inline in the caption and the rows live in a
+ *           bordered, recessed tray. "Now" is a solid lime disc plus a lime rule
+ *           down the tray's left wall.
+ * See components/primitives/bucket-card.tsx.
+ */
+export type BucketStyle = 'spine' | 'tray';
 
 export interface BraindumpFilters {
   projects: string[];
@@ -84,6 +100,18 @@ interface ViewStore {
    * that is what persists from then on.
    */
   weekDaysVisible: number | null;
+  bucketStyle: BucketStyle;
+  /**
+   * Buckets the user has shut, in BOTH day and week — the state is the bucket,
+   * not the bucket-on-a-date, so collapsing Morning shuts it in all seven week
+   * columns at once ("I'm not thinking about mornings"). Per-date collapse would
+   * make the week view's columns disagree about their own rhythm, and there is
+   * no surface that would show you which dates you had shut.
+   *
+   * An array rather than a Set or a Record so it round-trips through the persist
+   * middleware's JSON without a serializer.
+   */
+  collapsedBuckets: TimeBucket[];
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -100,6 +128,14 @@ interface ViewStore {
   setWeekDaysVisible: (days: number | null) => void;
   /** Move along the ladder by `delta` stops; +1 is one step wider. */
   stepWeekDaysVisible: (delta: number) => void;
+  setBucketStyle: (style: BucketStyle) => void;
+  toggleBucketCollapsed: (bucket: TimeBucket) => void;
+  /**
+   * Force a bucket open. Called when a drop lands in one (see app-shell's
+   * handleDragEnd): dropping into a shut bucket would otherwise swallow the
+   * item — the count ticks up but nothing appears, which reads as a failed drop.
+   */
+  expandBucket: (bucket: TimeBucket) => void;
 }
 
 export const useViewStore = create<ViewStore>()(
@@ -115,6 +151,8 @@ export const useViewStore = create<ViewStore>()(
       typeMode: 'sans',
       scheduleMarkStyle: 'nodes',
       weekDaysVisible: null,
+      bucketStyle: 'spine',
+      collapsedBuckets: [],
       adoptedLegacy: false,
 
       setScope: (scope) => {
@@ -148,6 +186,23 @@ export const useViewStore = create<ViewStore>()(
         set((s) => ({
           weekDaysVisible: stepWeekDays(resolveWeekDaysFromLastCanvas(s.weekDaysVisible), delta),
         })),
+      setBucketStyle: (bucketStyle) => set({ bucketStyle }),
+      toggleBucketCollapsed: (bucket) =>
+        set((s) => ({
+          collapsedBuckets: s.collapsedBuckets.includes(bucket)
+            ? s.collapsedBuckets.filter((b) => b !== bucket)
+            : [...s.collapsedBuckets, bucket],
+        })),
+      // Returns the SAME array when the bucket is already open. Every bucket
+      // card subscribes to this slice, and a drop fires on every drag — handing
+      // back a fresh array each time would re-render all 28 week cards for a
+      // state change that didn't happen.
+      expandBucket: (bucket) =>
+        set((s) =>
+          s.collapsedBuckets.includes(bucket)
+            ? { collapsedBuckets: s.collapsedBuckets.filter((b) => b !== bucket) }
+            : s
+        ),
     }),
     {
       // NOT bumped for weekDaysVisible. zustand's default merge keeps the

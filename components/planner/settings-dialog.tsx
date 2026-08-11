@@ -34,7 +34,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useViewStore, type TypeMode, type ScheduleMarkStyle } from '@/lib/view-store';
+import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle } from '@/lib/view-store';
 import { saveSettings } from '@/lib/settings-service';
 import { useTheme } from 'next-themes';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -111,7 +111,8 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
   const { isSupported: pushSupported, isSubscribed: pushSubscribed, permissionState, subscribe: subscribePush, unsubscribe: unsubscribePush } = usePushSubscription();
   const { compactMode: storeCompactMode, setCompactMode, chillMode, setChillMode, showCurrentTimeIndicator, setShowCurrentTimeIndicator, userId, showCompletedTasks, setShowCompletedTasks, animationsEnabled, setAnimationsEnabled, weekStartDay, setWeekStartDay, defaultView, setDefaultView, defaultTimeBucket, setDefaultTimeBucket, timeFormat, setTimeFormat } = usePlannerStore();
   const { theme, setTheme } = useTheme();
-  const { typeMode, setTypeMode, scheduleMarkStyle, setScheduleMarkStyle } = useViewStore();
+  const { typeMode, setTypeMode, scheduleMarkStyle, setScheduleMarkStyle, bucketStyle, setBucketStyle } =
+    useViewStore();
   const isMobile = useIsMobile();
   const {
     morningCheckEnabled, setMorningCheckEnabled,
@@ -331,6 +332,20 @@ export function SettingsDialog({ open, onOpenChange, onOpenKeyboardShortcuts, on
                     <SelectItem value="nodes">Nodes</SelectItem>
                     <SelectItem value="target">Target</SelectItem>
                     <SelectItem value="trim">Trim marks</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingRow>
+
+              <SettingRow label="Buckets" description="How a time-of-day bucket is drawn">
+                <Select value={bucketStyle} onValueChange={(v) => setBucketStyle(v as BucketStyle)}>
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Value stays 'spine' — it is persisted in anchor-view and
+                        renaming it would reset everyone's choice for a label. */}
+                    <SelectItem value="spine">Threaded seam</SelectItem>
+                    <SelectItem value="tray">Head &amp; tray</SelectItem>
                   </SelectContent>
                 </Select>
               </SettingRow>

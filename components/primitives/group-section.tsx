@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { BUCKET_LABEL_INK } from '@/components/primitives/bucket-card';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
@@ -49,8 +50,18 @@ export function GroupSection({
         onClick={() => setCollapsed((c) => !c)}
         aria-expanded={!collapsed}
         className={cn(
-          'group/heading flex w-full items-center gap-1 rounded-[5px] px-1 py-1 text-xs font-medium hover:bg-accent',
-          isCanvas ? 'text-muted-foreground' : 'text-foreground/70'
+          'group/heading flex w-full items-center gap-1 rounded-[5px] py-1 text-xs font-medium hover:bg-accent',
+          // px-2 on canvas, matching TaskRow's own px-2, so this label lands on
+          // the checkbox column instead of 4px shy of it. That near-miss was
+          // invisible while the bucket caption above sat out on the card's edge;
+          // now that the caption indents to the rows' columns it is the only
+          // thing on this left edge not on one.
+          isCanvas ? 'px-2' : 'px-1',
+          // BUCKET_LABEL_INK — the canvas heading and the bucket caption above
+          // it are the same voice, and both sit UNDER the rows in the reading
+          // order on purpose. Imported rather than re-typed so muting one can't
+          // silently leave the other behind.
+          isCanvas ? BUCKET_LABEL_INK : 'text-foreground/70'
         )}
       >
         {!isCanvas && (
