@@ -27,12 +27,30 @@ const BUCKET_LABEL: Record<TimeBucket, string> = {
   evening: 'Evening',
 };
 
+export type ListRow = { itemType: 'task' | 'habit'; item: Task | Habit };
+
+/**
+ * A rendered section.
+ *
+ * `key` is separate from `label` because they are answers to different
+ * questions: the label is what the reader sees, and the key is what React
+ * reconciles on. For every grouping but one they coincide, and routine grouping
+ * is the exception that forced the split — two routines may share a name.
+ */
+export interface ListGroup {
+  key: string;
+  label: string;
+  rows: ListRow[];
+}
+
+const group = (label: string, rows: ListRow[]): ListGroup => ({ key: label, label, rows });
+
 export function buildListGroups(
   tasksByBucket: Record<TimeBucket, Task[]>,
   habitsByBucket: Record<TimeBucket, Habit[]>,
   groupBy: GroupBy,
   routines: readonly Routine[] = []
-): [string, { itemType: 'task' | 'habit'; item: Task | Habit }[]][] {
+): ListGroup[] {
   const habits = BUCKET_ORDER.flatMap((b) => habitsByBucket[b]).map((h) => ({
     itemType: 'habit' as const,
     item: h,
@@ -43,13 +61,12 @@ export function buildListGroups(
   }));
 
   if (groupBy === 'bucket') {
-    return BUCKET_ORDER.map((b) => [
-      BUCKET_LABEL[b],
-      [
+    return BUCKET_ORDER.map((b) =>
+      group(BUCKET_LABEL[b], [
         ...habitsByBucket[b].map((h) => ({ itemType: 'habit' as const, item: h })),
         ...tasksByBucket[b].map((t) => ({ itemType: 'task' as const, item: t })),
-      ],
-    ]);
+      ])
+    );
   }
 
   if (groupBy === 'priority') {
@@ -61,9 +78,9 @@ export function buildListGroups(
       groups.set(key, [...(groups.get(key) ?? []), row]);
     }
     return [
-      ...(habits.length ? ([['Habits', habits]] as const) : []),
-      ...order.filter((k) => groups.has(k)).map((k) => [k, groups.get(k)!] as const),
-    ] as [string, typeof tasks][];
+      ...(habits.length ? [group('Habits', habits)] : []),
+      ...order.filter((k) => groups.has(k)).map((k) => group(k, groups.get(k)!)),
+    ];
   }
 
   if (groupBy === 'routine') {
@@ -81,28 +98,39 @@ export function buildListGroups(
     // which is the array's index), which is what the manager's reorder controls
     // write. It is the only place that order is visible outside the manager, and
     // it is why the two shipped together.
-    const claimed = new Map<string, { key: string; rank: number }>();
+    // Grouped by routine ID, labelled by name. Names are not unique — the table
+    // declares `name text not null` with no UNIQUE, rename ships from day one
+    // (that is the whole point of id-referenced members), and nothing dedupes on
+    // create — so keying the map on the name silently MERGED two routines into
+    // one heading holding both their work, with nothing to tell them apart and
+    // no way to know which reorder controls governed which rows.
+    const claimed = new Map<string, { id: string; rank: number }>();
     routines.forEach((routine, i) => {
       routine.itemIds.forEach((id, rank) => {
-        if (!claimed.has(id)) claimed.set(id, { key: routine.name, rank: i * 1e6 + rank });
+        if (!claimed.has(id)) claimed.set(id, { id: routine.id, rank: i * 1e6 + rank });
       });
     });
     const rows = [...habits, ...tasks];
     const groups = new Map<string, typeof rows>();
-    for (const routine of routines) groups.set(routine.name, []);
+    for (const routine of routines) groups.set(routine.id, []);
     const loose: typeof rows = [];
     for (const row of rows) {
       const claim = claimed.get(row.item.id);
-      if (claim) groups.get(claim.key)!.push(row);
+      if (claim) groups.get(claim.id)!.push(row);
       else loose.push(row);
     }
     for (const list of groups.values()) {
       list.sort((a, b) => claimed.get(a.item.id)!.rank - claimed.get(b.item.id)!.rank);
     }
     return [
-      ...[...groups.entries()].filter(([, list]) => list.length > 0),
-      ...(loose.length ? ([['No routine', loose]] as const) : []),
-    ] as [string, typeof rows][];
+      ...routines
+        .filter((routine) => (groups.get(routine.id)?.length ?? 0) > 0)
+        .map((routine) => ({ key: routine.id, label: routine.name, rows: groups.get(routine.id)! })),
+      // Prefixed so a routine a user actually named "No routine" cannot collide
+      // with it — group KEYS are React keys, and two sections under one key
+      // reconcile against a single fiber the moment the group list changes shape.
+      ...(loose.length ? [{ key: 'routine:none', label: 'No routine', rows: loose }] : []),
+    ];
   }
 
   if (groupBy === 'project') {
@@ -112,19 +140,19 @@ export function buildListGroups(
       groups.set(key, [...(groups.get(key) ?? []), row]);
     }
     return [
-      ...(habits.length ? ([['Habits', habits]] as const) : []),
-      ...[...groups.entries()],
-    ] as [string, typeof tasks][];
+      ...(habits.length ? [group('Habits', habits)] : []),
+      ...[...groups.entries()].map(([label, rows]) => group(label, rows)),
+    ];
   }
 
   // Default: HABITS / TASKS / PROJECTS (project-assigned tasks pulled out)
   const plainTasks = tasks.filter((r) => !(r.item as Task).project);
   const projectTasks = tasks.filter((r) => (r.item as Task).project);
   return [
-    ['Habits', habits],
-    ['Tasks', plainTasks],
-    ['Projects', projectTasks],
-  ].filter(([, rows]) => rows.length > 0) as [string, typeof tasks][];
+    group('Habits', habits),
+    group('Tasks', plainTasks),
+    group('Projects', projectTasks),
+  ].filter((g) => g.rows.length > 0);
 }
 
 export function DayList() {
@@ -156,9 +184,9 @@ export function DayList() {
             </p>
           </div>
         ) : (
-          groups.map(([label, rows]) => (
-            <GroupSection key={label} label={label} variant="canvas">
-              {rows.map((row) => (
+          groups.map((g) => (
+            <GroupSection key={g.key} label={g.label} variant="canvas">
+              {g.rows.map((row) => (
                 <TaskRow key={row.item.id} row={row as never} />
               ))}
             </GroupSection>

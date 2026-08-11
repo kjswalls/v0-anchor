@@ -840,6 +840,7 @@ export function ScheduleBlock({
         data-item-type={typeName}
         data-row-variant="skipped"
         data-completed="false"
+        data-scope-date={dateStr}
         data-start-min={entry.startMin}
         data-duration={entry.duration}
         // Same pointer contract as a live block: the wrapper (and so the 12px
@@ -942,6 +943,9 @@ export function ScheduleBlock({
       data-row-variant="default"
       data-completed={done ? 'true' : 'false'}
       data-suppressed={suppressed ? 'true' : 'false'}
+      // See task-row.tsx: the scope rail's hover preview only dims blocks whose
+      // suppression is resolved at the same date its flip-delta was.
+      data-scope-date={dateStr}
       data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both
       // are otherwise encoded only in inline pixel styles. These make the

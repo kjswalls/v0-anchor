@@ -7,6 +7,8 @@ import {
   cleanupTestData,
   cleanupByTitlePrefix,
   cleanupTestCollections,
+  collectionScope,
+  fetchTestCollections,
 } from './helpers/api';
 import { TEST_TITLE_PREFIX } from './helpers/env';
 
@@ -29,18 +31,24 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  * Serial, for the same reason programs.spec is: every test creates containers
  * on a SHARED test user and the rail is not scoped to the running spec.
  */
+// Its own container prefix: cleanupTestCollections is a hard DELETE across the
+// shared test user, and programs.spec sweeps containers too. Two files sweeping
+// the bare TEST_TITLE_PREFIX delete each other's rows mid-test under
+// `fullyParallel` + 4 workers, and describe-serial is file-scoped.
+const scope = collectionScope('rail');
+
 test.describe('scope rail', () => {
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
     await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
-    await cleanupTestCollections(TEST_TITLE_PREFIX);
+    await cleanupTestCollections(scope.prefix);
     await reloadApp(page);
   });
 
   test.afterEach(async () => {
-    await cleanupTestCollections(TEST_TITLE_PREFIX);
+    await cleanupTestCollections(scope.prefix);
   });
 
   const rail = (page: import('@playwright/test').Page) => page.getByTestId('scope-rail');
@@ -68,12 +76,17 @@ test.describe('scope rail', () => {
    * palette leaves the omnibar's dismissable layer underneath it. Opened from
    * the rail there is only one layer, but pressing until it is gone is correct
    * either way and asserts the outcome rather than assuming it.
+   *
+   * BOTH overlays, because ResponsiveModal is a Radix dialog above `sm` and a
+   * vaul drawer below it. Watching only `dialog-overlay` made this function a
+   * no-op on mobile: it found zero overlays, returned, asserted success — and
+   * every later tap was silently eaten by a sheet that was still open.
    */
   async function closeManager(page: import('@playwright/test').Page) {
-    const overlay = page.locator('[data-slot="dialog-overlay"]');
+    const overlay = page.locator('[data-slot="dialog-overlay"], [data-slot="drawer-overlay"]');
     for (let i = 0; i < 4 && (await overlay.count()) > 0; i++) {
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(200);
     }
     await expect(overlay).toHaveCount(0);
   }
@@ -89,6 +102,35 @@ test.describe('scope rail', () => {
     await expect(page.getByTestId(`${kind}-detail`)).toBeVisible();
   }
 
+  /**
+   * Touch gets the rail on the Braindump tab, and it is the ONLY route to the
+   * containers there — no palette shortcut, no hover, and the item chips are
+   * gated on already owning one. It also loses the hover preview entirely,
+   * which is why the switch and the count carry the meaning rather than the
+   * ghost. Worth its own run: the desktop tests pass in a viewport where none
+   * of that is true.
+   */
+  test('@mobile reaches the containers from the Braindump tab', async ({ page }) => {
+    const name = scope.title('Summer');
+    // data-tour, not a role: the mobile dock's tabs are plain buttons, and
+    // pause.spec's own @mobile test reaches them the same way.
+    await page.click('[data-tour="tab-braindump"]');
+    await expect(rail(page)).toBeVisible();
+
+    await rail(page).getByTestId('scope-rail-add').click();
+    await page.getByRole('tab', { name: 'Programs' }).click();
+    await page.getByTestId('program-new-name').fill(name);
+    await page.getByTestId('program-add').click();
+    await expect(page.getByTestId('program-detail')).toBeVisible();
+    await closeManager(page);
+
+    const row = rowFor(page, name, 'program');
+    await expect(row).toHaveAttribute('data-scope-effective', 'on');
+    // Tap, not hover — the whole point of the mobile mount.
+    await row.getByTestId('scope-switch').tap();
+    await expect(row).toHaveAttribute('data-scope-effective', 'off');
+  });
+
   test('is present before any container exists, and is the way in', async ({ page }) => {
     // The bug in one assertion. Every other route to the manager is gated on
     // state a new user does not have.
@@ -102,7 +144,7 @@ test.describe('scope rail', () => {
 
   test('its switch takes work off the grid and puts it back, through the DB', async ({ page }) => {
     const title = testTitle('rail-member');
-    const name = testTitle('Summer');
+    const name = scope.title('Summer');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 4 });
     try {
       await reloadApp(page);
@@ -128,8 +170,20 @@ test.describe('scope rail', () => {
       await expect(row).toContainText('Off');
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
-      // Survives a reload: the state write reached the DB.
+      // Read the row back before reloading, and NOT as belt-and-braces. The
+      // container write is fire-and-forget, the three assertions above are
+      // already true the instant the optimistic set() lands, and page.reload()
+      // aborts a PATCH still in flight — so "survives a reload" was passing on
+      // whether the network beat the navigation. This is also the assertion the
+      // test's own name promises: through the DB, not optimistic state.
+      await expect
+        .poll(async () => (await fetchTestCollections('programs', scope.prefix))[0]?.state)
+        .toBe('paused');
+
       await reloadApp(page);
+      // Non-vacuous only because the rail proves the fetch landed first — an
+      // item-card count of 0 is trivially true while the grid is still empty.
+      await expect(rowFor(page, name, 'program')).toHaveAttribute('data-scope-effective', 'off');
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
       await rowFor(page, name, 'program').getByTestId('scope-switch').click();
@@ -139,10 +193,58 @@ test.describe('scope rail', () => {
     }
   });
 
+  /**
+   * Member order is offered on routines and withheld from programs, and that is
+   * a DATA rule, not a taste one: `routine_items` carries a `sort_order` column
+   * and `program_items` does not, so an order arranged on a program would look
+   * saved and reshuffle on the next fetch. A prop passed at one call site is
+   * exactly the kind of thing that gets copied to the other by a later editor,
+   * so it is pinned where it is visible rather than where it is typed.
+   */
+  test('reordering is offered on a routine and withheld from a program', async ({ page }) => {
+    const first = testTitle('rail-order-a');
+    const second = testTitle('rail-order-b');
+    const routineName = scope.title('Order');
+    const programName = scope.title('Holder');
+    const idA = await createTestHabit(page, { title: first, timeBucket: 'morning' });
+    const idB = await createTestHabit(page, { title: second, timeBucket: 'morning' });
+    try {
+      await reloadApp(page);
+      await expect(itemCardIn(timeline(page), idA)).toHaveCount(1);
+
+      await rail(page).getByTestId('scope-rail-add').click();
+      await createContainer(page, 'routine', routineName);
+      for (const title of [first, second]) {
+        await page.getByTestId('routine-member-add').click();
+        await page.getByTestId('routine-member-search').fill(title);
+        await page.getByTestId('routine-member-candidate').first().click();
+      }
+      await expect(page.getByTestId('routine-member')).toHaveCount(2);
+      await expect(page.getByTestId('routine-member-up')).toHaveCount(2);
+
+      // Second row up: the pair swaps, and the order is what the list renders.
+      await page.getByTestId('routine-member').nth(1).getByTestId('routine-member-up').click();
+      await expect(page.getByTestId('routine-member').first()).toContainText(second);
+      await expect
+        .poll(async () => (await fetchTestCollections('routines', scope.prefix)).length)
+        .toBe(1);
+
+      await createContainer(page, 'program', programName);
+      await page.getByTestId('program-member-add').click();
+      await page.getByTestId('program-member-search').fill(first);
+      await page.getByTestId('program-member-candidate').first().click();
+      await expect(page.getByTestId('program-member')).toHaveCount(1);
+      // No sort_order column behind it, so no control in front of it.
+      await expect(page.getByTestId('program-member-up')).toHaveCount(0);
+    } finally {
+      await cleanupTestData(page, [], [idA, idB]);
+    }
+  });
+
   test('a routine held off by its program keeps its own switch on', async ({ page }) => {
     const title = testTitle('rail-split');
-    const routineName = testTitle('Mornings');
-    const programName = testTitle('Term');
+    const routineName = scope.title('Mornings');
+    const programName = scope.title('Term');
     // A fixture and a baseline assertion, and NOT only so the consequence is
     // observable. `waitForAppReady` returns on hydration and can beat the items
     // fetch, and initializeStore's set() overwrites `routines` with what came

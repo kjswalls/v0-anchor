@@ -63,6 +63,7 @@ import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn, isPausedOn, isProgramActiveOn } from '../active';
+import { programStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
@@ -876,13 +877,15 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Moon,
     keywords: 'paused hidden set aside routine program show grid ghost',
     aliases: ['paused'],
-    // Hidden until the feature exists for this user. Unlike app.collections —
-    // which stays visible because its dialog explains itself — this row would
-    // toggle a preference with no observable effect, and a control that does
-    // nothing teaches the user that the palette lies.
-    availableWhen: () =>
-      planner().collectionsAvailable &&
-      (planner().routines.length > 0 || planner().programs.length > 0),
+    // Ungated, deliberately. It first carried `routines.length > 0 ||
+    // programs.length > 0` on the theory that the preference is unobservable
+    // without a container — which is false: `inactiveItemIdsOn`'s own
+    // `!isPausedOn(item, …)` arm needs no container at all, so Phase 1's
+    // item-level pause is governed by this flag from a standing start. Worse,
+    // the flag is persisted, so gating it made the control unreachable in a
+    // state it could itself produce: turn it on, then delete your last
+    // container, and every self-paused item renders greyed forever behind a
+    // palette row that is greyed out and refuses to run.
     run: () => planner().setShowPausedOnGrid(!planner().showPausedOnGrid),
   },
   {
@@ -1185,17 +1188,22 @@ const programCommands: CommandProvider = () => {
         keywords: `program ${program.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
         // Re-resolved at RUN time, and belt-and-braces even with the day in the
         // key above. The label promises an OUTCOME ("on"), not a transition, so
-        // if the world already reached it there is nothing to do — and doing it
-        // anyway would write a manual state onto an `auto` program, silently
-        // destroying the date-following the user configured. `swapToProgram`
-        // refuses the same write for the same reason.
+        // if the world already reached it there is nothing to do.
+        //
+        // The state itself comes from `programStateForSwitch`, the same rule the
+        // scope rail uses. Writing 'active'/'paused' straight was only ever half
+        // right: the FIRST flip of an `auto` program agrees either way, but the
+        // return flip does not, and this control could never hand a program back
+        // to `auto`. Turn Summer off here and on again and its Aug 31 end is
+        // gone — the exact loss two controls for one switch must not disagree
+        // about.
         run: () => {
           const desiredOn = !live;
           const current = planner().programs.find((p) => p.id === program.id);
           if (!current) return;
-          const onNow = isProgramActiveOn(current, toDateStr(new Date(), tz));
-          if (onNow === desiredOn) return;
-          planner().setProgramState(program.id, desiredOn ? 'active' : 'paused');
+          const today = toDateStr(new Date(), tz);
+          if (isProgramActiveOn(current, today) === desiredOn) return;
+          planner().setProgramState(program.id, programStateForSwitch(current, desiredOn, today));
         },
       },
     ];

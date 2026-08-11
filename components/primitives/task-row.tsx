@@ -91,15 +91,32 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const dateStr = toDateStr(rowDate, timezone);
 
   /**
+   * The date this row's SUPPRESSION is resolved at — not always `dateStr`.
+   *
+   * A grid column asks about its own day. The braindump asks about today and
+   * nothing else: it carries no date of its own (locked decision 3 — every
+   * non-date-scoped surface resolves at today, never at the navigable
+   * selectedDate), and its own two passes already do exactly that.
+   *
+   * `date` is optional and every braindump call site omits it, so without this
+   * the row fell through to `selectedDate` and disagreed with the section it was
+   * sitting in: walk the canvas to a September the user is merely browsing and a
+   * live task in the working list greys itself and claims "Hidden with your
+   * Summer program", while a genuinely paused row under the Paused heading
+   * brightens because its resume date has passed on the day being looked at.
+   * Neither has anything to do with what the user did.
+   */
+  const suppressionDate = inBraindump ? toDateStr(new Date(), timezone) : dateStr;
+
+  /**
    * Is this row's work set aside on the day it is rendered for?
    *
-   * Asked at `dateStr` — this row's own date — and not from a set threaded down
-   * from a caller, because a week column and the braindump ask different
-   * questions and only the row knows which one it is. That is also why it is
-   * cheap enough to ask per row: `isItemActiveOn` walks this item's paths, not
-   * the whole store, and there are a handful of containers.
+   * Asked per row rather than threaded down from a caller, because a week column
+   * and the braindump ask different questions and only the row knows which one
+   * it is. Cheap enough to ask per row: `isItemActiveOn` walks this item's
+   * paths, not the whole store, and there are a handful of containers.
    *
-   * `isItemActiveOn`, not the open-loop variant: a habit ticked before its
+   * The open-loop variant is deliberately NOT used: a habit ticked before its
    * routine was paused still renders (the history rule), and it is still set
    * aside. Greying it says so; hiding it would rewrite the past.
    *
@@ -110,7 +127,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * `suppressionReason` rather than `isItemActiveOn`: it returns null on exactly
    * the same condition, and the non-null answer is the tooltip.
    */
-  const suppression = suppressionReason(item as Item, dateStr, {
+  const suppression = suppressionReason(item as Item, suppressionDate, {
     userTimezone: timezone,
     routines,
     programs,
@@ -307,6 +324,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         data-row-variant="skipped"
         // Selected == in the multi-select set; drives the persistent highlight.
         data-selected={isMultiSelected ? 'true' : 'false'}
+        // A skipped occurrence is not an open loop, so no container flip can
+        // hide it — this is exactly the row the rail's ghost must not dim.
+        data-scope-date={suppressionDate}
         onClick={handleRowClick}
         className={cn(
           'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
@@ -373,6 +393,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       // Same reasoning for "set aside": the treatment is a muted title, and a
       // spec that asserts a Tailwind class is asserting the wrong thing.
       data-suppressed={suppressed ? 'true' : 'false'}
+      // The date this row's suppression was resolved at. The scope rail's hover
+      // preview reads it: its flip-delta is computed at TODAY (the rail is a
+      // dateless surface), so without this it dimmed the same item in all seven
+      // week columns — including dates the flip provably cannot change, because
+      // a pause's lower bound never reaches backwards and a marked occurrence
+      // is not an open loop.
+      data-scope-date={suppressionDate}
       // A row's resolved slot. The visible start time is `hidden md:inline`, so
       // without these a drop's inferred time is unassertable on narrow/mobile
       // viewports — and these are what distinguish an untimed bucket drop from

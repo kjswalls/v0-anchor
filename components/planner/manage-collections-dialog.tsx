@@ -1394,13 +1394,30 @@ function ItemMemberList({
                 the moment one member is in the bin — and an index swap would
                 then reorder a row the user cannot see instead of the two they
                 are looking at. */}
+            {/* Visible unconditionally below md and hover-revealed above it.
+                This dialog is a bottom SHEET on mobile, where there is no hover
+                and no prior focus — reordering was the one thing group-by
+                routine shipped to make observable, and on a phone it was two
+                invisible targets you had to guess at.
+
+                24px boxes with a gap, not bare 14px glyphs touching each other:
+                two adjacent sub-24px targets are a mis-tap away from swapping in
+                the wrong direction, and the write goes straight to the DB.
+
+                aria-disabled, NOT disabled. A real `disabled` at the end of the
+                list drops focus to the body the moment the last press lands it
+                there, and `focus-within` then fades the pair out — so a
+                keyboard user walking a member down loses their place and has to
+                tab from the top of the dialog. The handler guards instead. */}
             {orderable && (
-              <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
                 <button
                   type="button"
-                  disabled={i === 0}
-                  onClick={() => onChange(swapMembers(memberIds, item.id, members[i - 1].id))}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                  aria-disabled={i === 0}
+                  onClick={() =>
+                    i > 0 && onChange(swapMembers(memberIds, item.id, members[i - 1].id))
+                  }
+                  className="text-muted-foreground hover:text-foreground flex h-6 w-6 items-center justify-center rounded aria-disabled:pointer-events-none aria-disabled:opacity-30"
                   aria-label={`Move ${item.title} up in ${ownerName}`}
                   data-testid={`${testPrefix}-member-up`}
                 >
@@ -1408,9 +1425,12 @@ function ItemMemberList({
                 </button>
                 <button
                   type="button"
-                  disabled={i === members.length - 1}
-                  onClick={() => onChange(swapMembers(memberIds, item.id, members[i + 1].id))}
-                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                  aria-disabled={i === members.length - 1}
+                  onClick={() =>
+                    i < members.length - 1 &&
+                    onChange(swapMembers(memberIds, item.id, members[i + 1].id))
+                  }
+                  className="text-muted-foreground hover:text-foreground flex h-6 w-6 items-center justify-center rounded aria-disabled:pointer-events-none aria-disabled:opacity-30"
                   aria-label={`Move ${item.title} down in ${ownerName}`}
                   data-testid={`${testPrefix}-member-down`}
                 >

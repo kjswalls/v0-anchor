@@ -62,6 +62,7 @@ import {
   suppressionReason,
   suppressionLabel,
 } from './active';
+import { programStateForSwitch } from './scope-rail';
 import { recordReleased } from './sweep-grace';
 import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } from '@anchor-app/types';
 import { saveSettings } from './settings-service';
@@ -909,14 +910,24 @@ export const usePlannerStore = create<PlannerStore>()(
         const todayStr = toDateStr(new Date(), tz);
 
         const patches = new Map<string, Partial<Program>>();
-        // Only write the target if it is not ALREADY on. An `auto` program
-        // inside its own date range is already carrying its members, and
-        // stamping 'active' would silently convert a self-managing program into
-        // one the user must remember to turn off.
-        if (!isProgramActiveOn(target, todayStr)) patches.set(id, { state: 'active' });
+        // Only write a program that is not ALREADY where the swap wants it. An
+        // `auto` program inside its own date range is already carrying its
+        // members, and stamping 'active' would silently convert a self-managing
+        // program into one the user must remember to turn off.
+        //
+        // The state written comes from `programStateForSwitch` — the same rule
+        // the scope rail and the palette use — rather than a literal
+        // 'active'/'paused'. Writing the literal is only half right: it can
+        // never hand a program back to `auto`, so swapping away from a summer
+        // and back again loses the Aug 31 end it was following.
+        if (!isProgramActiveOn(target, todayStr)) {
+          patches.set(id, { state: programStateForSwitch(target, true, todayStr) });
+        }
         for (const program of get().programs) {
           if (program.id === id) continue;
-          if (isProgramActiveOn(program, todayStr)) patches.set(program.id, { state: 'paused' });
+          if (isProgramActiveOn(program, todayStr)) {
+            patches.set(program.id, { state: programStateForSwitch(program, false, todayStr) });
+          }
         }
         if (patches.size === 0) return;
 

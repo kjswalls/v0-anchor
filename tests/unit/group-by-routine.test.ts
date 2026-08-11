@@ -29,44 +29,70 @@ function groups(tasks: Task[], habits: Habit[], routines: Routine[]) {
   return buildListGroups(t, h, 'routine', routines);
 }
 
+const ids = (g: { rows: { item: { id: string } }[] }) => g.rows.map((r) => r.item.id);
+
 describe('buildListGroups — group by routine', () => {
   it('puts habits and tasks under the same routine', () => {
     // Every other grouping here pulls habits into their own section. A routine
     // holds both, so doing that would put half a morning routine outside the
     // group named after it.
     const out = groups([task('t1')], [habit('h1')], [routine('r', 'Mornings', ['h1', 't1'])]);
-    expect(out.map(([label]) => label)).toEqual(['Mornings']);
-    expect(out[0][1].map((r) => r.item.id)).toEqual(['h1', 't1']);
+    expect(out.map((g) => g.label)).toEqual(['Mornings']);
+    expect(ids(out[0])).toEqual(['h1', 't1']);
   });
 
   it('orders members by the routine sequence, not by bucket order', () => {
     // This is the whole reason the reorder controls are worth having.
     const out = groups([task('a'), task('b'), task('c')], [], [routine('r', 'R', ['c', 'a', 'b'])]);
-    expect(out[0][1].map((r) => r.item.id)).toEqual(['c', 'a', 'b']);
+    expect(ids(out[0])).toEqual(['c', 'a', 'b']);
   });
 
   it('renders a multi-routine item once, in the first routine that claims it', () => {
     // Two checkboxes for one obligation is the Outliner's known failure, and a
     // duplicate row is one that shift-range and select-all silently skip.
     const out = groups([task('a')], [], [routine('r1', 'First', ['a']), routine('r2', 'Second', ['a'])]);
-    expect(out.map(([label]) => label)).toEqual(['First']);
-    expect(out.flatMap(([, rows]) => rows.map((r) => r.item.id))).toEqual(['a']);
+    expect(out.map((g) => g.label)).toEqual(['First']);
+    expect(out.flatMap(ids)).toEqual(['a']);
+  });
+
+  it('keeps two same-named routines apart', () => {
+    // Names are not unique — no UNIQUE on the column, rename ships from day one,
+    // nothing dedupes on create. Grouped by name they MERGED into one heading
+    // holding both routines' work, with no way to tell which reorder controls
+    // governed which rows.
+    const out = groups(
+      [task('a'), task('b')],
+      [],
+      [routine('r1', 'Morning', ['a']), routine('r2', 'Morning', ['b'])]
+    );
+    expect(out.map((g) => g.label)).toEqual(['Morning', 'Morning']);
+    expect(out.map((g) => g.key)).toEqual(['r1', 'r2']);
+    expect(out.map(ids)).toEqual([['a'], ['b']]);
   });
 
   it('collects everything unclaimed under one trailing group', () => {
     const out = groups([task('a'), task('loose')], [], [routine('r', 'R', ['a'])]);
-    expect(out.map(([label]) => label)).toEqual(['R', 'No routine']);
-    expect(out[1][1].map((r) => r.item.id)).toEqual(['loose']);
+    expect(out.map((g) => g.label)).toEqual(['R', 'No routine']);
+    expect(ids(out[1])).toEqual(['loose']);
+  });
+
+  it('gives the unclaimed group a key a routine cannot collide with', () => {
+    // Group keys ARE React keys. A routine the user literally named "No routine"
+    // would otherwise mount two sections under one key, and the moment the group
+    // list changes shape they reconcile against a single fiber.
+    const out = groups([task('a'), task('loose')], [], [routine('r', 'No routine', ['a'])]);
+    expect(out.map((g) => g.label)).toEqual(['No routine', 'No routine']);
+    expect(new Set(out.map((g) => g.key)).size).toBe(2);
   });
 
   it('drops a routine with nothing on this day rather than showing an empty heading', () => {
     const out = groups([task('a')], [], [routine('r1', 'Today', ['a']), routine('r2', 'Never', ['x'])]);
-    expect(out.map(([label]) => label)).toEqual(['Today']);
+    expect(out.map((g) => g.label)).toEqual(['Today']);
   });
 
   it('falls back to one group when the user owns no routines', () => {
     const out = groups([task('a')], [habit('h')], []);
-    expect(out.map(([label]) => label)).toEqual(['No routine']);
+    expect(out.map((g) => g.label)).toEqual(['No routine']);
   });
 });
 

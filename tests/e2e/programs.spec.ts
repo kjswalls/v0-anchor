@@ -7,6 +7,7 @@ import {
   cleanupTestData,
   cleanupByTitlePrefix,
   cleanupTestCollections,
+  collectionScope,
 } from './helpers/api';
 import { TEST_TITLE_PREFIX } from './helpers/env';
 
@@ -28,7 +29,14 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  *
  * Serial, because every test here creates containers on a SHARED test user and
  * the manager's list is not scoped to the running spec.
+ *
+ * Serial is file-scoped, though, and this file is no longer the only one that
+ * sweeps containers — so its names and its cleanup live under a prefix it owns.
+ * Sweeping the bare TEST_TITLE_PREFIX from two files hard-DELETEs the other's
+ * containers mid-test under `fullyParallel` + 4 workers.
  */
+const scope = collectionScope('prog');
+
 test.describe('programs', () => {
   // Longer than the 60s default because every test here drives the manager
   // through several open/edit/close round trips against a dev server, and each
@@ -40,12 +48,12 @@ test.describe('programs', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
     await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
-    await cleanupTestCollections(TEST_TITLE_PREFIX);
+    await cleanupTestCollections(scope.prefix);
     await reloadApp(page);
   });
 
   test.afterEach(async () => {
-    await cleanupTestCollections(TEST_TITLE_PREFIX);
+    await cleanupTestCollections(scope.prefix);
   });
 
   /** The grid, scoped — an unscoped item-card locator also matches the Paused section. */
@@ -133,7 +141,7 @@ test.describe('programs', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
       await openManager(page, 'programs');
-      await createContainer(page, 'program', testTitle('Summer'));
+      await createContainer(page, 'program', scope.title('Summer'));
       await addItemToOpenContainer(page, 'program', title);
 
       // A new program is born 'auto' with no range, which resolves to
@@ -180,7 +188,7 @@ test.describe('programs', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
       await openManager(page, 'routines');
-      await createContainer(page, 'routine', testTitle('Morning'));
+      await createContainer(page, 'routine', scope.title('Morning'));
       await addItemToOpenContainer(page, 'routine', title);
       await closeManager(page);
 
@@ -188,7 +196,7 @@ test.describe('programs', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
       await openManager(page, 'programs');
-      await createContainer(page, 'program', testTitle('Term'));
+      await createContainer(page, 'program', scope.title('Term'));
       await page.getByTestId('program-state-paused').click();
 
       // Attaching a LIVE standalone routine to a program that is off is the
@@ -231,7 +239,7 @@ test.describe('programs', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(1);
 
       await openManager(page, 'programs');
-      const offName = testTitle('Off');
+      const offName = scope.title('Off');
       await createContainer(page, 'program', offName);
       await addItemToOpenContainer(page, 'program', title);
       await page.getByTestId('program-state-paused').click();
@@ -239,7 +247,7 @@ test.describe('programs', () => {
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
       await openManager(page, 'programs');
-      await createContainer(page, 'program', testTitle('On'));
+      await createContainer(page, 'program', scope.title('On'));
       await addItemToOpenContainer(page, 'program', title);
       await closeManager(page);
 

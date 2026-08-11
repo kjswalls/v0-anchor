@@ -35,6 +35,8 @@ export function ScopeRail() {
   const programs = usePlannerStore((s) => s.programs);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
+  const userId = usePlannerStore((s) => s.userId);
+  const isLoading = usePlannerStore((s) => s.isLoading);
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
   const setProgramState = usePlannerStore((s) => s.setProgramState);
   const openDialog = useUIStore((s) => s.openDialog);
@@ -64,7 +66,15 @@ export function ScopeRail() {
     if (!ghostIds?.length) return;
     const wanted = new Set(ghostIds);
     const marked: Element[] = [];
-    for (const el of document.querySelectorAll('[data-item-id]')) {
+    // Scoped by DATE as well as by id. The flip-delta is resolved at today —
+    // the rail is a dateless surface and deliberately does not re-run the
+    // resolver per column — so an unscoped selector dimmed the same item in all
+    // seven week columns. Most of those cannot move: a pause's lower bound never
+    // reaches backwards, so every past column survives the flip, and a marked or
+    // skipped occupancy is not an open loop on any date. Rows carry the date
+    // their own suppression was resolved at; only the matching ones can change.
+    for (const el of document.querySelectorAll('[data-item-id][data-scope-date]')) {
+      if (el.getAttribute('data-scope-date') !== todayStr) continue;
       if (!wanted.has(el.getAttribute('data-item-id') ?? '')) continue;
       el.setAttribute('data-scope-ghost', '');
       marked.push(el);
@@ -75,9 +85,15 @@ export function ScopeRail() {
     // The flip set is the dependency, not the hovered id: flipping a switch
     // while the pointer sits on it recomputes the set, and the effect re-runs to
     // show the NEW consequence rather than leaving a stale ghost on screen.
-  }, [ghostIds]);
+  }, [ghostIds, todayStr]);
 
-  if (!collectionsAvailable) return null;
+  // Nothing until the containers have actually arrived. `collectionsAvailable`
+  // starts optimistically true, so without this the rail is a ONE-CLICK door
+  // into the manager during the load window — and a container created in that
+  // window is erased without trace when initializeStore's set() replaces
+  // `routines`/`programs` with what came back. The user then creates it again
+  // and owns two. Same signal app-shell already uses for "loaded".
+  if (!collectionsAvailable || !userId || isLoading) return null;
 
   return (
     <section
@@ -182,7 +198,11 @@ function ScopeRow({
             type="button"
             data-testid="scope-switch"
             aria-pressed={row.localOn}
-            aria-label={`${verb} ${row.name}`}
+            // The NAME is the object, not the verb. With aria-pressed the state
+            // is already announced, so "Turn off Morning … pressed" reads as its
+            // own negation — the turning-off is on. The verb lives in the
+            // tooltip, where sighted users get it and the reading is unambiguous.
+            aria-label={row.name}
             onClick={onToggle}
             onMouseEnter={() => onHover(true)}
             onMouseLeave={() => onHover(false)}

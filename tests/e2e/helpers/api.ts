@@ -66,6 +66,57 @@ export function testTitle(label: string): string {
     .slice(2, 7)}`;
 }
 
+/**
+ * A container-name prefix owned by ONE spec file, and the titles under it.
+ *
+ * `cleanupTestCollections` is a hard DELETE of every matching row on the shared
+ * test user, so two spec files that both sweep `TEST_TITLE_PREFIX` delete each
+ * other's containers — and with `fullyParallel` + 4 local workers they run at
+ * the same time. `test.describe.configure({mode:'serial'})` is file-scoped and
+ * does nothing about it. Both files pass alone and fail non-deterministically in
+ * a full run, which is the residue class playwright.config.ts already documents.
+ *
+ * Every prefix still starts with TEST_TITLE_PREFIX, so globalSetup's litter
+ * sweep keeps catching all of them.
+ *
+ * @example
+ *   const scope = collectionScope('rail');
+ *   await cleanupTestCollections(scope.prefix);
+ *   await createContainer(page, 'program', scope.title('Summer'));
+ */
+export function collectionScope(spec: string): { prefix: string; title: (label: string) => string } {
+  const prefix = `${TEST_TITLE_PREFIX}${spec}_`;
+  return { prefix, title: (label: string) => testTitle(`${spec}_${label}`) };
+}
+
+/**
+ * The containers as STORED, straight from the database.
+ *
+ * Every container write in the app is fire-and-forget
+ * (`dbUpdateProgram(...).catch(console.error)`), so a DOM assertion right after
+ * a click proves only that the optimistic `set()` ran. Reload on the strength of
+ * that and `page.reload()` can abort the PATCH still in flight — the test then
+ * carries on against a program that never changed, and the failure surfaces
+ * several steps later as something else entirely.
+ *
+ * Poll this before any reload that is meant to prove persistence.
+ */
+export async function fetchTestCollections(
+  table: 'routines' | 'programs',
+  prefix: string
+): Promise<{ id: string; name: string; state?: string; paused_at?: string | null }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(
+    `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name,${table === 'programs' ? 'state' : 'paused_at'}`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestCollections] ${table}: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { id: string; name: string }[]).filter((row) =>
+    row.name?.startsWith(prefix)
+  );
+}
+
 function authHeaders() {
   return { Authorization: `Bearer ${apiKey()}`, 'Content-Type': 'application/json' };
 }

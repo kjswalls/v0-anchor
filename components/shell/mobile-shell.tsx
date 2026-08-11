@@ -95,7 +95,12 @@ export function MobileShell() {
             {activeTab === 'braindump' && (
               <>
                 <Braindump />
-                <div className="shrink-0 px-2 pb-2">
+                {/* px-[10px] and pt-2, not px-2 with no top padding: this panel
+                    sets no gap, and the braindump's own capsules are inset
+                    mx-[10px] on an 8px internal rhythm — so a 2px-wider strip
+                    flush against the quick-add well read as a misaligned fourth
+                    capsule rather than a peer of the other three. */}
+                <div className="shrink-0 px-[10px] pt-2 pb-2">
                   <ScopeRail />
                 </div>
               </>

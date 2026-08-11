@@ -769,6 +769,111 @@ dateless surfaces resolve at today (decision 3).
   ignores `groupBy: 'routine'` (it honours Project alone, as its own command
   description says) — wiring it means editing `day-buckets.tsx`, same reason.
 
+- [x] **Phase 5 adversarial review** (2026-08-10, 66 agents / 5.4M tokens,
+  6 finder lenses → cluster-by-convergence → 2 adversarial refuters each →
+  completeness critic). 52 raw findings → 29 distinct defects → **12 survived
+  refutation**, plus 3 the critic found that no lens had asked about. No
+  blocker. All fixed in `this commit`.
+
+  **The two that mattered most, and both were about a date.**
+
+  *The braindump greyed and un-greyed rows as the user walked the canvas* (5
+  lenses, 0/2 kills). `TaskRow` asked `suppressionReason` at `date ??
+  selectedDate`, and every braindump call site omits `date` — so a dateless
+  surface fell through to the navigable one, against locked decision 3 and
+  against the braindump's own two passes, which both resolve at today. Browse to
+  a September you are merely looking at and a live task in the working list
+  mutes itself and claims "Hidden with your Summer program". Fixed in the ROW
+  (`context === 'braindump'` resolves at today), not in the braindump: the row
+  is the thing that assumed a rendered date it was never given.
+
+  *The rail's hover ghost promised disappearances on dates the flip cannot
+  reach.* The delta is resolved at today — deliberately; the rail is dateless —
+  but the ghost selected by id alone, so it dimmed all seven week columns. Most
+  of those cannot move: a pause's lower bound never reaches backwards, and a
+  marked or skipped occurrence is not an open loop on any date. Rows and blocks
+  now carry `data-scope-date` (the date their OWN suppression was resolved at)
+  and the ghost marks only the matching ones. The fix must not be attempted at
+  the resolver — narrowing the lower bound is the Phase 1 bug.
+
+  **Three more that were real defects rather than polish:**
+  - `settings.showPaused` gated its availability on owning a container, on the
+    premise that the flag is unobservable without one. False —
+    `inactiveItemIdsOn`'s `!isPausedOn(item, …)` arm needs no container, so
+    Phase 1 item pause is governed by it from a standing start. Worse, the flag
+    persists, so the gate made the control unreachable in a state it could
+    itself produce: turn it on, delete your last container, and every paused
+    item greys forever behind a palette row that refuses to run. Gate dropped.
+  - Group-by-routine keyed its groups on the routine NAME. Names are not unique
+    — no UNIQUE on the column, rename ships from day one (that is the point of
+    id-referenced members), nothing dedupes on create — so two routines called
+    "Morning" MERGED into one heading holding both their work, with no way to
+    know which reorder controls governed which rows. Now keyed by id and
+    labelled by name; `buildListGroups` returns `{key, label, rows}` because the
+    two are answers to different questions and routine grouping is the case that
+    forced them apart.
+  - **The palette's program toggle disagreed with the rail about the same
+    switch.** This commit codified `programStateForSwitch` and wired one control
+    to it while `program.activate/pause` next door still wrote a raw
+    `'active'|'paused'`. The first flip of an `auto` program agrees either way;
+    the RETURN flip does not, and the palette could never hand a program back to
+    `auto` — so turn Summer off and on from the palette and its Aug 31 end is
+    gone. Both it and `swapToProgram` now route through the rule. Pre-existing
+    behaviour, but leaving one control disagreeing with another in the same file
+    is exactly the drift this codebase fixes on sight.
+
+  **The completeness critic found the one nobody asked about: the rail is a
+  one-click door into the manager that opens BEFORE the containers fetch
+  lands.** `collectionsAvailable` starts optimistically true and app-shell gates
+  on `mounted`, not on loaded — so on a cold load a user can create a routine
+  that `initializeStore`'s `set()` then erases without trace, while the DB
+  insert usually succeeds. They create it again and own two, which the same
+  commit's group-by then merges under one heading. The rail now renders nothing
+  until `userId && !isLoading`. This is the same trap that broke the new e2e
+  spec while it was being written; there it was fixed only for the test.
+
+  **Also fixed:** the reorder controls were invisible on touch (the dialog is a
+  bottom SHEET there, no hover, no prior focus) and were two adjacent 14px
+  targets — now 24px with a gap and visible below `md`; a real `disabled` on the
+  end-of-list arrow dropped keyboard focus to the body, so it is `aria-disabled`
+  with a guarded handler; `aria-pressed` was paired with an action-phrased name,
+  which announces every state as its own negation ("Turn on Morning … not
+  pressed"); the mobile mount's wrapper misaligned the capsule by 2px and sat
+  flush against the quick-add well.
+
+  **Three test defects the review caught, all in tests written the same day:**
+  a `scopeCountLine` case named for the zero-flips branch asserted the opposite
+  and left the branch unpinned; the rail's ordering rule was untested for the
+  only fixture where `localOn !== effectiveOn`, which is the case the two rules
+  differ on; and the routine-only reorder rule (a prop at one call site, the
+  kind a later editor copies to the other) had no UI-level test.
+
+  **And two e2e hygiene defects, one of them mine and load-bearing.**
+  `scope-rail.spec` became a SECOND file hard-DELETing every `e2e_` container on
+  the shared test user while `programs.spec` does the same — `fullyParallel` with
+  4 local workers, and `describe.serial` is file-scoped. Both files now own a
+  prefix (`collectionScope`). And the spec's "survives a reload" step was passing
+  on luck: container writes are fire-and-forget, the DOM assertions before it are
+  already true the instant the optimistic `set()` lands, and `page.reload()`
+  aborts an in-flight PATCH. It now polls the row back out of the database
+  first — which is the assertion the test's own name promised.
+
+  **Refuted and not to be re-raised** (17 killed, each checked against the code):
+  the ghost fading the lime through a parent's opacity (it dims a row's own
+  element, and the accent lives on its own); `programStateForSwitch` "re-arming
+  date-following the user had overruled" (it writes `auto` only when `auto`
+  already yields the requested state); ProgramNotice contradicting
+  showPausedOnGrid; `Group by → Routine` being offered with zero routines (it
+  degrades to one honest "No routine" heading); the rail's `max-h` costing the
+  braindump 200px; re-sorting under a stationary pointer; rapid reorder clicks
+  racing; a skipped-and-suppressed row losing its treatment; and `heldElsewhere`'s
+  `!baseline.has(id)` guard being unreachable.
+
+  **Left unfixed, deliberately:** if the canvas remounts while a rail switch
+  holds focus, the ghost stops showing rather than going wrong — the marked
+  elements are gone and the effect has no reason to re-run. A MutationObserver
+  for a transient hover preview is not worth its own failure modes.
+
   **The manager has no unconditional entry point, and that is the priority item**
   (found 2026-08-10 — Kirby could not locate the feature he had just commissioned).
   Four routes in, three of them gated on state a new user does not have:

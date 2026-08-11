@@ -230,6 +230,20 @@ describe('buildScopeRows — ordering', () => {
     );
     expect(rows.map((r) => r.id)).toEqual(['p-on', 'r-on', 'p-off', 'r-off']);
   });
+
+  it('ranks by the EFFECTIVE state, not by the switch', () => {
+    // The two disagree only for a routine, and this is the case that tells the
+    // two rules apart: `r-held` has its own switch ON and still belongs at the
+    // bottom, because it is not carrying anything. Rank on localOn instead and
+    // this test is the one that fails.
+    const rows = build(
+      [],
+      [routine('r-held'), routine('r-free')],
+      [program('p-off', { state: 'paused', routineIds: ['r-held'] })]
+    );
+    expect(rows.map((r) => r.id)).toEqual(['r-free', 'p-off', 'r-held']);
+    expect(row(rows, 'r-held').localOn).toBe(true);
+  });
 });
 
 describe('scopeCountLine', () => {
@@ -247,9 +261,20 @@ describe('scopeCountLine', () => {
     expect(scopeCountLine(row(rows, 'p'))).toBe('holds 1 · 1 would come back');
   });
 
-  it('says only what it holds when nothing would move', () => {
+  it('states the leaving count for a standalone live routine', () => {
     const rows = build([task('a')], [routine('r', { itemIds: ['a'] })], []);
-    // A standalone live routine with one member: flipping it hides that member.
     expect(scopeCountLine(row(rows, 'r'))).toBe('holds 1 · 1 would leave');
+  });
+
+  it('says only what it holds when the switch would move nothing', () => {
+    // The row the local/effective split exists to explain: a routine already
+    // held off by its program. Its own switch changes nothing either way, and
+    // "0 would leave" would be a number promising a disappearance of zero.
+    const items = [task('a')];
+    const r = routine('r', { itemIds: ['a'] });
+    const p = program('p', { state: 'paused', routineIds: ['r'] });
+    const rows = build(items, [r], [p]);
+    expect(row(rows, 'r').flips).toEqual([]);
+    expect(scopeCountLine(row(rows, 'r'))).toBe('holds 1');
   });
 });
