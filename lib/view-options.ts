@@ -58,4 +58,7 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<CanvasGroupBy>[] = [
   { value: 'project', label: 'Project', icon: Folder },
   { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'bucket', label: 'Time bucket', icon: Hourglass },
+  // List layout only, like Priority — the Buckets layout honours Project alone
+  // and the command's own description says so.
+  { value: 'routine', label: 'Routine', icon: Repeat },
 ];

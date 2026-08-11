@@ -44,6 +44,7 @@ function GripDots() {
   );
 }
 import { Braindump } from '@/components/sidebar/braindump';
+import { ScopeRail } from '@/components/sidebar/scope-rail';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -274,6 +275,13 @@ export function Sidebar() {
         )}
       >
         <Braindump />
+        {/* The Scope Rail sits between the list and the dock — the cheapest
+            real estate in the shell, and the reason this design won over the
+            outliner: it costs no new permanent column. It is a peer of the two
+            capsules rather than a section inside the braindump, because it acts
+            on what EXISTS rather than on the list, and the braindump's own
+            chrome is already width-critical at the 280px minimum. */}
+        <ScopeRail />
         <SidebarDock />
       </div>
 

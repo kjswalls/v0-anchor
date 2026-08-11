@@ -35,7 +35,7 @@ export type {
 
 export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
-export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status';
+export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status' | 'routine';
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
 
 export interface FilterState {

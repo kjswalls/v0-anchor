@@ -10,7 +10,7 @@ import { useViewStore } from '@/lib/view-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { ProgramNotice } from '@/components/views/program-notice';
 import { toDateStr } from '@/lib/recurrence';
-import type { Task, Habit, GroupBy, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, GroupBy, TimeBucket, Routine } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -30,7 +30,8 @@ const BUCKET_LABEL: Record<TimeBucket, string> = {
 export function buildListGroups(
   tasksByBucket: Record<TimeBucket, Task[]>,
   habitsByBucket: Record<TimeBucket, Habit[]>,
-  groupBy: GroupBy
+  groupBy: GroupBy,
+  routines: readonly Routine[] = []
 ): [string, { itemType: 'task' | 'habit'; item: Task | Habit }[]][] {
   const habits = BUCKET_ORDER.flatMap((b) => habitsByBucket[b]).map((h) => ({
     itemType: 'habit' as const,
@@ -65,6 +66,45 @@ export function buildListGroups(
     ] as [string, typeof tasks][];
   }
 
+  if (groupBy === 'routine') {
+    // Habits AND tasks, unlike every other grouping here: a routine holds both,
+    // and pulling habits into their own section would put half of a morning
+    // routine outside the group named after it.
+    //
+    // ONE row, ONE group. An item can belong to several routines, and rendering
+    // it under each would be the Outliner's known failure — two checkboxes for
+    // one obligation, and a second copy that shift-range and ⌘A silently skip
+    // (the braindump's Paused section documents the same trap). It lands in the
+    // first routine that claims it, in store order.
+    //
+    // Members are ordered by the routine's OWN sequence (routine_items.sort_order,
+    // which is the array's index), which is what the manager's reorder controls
+    // write. It is the only place that order is visible outside the manager, and
+    // it is why the two shipped together.
+    const claimed = new Map<string, { key: string; rank: number }>();
+    routines.forEach((routine, i) => {
+      routine.itemIds.forEach((id, rank) => {
+        if (!claimed.has(id)) claimed.set(id, { key: routine.name, rank: i * 1e6 + rank });
+      });
+    });
+    const rows = [...habits, ...tasks];
+    const groups = new Map<string, typeof rows>();
+    for (const routine of routines) groups.set(routine.name, []);
+    const loose: typeof rows = [];
+    for (const row of rows) {
+      const claim = claimed.get(row.item.id);
+      if (claim) groups.get(claim.key)!.push(row);
+      else loose.push(row);
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => claimed.get(a.item.id)!.rank - claimed.get(b.item.id)!.rank);
+    }
+    return [
+      ...[...groups.entries()].filter(([, list]) => list.length > 0),
+      ...(loose.length ? ([['No routine', loose]] as const) : []),
+    ] as [string, typeof rows][];
+  }
+
   if (groupBy === 'project') {
     const groups = new Map<string, typeof tasks>();
     for (const row of tasks) {
@@ -89,11 +129,11 @@ export function buildListGroups(
 
 export function DayList() {
   const { tasksByBucket, habitsByBucket, totalCount } = useDayItems();
-  const { selectedDate, navDirection, userTimezone } = usePlannerStore();
+  const { selectedDate, navDirection, userTimezone, routines } = usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy);
+  const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy, routines);
 
   return (
     <ScrollArea className="h-full flex-1">

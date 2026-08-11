@@ -304,6 +304,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     routines,
     programs,
     showCompletedTasks,
+    showPausedOnGrid,
     userTimezone,
     showCurrentTimeIndicator,
   } = usePlannerStore();
@@ -339,11 +340,13 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           // Per COLUMN, not per week: a pause ending mid-week — or a program's
           // range starting on Wednesday — must show the handoff in the right
           // column rather than blanking or filling all seven.
-          inactiveItemIds: inactiveItemIdsOn(allItems, dateStr, {
-            userTimezone: timezone,
-            routines,
-            programs,
-          }),
+          inactiveItemIds: showPausedOnGrid
+            ? undefined
+            : inactiveItemIdsOn(allItems, dateStr, {
+                userTimezone: timezone,
+                routines,
+                programs,
+              }),
         });
         const boundary = boundaries.get(dateStr);
         return {
@@ -355,7 +358,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
         };
       });
   },
-    [weekDays, tasks, habits, projects, allItems, routines, programs, timezone, typeFilter, showCompletedTasks, canvasFilters]
+    [weekDays, tasks, habits, projects, allItems, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the

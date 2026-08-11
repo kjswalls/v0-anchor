@@ -30,10 +30,11 @@ import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -534,6 +535,8 @@ export function ScheduleBlock({
     getHabitGroupColor,
     selectedDate,
     userTimezone,
+    routines,
+    programs,
     toggleTaskStatus,
     setItemSkipped,
     updateTask,
@@ -554,6 +557,17 @@ export function ScheduleBlock({
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+  // Asked at THIS block's date, same as TaskRow and for the same reason: a week
+  // column and the day view are different questions, and only the block knows
+  // which one it is. Non-null only when the item is set aside, so it doubles as
+  // the flag. Reaches the screen only with showPausedOnGrid on, since otherwise
+  // deriveDayItems has already excluded it.
+  const suppression = suppressionReason(item as Item, dateStr, {
+    userTimezone: timezone,
+    routines,
+    programs,
+  });
+  const suppressed = !!suppression;
   const done = isTask
     ? isRecurring(task!)
       ? isCompletedOnDate(task!, dateStr)
@@ -905,6 +919,10 @@ export function ScheduleBlock({
 
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
+    // Set aside (showPausedOnGrid). Muted, never struck through and never a
+    // wash over the whole block: the accent bar is `var(--primary)` on an
+    // unprojected task, and fading the pane would take the lime down with it.
+    suppressed && 'text-muted-foreground',
     done && 'text-muted-foreground line-through opacity-60'
   );
 
@@ -923,6 +941,7 @@ export function ScheduleBlock({
       // checkbox, no resize handles) — same disambiguation TaskRow carries.
       data-row-variant="default"
       data-completed={done ? 'true' : 'false'}
+      data-suppressed={suppressed ? 'true' : 'false'}
       data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both
       // are otherwise encoded only in inline pixel styles. These make the

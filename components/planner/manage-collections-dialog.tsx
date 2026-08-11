@@ -5,6 +5,8 @@ import { format } from 'date-fns';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Moon,
   Repeat,
   CalendarRange,
@@ -798,6 +800,7 @@ function RoutineDetail({
         members={members}
         dimmed={paused}
         testPrefix="routine"
+        orderable
         onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
       />
     </div>
@@ -1299,12 +1302,28 @@ function AttachRoutineConfirm({
   );
 }
 
+/**
+ * Swap two members by id, leaving every other position — including any id that
+ * names a trashed item — exactly where it was. Returns the same array when
+ * either id is absent, so a stale click writes nothing.
+ */
+export function swapMembers(ids: string[], a: string, b: string): string[] {
+  const i = ids.indexOf(a);
+  const j = ids.indexOf(b);
+  if (i < 0 || j < 0 || i === j) return ids;
+  const next = [...ids];
+  next[i] = b;
+  next[j] = a;
+  return next;
+}
+
 function ItemMemberList({
   ownerName,
   memberIds,
   members,
   dimmed,
   testPrefix,
+  orderable = false,
   onChange,
 }: {
   ownerName: string;
@@ -1312,6 +1331,14 @@ function ItemMemberList({
   members: Item[];
   dimmed: boolean;
   testPrefix: string;
+  /**
+   * Routines only, and not as a taste call: `routine_items` carries a
+   * `sort_order` column (written from the array index by reconcileMembership)
+   * and `program_items` does not. Offering the controls on a program would let
+   * the user arrange an order that survives until the next fetch and then
+   * silently reshuffles.
+   */
+  orderable?: boolean;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -1339,11 +1366,12 @@ function ItemMemberList({
 
       {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
       <div className="max-h-44 space-y-px overflow-y-auto">
-        {members.map((item) => (
+        {members.map((item, i) => (
           <div
             key={item.id}
             data-testid={`${testPrefix}-member`}
             data-item-id={item.id}
+            data-member-index={i}
             className="hover:bg-secondary group flex h-9 items-center gap-2.5 rounded-lg px-2.5"
           >
             {/* Greyed while the container is off, NOT struck through — struck
@@ -1353,6 +1381,43 @@ function ItemMemberList({
             >
               {item.title}
             </span>
+            {/* Buttons, not drag. The whole dialog renders inside the shell's
+                DndContext, so a sortable list here would need a nested one and
+                would compete with the item-drag sensors for the same pointer.
+                Two buttons are also the only version of this a keyboard can
+                reach. They are hidden until hover or focus, like Remove beside
+                them, so a settled list stays a list.
+
+                Swaps by ID, never by index. `members` drops ids that name a
+                TRASHED item (the join rows survive an item's soft delete by
+                design), so the visible position and the array position diverge
+                the moment one member is in the bin — and an index swap would
+                then reorder a row the user cannot see instead of the two they
+                are looking at. */}
+            {orderable && (
+              <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <button
+                  type="button"
+                  disabled={i === 0}
+                  onClick={() => onChange(swapMembers(memberIds, item.id, members[i - 1].id))}
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                  aria-label={`Move ${item.title} up in ${ownerName}`}
+                  data-testid={`${testPrefix}-member-up`}
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={i === members.length - 1}
+                  onClick={() => onChange(swapMembers(memberIds, item.id, members[i + 1].id))}
+                  className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                  aria-label={`Move ${item.title} down in ${ownerName}`}
+                  data-testid={`${testPrefix}-member-down`}
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => onChange(memberIds.filter((m) => m !== item.id))}

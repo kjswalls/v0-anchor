@@ -684,10 +684,90 @@ dateless surfaces resolve at today (decision 3).
   because CI does not gate the plugin: the logic depends on a property of the
   server's response, so a change on the app side is what would break it — silently,
   in a package nobody rebuilds until release.
-- [ ] **Phase 5 — polish:** show-paused-in-place view toggle (showCompletedTasks
-  precedent — the Paused section already covers discoverability), group-by routine
-  (view-options + GroupSection id lookup), routine-internal ordering UI (sort_order
-  column exists from day one), bulk membership add.
+- [x] **Phase 5 — the Scope Rail, and the polish around it** (built 2026-08-10).
+  Bulk membership landed first (`4f736c5`); the rail and the three polish items
+  landed together, because two of the three only became observable once the rail
+  existed. 646 unit tests, 3 new e2e.
+
+  **Kirby's call (2026-08-10): Direction B, the Scope Rail's contents in Root
+  Rail's slot.** The argument was real estate before aesthetics. The Outliner
+  wants a third permanent ~320px column beside a 320px sidebar and a 7-column
+  week grid whose whole design is adaptive fit-to-height density; its own author
+  conceded the rail must be collapsible, and the moment it collapses
+  discoverability rests on the palette again — the exact failure being fixed.
+  The rail sits between the braindump and the dock, costs no new column, and
+  lands where the eye already goes. Two amendments from the critique were taken:
+  **hover, not press-and-hold** (press-hold has no cancel affordance and would
+  compete with dnd-kit for the same gesture), and the console is **kept, not
+  deleted** — the rail answers the daily question and the manager answers the
+  periodic one.
+
+  **`lib/scope-rail.ts` carries everything hard; the component is markup.**
+  - **The local/effective split is a correctness constraint, not a style.** A
+    routine keeps its own `pausedAt` while a program suppresses it, so the
+    SWITCH shows the stored value and the row's LUMINANCE shows the resolved
+    one. Merge them and resuming the program hands back a routine the user
+    believes they turned off. Only routines can disagree — a program has
+    nothing above it — and the line names the blocking program (ranked by the
+    disjunctive rule, so `programResumeDate` is now exported from active.ts
+    rather than re-derived).
+  - **Every number is a resolver DELTA.** Flip the switch in a copy of the
+    world, re-run `inactiveItemIdsOn`, diff. A member count is simply wrong
+    under an OR rule: an item held by two live programs does not move when one
+    goes off. The same delta drives the hover ghost, so the number and the
+    preview cannot disagree about what is about to happen.
+  - **`programStateForSwitch` — prefer `auto` whenever `auto` already gives the
+    answer being asked for.** A binary switch over a tri-state destroys
+    date-following in BOTH directions, and Phase 4d only recorded one of them:
+    off-with-`paused`/on-with-`active` loses a summer's Aug 31 end, and
+    on-with-`active`/off-with-`paused` loses a term's Sep 1 start just as
+    surely. Writing a manual override only when the user is genuinely
+    overruling the calendar makes both round-trip exactly.
+  - **An inverted range gets no date at either end.** It is live on no date, so
+    "ended Aug 1" would report a season that never ran — found by the test, not
+    by reading.
+  - The preview only ghosts an ON container: ghosting shows a disappearance and
+    there is nothing on the canvas to dim for work that would ARRIVE. The off
+    rows carry the count instead, which is also why the count exists.
+  - It writes `data-scope-ghost` straight to the DOM rather than through React
+    — every rendered item would otherwise re-render on a hover, the same trade
+    the sidebar's resize makes with `--sidebar-w`.
+
+  **Show-paused-on-grid is grid-only and asks per row.** The braindump keeps its
+  Paused section, which groups by CAUSE — something a greyed row inline cannot
+  do. `deriveDayItems` drops the exclusion rather than emptying the set, and
+  TaskRow / ScheduleBlock each re-ask `suppressionReason` at THEIR OWN rendered
+  date. One shared set threaded down would be resolved at whichever column built
+  it, which is the wrong-date bug Phases 1 and 3 each shipped once. Greyed and
+  never struck through — struck through means done — matching the manager's
+  member list. The flag rides `planner-storage`'s partialize rather than
+  `user_settings`: a migration is a steep price for "what am I looking at".
+
+  **Group-by-routine and the reorder controls shipped together on purpose.**
+  `routine_items.sort_order` had existed since migration 024 and nothing outside
+  the manager ever rendered it, so a reorder control alone would have been a
+  preference with no observable effect. The List layout's routine groups are
+  ordered by the routine's own sequence. One row, ONE group — an item in several
+  routines lands in the first that claims it, because a duplicate row is two
+  checkboxes for one obligation and a second copy that shift-range and ⌘A
+  silently skip. Habits AND tasks share the group, unlike every other grouping
+  here, since a routine holds both. **Reorder is routine-only**: `program_items`
+  has no `sort_order` column, and offering it there would let the user arrange
+  an order that reshuffles on the next fetch. It swaps by ID, never by index —
+  `members` drops ids naming a trashed item, so visible position and array
+  position diverge the moment one member is in the bin.
+
+  **Found by running the e2e rather than reading it, again:** a spec with no
+  "it is on the grid first" baseline creates its containers before
+  `initializeStore`'s fetch lands, and that `set()` overwrites `routines` with
+  what came back — so the container is silently erased and the detail pane
+  unmounts mid-test. Same trap as Phase 3's, different victim.
+
+  **Deferred, deliberately:** the manager still focuses a TAB rather than a ROW
+  when opened from a rail row — `focusId` would have to be threaded through
+  `app-shell.tsx`, which has uncommitted work in the tree. The Buckets layout
+  ignores `groupBy: 'routine'` (it honours Project alone, as its own command
+  description says) — wiring it means editing `day-buckets.tsx`, same reason.
 
   **The manager has no unconditional entry point, and that is the priority item**
   (found 2026-08-10 — Kirby could not locate the feature he had just commissioned).

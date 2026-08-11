@@ -434,8 +434,12 @@ export type SuppressionReason =
  * has no scheduled return by construction, and one past its `endsOn` is over —
  * both correctly answer "no date", which the ranking below reads as "returns
  * last" rather than inventing a reassurance the row cannot support.
+ *
+ * Exported for the scope rail, which has to rank a routine's blocking programs
+ * by the same rule. A second copy of this over there is precisely how the
+ * binding-constraint reasoning would drift out of agreement with itself.
  */
-function programResumeDate(program: Program, dateStr: string): string | undefined {
+export function programResumeDate(program: Program, dateStr: string): string | undefined {
   if (program.state !== 'auto' || !program.startsOn) return undefined;
   // An INVERTED range (startsOn after endsOn) is never live on any date, so its
   // start is not a return date — it is a date on which nothing will happen.
@@ -525,7 +529,7 @@ export function suppressionLabel(reason: SuppressionReason, opts: { long?: boole
 }
 
 /** `2026-09-01` → `Sep 1`. Parsed as a plain calendar day, never as an instant. */
-function formatDay(dateStr: string): string {
+export function formatDay(dateStr: string): string {
   const [y, m, d] = toDateOnly(dateStr).split('-').map(Number);
   if (!y || !m || !d) return dateStr;
   return `${MONTHS[m - 1]} ${d}`;

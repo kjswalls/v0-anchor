@@ -11,6 +11,7 @@ import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
 import { MorningCheckMobile } from '@/components/ai/morning-check';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
+import { ScopeRail } from '@/components/sidebar/scope-rail';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
 import { useUIStore } from '@/lib/ui-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
@@ -85,7 +86,20 @@ export function MobileShell() {
              backdrop are near-identical, so the border-surface-3 hairline +
              shadow-soft-lg + rounding carry the elevation. */
           <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-surface-3 bg-canvas shadow-soft-lg">
-            {activeTab === 'braindump' && <Braindump />}
+            {/* The rail rides the Braindump tab for the same reason the Paused
+                section does: it is the one mobile surface that is about what
+                exists rather than about today, and touch has no other route to
+                the containers. Its hover preview simply never fires here — the
+                switch and the count do all the work, which is also why the
+                count exists rather than the preview alone. */}
+            {activeTab === 'braindump' && (
+              <>
+                <Braindump />
+                <div className="shrink-0 px-2 pb-2">
+                  <ScopeRail />
+                </div>
+              </>
+            )}
             {activeTab === 'today' && <MobileViewRouter />}
           </div>
         )}

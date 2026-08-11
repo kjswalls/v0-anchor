@@ -12,6 +12,7 @@ import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
   PriorityGlyph,
@@ -22,7 +23,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import type { Task, Habit, HabitStatus } from '@/lib/planner-types';
+import type { Task, Habit, HabitStatus, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -65,6 +66,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     getProjectColor,
     selectedDate,
     userTimezone,
+    routines,
+    programs,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
@@ -86,6 +89,33 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+
+  /**
+   * Is this row's work set aside on the day it is rendered for?
+   *
+   * Asked at `dateStr` — this row's own date — and not from a set threaded down
+   * from a caller, because a week column and the braindump ask different
+   * questions and only the row knows which one it is. That is also why it is
+   * cheap enough to ask per row: `isItemActiveOn` walks this item's paths, not
+   * the whole store, and there are a handful of containers.
+   *
+   * `isItemActiveOn`, not the open-loop variant: a habit ticked before its
+   * routine was paused still renders (the history rule), and it is still set
+   * aside. Greying it says so; hiding it would rewrite the past.
+   *
+   * Greyed and NOT struck through, which is the distinction the manager's member
+   * list already draws: struck through means done, and this is not done, it is
+   * put down.
+   *
+   * `suppressionReason` rather than `isItemActiveOn`: it returns null on exactly
+   * the same condition, and the non-null answer is the tooltip.
+   */
+  const suppression = suppressionReason(item as Item, dateStr, {
+    userTimezone: timezone,
+    routines,
+    programs,
+  });
+  const suppressed = !!suppression;
 
   // The registry name + config for this item's type, resolved once. The
   // projected Task/Habit doesn't type its own discriminator — the store's
@@ -340,6 +370,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       // Completion is otherwise observable only as Tailwind classes on the
       // title and the checkbox, which is exactly the coupling a restyle breaks.
       data-completed={completed ? 'true' : 'false'}
+      // Same reasoning for "set aside": the treatment is a muted title, and a
+      // spec that asserts a Tailwind class is asserting the wrong thing.
+      data-suppressed={suppressed ? 'true' : 'false'}
       // A row's resolved slot. The visible start time is `hidden md:inline`, so
       // without these a drop's inferred time is unassertable on narrow/mobile
       // viewports — and these are what distinguish an untimed bucket drop from
@@ -426,8 +459,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           // rows and the day view default ones, and a title that changed size
           // between the two would break the token's whole purpose.
           compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
+          suppressed && 'text-muted-foreground',
           completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
         )}
+        title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
       >
         {item.title}
       </p>

@@ -22,6 +22,7 @@ export function useDayItems(date?: Date): DayItems {
     programs,
     selectedDate,
     showCompletedTasks,
+    showPausedOnGrid,
     userTimezone,
   } = usePlannerStore();
   const typeFilter = useViewStore((s) => s.typeFilter);
@@ -45,11 +46,19 @@ export function useDayItems(date?: Date): DayItems {
       // Resolved against THIS column's date, not the store's selectedDate: a
       // week view renders seven days at once, and a pause that ends mid-week
       // must show the handoff in the right column.
-      inactiveItemIds: inactiveItemIdsOn(items, dateStr, {
-        userTimezone: timezone,
-        routines,
-        programs,
-      }),
+      //
+      // `showPausedOnGrid` drops the exclusion rather than emptying the set: the
+      // rows still have to KNOW they are suppressed to render greyed, and they
+      // re-ask the resolver at their own rendered date (see task-row.tsx). One
+      // shared set threaded through here would be resolved at whichever column
+      // built it, which is the wrong-date bug Phases 1 and 3 each shipped once.
+      inactiveItemIds: showPausedOnGrid
+        ? undefined
+        : inactiveItemIdsOn(items, dateStr, {
+            userTimezone: timezone,
+            routines,
+            programs,
+          }),
     });
-  }, [tasks, habits, projects, items, routines, programs, target, timezone, typeFilter, showCompletedTasks, canvasFilters]);
+  }, [tasks, habits, projects, items, routines, programs, target, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]);
 }

@@ -541,7 +541,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.groupBy',
     label: 'Group by',
-    description: 'Priority and Time bucket reshape the List layout; Buckets honours Project',
+    description: 'Priority, Time bucket and Routine reshape the List layout; Buckets honours Project',
     group: 'view',
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
@@ -865,6 +865,25 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'completed done hide show finished',
     aliases: ['completed'],
     run: () => planner().setShowCompletedTasks(!planner().showCompletedTasks),
+  },
+  {
+    id: 'settings.showPaused',
+    label: 'Toggle paused items on the grid',
+    dynamicLabel: () =>
+      planner().showPausedOnGrid ? 'Hide paused items on the grid' : 'Show paused items on the grid',
+    description: 'Greyed, in place, where they would have been',
+    group: 'settings',
+    icon: Moon,
+    keywords: 'paused hidden set aside routine program show grid ghost',
+    aliases: ['paused'],
+    // Hidden until the feature exists for this user. Unlike app.collections —
+    // which stays visible because its dialog explains itself — this row would
+    // toggle a preference with no observable effect, and a control that does
+    // nothing teaches the user that the palette lies.
+    availableWhen: () =>
+      planner().collectionsAvailable &&
+      (planner().routines.length > 0 || planner().programs.length > 0),
+    run: () => planner().setShowPausedOnGrid(!planner().showPausedOnGrid),
   },
   {
     id: 'settings.timeFormat',

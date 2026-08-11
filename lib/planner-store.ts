@@ -94,6 +94,16 @@ interface PlannerStore {
   setShowCurrentTimeIndicator: (show: boolean) => void;
   showCompletedTasks: boolean;
   setShowCompletedTasks: (show: boolean) => void;
+  /**
+   * Render suppressed work in place, greyed, instead of hiding it (Phase 5).
+   *
+   * Deliberately grid-only. The braindump already has a better answer — the
+   * Paused section groups by CAUSE, which a greyed row inline cannot — and the
+   * question this setting answers is a canvas question: "what would today look
+   * like with Summer back on?"
+   */
+  showPausedOnGrid: boolean;
+  setShowPausedOnGrid: (show: boolean) => void;
   defaultView: 'day' | 'week';
   setDefaultView: (view: 'day' | 'week') => void;
   defaultTimeBucket: TimeBucket;
@@ -691,6 +701,13 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) saveSettings(userId, { show_completed_tasks: show });
       },
+      showPausedOnGrid: false,
+      // Local-only, unlike its showCompletedTasks neighbour: persisting it
+      // server-side would mean a user_settings column, and a migration is a
+      // steep price for a preference that answers "what am I looking at on this
+      // screen". It rides planner-storage's partialize, which is where the rest
+      // of the view preferences already live.
+      setShowPausedOnGrid: (show) => set({ showPausedOnGrid: show }),
       defaultView: 'day',
       setDefaultView: (view) => {
         set({ defaultView: view, viewMode: view });
@@ -2172,6 +2189,7 @@ export const usePlannerStore = create<PlannerStore>()(
         showCurrentTimeIndicator: state.showCurrentTimeIndicator,
         timelineItemFilter: state.timelineItemFilter,
         showCompletedTasks: state.showCompletedTasks,
+        showPausedOnGrid: state.showPausedOnGrid,
         defaultView: state.defaultView,
         defaultTimeBucket: state.defaultTimeBucket,
         animationsEnabled: state.animationsEnabled,
