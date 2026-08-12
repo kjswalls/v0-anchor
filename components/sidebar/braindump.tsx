@@ -17,6 +17,7 @@ import {
   EMPTY_VIEW_FILTERS,
   activeFilterCount,
   containerRef,
+  passesFilters,
   projectNamesFrom,
 } from '@/lib/filters';
 import { RELAY } from '@/lib/relay-config';
@@ -396,37 +397,34 @@ export function Braindump() {
   }, [items, routines, programs, userTimezone]);
 
   const rows: RowItem[] = useMemo(() => {
-    // Phase 0 keeps the old project-name semantics exactly; Phase 1 replaces
-    // this with the registry-resolved container axis.
-    const filterProjects = projectNamesFrom(braindumpFilters.containers);
-
     const unscheduledTasks = tasks.filter((task) => {
       if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
       if (braindumpFilters.hideFinished && task.status === 'completed') return false;
-      if (braindumpFilters.priorities.length && (!task.priority || !braindumpFilters.priorities.includes(task.priority)))
-        return false;
-      if (filterProjects.length && (!task.project || !filterProjects.includes(task.project)))
-        return false;
+      if (!passesFilters(task, braindumpFilters)) return false;
       return true;
     });
 
     // Habits belong in the braindump when nothing places them on a day:
     // no bucket and no recurrence.
     //
-    // PHASE 1 DELETES THIS WIPE — preserved verbatim so Phase 0 is a pure
-    // rename. (It is guarding a list that is already empty in practice: a habit
-    // cannot reach repeatFrequency 'none' through any UI path.)
-    const unscheduledHabits =
-      braindumpFilters.priorities.length || filterProjects.length
-        ? []
-        : habits.filter((habit) => {
-            if (suppressedIds.has(habit.id)) return false;
-            if (habit.timeBucket) return false;
-            if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
-            if (braindumpFilters.hideFinished && habit.status === 'done') return false;
-            return true;
-          });
+    // The wipe that used to sit here is gone — see lib/filters.ts. It was the
+    // same rule as the canvas's, and it was guarding a list that is empty in
+    // practice anyway: a habit cannot reach repeatFrequency 'none' through any
+    // UI path today. The branch stays because habit DRAFTS are meant to live
+    // here eventually (memory/plans/display-menu.md); it now narrows by the
+    // same rule as everything else instead of vanishing wholesale.
+    //
+    // No hideSkipped term: a skip is per-date and the braindump is dateless.
+    const unscheduledHabits = habits.filter((habit) => {
+      if (suppressedIds.has(habit.id)) return false;
+      if (habit.timeBucket) return false;
+      if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
+      if (braindumpFilters.hideFinished && habit.status === 'done') return false;
+      // 'habit' explicitly — see the note in lib/day-items.ts.
+      if (!passesFilters(habit, braindumpFilters, 'habit')) return false;
+      return true;
+    });
 
     return [
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),

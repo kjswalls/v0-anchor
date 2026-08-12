@@ -1,5 +1,6 @@
 import type { Item, Task, Habit } from './planner-types';
 import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
+import { containerRef, passesContainerFilter, typeNameOf } from './filters';
 
 /**
  * Pure search parsing + matching for the omnibar (and anything else that
@@ -66,17 +67,9 @@ export interface SearchResults {
   habits: Habit[];
 }
 
-/**
- * The projections carry their runtime discriminator, so a row from `tasks` is
- * an Item in all but declared type. `tasks` is task-LIKE — custom-type items
- * ride it — which is why this resolves the registry name rather than assuming
- * 'task'.
- */
-function typeNameOf(row: Task | Habit | Item): string {
-  const r = row as { type?: string; customType?: string };
-  if (r.type === 'custom') return r.customType ?? 'custom';
-  return r.type ?? 'task';
-}
+// typeNameOf moved to lib/filters.ts — the filter predicates need the same
+// resolution, and two copies of "which registry type is this row" is exactly
+// how the four filter shapes drifted apart.
 
 export function searchItems(raw: string, tasks: Task[], habits: Habit[]): SearchResults {
   const query = parseSearchQuery(raw);
@@ -101,10 +94,31 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
               (t.project?.toLowerCase() ?? '') === query.project.toLowerCase())
         );
 
+  /**
+   * A QUERY is not a view filter, so the pass-through rule lands differently
+   * here — and the two tokens split.
+   *
+   * `priority:` still excludes habits, and that is correct rather than a wipe:
+   * the user asked for high-priority things, a habit has no priority, so no
+   * habit is one. Passing them through would answer a narrow question with the
+   * whole list. (The canvas filter is the opposite case: there the user is
+   * shaping a view, and deleting a whole class of work they never mentioned is
+   * the surprise.)
+   *
+   * `project:` DID wipe, and that was wrong. It is the container axis, and a
+   * habit answers it with its group — so `project:Health` now finds the habits
+   * in the Health group instead of silently returning none. One axis, resolved
+   * per type (see lib/filters.ts containerRefOf).
+   */
   const matchedHabits =
-    (query.type !== null && query.type !== 'habit') || query.priority !== null || query.project !== null
+    (query.type !== null && query.type !== 'habit') || query.priority !== null
       ? []
-      : habits.filter((h) => matchText(h.title, h.group));
+      : habits.filter(
+          (h) =>
+            matchText(h.title, h.group) &&
+            (query.project === null ||
+              passesContainerFilter(h, [containerRef('group', query.project)]))
+        );
 
   return { tasks: matchedTasks, habits: matchedHabits };
 }

@@ -1,6 +1,11 @@
 import type { Task, Habit, Project, TimeBucket } from './planner-types';
-import { shouldShowOnDate, isCompletedOnDate, isRecurring } from './recurrence';
-import { EMPTY_VIEW_FILTERS, projectNamesFrom, type ViewFilters } from './filters';
+import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from './recurrence';
+import {
+  EMPTY_VIEW_FILTERS,
+  containerRef,
+  passesFilters,
+  type ViewFilters,
+} from './filters';
 
 /**
  * Pure derivation of what a single day shows, per bucket. Extracted from
@@ -73,9 +78,14 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   const inactive = input.inactiveItemIds;
   // hideFinished stacks on the existing showCompletedTasks preference
   const hideDoneTasks = !showCompletedTasks || filters.hideFinished;
-  // Phase 0 keeps the old project-name semantics exactly; Phase 1 replaces this
-  // with the registry-resolved container axis (so habits answer with `group`).
-  const filterProjects = projectNamesFrom(filters.containers);
+  /**
+   * Skips hang on the Display toggle ALONE, never on showCompletedTasks.
+   *
+   * That global's settings copy promises "Tasks only — habits always stay", and
+   * a skip is overwhelmingly a habit gesture; folding it in would make a
+   * tasks-only setting start hiding habits.
+   */
+  const hideSkipped = filters.hideFinished;
 
   // Tasks that belong to this day
   const dayTasks =
@@ -84,10 +94,11 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
       : tasks.filter((task) => {
           if (inactive?.has(task.id)) return false;
           if (hideDoneTasks && task.status === 'completed') return false;
-          if (filters.priorities.length && (!task.priority || !filters.priorities.includes(task.priority)))
-            return false;
-          if (filterProjects.length && (!task.project || !filterProjects.includes(task.project)))
-            return false;
+          // One rule for both narrowing axes, resolved per type through the
+          // registry. An unset priority or project now lands in the explicit
+          // "None" value rather than being deleted by every filter.
+          if (!passesFilters(task, filters)) return false;
+          if (hideSkipped && isSkippedOnDate(task, dateStr)) return false;
           if (!task.startDate) return false;
           // startDate is yyyy-MM-dd; tolerate legacy ISO strings
           const taskStartDateStr = task.startDate.includes('T')
@@ -101,19 +112,29 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
           return taskStartDateStr === dateStr;
         });
 
-  // Habits that occur on this day. Habits carry no priority/project, so an
-  // active priority or project filter hides them entirely (same rule as the
-  // braindump's filters).
+  // Habits that occur on this day.
   //
-  // PHASE 1 DELETES THIS WIPE. It is preserved verbatim here only so Phase 0
-  // stays a pure rename — the behaviour change ships alone and revertable.
+  // The wipe that used to sit here — `filters.priorities.length ||
+  // filterProjects.length ? [] : …` — is gone. It deleted every habit the
+  // moment any priority or project filter was on, because habits carry
+  // neither field, so a project filter silently also meant "hide all habits".
+  // passesFilters resolves each axis per type instead: a habit is unaffected by
+  // priority (it has none) and answers the container axis with its GROUP.
   const dayHabits =
-    typeFilter === 'tasks' || filters.priorities.length || filterProjects.length
+    typeFilter === 'tasks'
       ? []
       : habits.filter((h) => {
           if (inactive?.has(h.id)) return false;
+          // 'habit' is passed explicitly rather than re-derived from the row's
+          // runtime discriminator: this array IS the habits projection, so the
+          // answer is known statically. Deriving it would make the predicate
+          // depend on a field the declared Habit type does not carry — any
+          // caller building a row without it would silently get task rules,
+          // which is a priority filter deleting every habit all over again.
+          if (!passesFilters(h, filters, 'habit')) return false;
           if (!shouldShowOnDate(h, dateStr, timezone)) return false;
           if (filters.hideFinished && isCompletedOnDate(h, dateStr)) return false;
+          if (hideSkipped && isSkippedOnDate(h, dateStr)) return false;
           return true;
         });
 
@@ -129,10 +150,19 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     .sort((a, b) => (a.startTime && b.startTime ? a.startTime.localeCompare(b.startTime) : 0))
     .forEach((h) => habitsByBucket[h.timeBucket as TimeBucket].push(h));
 
-  // Projects with recurring time blocks that land on this day
+  // Projects with recurring time blocks that land on this day.
+  //
+  // A block is a fourth row kind that no filter used to touch, and the artefact
+  // was visible: filter to one project and the OTHER projects' blocks stayed on
+  // the grid, now empty. It is a project, so the container axis applies to it —
+  // and only that axis. It has no priority and no completion, and its position
+  // is its time, so priority and hideFinished leave it alone.
+  const containerFilter = filters.containers;
   const weekday = date.getDay();
   const dateOfMonth = date.getDate();
   const recurringProjects = projects.filter((p) => {
+    if (containerFilter.length && !containerFilter.includes(containerRef('project', p.name)))
+      return false;
     if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
     switch (p.repeatFrequency) {
       case 'daily':

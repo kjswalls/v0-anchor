@@ -1,4 +1,5 @@
-import type { Priority } from './planner-types';
+import type { Habit, Item, Priority, Task } from './planner-types';
+import { getItemTypeConfig } from './item-registry';
 
 /**
  * The filter vocabulary, and the pure predicates over it.
@@ -50,13 +51,142 @@ export function groupNamesFrom(containers: string[]): string[] {
 }
 
 /**
+ * "Carries the field, but the value is unset."
+ *
+ * A first-class value, not an absence. `buildListGroups` has always minted
+ * "No priority" / "No project" buckets for GROUPING; the filter path never
+ * learned about them, so "show me High" silently deleted every task whose
+ * priority was never set — which is most of them.
+ *
+ * 'none' is safe as the priority sentinel: it is already the item dialog's
+ * draft vocabulary for unset (item-dialog.tsx:279) and is converted to
+ * `undefined` before every write (`:336`, `:747`), so no stored item can carry
+ * it as a real value.
+ */
+export const NO_PRIORITY = 'none';
+export type PriorityFilterValue = Priority | typeof NO_PRIORITY;
+
+/**
  * One filter set. Held separately by the braindump and the canvas — only the
  * shape is shared. See lib/view-store.ts for why it used to be four types.
  */
 export interface ViewFilters {
   containers: string[];
-  priorities: Priority[];
+  priorities: PriorityFilterValue[];
   hideFinished: boolean;
+}
+
+/* ── the pass-through rule ─────────────────────────────────────────────── */
+
+/**
+ * THE RULE: a predicate on field F may only exclude items of a type that
+ * CARRIES F. Types where F is absent pass through untouched.
+ *
+ * What it replaces: three copies of `if (priorities.length || projects.length)
+ * return []` — one per surface — which deleted every habit the moment any
+ * priority or project filter was on. Habits carry neither field, so the filter
+ * silently meant "and also hide all habits". It was commented as intended.
+ *
+ * `fields` is Object.keys(taskShape)/Object.keys(habitShape), so it cannot
+ * drift from the schemas, and ItemDialog already interrogates it exactly this
+ * way (`config.fields.includes('duration')`).
+ */
+export function fieldApplies(typeName: string, field: string): boolean {
+  return getItemTypeConfig(typeName).fields.includes(field);
+}
+
+/**
+ * The registry type name for a projection row or a full Item.
+ *
+ * The projections carry their runtime discriminator, so a row from `tasks` is
+ * an Item in all but declared type. `tasks` is task-LIKE — custom-type items
+ * ride it — which is why this resolves the registry name rather than assuming
+ * 'task'.
+ */
+export function typeNameOf(row: Task | Habit | Item): string {
+  const r = row as { type?: string; customType?: string };
+  if (r.type === 'custom') return r.customType ?? 'custom';
+  return r.type ?? 'task';
+}
+
+/**
+ * The container this item answers with, as a prefixed ref — or `null` when its
+ * type carries no container axis at all (pass-through).
+ *
+ * This is the load-bearing half of the habits fix. A habit is not
+ * container-less: it answers with its GROUP. The axis is one question resolved
+ * per type through the registry's `containerKind`, so a habit is excluded from
+ * "show me Work" because its group is not selected, never because it cannot be
+ * asked.
+ *
+ * An empty string counts as unset, not as a container named "". itemFromRow
+ * maps `group: row.group ?? ''` (db.ts:108), so '' is a real live value and is
+ * exactly what "No group" must catch.
+ */
+export function containerRefOf(row: Task | Habit | Item, typeName = typeNameOf(row)): string | null {
+  const kind = getItemTypeConfig(typeName).containerKind;
+  if (kind === 'projects') {
+    const project = (row as { project?: string }).project;
+    return project ? containerRef('project', project) : NO_CONTAINER;
+  }
+  if (kind === 'habitGroups') {
+    const group = (row as { group?: string }).group;
+    return group ? containerRef('group', group) : NO_CONTAINER;
+  }
+  return null;
+}
+
+/**
+ * Habit-group refs compare case-INSENSITIVELY; project refs compare exactly.
+ *
+ * Not a preference — the seeds collide on case. makeAddDraft writes a lowercase
+ * 'personal' (item-dialog.tsx:383-387) against DEFAULT_HABIT_GROUPS'
+ * capitalised 'Personal', and the codebase already case-folds groups at
+ * group-section.tsx and in getHabitGroupColor. A project name is typed once by
+ * the user and is compared exactly everywhere else, so folding it here would be
+ * the odd one out.
+ */
+const sameContainer = (a: string, b: string): boolean =>
+  a === b || (a.startsWith('group:') && b.startsWith('group:') && a.toLowerCase() === b.toLowerCase());
+
+/** Empty selection = no-op. Otherwise the rule above, then membership. */
+export function passesContainerFilter(
+  row: Task | Habit | Item,
+  containers: string[],
+  typeName = typeNameOf(row)
+): boolean {
+  if (containers.length === 0) return true;
+  const ref = containerRefOf(row, typeName);
+  if (ref === null) return true; // carries no container axis — pass through
+  return containers.some((c) => sameContainer(c, ref));
+}
+
+/** Empty selection = no-op. Habits carry no priority, so they pass through. */
+export function passesPriorityFilter(
+  row: Task | Habit | Item,
+  priorities: PriorityFilterValue[],
+  typeName = typeNameOf(row)
+): boolean {
+  if (priorities.length === 0) return true;
+  if (!fieldApplies(typeName, 'priority')) return true;
+  const value = (row as { priority?: Priority }).priority ?? NO_PRIORITY;
+  return priorities.includes(value);
+}
+
+/**
+ * Both narrowing axes. `hideFinished` is deliberately NOT here — "finished" is
+ * a question about a DATE (completed-on, skipped-on), and this module is
+ * date-blind. Each surface applies it beside its own date logic.
+ */
+export function passesFilters(
+  row: Task | Habit | Item,
+  filters: ViewFilters,
+  typeName = typeNameOf(row)
+): boolean {
+  return (
+    passesPriorityFilter(row, filters.priorities, typeName) &&
+    passesContainerFilter(row, filters.containers, typeName)
+  );
 }
 
 export const EMPTY_VIEW_FILTERS: ViewFilters = {

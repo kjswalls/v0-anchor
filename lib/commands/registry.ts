@@ -565,7 +565,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.filterProject',
     label: 'Filter by project',
-    description: 'Filtering by project hides habits from the canvas',
+    description: 'Narrow the canvas to one project — habits stay, filed by their group',
     group: 'view',
     icon: Filter,
     keywords: 'filter project only narrow',
