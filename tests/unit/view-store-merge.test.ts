@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useViewStore } from '@/lib/view-store';
 import {
   EMPTY_VIEW_FILTERS,
   containerRef,
@@ -25,6 +26,83 @@ import {
  * function the store's `merge` runs both filter objects through — rather than
  * an e2e assertion. Do not delete them on the grounds that "e2e covers this".
  */
+
+/**
+ * The store's own `merge`, exercised through a real rehydrate.
+ *
+ * The tests below this block cover `normalizeFilters` in isolation, which is
+ * necessary but NOT sufficient: delete the whole `merge:` block from
+ * view-store's persist config and every one of them still passes, because none
+ * of them touches the store. So does the e2e suite — its seeded blob omits both
+ * filter objects and takes the trivial branch.
+ *
+ * These seed the blob a real pre-Phase-0 browser holds and drive
+ * `persist.rehydrate()`. Both filter objects are asserted deliberately: a
+ * half-wired merge that normalizes `canvasFilters` and passes
+ * `braindumpFilters` through raw type-checks fine (the payload is cast to
+ * Record<string, unknown>), leaves the suite green, and still white-screens the
+ * sidebar.
+ */
+describe('the persist merge, through a real rehydrate', () => {
+  const LEGACY = {
+    projects: ['Work', 'Client: Acme'],
+    priorities: ['high'],
+    hideCompleted: true,
+  };
+
+  const seed = (state: Record<string, unknown>) =>
+    localStorage.setItem('anchor-view', JSON.stringify({ version: 1, state }));
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('fills containers on BOTH filter objects from a legacy payload', async () => {
+    seed({ canvasFilters: { ...LEGACY }, braindumpFilters: { ...LEGACY } });
+
+    await useViewStore.persist.rehydrate();
+    const s = useViewStore.getState();
+
+    for (const filters of [s.canvasFilters, s.braindumpFilters]) {
+      expect(filters.containers).toEqual(['project:Work', 'project:Client: Acme']);
+      expect(filters.priorities).toEqual(['high']);
+      expect(filters.hideFinished).toBe(true);
+    }
+  });
+
+  it('survives a payload that carries neither filter object', async () => {
+    // This is what tests/e2e/helpers/session.ts seeds — which is exactly why
+    // the e2e suite cannot catch a missing merge.
+    seed({ scope: 'week', layout: 'list' });
+
+    await useViewStore.persist.rehydrate();
+    const s = useViewStore.getState();
+
+    expect(s.canvasFilters.containers).toEqual([]);
+    expect(s.braindumpFilters.containers).toEqual([]);
+    expect(s.scope).toBe('week');
+  });
+
+  it('keeps the other top-level keys the shallow merge was already protecting', async () => {
+    seed({ canvasFilters: { ...LEGACY }, collapsedBuckets: ['morning'], weekDaysVisible: 5 });
+
+    await useViewStore.persist.rehydrate();
+    const s = useViewStore.getState();
+
+    expect(s.collapsedBuckets).toEqual(['morning']);
+    expect(s.weekDaysVisible).toBe(5);
+  });
+
+  it('does not throw on a filter object stored as the wrong type', async () => {
+    seed({ canvasFilters: 'nonsense', braindumpFilters: ['also', 'nonsense'] });
+
+    await expect(useViewStore.persist.rehydrate()).resolves.not.toThrow();
+    const s = useViewStore.getState();
+
+    expect(s.canvasFilters.containers).toEqual([]);
+    expect(s.braindumpFilters.containers).toEqual([]);
+  });
+});
 
 describe('normalizeFilters — rehydrating a stored payload', () => {
   it('fills in containers for a blob that predates the field', () => {

@@ -124,7 +124,11 @@ export function FilterPopover({
           >
             {value.hideFinished && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
           </span>
-          Hide completed
+          {/* "Finished", not "completed": from Phase 1 this also hides SKIPPED
+              occurrences on the canvas. The braindump's identical-looking
+              control keeps "Hide completed" and is correct — that surface is
+              dateless, so it tests scalar status and has no skip term. */}
+          Hide finished
         </button>
 
         {activeCount > 0 && (
