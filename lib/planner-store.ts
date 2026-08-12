@@ -984,6 +984,22 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       initializeStore: async (userId: string) => {
+        // Re-initializing the account that is already loaded is never a
+        // refresh — it is a reset. It refetches six tables, flips isLoading
+        // back to true (blanking any surface that gates on it), and throws away
+        // the undo history below. Nothing calls this wanting that.
+        //
+        // The callers make it reachable by accident, not by intent:
+        // supabase-provider's SIGNED_IN branch fires on token refresh and on
+        // tab focus, not only on a real sign-in. Guarding here rather than at
+        // each call site means a future caller cannot reintroduce it.
+        //
+        // `isLoading` is part of the condition so a genuine in-flight load is
+        // never mistaken for a settled one — a second call while the first is
+        // still running must be allowed through to replace it.
+        const current = get();
+        if (current.userId === userId && !current.isLoading) return;
+
         // Block subscriber during initialization to prevent poisoned history entries
         isUpdatingUndoRedo = true;
         hasInitializedHistory = false;

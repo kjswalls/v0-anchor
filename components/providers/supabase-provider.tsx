@@ -16,6 +16,28 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const { setTheme } = useTheme();
   const hydratedUserId = useRef<string | null>(null);
 
+  /**
+   * setTheme, held at arm's length from the auth effect below.
+   *
+   * next-themes builds setTheme as `useCallback(…, [theme])`, so CHANGING THE
+   * THEME MINTS A NEW FUNCTION IDENTITY. Naming it directly in the auth
+   * effect's dep array therefore tore that effect down and re-ran it on every
+   * theme flip: the subscription was recycled and `getSession()` resolved with
+   * the same live session, so `initializeStore()` ran again — refetching six
+   * tables, resetting `isLoading` to true, and wiping the undo history for a
+   * colour change. On /settings the whole page dropped to its hydration-gate
+   * placeholder while that ran, which is how this was finally spotted; it had
+   * been happening silently since #81.
+   *
+   * A ref, not `useEffectEvent`/eslint-disable: the effect needs the LATEST
+   * setTheme (hydration can arrive long after mount) but must never re-run
+   * because of it, and that is precisely what a ref expresses.
+   */
+  const setThemeRef = useRef(setTheme);
+  useEffect(() => {
+    setThemeRef.current = setTheme;
+  }, [setTheme]);
+
   // Apply animations setting to <html> element
   const animationsEnabled = usePlannerStore((s) => s.animationsEnabled);
   useEffect(() => {
@@ -102,7 +124,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (settings.theme) {
-        setTheme(settings.theme);
+        setThemeRef.current(settings.theme);
       }
     };
 
@@ -132,7 +154,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [initializeStore, clearStore, setTheme]);
+    // setTheme is deliberately absent — see setThemeRef above. Both remaining
+    // deps are zustand actions, created once by the store creator and stable
+    // for its lifetime, so this effect now runs exactly once per mount.
+  }, [initializeStore, clearStore]);
 
   return <>{children}</>;
 }
