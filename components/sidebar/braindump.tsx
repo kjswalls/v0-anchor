@@ -13,6 +13,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
+import { groupRows, type RowGroup } from '@/lib/grouping';
 import { sortRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
@@ -352,23 +353,19 @@ export function Braindump() {
    * rows inside were right either way, which is why it reads as a jump rather
    * than as a bug.
    */
-  const grouped: [string, RowItem[]][] = useMemo(() => {
-    if (braindumpGroupBy === 'none') return [['', sortRows(rows, braindumpSortBy)]];
-    const groups = new Map<string, RowItem[]>();
-    for (const row of rows) {
-      const key =
-        braindumpGroupBy === 'type'
-          ? row.itemType === 'task'
-            ? 'Tasks'
-            : 'Habits'
-          : (row.itemType === 'task' && row.item.project) || 'No project';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(row);
-    }
-    return [...groups.entries()].map(([key, groupRows]): [string, RowItem[]] => [
-      key,
-      sortRows(groupRows, braindumpSortBy),
-    ]);
+  const grouped: RowGroup<RowItem>[] = useMemo(() => {
+    // 'type' is the braindump's own value and has no canvas counterpart — the
+    // canvas answers "what is in here" with the Type FILTER instead. Everything
+    // else routes through the shared core, so 'project' resolves the container
+    // axis through the registry here exactly as it does on the canvas.
+    const groups: RowGroup<RowItem>[] =
+      braindumpGroupBy === 'type'
+        ? [
+            { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
+            { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
+          ].filter((g) => g.rows.length > 0)
+        : groupRows(rows, braindumpGroupBy, {});
+    return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
   }, [rows, braindumpGroupBy, braindumpSortBy]);
 
   return (
@@ -452,16 +449,16 @@ export function Braindump() {
         )}
       >
         <div className="px-[14px] py-2">
-          {grouped.map(([label, groupRows]) =>
-            label ? (
-              <GroupSection key={label} label={label} className="pt-5 first:pt-1">
-                {groupRows.map((row) => (
+          {grouped.map((g) =>
+            g.label ? (
+              <GroupSection key={g.key} label={g.label} className="pt-5 first:pt-1">
+                {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
               </GroupSection>
             ) : (
               <div key="all" className="space-y-0">
-                {groupRows.map((row) => (
+                {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
               </div>

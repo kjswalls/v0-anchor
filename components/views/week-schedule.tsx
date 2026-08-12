@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import {
   DAY_FIELD_LEFT,
@@ -28,6 +29,9 @@ import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px
 import { useWeekColumns } from '@/lib/use-week-columns';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useViewStore } from '@/lib/view-store';
+import { groupRows } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
@@ -126,8 +130,20 @@ function WeekScheduleColumn({
   nowY: number | null;
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
+  const routines = usePlannerStore((s) => s.routines);
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
+
+  // Per column, like the overlap pass below: seven strips are seven independent
+  // lists. `'none'` comes back as one unlabelled group — today's flat strip.
+  const untimedGroups = useMemo(
+    () =>
+      groupBySupport('week', 'schedule', canvasGroupBy).honoured
+        ? groupRows(col.untimed, canvasGroupBy, { routines })
+        : [{ key: '', label: '', rows: col.untimed }],
+    [col.untimed, canvasGroupBy, routines]
+  );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
   // this one level up would rebuild all seven whenever any one day changed.
@@ -251,9 +267,22 @@ function WeekScheduleColumn({
           isOver && 'border-primary bg-primary/5'
         )}
       >
-        {col.untimed.map((row) => (
-          <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-        ))}
+        {/* Same rule as Day × Schedule: the hour grid below cannot take
+            headings, this strip can. It is 88px and scrolls, so a grouped strip
+            shows fewer rows at rest — that is the cost of having asked. */}
+        {untimedGroups.map((g) =>
+          g.label ? (
+            <GroupSection key={g.key} label={g.label} variant="canvas">
+              {g.rows.map((row) => (
+                <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+              ))}
+            </GroupSection>
+          ) : (
+            g.rows.map((row) => (
+              <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+            ))
+          )
+        )}
         {col.untimed.length === 0 && (
           <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
         )}

@@ -6,8 +6,8 @@ copies of the habits-vanish bug underneath them; expose grouping (which exists i
 but has no UI) and ordering (which does not exist at all) on every surface that can honour
 them.
 
-**Status (2026-08-11):** Design pass complete and approved. Step 1 shipped (`a81018a` —
-the custom-type `containerKind` unblock). Building on `feat/display-menu`.
+**Status (2026-08-12):** Phases 0–5a shipped on `feat/display-menu-impl`, each followed by
+an adversarial review. 5b (Schedule lanes + Week focus/recede) is next.
 
 Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
@@ -102,7 +102,7 @@ exist. Verified against `a1c03c2`:
 | Overdue | On the canvas an overdue item is by definition not on the day you are looking at. The past-due bar owns it. |
 | Duration, assignee, aiStatus, has-notes, has-subtasks | Near-always empty. A permanently blank control is worse than none. |
 | Sort by recently-added | `created_at` does not reach the client (see problem 5). |
-| Group by status | `'status'` is a legal `GroupBy` with no branch, already excluded from the palette. The two vocabularies are frozen external contracts. **Delete the union member**, and coerce a stale persisted value at `adoptLegacyViewPrefs` (`view-store.ts:247`). |
+| Group by status | Done in 5a: the union member is gone, and a stale value is coerced at BOTH doors — `view-store`'s persist `merge` and `adoptLegacyViewPrefs`. `planner-storage` partializes `groupBy`, so the legacy mirror is a second live source, not a theoretical one. |
 | Saved views / presets | Correct end state, premature — there is not yet one honest filter menu to save from. |
 | An "Other" lane past the lane budget | A lane naming groups it cannot spatially distinguish is a channel that lies. Overflow groups stay in the cap row, reachable by focus. |
 
@@ -118,7 +118,7 @@ exist. Verified against `a1c03c2`:
 | **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | **shipped** — `useDayItemsForDates` |
 | **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | **shipped** — Ordering deferred to 4 |
 | **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | **shipped** |
-| **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and the Schedule's Anytime strip | ~6 d | |
+| **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and both Schedules' Anytime strips | ~6 d | **shipped** |
 | **5b** | Schedule lanes + Week focus/recede | ~5 d | |
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
 | **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | |
@@ -130,16 +130,22 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
 
 ## Gotchas that cost time to find
 
-- **`deriveDayItems` reads the weekday in the BROWSER's zone and the date in the USER's.**
-  Tasks and habits go through `shouldShowOnDate(row, dateStr, timezone)`, which is
-  tz-resolved. Project blocks go through `date.getDay()` / `date.getDate()`
-  (`day-items.ts:161-162`), which are not. When the two zones differ the same column can
-  be Thursday for a task and Wednesday for a block, so a Thursday block renders on
-  Wednesday. Found while folding Phase 2; **not fixed** — it predates the fold, is
-  identical on both sides of it, and changing it changes what renders for anyone whose
-  browser zone differs from their setting. It matters for Phase 4 (sort by date) and 5a
-  (group by day), so fix it there or before, with its own tests. The fix is to build the
-  weekday from `dateStr` rather than from the `Date`.
+- **`deriveDayItems` used to read the weekday in the BROWSER's zone and the date in the
+  USER's** — fixed in 5a by DELETING the input. Tasks and habits go through
+  `shouldShowOnDate(row, dateStr, timezone)`, which is tz-resolved; project blocks went
+  through `date.getDay()` / `date.getDate()`, which are not, so when the two zones
+  differed a Thursday block rendered on Wednesday. `DayItemsInput` no longer carries a
+  `Date` at all — `calendarParts(dateStr)` builds the weekday, the month-day and the
+  month's length through `Date.UTC`, so the disagreement is unrepresentable rather than
+  merely corrected. Note what that costs: the fix is **structural, not pinned by a
+  red-then-green mutation**, because there is no longer an API through which to reproduce
+  the bug. `tests/unit/day-items.test.ts` pins the resolution itself instead, and those
+  cases would have passed before the fix given a Date that agreed with its dateStr.
+- **That also dissolved the `getTime()` memo key question.** `use-day-items` keyed on the
+  exact instant because two instants could share a `dateStr` and disagree on `getDay()`.
+  With the Date gone the mapping is total, so the key is the resolved `dateStr` list —
+  provably the derivation's whole input. The gotcha that said this needed a
+  zone-divergence test is retired: there is nothing left to diverge.
 - **The mobile shell renders `MobileHeader` above every `activeTab` guard**
   (`mobile-shell.tsx:55`), so anything mounted there rides all three tabs. Gate on
   `useMobileNavStore(s => s.activeTab)`, not on the header's own existence.
@@ -175,8 +181,25 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   the other way round for one commit, and the failure is instructive: its grouping map is
   filled by walking the row list, so `[...groups.entries()]` returns whichever group owned
   the first row. Sorting the flat list first made the SECTION HEADINGS reorder while the
-  rows inside each stayed correct. Phase 5a's shared `lib/grouping.ts` must take unsorted
-  rows and let the caller sort per group.
+  rows inside each stayed correct. `lib/grouping.ts` takes unsorted rows and returns them
+  in arrival order; every caller applies `sortRows` per group afterwards.
+- **`'none'` is one unlabelled section, not a per-view default.** Day × List's
+  HABITS / TASKS / PROJECTS and a bucket card's HABITS / TASKS are presentation choices
+  for those views, so they stay local (`defaultListGroups`, `defaultBucketGroups`) — the
+  shared core would otherwise have to know which surface was asking. Callers that render
+  `g.label ? <GroupSection> : flat` get the flat default for free; the two that want
+  something richer branch on `groupBy === 'none'` BEFORE calling, or they render a
+  section with an empty heading.
+- **Grouping resolves the container axis through the registry, so habits section by their
+  own group.** `buildListGroups` hoisted every habit into one "Habits" section and grouped
+  only the tasks, which made "group by Project" answer a question about tasks and then
+  file the rest of the day under its own type name. Priority lost the same hoist: a type
+  that does not carry the field lands in "No priority" beside everything else that has
+  none, which is the call `sortRows` already made. Section keys are the PREFIXED refs, so
+  a project and a habit group sharing a name stay two sections — the seeds collide, so
+  that is the shipped state of a fresh account. Unset is kind-tagged (`none:project` /
+  `none:group`) rather than reusing the filter's single `NO_CONTAINER`: the filter needs
+  one checkbox catching both sides, a heading has room to say which side it is.
 - **Habits carry no `order`.** `habitShape` omits it (`packages/types/src/schemas.ts:206`),
   `itemFromRow`'s habit branch never reads it, `reorderTasks` early-returns on
   `type !== 'task'`, and the registry says `orderable: false`
@@ -205,11 +228,35 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   "leaves a habit alone" that asserted `group` was true under every implementation,
   including one with the guard deleted — `group` belongs to `removeHabitGroup`. Before
   writing an assertion, name the write the verb actually performs.
-- **The `getTime()` memo key in `use-day-items.ts` is not pinned by a test.** Keying on
-  the resolved `dateStr` instead passes all eight cases, because the fixture runs at
-  12:00Z with the process zone equal to `userTimezone`. Pinning it needs a test whose
-  browser zone diverges from the user's — the same setup the project-block weekday bug
-  above needs. Write both together in Phase 4/5a.
+- **"Blocked" was the wrong shape for grouping; support has THREE states.** 5a made
+  "partly honoured" the common case — Buckets groups its untimed rows, Schedule its
+  Anytime strip — so `groupByBlockedBy(): string | null` became
+  `groupBySupport(): { honoured, note }`. A partly-honoured value stays ENABLED with the
+  part it reaches on its rail; disabling it would say it does nothing. Exactly one
+  combination is inert now (Time bucket on Buckets, where the view already IS that
+  partition), and the "Switch to List" escape row renders only while the current value is
+  inert — it used to ride every non-List layout, resolving nothing.
+- **A test asserting the TAIL of a list survives a mutation that DUPLICATES rows.** The
+  first version of "leaves the timed spine ungrouped" checked `slice(-3)` and stayed green
+  when the timed rows were handed to the grouping pass, because that renders them inside
+  the groups AND leaves the spine below intact. Assert the whole sequence: six rows, this
+  order, once each.
+- **`BucketCard`'s own collapse toggle carries `aria-expanded` too.** A
+  `button[aria-expanded]` sweep for section headings inside a bucket picks it up first.
+- **Day × Buckets groups its untimed rows; Week × Buckets groups the whole cell.** Not an
+  oversight — the day card has `scheduled:{bucket}:before|after:{type}:{id}` drop zones
+  between its timed rows and `inferDropTime` reads the neighbours' times, so that spine
+  cannot be partitioned. A week cell has ONE droppable (`week:{date}:{bucket}`) and
+  renders every habit before every task, so it was never in one time order for a
+  partition to disturb. `groupBySupport` encodes the asymmetry: 'Untimed rows only' on
+  day, no note on week.
+- **`lib/item-container.ts` was planned and not written.** The artifact's 5a sketch had a
+  ~30-line module for container resolution, but `lib/filters.ts` already owns
+  `containerRefOf` / `containerName` / `containerKindOf` — the same question, answered
+  through the same registry field, for the filter path. A second module would have been a
+  second answer to drift from. `lib/grouping.ts` calls the existing one; only the
+  unset-label split (which SIDE of the axis is empty) is new, and it lives with the
+  grouping that needs it.
 - **Don't `git checkout --` a file you haven't staged.** The Phase 2 hook is a new
   function in an existing file; reverting a mutation-test edit that way restored HEAD's
   version and silently discarded the work. Copy to the scratchpad first, or stage before

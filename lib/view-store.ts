@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, TimeBucket } from './planner-types';
+import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
 import { isSortBy, type SortBy } from './sort-rows';
@@ -252,6 +252,12 @@ export const useViewStore = create<ViewStore>()(
           // payload is user-editable in devtools.
           canvasSortBy: isSortBy(p.canvasSortBy) ? p.canvasSortBy : 'default',
           braindumpSortBy: isSortBy(p.braindumpSortBy) ? p.braindumpSortBy : 'default',
+          // Same reason, one release later: 'status' WAS a legal GroupBy and is
+          // sitting in real payloads. It falls through groupRows' branches to the
+          // container arm, so a stale blob would silently group by project — and
+          // the Grouping row would render "None" over it, because no option
+          // matches, while the trigger counted it as one active clause.
+          canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
         };
       },
     }
@@ -285,7 +291,11 @@ export function adoptLegacyViewPrefs() {
   useViewStore.setState({
     scope: legacy.viewMode,
     typeFilter: legacy.timelineItemFilter,
-    canvasGroupBy: legacy.groupBy,
+    // The second door 'status' can come through: planner-storage partializes
+    // `groupBy`, so a blob written before Phase 5a deleted the member rehydrates
+    // planner-store with it and this copies it across on first mount. The
+    // declared type says that cannot happen; the stored JSON disagrees.
+    canvasGroupBy: isGroupBy(legacy.groupBy) ? legacy.groupBy : 'none',
     adoptedLegacy: true,
   });
 }

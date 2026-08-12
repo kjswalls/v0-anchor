@@ -42,12 +42,11 @@ import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
   TYPE_OPTIONS,
-  groupByBlockedBy,
+  groupBySupport,
   sortByBlockedBy,
   SORT_BY_OPTIONS,
-  type CanvasGroupBy,
 } from '@/lib/view-options';
-import type { Priority } from '@/lib/planner-types';
+import type { GroupBy, Priority } from '@/lib/planner-types';
 import type { ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
@@ -319,10 +318,10 @@ export function DisplayMenu({
    */
   const groupOptions = isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS;
   const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
-  /** The reason the CURRENT value is inert, or null when it is honoured. */
-  const groupBlocked = isCanvas
-    ? groupByBlockedBy(scope, view.layout, groupBy as CanvasGroupBy)
-    : null;
+  /** How far the CURRENT value reaches on this surface — see groupBySupport. */
+  const groupReach = isCanvas
+    ? groupBySupport(scope, view.layout, groupBy as GroupBy)
+    : { honoured: true, note: null };
 
   const sortBy = isCanvas ? view.canvasSortBy : view.braindumpSortBy;
   const sortLabel = SORT_BY_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Default';
@@ -377,60 +376,51 @@ export function DisplayMenu({
         <SubRow
           icon={Rows3}
           label="Grouping"
-          // The rail carries the reason when the chosen value is inert HERE, so
-          // the row accounts for the clause the trigger is counting.
-          rail={groupBlocked ? `${groupLabel} · ${groupBlocked}` : groupLabel}
+          // The rail carries the note whether the value is partly honoured or
+          // not at all, so the row always accounts for the clause the trigger is
+          // counting.
+          rail={groupReach.note ? `${groupLabel} · ${groupReach.note}` : groupLabel}
           set={groupSet}
         >
           {groupOptions.map((o) => {
-            // A value the current view cannot honour stays visible and disabled
-            // with the reason on its rail, rather than vanishing.
-            const blocked = isCanvas
-              ? groupByBlockedBy(scope, view.layout, o.value as CanvasGroupBy)
-              : null;
+            // Three states: honoured silently, honoured with the part it reaches
+            // on the rail, or inert — visible and disabled with the reason.
+            const reach = isCanvas
+              ? groupBySupport(scope, view.layout, o.value as GroupBy)
+              : { honoured: true, note: null };
             return (
               <ValueRow
                 key={o.value}
                 icon={o.icon}
                 label={o.label}
-                rail={blocked ?? undefined}
-                disabled={!!blocked}
+                rail={reach.note ?? undefined}
+                disabled={!reach.honoured}
                 checked={groupBy === o.value}
                 keepOpen={false}
                 onToggle={() =>
                   isCanvas
-                    ? view.setCanvasGroupBy(o.value as CanvasGroupBy)
+                    ? view.setCanvasGroupBy(o.value as GroupBy)
                     : view.setBraindumpGroupBy(o.value as 'none' | 'type' | 'project')
                 }
               />
             );
           })}
-          {/* The live rows that resolve a disabled value in one click. Scope
-              first: on Week every value is blocked, so switching layout alone
-              would not unblock anything. Only offered where the shell can
-              actually honour it — the phone has no scope to switch. */}
-          {isCanvas && (scope === 'week' || view.layout !== 'list') && (
-            <DropdownMenuSeparator />
-          )}
-          {isCanvas && scope === 'week' && !scopeProp && (
-            <ValueRow
-              icon={ArrowRight}
-              label="Switch to Day"
-              checked={false}
-              keepOpen={false}
-              role="menuitem"
-              onToggle={() => view.setScope('day')}
-            />
-          )}
-          {isCanvas && view.layout !== 'list' && (
-            <ValueRow
-              icon={ArrowRight}
-              label="Switch to List"
-              checked={false}
-              keepOpen={false}
-              role="menuitem"
-              onToggle={() => view.setLayout('list')}
-            />
+          {/* The escape hatch, offered only while the CURRENT value is inert —
+              which since Phase 5a is one combination, Time bucket on Buckets.
+              It used to ride every non-List layout, i.e. most of the time, where
+              it resolved nothing because nothing was blocked. */}
+          {isCanvas && !groupReach.honoured && view.layout !== 'list' && (
+            <>
+              <DropdownMenuSeparator />
+              <ValueRow
+                icon={ArrowRight}
+                label="Switch to List"
+                checked={false}
+                keepOpen={false}
+                role="menuitem"
+                onToggle={() => view.setLayout('list')}
+              />
+            </>
           )}
         </SubRow>
 

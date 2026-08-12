@@ -1,0 +1,249 @@
+import type { GroupBy, Habit, Priority, Routine, Task, TimeBucket } from './planner-types';
+import { TIME_BUCKET_RANGES } from './planner-types';
+import { BUCKET_ORDER } from './day-items';
+import { NO_CONTAINER, containerName, containerRefOf, fieldApplies, typeNameOf } from './filters';
+import { getItemTypeConfig } from './item-registry';
+
+/**
+ * Grouping — one partition function every surface calls.
+ *
+ * It used to be `buildListGroups` inside components/views/day-list.tsx, which is
+ * why Day × List honoured all five values while Day × Buckets tested
+ * `=== 'project'` and nothing else, and the other four surfaces honoured none:
+ * the code that could answer the question lived inside the one view that asked
+ * it. Everything here is pure — rows in, sections out — so the surfaces differ
+ * only in WHICH rows they hand it.
+ *
+ * Two rules the callers must keep:
+ *
+ * 1. **Group first, then sort within each group.** These groups come back
+ *    unsorted, in the row order they were given. `sortRows` is applied per group
+ *    by the caller, never to the flat list beforehand — the maps below are
+ *    filled by walking the rows, so sorting first reorders the SECTIONS. The
+ *    braindump shipped that way for one commit; see the plan's gotcha list.
+ * 2. **Never partition a spine that carries positional drop targets.** Day ×
+ *    Buckets hands over its untimed rows only, because `inferDropTime` resolves
+ *    "the gap above row X" as ±30 min from X's own time (lib/dnd/CONTRACT.md).
+ *    Every other surface either has no per-row droppable or is not time-ordered
+ *    to begin with, and hands over everything.
+ */
+
+export interface GroupableRow {
+  itemType: 'task' | 'habit';
+  item: Task | Habit;
+}
+
+/**
+ * A rendered section.
+ *
+ * `key` is separate from `label` because they answer different questions: the
+ * label is what the reader sees, the key is what React reconciles on. For most
+ * groupings they coincide; routine grouping is the exception that forced the
+ * split (two routines may share a name), and container grouping is the second
+ * (a project and a habit group may share one — the seeds do).
+ */
+export interface RowGroup<T> {
+  key: string;
+  label: string;
+  rows: T[];
+}
+
+export interface GroupContext {
+  /** Required by `'routine'`; ignored by every other value. */
+  routines?: readonly Routine[];
+}
+
+/** Internal: `unset` rides along so the "None" section can be forced last. */
+interface Building<T> extends RowGroup<T> {
+  unset: boolean;
+}
+
+/* ── container ──────────────────────────────────────────────────────────────*/
+
+/**
+ * The container section for one row, resolved through the registry.
+ *
+ * This is the half of the habits fix that grouping never got. `buildListGroups`
+ * hoisted every habit into a single "Habits" section and grouped only the tasks,
+ * so grouping by Project answered a question about tasks and then filed the rest
+ * of the day under its own type name. A habit is not container-less — it answers
+ * with its GROUP, exactly as `passesContainerFilter` has since Phase 1.
+ *
+ * The key is the PREFIXED ref, so a project and a habit group sharing a name
+ * stay two sections (DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seed Work,
+ * Wellness and Personal). They will render the same visible label; on the canvas
+ * that is all a heading is, and `variant="canvas"` draws no glyph, so there is
+ * nothing else to disagree.
+ *
+ * Unset is kind-TAGGED — `none:project` / `none:group` — rather than sharing the
+ * filter's single `NO_CONTAINER` sentinel. The filter needs one checkbox that
+ * catches both sides of the axis; a heading has room to say which side it is,
+ * and "No project" over a stack of habits would be false.
+ */
+function containerSection(row: GroupableRow): { key: string; label: string; unset: boolean } {
+  const typeName = row.itemType === 'habit' ? 'habit' : typeNameOf(row.item);
+  const ref = containerRefOf(row.item, typeName);
+  // A type that carries no container axis at all. Nothing ships one — both
+  // templates answer with a kind — but the registry types `containerKind` as
+  // nullable, and a row of such a type must still land somewhere.
+  if (ref === null) return { key: 'container:na', label: 'No container', unset: true };
+  if (ref !== NO_CONTAINER) return { key: ref, label: containerName(ref), unset: false };
+  const kind = getItemTypeConfig(typeName).containerKind;
+  return kind === 'habitGroups'
+    ? { key: `${NO_CONTAINER}group`, label: 'No group', unset: true }
+    : { key: `${NO_CONTAINER}project`, label: 'No project', unset: true };
+}
+
+/* ── priority ───────────────────────────────────────────────────────────────*/
+
+const PRIORITY_LABEL: Record<Priority, string> = { high: 'High', medium: 'Medium', low: 'Low' };
+const PRIORITY_ORDER: (Priority | null)[] = ['high', 'medium', 'low', null];
+
+/**
+ * A type that does not CARRY priority lands in "No priority" with everything
+ * else that has none — it does not get a section named after its own type.
+ *
+ * The same call `sortRows` already makes (`priorityRank` ranks a non-carrying
+ * type as unset), and the pass-through rule's companion: an item the axis does
+ * not reach belongs in the explicit None value, not in a fourth answer. The old
+ * "Habits" section here was type grouping smuggled into a priority question, and
+ * it silently excluded custom types — they carry `priority`, so they were ranked
+ * while habits were hoisted, for no stated reason.
+ */
+function priorityOf(row: GroupableRow): Priority | null {
+  const typeName = row.itemType === 'habit' ? 'habit' : typeNameOf(row.item);
+  if (!fieldApplies(typeName, 'priority')) return null;
+  return (row.item as { priority?: Priority }).priority ?? null;
+}
+
+/* ── routine ────────────────────────────────────────────────────────────────*/
+
+/**
+ * ONE row, ONE group. An item can belong to several routines, and rendering it
+ * under each would be the Outliner's known failure — two checkboxes for one
+ * obligation, and a second copy that shift-range and ⌘A silently skip. It lands
+ * in the first routine that claims it, in store order.
+ *
+ * Habits AND tasks, unlike every other grouping here: a routine holds both, and
+ * pulling habits into their own section would put half a morning routine outside
+ * the group named after it.
+ *
+ * Members are ordered by the routine's OWN sequence (`routine_items.sort_order`,
+ * which is the array index) — the only place that order is visible outside the
+ * manager, and why the two shipped together. `sortRows(rows, 'default')` returns
+ * its input unchanged, so the caller's per-group sort preserves it until the user
+ * picks an ordering.
+ *
+ * Grouped by routine ID, labelled by name. Names are not unique — the table
+ * declares `name text not null` with no UNIQUE, rename ships from day one, and
+ * nothing dedupes on create — so keying on the name silently MERGED two routines
+ * into one heading holding both their work.
+ */
+function routineGroups<T extends GroupableRow>(rows: T[], routines: readonly Routine[]): RowGroup<T>[] {
+  const claimed = new Map<string, { id: string; rank: number }>();
+  routines.forEach((routine, i) => {
+    routine.itemIds.forEach((id, rank) => {
+      if (!claimed.has(id)) claimed.set(id, { id: routine.id, rank: i * 1e6 + rank });
+    });
+  });
+
+  const groups = new Map<string, T[]>();
+  for (const routine of routines) groups.set(routine.id, []);
+  const loose: T[] = [];
+  for (const row of rows) {
+    const claim = claimed.get(row.item.id);
+    if (claim) groups.get(claim.id)!.push(row);
+    else loose.push(row);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => claimed.get(a.item.id)!.rank - claimed.get(b.item.id)!.rank);
+  }
+
+  return [
+    ...routines
+      .filter((routine) => (groups.get(routine.id)?.length ?? 0) > 0)
+      .map((routine) => ({ key: routine.id, label: routine.name, rows: groups.get(routine.id)! })),
+    // Prefixed so a routine a user actually named "No routine" cannot collide
+    // with it — group KEYS are React keys, and two sections under one key
+    // reconcile against a single fiber the moment the group list changes shape.
+    ...(loose.length ? [{ key: 'routine:none', label: 'No routine', rows: loose }] : []),
+  ];
+}
+
+/* ── the entry point ────────────────────────────────────────────────────────*/
+
+/**
+ * Partition rows into sections. Never returns an empty section, and never
+ * returns a row twice.
+ *
+ * `'none'` is ONE unlabelled section holding everything, not a per-surface
+ * default: a surface whose no-grouping look is something richer (Day × List's
+ * HABITS / TASKS / PROJECTS) owns that itself, because it is a presentation
+ * choice for that view rather than an answer to "group by what".
+ *
+ * Section order is FIRST-ENCOUNTER for the open-ended values (container,
+ * routine) and a fixed ladder for the closed ones (priority, bucket). "None"
+ * sections sort last either way, matching the sort side's rule that unset ranks
+ * last rather than floating to the top.
+ */
+export function groupRows<T extends GroupableRow>(
+  rows: T[],
+  groupBy: GroupBy,
+  ctx: GroupContext = {}
+): RowGroup<T>[] {
+  if (rows.length === 0) return [];
+  if (groupBy === 'none') return [{ key: '', label: '', rows }];
+  if (groupBy === 'routine') return routineGroups(rows, ctx.routines ?? []);
+
+  if (groupBy === 'priority') {
+    const byPriority = new Map<Priority | null, T[]>();
+    for (const row of rows) {
+      const p = priorityOf(row);
+      if (!byPriority.has(p)) byPriority.set(p, []);
+      byPriority.get(p)!.push(row);
+    }
+    return PRIORITY_ORDER.filter((p) => byPriority.has(p)).map((p) => ({
+      key: `priority:${p ?? 'none'}`,
+      label: p ? PRIORITY_LABEL[p] : 'No priority',
+      rows: byPriority.get(p)!,
+    }));
+  }
+
+  if (groupBy === 'bucket') {
+    const byBucket = new Map<TimeBucket | null, T[]>();
+    for (const row of rows) {
+      const b = (row.item.timeBucket as TimeBucket | undefined) ?? null;
+      if (!byBucket.has(b)) byBucket.set(b, []);
+      byBucket.get(b)!.push(row);
+    }
+    return [
+      ...BUCKET_ORDER.filter((b) => byBucket.has(b)).map((b) => ({
+        key: `bucket:${b}`,
+        label: TIME_BUCKET_RANGES[b].label,
+        rows: byBucket.get(b)!,
+      })),
+      // Unreachable from the canvas — deriveDayItems drops anything without a
+      // bucket before it ever builds a row — but the braindump's corpus is
+      // exactly the rows that have none, and a grouping that silently ate them
+      // would be a disappearing-items bug rather than an empty section.
+      ...(byBucket.has(null)
+        ? [{ key: 'bucket:none', label: 'No time bucket', rows: byBucket.get(null)! }]
+        : []),
+    ];
+  }
+
+  // 'project' — the CONTAINER axis. The value is still named for the project
+  // half because that is what the menu row says and what the persisted payload
+  // holds; what changed is that habits answer it with their group instead of
+  // being hoisted out of the question.
+  const built = new Map<string, Building<T>>();
+  for (const row of rows) {
+    const { key, label, unset } = containerSection(row);
+    if (!built.has(key)) built.set(key, { key, label, rows: [], unset });
+    built.get(key)!.rows.push(row);
+  }
+  const all = [...built.values()];
+  return [...all.filter((g) => !g.unset), ...all.filter((g) => g.unset)].map(
+    ({ key, label, rows: groupRowsOut }) => ({ key, label, rows: groupRowsOut })
+  );
+}

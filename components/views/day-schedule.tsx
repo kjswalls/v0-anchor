@@ -32,6 +32,8 @@ import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
@@ -1291,6 +1293,18 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   const timed = useMemo(() => deriveTimedEntries(day), [day]);
   const overlapEntries = useMemo(() => toOverlapEntries(timed), [timed]);
 
+  // The Anytime strip is the one part of this view that can section. `'none'`
+  // comes back as a single unlabelled group, which renders as today's flat list.
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const untimedGroups = useMemo(
+    () =>
+      groupBySupport('day', 'schedule', canvasGroupBy).honoured
+        ? groupRows(untimed, canvasGroupBy, { routines })
+        : [{ key: '', label: '', rows: untimed }],
+    [untimed, canvasGroupBy, routines]
+  );
+
   // The marker only exists on today, and only if the setting allows it —
   // Settings → "Show current time indicator" sat there for a long time with
   // nothing to switch; this is the thing it switches.
@@ -1363,10 +1377,23 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
             className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
+            {/* The grid below cannot take headings — a row's y position IS its
+                time, so a section either breaks the axis or floats free of it.
+                This strip is an ordinary row list and can, which is why the
+                Grouping rail reads "Anytime only" on Schedule. Phase 5b gives
+                the grid the same partition expressed on x, as lanes. */}
             <GroupSection label="Anytime" variant="canvas">
-              {untimed.map((row) => (
-                <TaskRow key={row.item.id} row={row} />
-              ))}
+              {untimedGroups.map((g) =>
+                g.label ? (
+                  <GroupSection key={g.key} label={g.label} variant="canvas" className="pl-2">
+                    {g.rows.map((row) => (
+                      <TaskRow key={row.item.id} row={row} />
+                    ))}
+                  </GroupSection>
+                ) : (
+                  g.rows.map((row) => <TaskRow key={row.item.id} row={row} />)
+                )
+              )}
               {untimed.length === 0 && dragging && (
                 <div className="py-2 text-center text-xs text-muted-foreground/50">
                   Drop here to keep it time-free

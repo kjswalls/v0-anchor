@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useViewStore } from '@/lib/view-store';
+import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
+import { usePlannerStore } from '@/lib/planner-store';
 import {
   EMPTY_VIEW_FILTERS,
   containerRef,
@@ -101,6 +102,54 @@ describe('the persist merge, through a real rehydrate', () => {
 
     expect(s.canvasFilters.containers).toEqual([]);
     expect(s.braindumpFilters.containers).toEqual([]);
+  });
+
+  it("drops a persisted 'status' grouping, which Phase 5a deleted from the union", async () => {
+    // It WAS a legal GroupBy and is sitting in real payloads. Left alone it
+    // falls through groupRows' branches to the container arm, so the day would
+    // silently section by project — while the Grouping row rendered "None" over
+    // it (no option matches) and the trigger counted it as one active clause.
+    seed({ canvasGroupBy: 'status' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('none');
+  });
+
+  it('keeps a grouping value that is still legal', async () => {
+    // The coercion must not be a reset in disguise.
+    seed({ canvasGroupBy: 'routine' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('routine');
+  });
+});
+
+describe('adoptLegacyViewPrefs — the second door a stale grouping comes through', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useViewStore.setState({ adoptedLegacy: false, canvasGroupBy: 'none' });
+  });
+
+  it("coerces 'status' out of the planner-store mirror", () => {
+    // planner-storage partializes `groupBy`, so a blob written before Phase 5a
+    // rehydrates planner-store with it and this copies it across on first
+    // mount. The declared type says that cannot happen; the stored JSON
+    // disagrees, which is the whole reason a runtime guard exists.
+    usePlannerStore.setState({ groupBy: 'status' as never });
+
+    adoptLegacyViewPrefs();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('none');
+  });
+
+  it('still adopts a legal one', () => {
+    usePlannerStore.setState({ groupBy: 'priority' });
+
+    adoptLegacyViewPrefs();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('priority');
   });
 });
 

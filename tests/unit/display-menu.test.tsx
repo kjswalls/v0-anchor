@@ -352,42 +352,51 @@ describe('each surface renders only what it can honour', () => {
     expect(within(menu).getByRole('menuitem', { name: /Project \/ Group/ })).toBeInTheDocument();
   });
 
-  it('blocks every grouping value on Schedule, where y position is already time', async () => {
+  it('says which PART of Schedule a grouping reaches, and keeps the row live', async () => {
+    // Phase 5a: the hour grid still cannot take headings — a row's y position IS
+    // its time — but the Anytime strip above it is an ordinary row list and now
+    // groups. So the value is honoured, partly, and a disabled row would be a
+    // lie in the other direction.
     seed({ layout: 'schedule' });
     render(<DisplayMenu surface="canvas" />);
 
     await openSub('Grouping');
 
     const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
-    expect(priority).toHaveAttribute('data-disabled');
-    expect(priority).toHaveTextContent('Not on Schedule');
-    // Project too — Schedule honours none of them, unlike Buckets.
-    expect(screen.getByRole('menuitemradio', { name: /^Project/ })).toHaveAttribute('data-disabled');
-    // None stays live: it is how you turn grouping off from here.
-    expect(screen.getByRole('menuitemradio', { name: /None/ })).not.toHaveAttribute('data-disabled');
+    expect(priority).not.toHaveAttribute('data-disabled');
+    expect(priority).toHaveTextContent('Anytime only');
+    expect(screen.getByRole('menuitemradio', { name: /^Project/ })).not.toHaveAttribute(
+      'data-disabled'
+    );
   });
 
-  it('blocks grouping on week, where seven columns already spend the axis', async () => {
+  it('honours grouping on week now that the week surfaces section their own rows', async () => {
+    // It used to answer 'Day only' for every value on every week layout. Week x
+    // List is seven independent lists and Week x Buckets is 28 independent
+    // cells; both partition per unit, so there was nothing the axis could not
+    // reach — only a rule saying it could not.
     seed({ scope: 'week', layout: 'list' });
     render(<DisplayMenu surface="canvas" />);
 
     await openSub('Grouping');
 
-    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
-      'Day only'
-    );
-    // On week EVERY value is blocked, so switching layout alone unblocks
-    // nothing — the escape has to offer scope first.
-    fireEvent.click(screen.getByRole('menuitem', { name: /Switch to Day/ }));
-    expect(view().scope).toBe('day');
+    const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
+    expect(priority).not.toHaveAttribute('data-disabled');
+    expect(priority).not.toHaveTextContent('Day only');
+    // Nothing is blocked here, so no escape row is offered — it would resolve
+    // nothing, and an action that does nothing is worse than no action.
+    expect(screen.queryByRole('menuitem', { name: /Switch to/ })).toBeNull();
   });
 
   it('keeps the Grouping row mounted where the count still includes it', async () => {
     // Neither setScope nor setLayout clears canvasGroupBy, so grouping on
-    // Day x List and switching to Schedule leaves a clause set. Hiding the
+    // Day x List and switching to Buckets leaves a clause set. Hiding the
     // section left the trigger reading "Display (1 active)" over a panel where
     // nothing was set and nothing could unset it.
-    seed({ layout: 'schedule', canvasGroupBy: 'priority' });
+    //
+    // Time bucket on Buckets is the one combination left that is genuinely
+    // inert, which is what makes it the case to pin.
+    seed({ layout: 'buckets', canvasGroupBy: 'bucket' });
     render(<DisplayMenu surface="canvas" />);
 
     expect(screen.getByTestId('display-trigger-canvas')).toHaveAttribute(
@@ -400,8 +409,8 @@ describe('each surface renders only what it can honour', () => {
       name: /Grouping/,
     });
     // The row accounts for the clause AND says why it is doing nothing.
-    expect(row).toHaveTextContent('Priority');
-    expect(row).toHaveTextContent('Not on Schedule');
+    expect(row).toHaveTextContent('Time bucket');
+    expect(row).toHaveTextContent('Already by bucket');
   });
 
   it('states the phone s own scope rather than inheriting one it never renders by', async () => {
@@ -422,41 +431,53 @@ describe('each surface renders only what it can honour', () => {
     expect(screen.queryByRole('menuitem', { name: /Switch to Day/ })).toBeNull();
   });
 
-  it('announces the escape rows as actions, not as unselected options', async () => {
-    // Deriving the role from close-behaviour made "Switch to List" a sixth,
-    // unselected radio in a set of five real grouping values — and it renders
-    // in the DEFAULT view, so it is what a first-run screen reader hears.
+  it('announces the escape row as an action, not as an unselected option', async () => {
+    // Deriving the role from close-behaviour made "Switch to List" an extra,
+    // unselected radio in a set of five real grouping values. The Ordering
+    // submenu still carries one on every non-List layout, so this is the set a
+    // screen reader meets in the default view.
     seed({ layout: 'buckets' });
     render(<DisplayMenu surface="canvas" />);
 
-    await openSub('Grouping');
+    await openSub('Ordering');
     const escape = await screen.findByRole('menuitem', { name: /Switch to List/ });
 
     expect(escape).not.toHaveAttribute('aria-checked');
   });
 
-  it('keeps a value Buckets cannot honour visible, disabled, and explained', async () => {
-    // day-buckets.tsx:112 tests `=== 'project'` and nothing else, so Priority
-    // there renders identically to None. Hiding the row would make the menu
-    // change shape as you switch layouts; disabling it with the reason states
-    // the truth instead.
+  it('keeps the one value Buckets cannot honour visible, disabled, and explained', async () => {
+    // Four cards of one bucket each, sectioned by bucket, is four cards holding
+    // one section apiece — the view IS the partition. Hiding the row would make
+    // the menu change shape as you switch layouts; disabling it with the reason
+    // states the truth instead.
     seed({ layout: 'buckets' });
     render(<DisplayMenu surface="canvas" />);
 
     await openSub('Grouping');
 
-    const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
-    expect(priority).toHaveAttribute('data-disabled');
-    expect(priority).toHaveTextContent('List only');
+    const bucket = await screen.findByRole('menuitemradio', { name: /Time bucket/ });
+    expect(bucket).toHaveAttribute('data-disabled');
+    expect(bucket).toHaveTextContent('Already by bucket');
 
-    // Project IS honoured there, so it stays live.
-    expect(screen.getByRole('menuitemradio', { name: /^Project/ })).not.toHaveAttribute(
-      'data-disabled'
-    );
+    // Priority is honoured there now — in the untimed section, which the rail
+    // says. It used to be disabled with 'List only'.
+    const priority = screen.getByRole('menuitemradio', { name: /Priority/ });
+    expect(priority).not.toHaveAttribute('data-disabled');
+    expect(priority).toHaveTextContent('Untimed rows only');
   });
 
-  it('offers the one-click escape from a layout that cannot honour the value', async () => {
-    seed({ layout: 'buckets' });
+  it('offers the one-click escape only while the current value is inert', async () => {
+    // It used to ride every non-List layout, where it resolved nothing because
+    // nothing was blocked. Now it appears exactly when it fixes something.
+    seed({ layout: 'buckets', canvasGroupBy: 'project' });
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Grouping');
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /Switch to List/ })).toBeNull();
+
+    cleanup();
+    seed({ layout: 'buckets', canvasGroupBy: 'bucket' });
     render(<DisplayMenu surface="canvas" />);
 
     await openSub('Grouping');

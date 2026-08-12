@@ -93,7 +93,6 @@ describe('isSortBy', () => {
 /* ── the comparator repair ──────────────────────────────────────────────── */
 
 const DATE_STR = '2026-07-08';
-const DATE = new Date('2026-07-08T12:00:00');
 
 const dayHabit = (over: Partial<Habit>): Habit =>
   ({
@@ -113,7 +112,6 @@ const input = (over: Partial<DayItemsInput>): DayItemsInput => ({
   habits: [],
   projects: [],
   dateStr: DATE_STR,
-  date: DATE,
   timezone: 'UTC',
   typeFilter: 'all',
   showCompletedTasks: true,

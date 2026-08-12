@@ -5,6 +5,7 @@ import { format, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { BucketCard, bucketGap } from '@/components/primitives/bucket-card';
+import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
 import { useCurrentBucket } from '@/hooks/use-current-bucket';
@@ -14,6 +15,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows, type GroupableRow } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
 import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -42,6 +45,8 @@ function WeekBucketCell({
   const dateStr = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: `week:${dateStr}:${bucket}` });
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
   const tasks = tasksByBucket[bucket];
   const habits = habitsByBucket[bucket];
   // The header count stays "everything in this bucket", project-block tasks
@@ -59,6 +64,24 @@ function WeekBucketCell({
   // content is a project block still renders the block (day-buckets guards its
   // empty copy with `bucketProjects.length === 0` for the same reason).
   const isEmpty = looseTasks.length === 0 && habits.length === 0 && bucketProjects.length === 0;
+
+  /**
+   * ALL of the cell's rows, unlike Day × Buckets, which hands over its untimed
+   * rows only.
+   *
+   * There is no spine to protect here: the whole cell is one `week:{date}:{bucket}`
+   * droppable with no per-row drop zones, so no drop resolves against a
+   * neighbour's time — and the cell was never in one time order anyway, since it
+   * renders every habit before every task.
+   */
+  const rows: GroupableRow[] = [
+    ...habits.map((h) => ({ itemType: 'habit' as const, item: h })),
+    ...looseTasks.map((t) => ({ itemType: 'task' as const, item: t })),
+  ];
+  const grouped =
+    canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
+      ? groupRows(rows, canvasGroupBy, { routines })
+      : null;
 
   return (
     <div
@@ -101,12 +124,17 @@ function WeekBucketCell({
                 date={date}
               />
             ))}
-            {habits.map((habit) => (
-              <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} density="compact" date={date} />
-            ))}
-            {looseTasks.map((task) => (
-              <TaskRow key={task.id} row={{ itemType: 'task', item: task }} density="compact" date={date} />
-            ))}
+            {grouped
+              ? grouped.map((g) => (
+                  <GroupSection key={g.key} label={g.label} variant="canvas">
+                    {g.rows.map((row) => (
+                      <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
+                    ))}
+                  </GroupSection>
+                ))
+              : rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
+                ))}
           </>
         )}
       </BucketCard>

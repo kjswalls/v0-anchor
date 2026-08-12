@@ -73,12 +73,7 @@ import { programStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
-import {
-  CANVAS_GROUP_BY_OPTIONS,
-  LAYOUT_OPTIONS,
-  TYPE_OPTIONS,
-  type CanvasGroupBy,
-} from '../view-options';
+import { CANVAS_GROUP_BY_OPTIONS, LAYOUT_OPTIONS, TYPE_OPTIONS } from '../view-options';
 import {
   assignBucket,
   isCancelled,
@@ -92,7 +87,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { Priority, TimeBucket, Routine, Program } from '../planner-types';
+import type { GroupBy, Priority, TimeBucket, Routine, Program } from '../planner-types';
 
 /**
  * The command registry.
@@ -549,7 +544,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.groupBy',
     label: 'Group by',
-    description: 'Priority, Time bucket and Routine reshape the List layout; Buckets honours Project',
+    description: 'Sections every layout — Buckets groups its untimed rows, Schedule its Anytime strip',
     group: 'view',
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
@@ -558,9 +553,9 @@ export const STATIC_COMMANDS: Command[] = [
       kind: 'enum',
       placeholder: 'Group by',
       flatten: true,
-      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy as CanvasGroupBy),
+      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy),
     },
-    run: (_ctx, arg) => view().setCanvasGroupBy(arg as CanvasGroupBy),
+    run: (_ctx, arg) => view().setCanvasGroupBy(arg as GroupBy),
   },
   {
     id: 'view.filterProject',

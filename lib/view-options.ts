@@ -49,53 +49,75 @@ export const SCOPE_OPTIONS: ViewOption<ViewScope>[] = [
 ];
 
 /**
- * 'status' is deliberately absent. It is a member of GroupBy, but
- * buildListGroups (components/views/day-list.tsx) has no branch for it, so
- * picking it renders identically to 'none'. Add the option back here the day
- * the branch exists.
+ * The canvas grouping vocabulary — every member of `GroupBy`, since Phase 5a
+ * deleted the one ('status') that had no branch behind it.
  */
-export type CanvasGroupBy = Exclude<GroupBy, 'status'>;
-
-export const CANVAS_GROUP_BY_OPTIONS: ViewOption<CanvasGroupBy>[] = [
+export const CANVAS_GROUP_BY_OPTIONS: ViewOption<GroupBy>[] = [
   { value: 'none', label: 'None', icon: Layers },
   { value: 'project', label: 'Project', icon: Folder },
   { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'bucket', label: 'Time bucket', icon: Hourglass },
-  // List layout only, like Priority — the Buckets layout honours Project alone
-  // and the command's own description says so.
   { value: 'routine', label: 'Routine', icon: Repeat },
 ];
 
 /**
- * Which canvas group-by values the CURRENT view actually honours, and why not.
+ * How much of the CURRENT view a group-by value actually reaches.
  *
- * Not cosmetic: `day-list.tsx:164` passes canvasGroupBy to buildListGroups and
- * gets every branch, while `day-buckets.tsx:112` tests `=== 'project'` and
- * nothing else. So on Buckets, choosing Priority renders identically to None.
+ * Three states, not two, because Phase 5a made "partly" the common case:
+ *   honoured + no note   — the whole surface sections by it (both List views,
+ *                          and Week × Buckets, whose cells have no spine)
+ *   honoured + a note    — some of the surface does, and the note says which
+ *                          part. The row stays ENABLED: picking it does
+ *                          something, and a disabled row would say it doesn't.
+ *   not honoured + note  — inert here. Disabled, reason on the rail.
  *
- * Returns null when the value IS honoured, or the short reason for its rail when
- * it is not. The Display menu keeps unhonoured values visible and disabled with
- * that reason rather than hiding them: a menu whose contents change shape as you
- * switch layouts is harder to learn than one where a row explains itself — and a
- * hidden row cannot account for the clause the trigger's count is still adding
- * up, since neither setScope nor setLayout clears canvasGroupBy.
+ * Unhonoured values stay VISIBLE rather than vanishing: a menu whose sections
+ * appear and disappear as you switch layouts is harder to learn than one whose
+ * rows explain themselves — and a hidden row cannot account for the clause the
+ * trigger's count is still adding up, since neither setScope nor setLayout
+ * clears canvasGroupBy.
  *
- * Widened by Phase 5a, which is what makes Buckets and Week honour the rest.
+ * Only one combination is genuinely inert now, and it is inert because the view
+ * already answers the question.
  */
-export function groupByBlockedBy(
+export interface GroupSupport {
+  /** Does picking this change anything on this surface? */
+  honoured: boolean;
+  /** Short rail text: which part it reaches, or why it reaches none. */
+  note: string | null;
+}
+
+const FULL: GroupSupport = { honoured: true, note: null };
+
+export function groupBySupport(
   scope: ViewScope,
   layout: ViewLayout,
-  value: CanvasGroupBy
-): string | null {
-  if (value === 'none') return null;
-  // Seven columns already spend the primary axis; a second partition inside a
-  // cell averaging two rows is decoration.
-  if (scope === 'week') return 'Day only';
-  // A row's y position IS its time, so a heading either breaks the axis or
-  // floats free of it. Phase 5b gives Schedule lanes instead of headings.
-  if (layout === 'schedule') return 'Not on Schedule';
-  if (layout === 'list') return null;
-  return value === 'project' ? null : 'List only';
+  value: GroupBy
+): GroupSupport {
+  if (value === 'none') return FULL;
+
+  if (layout === 'buckets') {
+    // The view IS the partition. Four cards of one bucket each, sectioned by
+    // bucket, is four cards holding one section apiece.
+    if (value === 'bucket') return { honoured: false, note: 'Already by bucket' };
+    // Day × Buckets groups its UNTIMED rows only. The timed spine below them
+    // carries `scheduled:{bucket}:before|after:{type}:{id}` drop zones, and
+    // `inferDropTime` resolves those as ±30 min from that row's own time — so
+    // reordering the spine makes "drop above this row" assign a time that
+    // contradicts where the row visibly landed.
+    if (scope === 'day') return { honoured: true, note: 'Untimed rows only' };
+    // A week cell has no per-row droppable (the whole cell is
+    // `week:{date}:{bucket}`) and is not in one time order to begin with — it
+    // renders habits then tasks — so there is no spine to protect.
+    return FULL;
+  }
+
+  // A row's y position IS its time, so the grid itself cannot take headings.
+  // The Anytime strip above it is an ordinary row list and can. Phase 5b gives
+  // the grid lanes, which is the same partition expressed on x.
+  if (layout === 'schedule') return { honoured: true, note: 'Anytime only' };
+
+  return FULL;
 }
 
 export const SORT_BY_OPTIONS: ViewOption<SortBy>[] = [

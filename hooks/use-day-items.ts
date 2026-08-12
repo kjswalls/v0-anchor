@@ -41,27 +41,27 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
   /**
    * The memo key for `dates`, since a fresh array every render would defeat it.
    *
-   * `getTime()` and not the resolved dateStr: deriveDayItems reads the Date for
-   * weekday/month-day recurrence via getDay()/getDate(), which are browser-local
-   * while toDateStr resolves in `timezone`. When those two zones differ, two
-   * instants can share a dateStr and disagree on getDay() — so a dateStr key
-   * would serve one column another column's weekday. An exact instant key
-   * cannot: same time in, same derivation out.
+   * The RESOLVED date strings, which is now exactly the derivation's input:
+   * `deriveDayItems` takes a `dateStr` and nothing else that says which day this
+   * is. It used to take a `Date` beside it and read `getDay()`/`getDate()` off it
+   * — browser-local, while `toDateStr` resolves in `timezone` — so two instants
+   * could share a dateStr and disagree on the weekday, and only an exact-instant
+   * key was safe. With that gone the mapping is total: same dateStr in, same
+   * derivation out, whatever instant produced it.
    *
-   * This is strictly more stable than the reference dep it replaces, so no
-   * caller re-derives more often than it used to.
+   * `timezone` is a dep of the memo, so a zone change re-resolves these before
+   * they are compared.
    */
-  const dateKey = dates.map((d) => d.getTime()).join(',');
+  const dateStrs = dates.map((d) => toDateStr(d, timezone));
+  const dateKey = dateStrs.join(',');
 
   return useMemo(
     () =>
-      dates.map((date) => {
-        const dateStr = toDateStr(date, timezone);
+      dateStrs.map((dateStr) => {
         return deriveDayItems({
           tasks,
           habits,
           projects,
-          date,
           dateStr,
           timezone,
           typeFilter,
@@ -86,9 +86,9 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
               }),
         });
       }),
-    // `dateKey` stands in for `dates` — see the note above it. Listing `dates`
-    // as well would re-derive on every render for the array-literal callers,
-    // which is every caller.
+    // `dateKey` stands in for `dateStrs` — see the note above it. Listing the
+    // array as well would re-derive on every render for the array-literal
+    // callers, which is every caller.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [dateKey, tasks, habits, projects, items, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]
   );
@@ -101,6 +101,6 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
 export function useDayItems(date?: Date): DayItems {
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   // The array literal is rebuilt every render and that is fine — the memo
-  // inside keys on the instant, not on this array's identity.
+  // inside keys on the resolved dates, not on this array's identity.
   return useDayItemsForDates([date ?? selectedDate])[0];
 }

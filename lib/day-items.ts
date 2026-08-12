@@ -29,10 +29,17 @@ export interface DayItemsInput {
   tasks: Task[];
   habits: Habit[];
   projects: Project[];
-  /** yyyy-MM-dd for the selected day (already timezone-resolved). */
+  /**
+   * yyyy-MM-dd for the selected day (already timezone-resolved).
+   *
+   * The ONLY thing that says which day this is. There used to be a `date: Date`
+   * beside it, used for the project-block weekday and month-day checks — and it
+   * answered in the BROWSER's zone while `dateStr` and `shouldShowOnDate` answer
+   * in the USER's. When the two differ the same column was Thursday for a task
+   * and Wednesday for a block, so a Thursday block rendered on Wednesday. One
+   * date in, one weekday out.
+   */
   dateStr: string;
-  /** The actual Date for weekday/month-day recurrence checks. */
-  date: Date;
   timezone: string;
   typeFilter: 'all' | 'tasks' | 'habits';
   showCompletedTasks: boolean;
@@ -65,6 +72,28 @@ function emptyBuckets<T>(): Record<TimeBucket, T[]> {
   return { anytime: [], morning: [], afternoon: [], evening: [] };
 }
 
+/**
+ * One day's buckets as a flat row list — habits first, then tasks, each in
+ * BUCKET_ORDER and time order within a bucket.
+ *
+ * The shape `lib/grouping.ts` and `lib/sort-rows.ts` both take. Habits lead
+ * because that is the order every list surface already rendered them in; the
+ * grouping and ordering passes are both stable, so this IS the tie-break for
+ * everything downstream.
+ */
+export function flattenDayRows(day: DayItems): { itemType: 'task' | 'habit'; item: Task | Habit }[] {
+  return [
+    ...BUCKET_ORDER.flatMap((b) => day.habitsByBucket[b]).map((h) => ({
+      itemType: 'habit' as const,
+      item: h,
+    })),
+    ...BUCKET_ORDER.flatMap((b) => day.tasksByBucket[b]).map((t) => ({
+      itemType: 'task' as const,
+      item: t,
+    })),
+  ];
+}
+
 function byTimeThenOrder(a: { startTime?: string; order?: number }, b: { startTime?: string; order?: number }): number {
   if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
   if (a.startTime && !b.startTime) return -1;
@@ -72,8 +101,26 @@ function byTimeThenOrder(a: { startTime?: string; order?: number }, b: { startTi
   return (a.order ?? 0) - (b.order ?? 0);
 }
 
+/**
+ * The weekday and calendar day of a yyyy-MM-dd string, read as that calendar
+ * date and nothing else.
+ *
+ * Built through Date.UTC so the process zone cannot move it. `new Date('2026-08-13')`
+ * parses as midnight UTC and then reports `getDay()` in local time, which is the
+ * previous day anywhere west of Greenwich — the same class of bug this replaces.
+ */
+function calendarParts(dateStr: string): { weekday: number; dateOfMonth: number; lastDayOfMonth: number } {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return {
+    weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay(),
+    dateOfMonth: d,
+    // Day 0 of the NEXT month is the last day of this one.
+    lastDayOfMonth: new Date(Date.UTC(y, m, 0)).getUTCDate(),
+  };
+}
+
 export function deriveDayItems(input: DayItemsInput): DayItems {
-  const { tasks, habits, projects, dateStr, date, timezone, typeFilter, showCompletedTasks } = input;
+  const { tasks, habits, projects, dateStr, timezone, typeFilter, showCompletedTasks } = input;
   const filters = input.filters ?? NO_FILTERS;
   const inactive = input.inactiveItemIds;
   // hideFinished stacks on the existing showCompletedTasks preference
@@ -172,8 +219,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   // and only that axis. It has no priority and no completion, and its position
   // is its time, so priority and hideFinished leave it alone.
   const containerFilter = filters.containers;
-  const weekday = date.getDay();
-  const dateOfMonth = date.getDate();
+  const { weekday, dateOfMonth, lastDayOfMonth } = calendarParts(dateStr);
   const recurringProjects = projects.filter((p) => {
     if (containerFilter.length && !containerFilter.includes(containerRef('project', p.name)))
       return false;
@@ -187,7 +233,6 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
         return weekday === 0 || weekday === 6;
       case 'monthly': {
         const targetDay = p.repeatMonthDay || 1;
-        const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
         return dateOfMonth === Math.min(targetDay, lastDayOfMonth);
       }
       case 'custom':

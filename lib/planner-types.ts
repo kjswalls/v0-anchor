@@ -35,7 +35,34 @@ export type {
 
 export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
-export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'status' | 'routine';
+/**
+ * 'status' is gone. It was a legal member with no branch anywhere — picking it
+ * rendered identically to 'none' — and it can never gain one: the task and habit
+ * status vocabularies (`pending|completed|cancelled` / `pending|done|skipped`)
+ * are frozen external contracts that the OpenClaw plugin `safeParse`s, so a
+ * section heading would have to either merge them or show two ladders for one
+ * axis. It survives only as a stale persisted string; see `isGroupBy`.
+ */
+export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'routine';
+
+export const GROUP_BY_VALUES: readonly GroupBy[] = [
+  'none',
+  'project',
+  'priority',
+  'bucket',
+  'routine',
+];
+
+/**
+ * Coerce whatever a persisted payload holds.
+ *
+ * Two live sources can carry `'status'`: `anchor-view`'s own `canvasGroupBy`,
+ * and `planner-storage`'s `groupBy`, which `adoptLegacyViewPrefs` copies across
+ * on first mount. Unrecognised values reach `groupRows`, whose container branch
+ * is the fallthrough — so an unknown string would silently group by project.
+ */
+export const isGroupBy = (v: unknown): v is GroupBy =>
+  typeof v === 'string' && (GROUP_BY_VALUES as readonly string[]).includes(v);
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
 
 export interface FilterState {

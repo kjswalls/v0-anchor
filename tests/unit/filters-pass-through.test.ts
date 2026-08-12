@@ -26,7 +26,6 @@ import type { Habit, Item, Project, Task } from '@/lib/planner-types';
 
 const TZ = 'America/New_York';
 const DATE_STR = '2026-07-08'; // a Wednesday
-const DATE = new Date('2026-07-08T12:00:00');
 
 const task = (over: Partial<Task>): Task =>
   ({
@@ -59,7 +58,6 @@ const input = (over: Partial<DayItemsInput>): DayItemsInput => ({
   habits: [],
   projects: [],
   dateStr: DATE_STR,
-  date: DATE,
   timezone: TZ,
   typeFilter: 'all',
   showCompletedTasks: true,
