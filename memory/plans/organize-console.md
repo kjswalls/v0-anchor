@@ -458,6 +458,47 @@ Each phase independently shippable and green on its own. Nothing ships until all
 
 ### Phase 0 — Stable container ids *(new; decision 5)*
 
+**Status 2026-08-12 — BUILT AND APPLIED.** `027_container_ids.sql` is live on the remote
+(`7e12c2d`); the app half is `c24e92b`. 874 unit tests, lint clean, types `dist/` rebuilt.
+The ledger was realigned to `027` by hand — `apply_migration` stamps a timestamp version,
+which `db push` would later try to replay.
+
+**All four survey findings held up, and the DB answered the three questions the plan could
+only infer.** `(user_id, name)` IS unique on `projects`, `habit_groups` **and**
+`item_types`; `deleted_at` exists on projects/habit_groups/items but **not** on
+`item_types`; the server is **PostgreSQL 17**. Finding 1 was the live one: `cron.job` 3
+really does hard-delete from both container tables nightly, so a bare `on delete set null`
+would have nulled `items.user_id` and aborted the whole job with 23502. Verified by probe
+against real rows inside a self-rolling-back block — `project_id` nulls, `user_id` survives,
+the name text is kept.
+
+**What no amount of reading could have found: the backfill linked 18 of 30 project
+references and only 5 of 228 group references.** 223 of the misses belong to one account
+with **zero `habit_groups` rows** — `DEFAULT_HABIT_GROUPS` is declared in
+`lib/planner-types.ts` and imported nowhere, so those groups have only ever existed as a
+client-side constant. Those rows correctly take a NULL `group_id` and keep working off the
+text column. **The backfill is written re-runnable specifically so Phase 6's seeding adopts
+them — Phase 6 must re-run it rather than assume this pass finished the job.** The other 12
+misses name a project ("Housework") with no row at all; left dangling rather than invented,
+which is exactly today's behaviour.
+
+**Two implementation facts worth not re-deriving.** The fan-out shares ONE `set()` with the
+rename, because undo restores a whole snapshot — split across two, undoing a rename would
+restore the old container name while every member kept the new one, i.e. the orphaning bug
+through the back door. And a name write resolves the id at the *write*, not at the call
+sites: key presence is the test, so clearing `project` clears both halves, and an unmatched
+name resolves to `undefined` rather than inventing a link that the next container created
+with that name would inherit.
+
+**Agents cannot write these ids, permanently.** The agent surface speaks in names and holds
+no id↔name map, so a body carrying both could only disagree with itself. Both create
+schemas `.omit()` the field (the pause precedent); the update schemas are hand-enumerated
+and never accepted it.
+
+*Still open:* delete clears both halves in the store while the DB row keeps them, so a
+restore can reconnect members. That in-session/persisted asymmetry is pre-existing —
+**027 makes fixing it possible and does not fix it. Phase 4 owns it.**
+
 `items.project` / `items."group"` stop being name references. **The text columns are
 KEPT, not dropped** — rollback ballast, and the permanent legacy agent projection still
 has to emit a *name*. `/api/agent/context`'s `tasks[]`/`habits[]` and the
