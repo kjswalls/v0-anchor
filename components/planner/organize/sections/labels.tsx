@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { EditProjectDialog } from '@/components/planner/edit-project-dialog';
+import { ProjectTimeBlock } from '../project-time-block';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { byName, matching } from '@/lib/collections';
@@ -9,6 +9,7 @@ import { makeIconToken } from '@/lib/category-icons';
 import { ObjectRow, SettingRow } from '../primitives';
 import {
   BackRow,
+  BufferedInput,
   DangerZone,
   DetailColumn,
   DraftRow,
@@ -56,10 +57,6 @@ export function ProjectsSection({
   const projects = usePlannerStore((s) => s.projects);
   const items = usePlannerStore((s) => s.items);
   const addProject = usePlannerStore((s) => s.addProject);
-  // Mounted for one more phase. Phase 3 absorbs it into the detail pane and
-  // deletes it, ending the modal-inside-a-modal.
-  const [editing, setEditing] = useState<Project | null>(null);
-
   const [query, setQuery] = useState('');
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
@@ -113,46 +110,24 @@ export function ProjectsSection({
 
       <DetailColumn hasSelection={!!selected}>
         {selected ? (
-          <ProjectDetail
-            project={selected}
-            onBack={() => onSelect(null)}
-            onEditTimeBlock={() => setEditing(selected)}
-          />
+          <ProjectDetail project={selected} onBack={() => onSelect(null)} />
         ) : (
           <TeachingLine>
             Projects file your tasks, and can carry a repeating block on the grid.
           </TeachingLine>
         )}
       </DetailColumn>
-
-      <EditProjectDialog
-        project={editing}
-        open={!!editing}
-        onOpenChange={(open) => !open && setEditing(null)}
-      />
     </>
   );
 }
 
-function ProjectDetail({
-  project,
-  onBack,
-  onEditTimeBlock,
-}: {
-  project: Project;
-  onBack: () => void;
-  onEditTimeBlock: () => void;
-}) {
+function ProjectDetail({ project, onBack }: { project: Project; onBack: () => void }) {
   const items = usePlannerStore((s) => s.items);
   const updateProject = usePlannerStore((s) => s.updateProject);
   const removeProject = usePlannerStore((s) => s.removeProject);
   const confirm = useUIStore((s) => s.confirm);
 
   const n = countProjectItems(items, project.name);
-  const block =
-    project.startTime && project.timeBucket
-      ? `${project.startTime} · ${project.duration ?? 0}m`
-      : null;
 
   // `!== 'habit'` matches removeProject exactly, so the sentence and the write
   // agree: custom-typed items are task-shaped and get unfiled too. Which is why
@@ -191,19 +166,7 @@ function ProjectDetail({
 
       <div className="bg-border my-4 h-px" />
 
-      <SettingRow
-        label="Time block"
-        description="A repeating slot on the grid, filled by this project."
-      >
-        <button
-          type="button"
-          onClick={onEditTimeBlock}
-          data-testid="project-time-block"
-          className="border-border text-foreground hover:bg-accent flex h-[26px] shrink-0 items-center rounded-[5px] border px-2 text-sm"
-        >
-          {block ?? <span className="text-muted-foreground">Set up…</span>}
-        </button>
-      </SettingRow>
+      <ProjectTimeBlock project={project} />
 
       <DangerZone
         label="Delete this project"
@@ -268,10 +231,10 @@ export function TypesSection({
             testPrefix="type"
             autoFocus={focusNew}
             disabled={!itemTypesAvailable}
-            // The store silently no-ops on a bad slug, so the button has to know
-            // the same rules or the row would swallow a name with no feedback at
-            // all. Phase 3 makes these rules speak.
-            canAdd={(name) => isSlugFree(slugForLabel(name), itemTypes)}
+            // The store silently no-ops on a bad slug, so the row has to know
+            // the same rules — and now say them out loud rather than greying a
+            // button and leaving the user to guess.
+            validate={(name) => slugProblem(name, itemTypes)}
             onAdd={(name, icon) => {
               const slug = slugForLabel(name);
               addItemType({
@@ -362,20 +325,51 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
         color={type.color}
         label="Item type"
         testPrefix="type"
-        editable={false}
-        // Honest about WHICH part is permanent. The slug really is forever — it
-        // is the value in items.type. The label is editable in the store and
-        // only ever travels WITH its plural, which is why it waits for the pair
-        // of fields rather than shipping half of a rename.
-        parkedNote={`The slug “${type.name}” is permanent — it is what your items are stored as. Renaming the label, and its plural with it, lands next.`}
+        // Editable, unlike projects and habit groups: a type's children point at
+        // its SLUG, not its label, so renaming the label orphans nothing. The
+        // slug itself is what is permanent, and the meta line shows it.
+        editable
         meta={
           <>
             Item type · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'} ·{' '}
             <span className="font-mono">{type.name}</span>
           </>
         }
-        onPatch={(patch) => updateItemType(type.id, renameIconKey(patch, 'icon'))}
+        onPatch={(patch) => {
+          const next = renameIconKey(patch, 'icon');
+          if (patch.name === undefined) {
+            updateItemType(type.id, next);
+            return;
+          }
+          // The label and its plural travel TOGETHER, and this is the whole
+          // reason the pair shipped at once rather than the label alone: rename
+          // "Goal" to "Objective" and leave the plural at "Goals", and every
+          // list header in the app reads "Objective / Goals" with no control
+          // anywhere to fix it.
+          //
+          // Only an untouched plural follows. Once someone has written "People"
+          // for "Person", a later rename must not silently overwrite it — the
+          // irregular plural is exactly the thing this field exists to hold.
+          const auto = type.labelPlural === `${type.label}s`;
+          updateItemType(type.id, {
+            ...next,
+            label: patch.name,
+            ...(auto && { labelPlural: `${patch.name}s` }),
+          });
+        }}
       />
+
+      <div className="bg-border my-4 h-px" />
+
+      <SettingRow label="Plural" description="Used wherever more than one is counted.">
+        <BufferedInput
+          value={type.labelPlural ?? `${type.label}s`}
+          testId="type-plural"
+          ariaLabel="Item type plural"
+          className="w-[160px]"
+          onCommit={(next) => updateItemType(type.id, { labelPlural: next })}
+        />
+      </SettingRow>
 
       <DangerZone
         label="Delete this type"
@@ -627,9 +621,30 @@ const slugForLabel = (label: string) =>
 
 const RESERVED_TYPE_NAMES = ['task', 'habit', 'custom'];
 
-/** The store's own rules, restated so the button can refuse before it writes. */
-const isSlugFree = (slug: string, existing: ItemTypeDef[]) =>
-  !!slug &&
-  /^[a-z][a-z0-9_-]{0,31}$/.test(slug) &&
-  !RESERVED_TYPE_NAMES.includes(slug) &&
-  !existing.some((t) => t.name === slug);
+/**
+ * The store's own rules, restated so the row can refuse BEFORE it writes — and
+ * say which rule was broken.
+ *
+ * `addItemType` enforces all of these by returning early and writing nothing, so
+ * without this the field would clear, no type would appear, and nothing on
+ * screen would explain why. Each branch names the actual slug, because the slug
+ * is derived from what was typed and the derivation is where the surprise is:
+ * "Side Quest" becoming `side-quest` is obvious in hindsight and invisible
+ * before it.
+ */
+function slugProblem(label: string, existing: ItemTypeDef[]): string | null {
+  const slug = slugForLabel(label);
+  if (!slug) return 'Use some letters or numbers.';
+  if (!/^[a-z]/.test(slug)) return 'Start with a letter.';
+  if (!/^[a-z][a-z0-9_-]{0,31}$/.test(slug)) {
+    return slug.length > 32 ? 'A bit shorter — 32 characters at most.' : 'Letters, numbers and dashes.';
+  }
+  if (RESERVED_TYPE_NAMES.includes(slug)) return `“${slug}” is a built-in name — pick another.`;
+  const clash = existing.find((t) => t.name === slug);
+  if (clash) {
+    return clash.label.toLowerCase() === label.toLowerCase()
+      ? `You already have a type called “${clash.label}”.`
+      : `“${clash.label}” already uses the name “${slug}”.`;
+  }
+  return null;
+}

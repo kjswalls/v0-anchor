@@ -4,7 +4,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { accentColorForName } from '@/lib/accent-colors';
-import type { Item, Program, Routine } from '@/lib/planner-types';
+import type { Item, Program, Project, Routine } from '@/lib/planner-types';
 
 /**
  * The Organize console's SECTION BODIES (memory/plans/organize-console.md,
@@ -460,19 +460,177 @@ describe('the label sections', () => {
     expect(screen.getByText(/Renaming is parked/)).toBeInTheDocument();
   });
 
-  it('refuses a reserved or duplicate item-type slug', () => {
+  it('refuses a reserved or duplicate item-type slug, and SAYS why', () => {
+    // The dialog this replaced greyed the button out and explained nothing, so
+    // the only way to learn the rules was to fail at them.
     seed({ itemTypes: [{ id: 't1', name: 'goal', label: 'Goal', labelPlural: 'Goals' }] });
     open('types');
     const field = id('type-new-name');
 
     fireEvent.change(field, { target: { value: 'Task' } });
     expect(id('type-add')).toBeDisabled();
+    expect(id('type-new-problem')).toHaveTextContent('“task” is a built-in name');
 
     fireEvent.change(field, { target: { value: 'Goal' } });
-    expect(id('type-add')).toBeDisabled();
+    expect(id('type-new-problem')).toHaveTextContent('You already have a type called “Goal”');
+
+    // The derivation is where the surprise is, so the message names the slug.
+    fireEvent.change(field, { target: { value: '99 Bottles' } });
+    expect(id('type-new-problem')).toHaveTextContent('Start with a letter');
 
     fireEvent.change(field, { target: { value: 'Side Quest' } });
+    expect(maybe('type-new-problem')).toBeNull();
     expect(id('type-add')).not.toBeDisabled();
+  });
+
+  it('says nothing about an empty field', () => {
+    // A resting state is not an error.
+    seed({ itemTypes: [] });
+    open('types');
+    expect(maybe('type-new-problem')).toBeNull();
+    fireEvent.change(id('type-new-name'), { target: { value: '   ' } });
+    expect(maybe('type-new-problem')).toBeNull();
+  });
+
+  it('carries an auto-derived plural through a rename, but never a custom one', () => {
+    seed({
+      itemTypes: [
+        { id: 't1', name: 'goal', label: 'Goal', labelPlural: 'Goals' },
+        { id: 't2', name: 'person', label: 'Person', labelPlural: 'People' },
+      ],
+    });
+    open('types');
+
+    // "Goals" is exactly `${label}s`, so it was never touched — it follows.
+    fireEvent.click(screen.getAllByTestId('type-row')[0]);
+    const name = id('type-name-input') as HTMLInputElement;
+    fireEvent.change(name, { target: { value: 'Objective' } });
+    fireEvent.keyDown(name, { key: 'Enter' });
+    let t = usePlannerStore.getState().itemTypes.find((x) => x.id === 't1')!;
+    expect(t.label).toBe('Objective');
+    expect(t.labelPlural).toBe('Objectives');
+    // The slug is what items are stored as, and never moves.
+    expect(t.name).toBe('goal');
+
+    // "People" is irregular — someone chose it, so a rename must not clobber it.
+    fireEvent.click(screen.getAllByTestId('type-row')[1]);
+    const name2 = id('type-name-input') as HTMLInputElement;
+    fireEvent.change(name2, { target: { value: 'Human' } });
+    fireEvent.keyDown(name2, { key: 'Enter' });
+    t = usePlannerStore.getState().itemTypes.find((x) => x.id === 't2')!;
+    expect(t.label).toBe('Human');
+    expect(t.labelPlural).toBe('People');
+  });
+
+  it('edits the plural on its own, buffered on Enter', () => {
+    seed({ itemTypes: [{ id: 't1', name: 'goal', label: 'Goal', labelPlural: 'Goals' }] });
+    open('types');
+    click('type-row');
+    const field = id('type-plural') as HTMLInputElement;
+
+    fireEvent.change(field, { target: { value: 'Goalz' } });
+    // Not yet — a keystroke is not a decision.
+    expect(usePlannerStore.getState().itemTypes[0].labelPlural).toBe('Goals');
+
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().itemTypes[0].labelPlural).toBe('Goalz');
+  });
+});
+
+/* ── the project time block ───────────────────────────────────────────── */
+
+describe('the project time block', () => {
+  const project = (extra: Partial<Project> = {}): Project => ({
+    id: 'pr1',
+    name: 'Work',
+    emoji: 'icon:Briefcase',
+    ...extra,
+  });
+
+  const openProject = (p: Project) => {
+    seed({ projects: [p] });
+    open('projects');
+    click('project-row');
+  };
+
+  it('writes all three fields the grid needs when switched on', () => {
+    // lib/day-items.ts renders a block only when startTime, timeBucket AND
+    // repeatFrequency all hold. Writing two of three leaves the switch reading
+    // on with nothing on the grid.
+    openProject(project());
+    expect(maybe('project-start-time')).toBeNull();
+
+    click('project-block-toggle');
+    const p = usePlannerStore.getState().projects[0];
+    expect(p.timeBucket).toBe('morning');
+    expect(p.startTime).toBe('05:00');
+    expect(p.repeatFrequency).toBe('daily');
+  });
+
+  it('remembers the setup when switched off', () => {
+    // Off clears only what the predicate reads. Throwing away the duration and
+    // the repeat would make the switch a destructive control with no warning.
+    openProject(
+      project({ timeBucket: 'evening', startTime: '19:00', duration: 90, repeatFrequency: 'weekdays' })
+    );
+    click('project-block-toggle');
+    const p = usePlannerStore.getState().projects[0];
+    expect(p.startTime).toBeUndefined();
+    expect(p.timeBucket).toBeUndefined();
+    expect(p.duration).toBe(90);
+    expect(p.repeatFrequency).toBe('weekdays');
+  });
+
+  it('moves the start time with the part of day', () => {
+    // A 5am start filed under Evening is a block the grid draws outside its band.
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', repeatFrequency: 'daily' }));
+    click('project-bucket-evening');
+    const p = usePlannerStore.getState().projects[0];
+    expect(p.timeBucket).toBe('evening');
+    expect(p.startTime).toBe('17:00');
+  });
+
+  it('buffers the custom duration instead of writing every digit', () => {
+    // Live-binding would write `6` on the way to `60` and put a six-minute block
+    // on the grid for as long as it takes to type the second digit.
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', duration: 25, repeatFrequency: 'daily' }));
+    const field = id('project-duration-custom') as HTMLInputElement;
+
+    fireEvent.change(field, { target: { value: '5' } });
+    expect(usePlannerStore.getState().projects[0].duration).toBe(25);
+    fireEvent.change(field, { target: { value: '50' } });
+    fireEvent.blur(field);
+    expect(usePlannerStore.getState().projects[0].duration).toBe(50);
+  });
+
+  it('refuses a duration that is not a positive number', () => {
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', duration: 25, repeatFrequency: 'daily' }));
+    const field = id('project-duration-custom') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '0' } });
+    fireEvent.blur(field);
+    expect(usePlannerStore.getState().projects[0].duration).toBe(25);
+    expect(field.value).toBe('25');
+  });
+
+  it('keeps a legacy “weekly” project editable', () => {
+    // The DB really holds 'weekly' on old rows even though Project's type has no
+    // such member — day-items.ts routes it to the arm that reads repeatDays, so
+    // it renders on the grid. Hiding the day grid would leave the user looking
+    // at a block they can neither see the days of nor change.
+    openProject(
+      project({
+        timeBucket: 'morning',
+        startTime: '09:00',
+        repeatFrequency: 'weekly' as Project['repeatFrequency'],
+        repeatDays: [1, 3],
+      })
+    );
+    expect(id('project-days')).toBeInTheDocument();
+    expect(id('project-day-1')).toHaveAttribute('aria-pressed', 'true');
+    expect(id('project-day-2')).toHaveAttribute('aria-pressed', 'false');
+
+    click('project-day-2');
+    expect(usePlannerStore.getState().projects[0].repeatDays).toEqual([1, 2, 3]);
   });
 });
 

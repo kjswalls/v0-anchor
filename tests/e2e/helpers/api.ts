@@ -277,10 +277,30 @@ export async function cleanupTestData(
  * actually reporting.
  */
 export async function cleanupTestCollections(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['programs', 'routines'], prefix);
+}
+
+/**
+ * The same sweep for the LABEL tables, which the Organize console can now create
+ * and which nothing swept before — projects, habit groups and custom item types.
+ *
+ * Separate from cleanupTestCollections rather than folded into it so an existing
+ * spec's `afterEach` cannot start hard-DELETEing rows it never made.
+ *
+ * `item_types.name` is a SLUG, so the prefix is lowercased for that table: the
+ * console derives `e2e_org_goal_x1` from a typed `e2e_org_Goal_x1`, and a
+ * case-sensitive startsWith would leave every custom type behind.
+ */
+export async function cleanupTestLabels(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['projects', 'habit_groups'], prefix);
+  await sweepByNamePrefix(['item_types'], prefix.toLowerCase());
+}
+
+async function sweepByNamePrefix(tables: string[], prefix: string): Promise<void> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SECRET_KEY!;
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  for (const table of ['programs', 'routines']) {
+  for (const table of tables) {
     try {
       // Read then delete by id, rather than pushing the prefix into a LIKE.
       // `_` is a single-character WILDCARD in SQL LIKE and TEST_TITLE_PREFIX is

@@ -322,7 +322,7 @@ export function DraftRow({
   addLabel,
   testPrefix,
   disabled,
-  canAdd,
+  validate,
   autoFocus,
   onAdd,
 }: {
@@ -332,12 +332,16 @@ export function DraftRow({
   /** Creation is unavailable (feature flag off, or the store is still loading). */
   disabled?: boolean;
   /**
-   * Extra per-name validity beyond "not blank" — item types use it for the slug
-   * rules (shape, reserved words, uniqueness). Phase 3 makes those rules SPEAK;
-   * until then this only greys the button out, which is what the dialog it
-   * replaces does today.
+   * Why this name cannot be used, or null. Item types use it for the slug rules
+   * (shape, reserved words, uniqueness).
+   *
+   * IT RETURNS A SENTENCE, not a boolean, and that is the whole point. The
+   * dialog this replaced disabled the add button silently, so typing "Task" — a
+   * reserved slug — produced a dead button and no explanation anywhere on the
+   * screen. A rule the user cannot see is a rule they can only discover by
+   * failing.
    */
-  canAdd?: (name: string) => boolean;
+  validate?: (name: string) => string | null;
   autoFocus?: boolean;
   onAdd: (name: string, icon: string | undefined) => void;
 }) {
@@ -346,7 +350,10 @@ export function DraftRow({
   const ref = useRef<HTMLInputElement>(null);
 
   const trimmed = name.trim();
-  const valid = !!trimmed && !disabled && (!canAdd || canAdd(trimmed));
+  // Only speaks once there is something to judge — an empty field is not an
+  // error, it is the resting state.
+  const problem = trimmed && validate ? validate(trimmed) : null;
+  const valid = !!trimmed && !disabled && !problem;
 
   // Rung: clearing a half-typed name is a step back; leaving is the next one.
   useEscapeRung(() => {
@@ -363,32 +370,137 @@ export function DraftRow({
   };
 
   return (
-    <div className="border-border flex h-11 shrink-0 items-center gap-2 border-t px-[15px]">
-      <IconPicker value={icon} name={name} onSelect={setIcon} />
-      <Input
-        ref={ref}
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') submit();
-        }}
-        aria-label={`${addLabel} name`}
-        data-testid={`${testPrefix}-new-name`}
-        className="h-[26px] flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
-      />
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!valid}
-        aria-label={addLabel}
-        data-testid={`${testPrefix}-add`}
-        className="bg-surface-3 text-muted-foreground hover:text-foreground hover-wash flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] disabled:opacity-40"
-      >
-        <Plus className="h-3 w-3" />
-      </button>
+    <div className="border-border shrink-0 border-t">
+      <div className="flex h-11 items-center gap-2 px-[15px]">
+        <IconPicker value={icon} name={name} onSelect={setIcon} />
+        <Input
+          ref={ref}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submit();
+          }}
+          aria-label={`${addLabel} name`}
+          data-testid={`${testPrefix}-new-name`}
+          aria-invalid={!!problem || undefined}
+          aria-describedby={problem ? `${testPrefix}-new-problem` : undefined}
+          className="h-[26px] flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!valid}
+          aria-label={addLabel}
+          data-testid={`${testPrefix}-add`}
+          className="bg-surface-3 text-muted-foreground hover:text-foreground hover-wash flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] disabled:opacity-40"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </div>
+      {/* Below the row, not in a tooltip and not in a toast: the sentence has to
+          be readable at the moment the button refuses, next to the field it is
+          about. It appears only while a name is actually rejected, so the
+          settled row keeps its 44px. */}
+      {problem && (
+        <p
+          id={`${testPrefix}-new-problem`}
+          data-testid={`${testPrefix}-new-problem`}
+          className="text-muted-foreground px-[15px] pb-2 text-xs"
+        >
+          {problem}
+        </p>
+      )}
     </div>
+  );
+}
+
+/* ── a buffered field ─────────────────────────────────────────────────── */
+
+/**
+ * A text or number input that commits on blur and on Enter, never per keystroke.
+ *
+ * THE CONSOLE'S SAVE RULE, half of it: discrete controls (a switch, a segment, a
+ * select, a swatch) patch live, because one gesture is one decision and one undo
+ * entry. Anything you TYPE buffers, because every keystroke would otherwise be
+ * its own history entry and its own PATCH — renaming a project would evict the
+ * user's real undo stack, and `duration: 6` would be written on the way to 60.
+ *
+ * Escape reverts and is a rung of the ladder, so backing out of a half-typed
+ * value does not also collapse the plate. `validate` rejects a value outright
+ * (blank, NaN, out of range); a rejected commit restores what was there.
+ */
+export function BufferedInput({
+  value,
+  onCommit,
+  validate,
+  type = 'text',
+  testId,
+  ariaLabel,
+  placeholder,
+  className,
+  ...rest
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  /** Return false to reject — the field snaps back to `value`. */
+  validate?: (next: string) => boolean;
+  type?: 'text' | 'time' | 'number';
+  testId: string;
+  ariaLabel: string;
+  placeholder?: string;
+  className?: string;
+} & Omit<React.ComponentProps<'input'>, 'value' | 'onChange' | 'type' | 'className'>) {
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLInputElement>(null);
+
+  // Render-phase reset, so a value changed elsewhere (undo, a sibling control)
+  // lands in the field without a frame of the stale one.
+  const [last, setLast] = useState(value);
+  if (last !== value) {
+    setLast(value);
+    setDraft(value);
+  }
+
+  const commit = () => {
+    const next = draft.trim();
+    if (!next || next === value || (validate && !validate(next))) {
+      setDraft(value);
+      return;
+    }
+    onCommit(next);
+  };
+
+  useEscapeRung(() => {
+    if (draft === value || document.activeElement !== ref.current) return false;
+    setDraft(value);
+    return true;
+  });
+
+  return (
+    <input
+      {...rest}
+      ref={ref}
+      type={type}
+      value={draft}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      data-testid={testId}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+          e.currentTarget.blur();
+        }
+      }}
+      className={cn(
+        'border-border bg-background text-foreground focus-visible:outline-ring h-[26px] rounded-[5px] border px-2 text-sm focus-visible:outline-1 focus-visible:outline-solid',
+        className
+      )}
+    />
   );
 }
 

@@ -721,6 +721,46 @@ requires it today.
 
 ### Phase 3 — Labels get depth, and the filter
 
+**Status 2026-08-12 — built. 854 unit tests, lint 0 errors, tsc clean.**
+`EditProjectDialog` is absorbed into `project-time-block.tsx` and **deleted**, ending the
+modal-inside-a-modal. Item types gained label AND plural editing; slug validation speaks.
+The section filter arrived early, in Phase 2.
+
+**Absorbing it fixed three TypeScript errors that had been sitting in the file** — and the
+reason they were there matters. `RepeatFrequency` has no `'weekly'`, so
+`repeatFrequency === 'weekly'` was flagged as impossible; but `lib/day-items.ts:182` says
+`'weekly' comes through the DB as free text on some rows`. The type lies about the data.
+The new component therefore asks **"is this value day-driven?"** (`isDayDriven` — anything
+NOT in `none|daily|weekdays|weekends|monthly`), which mirrors day-items.ts's `default` arm
+exactly. Hard-coding `=== 'custom'` would have rendered a legacy row's block on the grid
+while hiding the only control that says which days, leaving it uneditable forever. The
+repeat `<Select>` also keeps an unrecognised stored value as a selectable option, because
+Radix renders an EMPTY trigger when the value matches no item — "weekly" would have read
+as "no repeat".
+
+**The save contract converted as specced.** Discrete controls patch live; text and number
+inputs buffer on blur and Enter (`BufferedInput`). The custom-minutes field is the one
+this protects: live-binding writes `6` on the way to `60` and puts a six-minute block on
+the grid for as long as the second digit takes.
+
+**Two behaviours are new rather than moved.** The time-block switch writes all THREE fields
+the resolver needs (`startTime`, `timeBucket`, `repeatFrequency`) — the old form could
+leave `repeatFrequency` unset and the switch would read on with nothing on the grid. And
+turning it OFF now clears only the two fields the predicate reads, so the duration and the
+repeat survive: the old form wrote `undefined` across all of them, making the toggle
+quietly destructive.
+
+**Renaming an item type carries its plural, but only an untouched one.** `labelPlural`
+follows a rename when it is still exactly `${label}s`; once someone has written "People"
+for "Person", a later rename leaves it alone. That pair is why label editing waited for
+the plural field instead of shipping alone.
+
+*Gate status:* `tests/e2e/organize.spec.ts` is **written but NEVER EXECUTED** — the
+worktree has no `.env.test` and no Supabase access, so nothing has run it. Treat it as a
+draft that needs one green run before it means anything. `cleanupTestLabels` is new
+alongside it: `cleanupTestCollections` only ever swept `routines`/`programs`, so a spec
+creating projects would have littered the shared test user every run.
+
 Absorb `EditProjectDialog` into the project detail and **delete it**, ending a
 modal-inside-a-modal. Convert its buffered `Cancel`/`Save Changes` contract to the
 console's single save rule — **discrete controls patch live, every text and number input

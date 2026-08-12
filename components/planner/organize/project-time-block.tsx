@@ -1,0 +1,285 @@
+'use client';
+
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { usePlannerStore } from '@/lib/planner-store';
+import { currentDayOfWeek } from '@/lib/recurrence';
+import { WEEKDAY_LABELS } from '@/lib/planner-types';
+import { Segmented, SegmentedOption, SettingRow } from './primitives';
+import { BufferedInput } from './detail-parts';
+import { cn } from '@/lib/utils';
+import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
+
+/**
+ * A project's repeating block on the grid.
+ *
+ * ABSORBED FROM EditProjectDialog, which is deleted in the same commit — it was
+ * a 425px modal opened from inside a 938px modal, and the only thing it did that
+ * the detail pane cannot is offer a Cancel.
+ *
+ * THE SAVE CONTRACT CHANGED, deliberately. That dialog buffered EVERYTHING
+ * behind `Cancel` / `Save Changes`; this patches discrete controls live and
+ * buffers only what you type (see BufferedInput). The net for the user is
+ * better, not worse: the old Cancel could only discard the whole form, while ⌘Z
+ * and the undo toast now step back through individual changes — which the
+ * buffered form never offered at all, because it wrote once on Save.
+ *
+ * THE PREDICATE THIS DRIVES lives in lib/day-items.ts: a project renders a block
+ * only when `startTime && timeBucket && repeatFrequency` all hold. That is why
+ * the switch clears `timeBucket` and `startTime` and deliberately leaves
+ * `duration` and the repeat fields alone — turning the block off must not throw
+ * away how it was set up, and nothing reads those fields while the block is off.
+ */
+
+const BUCKETS: { value: TimeBucket; label: string; defaultTime: string }[] = [
+  { value: 'morning', label: 'Morning', defaultTime: '05:00' },
+  { value: 'afternoon', label: 'Afternoon', defaultTime: '12:00' },
+  { value: 'evening', label: 'Evening', defaultTime: '17:00' },
+];
+
+const REPEATS: { value: RepeatFrequency; label: string }[] = [
+  { value: 'daily', label: 'Every day' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekends', label: 'Weekends' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'custom', label: 'Chosen days' },
+];
+
+/**
+ * `none` is absent on purpose. A block with no repeat renders on no day —
+ * day-items.ts's switch sends it to the `default` arm, which reads `repeatDays`,
+ * and a `none` project has none — so offering it would be an option that
+ * silently means "off" while the switch above still reads on.
+ */
+
+const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
+
+const durationLabel = (m: number) =>
+  m < 60 ? `${m} minutes` : m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minutes`;
+
+/**
+ * Which repeat values are driven by the DAY GRID.
+ *
+ * Mirrors lib/day-items.ts exactly rather than testing `=== 'custom'`: that
+ * switch routes every UNRECOGNISED value to a `default` arm that reads
+ * `repeatDays`, and the DB really does hold such values — `'weekly'` survives on
+ * legacy rows as free text, which is why the dialog this replaces carried three
+ * `=== 'weekly'` comparisons that TypeScript flagged as impossible (Project's
+ * type has no such member). Testing "not one of the known non-day values"
+ * instead of "is custom" keeps those rows editable; hard-coding `custom` would
+ * render their block on the grid while hiding the only control that says which
+ * days, and the user could neither see nor change it.
+ */
+const NON_DAY_REPEATS = ['none', 'daily', 'weekdays', 'weekends', 'monthly'];
+const isDayDriven = (freq: string | undefined) => !!freq && !NON_DAY_REPEATS.includes(freq);
+
+export function ProjectTimeBlock({ project }: { project: Project }) {
+  const updateProject = usePlannerStore((s) => s.updateProject);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+
+  const patch = (updates: Partial<Omit<Project, 'id'>>) => updateProject(project.id, updates);
+
+  const on = !!project.startTime && !!project.timeBucket;
+  const bucket = project.timeBucket ?? 'morning';
+  const duration = project.duration ?? 60;
+  const repeat = project.repeatFrequency ?? 'daily';
+  const days = project.repeatDays ?? [];
+  const isPreset = DURATIONS.includes(duration);
+
+  return (
+    <>
+      <SettingRow label="Time block" description="A repeating slot on the grid, held for this project.">
+        <Switch
+          checked={on}
+          data-testid="project-block-toggle"
+          aria-label="Time block"
+          onCheckedChange={(next) =>
+            patch(
+              next
+                ? {
+                    timeBucket: bucket,
+                    startTime: project.startTime ?? bucketDefault(bucket),
+                    // The third field the resolver needs. Without it the switch
+                    // reads on and the grid shows nothing.
+                    repeatFrequency: project.repeatFrequency ?? 'daily',
+                  }
+                : { timeBucket: undefined, startTime: undefined }
+            )
+          }
+        />
+      </SettingRow>
+
+      {on && (
+        <>
+          <SettingRow label="Part of day">
+            <Segmented>
+              {BUCKETS.map((b) => (
+                <SegmentedOption
+                  key={b.value}
+                  active={bucket === b.value}
+                  testId={`project-bucket-${b.value}`}
+                  // Moves the start time to the new bucket's opening, because a
+                  // 5am start filed under Evening is a block the grid draws
+                  // outside its own band.
+                  onClick={() => patch({ timeBucket: b.value, startTime: b.defaultTime })}
+                >
+                  {b.label}
+                </SegmentedOption>
+              ))}
+            </Segmented>
+          </SettingRow>
+
+          <SettingRow label="Starts">
+            <BufferedInput
+              type="time"
+              value={project.startTime ?? bucketDefault(bucket)}
+              testId="project-start-time"
+              ariaLabel="Start time"
+              className="w-[104px] font-num"
+              onCommit={(next) => patch({ startTime: next })}
+            />
+          </SettingRow>
+
+          <SettingRow label="For">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Select
+                value={isPreset ? String(duration) : 'custom'}
+                onValueChange={(v) => {
+                  // Switching to Custom writes nothing — it reveals the field.
+                  // Writing a placeholder here would put a number on the grid
+                  // the user never chose.
+                  if (v !== 'custom') patch({ duration: Number(v) });
+                }}
+              >
+                <SelectTrigger className="h-[26px] w-[132px] text-sm" data-testid="project-duration">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DURATIONS.map((m) => (
+                    <SelectItem key={m} value={String(m)}>
+                      {durationLabel(m)}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="custom">Custom…</SelectItem>
+                </SelectContent>
+              </Select>
+              {!isPreset && (
+                <BufferedInput
+                  type="number"
+                  min={1}
+                  value={String(duration)}
+                  testId="project-duration-custom"
+                  ariaLabel="Duration in minutes"
+                  className="w-[72px] font-num"
+                  // The field this rule exists for: live-binding it would write
+                  // `6` on the way to `60` and put a six-minute block on the grid
+                  // for as long as it takes to type the second digit.
+                  validate={(next) => Number.isFinite(Number(next)) && Number(next) > 0}
+                  onCommit={(next) => patch({ duration: Number(next) })}
+                />
+              )}
+            </div>
+          </SettingRow>
+
+          <SettingRow label="Repeats">
+            <Select
+              value={repeat}
+              onValueChange={(v) => {
+                const freq = v as RepeatFrequency;
+                // Landing on the day grid with nothing chosen would show a block
+                // that renders on no day at all, so today is pre-selected — but
+                // only when there is nothing to preserve.
+                const seed =
+                  isDayDriven(freq) && days.length === 0
+                    ? [currentDayOfWeek(userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)]
+                    : undefined;
+                patch({ repeatFrequency: freq, ...(seed && { repeatDays: seed }) });
+              }}
+            >
+              <SelectTrigger className="h-[26px] w-[132px] text-sm" data-testid="project-repeat">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REPEATS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+                {/* A legacy value kept selectable so the row does not render an
+                    empty trigger. Radix Select shows nothing when the value
+                    matches no item, which would read as "no repeat" for a
+                    project that repeats every week. */}
+                {!REPEATS.some((r) => r.value === repeat) && (
+                  <SelectItem value={repeat}>{repeat} (as saved)</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </SettingRow>
+
+          {isDayDriven(repeat) && (
+            <SettingRow label="On">
+              <div className="flex shrink-0 gap-1" data-testid="project-days">
+                {WEEKDAY_LABELS.map((day, index) => (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-pressed={days.includes(index)}
+                    aria-label={day}
+                    data-testid={`project-day-${index}`}
+                    onClick={() =>
+                      patch({
+                        repeatDays: days.includes(index)
+                          ? days.filter((d) => d !== index)
+                          : [...days, index].sort((a, b) => a - b),
+                      })
+                    }
+                    className={cn(
+                      'h-[26px] w-[26px] rounded-[5px] text-2xs font-medium',
+                      days.includes(index)
+                        ? 'bg-surface-2 text-foreground shadow-[var(--shadow-elev-sm)]'
+                        : 'bg-surface-3 text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </SettingRow>
+          )}
+
+          {repeat === 'monthly' && (
+            <SettingRow
+              label="Day of month"
+              description="Months that are shorter use their last day."
+            >
+              <Select
+                value={String(project.repeatMonthDay ?? 1)}
+                onValueChange={(v) => patch({ repeatMonthDay: Number(v) })}
+              >
+                <SelectTrigger className="h-[26px] w-[72px] text-sm" data-testid="project-month-day">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <SelectItem key={d} value={String(d)}>
+                      {d}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SettingRow>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+const bucketDefault = (bucket: TimeBucket) =>
+  BUCKETS.find((b) => b.value === bucket)?.defaultTime ?? '05:00';
