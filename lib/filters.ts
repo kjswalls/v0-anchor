@@ -74,9 +74,20 @@ export const EMPTY_VIEW_FILTERS: ViewFilters = {
  * carries `projects`/`hideCompleted`, so without this every existing install
  * reads `filters.containers` as `undefined` and `.length` throws.
  *
- * Legacy `projects` held bare names which were project names by construction,
- * so they map into the `project:` namespace. An already-prefixed value passes
- * through untouched, which makes this safe to re-run.
+ * Legacy `projects` held bare names which were project names by construction —
+ * both writers stored `project.name` verbatim — so they map into the `project:`
+ * namespace UNCONDITIONALLY.
+ *
+ * Not "unless it already looks prefixed". Project names are unvalidated free
+ * text (manage-categories only trims; there is no CHECK constraint), so a
+ * project called "Client: Acme" would fail a contains-a-colon test and be left
+ * bare — after which `projectNamesFrom` drops it, the project filter silently
+ * stops narrowing, and the habits-wipe stops firing, while the trigger still
+ * counts it as one active clause. The filter reads as active and does nothing.
+ *
+ * Re-run safety comes from branch ORDER, not from inspecting the value: output
+ * always carries `containers`, so a second pass takes the first branch and
+ * never reaches here.
  */
 export function normalizeFilters(raw: unknown): ViewFilters {
   if (!raw || typeof raw !== 'object') return { ...EMPTY_VIEW_FILTERS };
@@ -85,9 +96,7 @@ export function normalizeFilters(raw: unknown): ViewFilters {
   const containers = Array.isArray(f.containers)
     ? (f.containers as string[])
     : Array.isArray(f.projects)
-      ? (f.projects as string[]).map((name) =>
-          name.includes(':') ? name : containerRef('project', name)
-        )
+      ? (f.projects as string[]).map((name) => containerRef('project', name))
       : [];
 
   return {

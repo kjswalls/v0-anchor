@@ -162,8 +162,38 @@ interface PlannerStore {
    * specific bucket); omitted, each item keeps its current bucket.
    */
   moveTasksToDate: (ids: string[], dateStr: string, bucket?: TimeBucket) => void;
-  /** Batched unscheduleTask — one set(), one history entry, one undo. */
-  unscheduleTasks: (ids: string[]) => void;
+  /**
+   * Batched unscheduleTask — one set(), one history entry, one undo.
+   *
+   * `opts.label` overrides the history entry's text, which is also what decides
+   * whether the undo toast fires (hooks/use-undo-toast.ts matches on prefix).
+   * Only the auto-age sweep passes it, and only to stand the toast down; see
+   * the note at the implementation.
+   */
+  unscheduleTasks: (ids: string[], opts?: { label?: string }) => void;
+  /**
+   * Put scheduling fields back on specific rows — the forward-facing inverse of
+   * `unscheduleTasks`, addressed at ids rather than at the top of the history
+   * stack.
+   *
+   * This exists because "undo" and "put those back" stop being the same thing
+   * within seconds. An undo toast can pop the stack safely because it lives for
+   * five seconds and nothing else has happened yet. A receipt that persists —
+   * the dock's line for the overnight sweep — cannot: by the time it is read,
+   * the sweep is buried under everything the user has done since, and a pop
+   * would reverse the wrong action entirely. Restoring recorded field values is
+   * the same outcome, still one set() and so still itself undoable, but correct
+   * no matter how long the offer sat there.
+   */
+  restoreScheduling: (
+    entries: readonly {
+      id: string;
+      isScheduled: boolean;
+      startDate?: string;
+      timeBucket?: string;
+      startTime?: string;
+    }[]
+  ) => void;
   reorderTasks: (taskIds: string[]) => void;
 
   // Multi-select bulk actions (any kind). Each does exactly ONE set() so the
@@ -1321,17 +1351,27 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       /** Batched unscheduleTask (bulk "move to Braindump", auto-age sweep). */
-      unscheduleTasks: (ids) => {
+      unscheduleTasks: (ids, opts) => {
         const idSet = new Set(ids);
         const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
         if (targets.length === 0) return;
         // The prefix must stay exactly 'Unschedule task:' — that is the string in
         // hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS. A plural 'Unschedule tasks:'
         // would NOT match its startsWith() test and the undo toast would never fire.
+        //
+        // ONE caller overrides it, and does so precisely to opt OUT of that
+        // toast: the auto-age sweep (hooks/use-overdue-sweep.ts). A five-second
+        // toast is a confirmation of something YOU just did; the sweep runs
+        // unattended, often before the tab was open, so the toast was never a
+        // receipt for it — it fired at whatever moment the app happened to
+        // load. Its receipt is a dock line that persists instead. The history
+        // entry is unaffected either way, so ⌘Z still reverses the sweep; only
+        // the toast stands down.
         setNextActionLabel(
-          targets.length === 1
-            ? `Unschedule task: ${targets[0].title}`
-            : `Unschedule task: ${targets.length} items`,
+          opts?.label ??
+            (targets.length === 1
+              ? `Unschedule task: ${targets[0].title}`
+              : `Unschedule task: ${targets.length} items`),
         );
 
         // Field-for-field identical to unscheduleTask so the single and batched
@@ -1350,6 +1390,44 @@ export const usePlannerStore = create<PlannerStore>()(
 
         targets.forEach((item) =>
           dbUpdateItem(item.id, dbTypeOf(item), updates).catch(console.error),
+        );
+      },
+
+      restoreScheduling: (entries) => {
+        // Rows the user has since deleted are silently skipped rather than
+        // resurrected: a receipt can be hours old, and "put them back" must
+        // never mean "and undelete the two you threw away in between".
+        const byId = new Map(entries.map((e) => [e.id, e]));
+        const targets = get().items.filter((i) => i.type !== 'habit' && byId.has(i.id));
+        if (targets.length === 0) return;
+
+        // 'Schedule task:' is a SIGNIFICANT_ACTIONS prefix, so this one DOES
+        // raise the undo toast — unlike the sweep it reverses. This is a thing
+        // the user just did, at a moment they were looking at the screen, which
+        // is exactly the case a five-second toast is for.
+        setNextActionLabel(
+          targets.length === 1
+            ? `Schedule task: ${targets[0].title}`
+            : `Schedule task: ${targets.length} items`,
+        );
+
+        const updatesFor = (id: string): Partial<Task> => {
+          const e = byId.get(id)!;
+          return {
+            isScheduled: e.isScheduled,
+            startDate: e.startDate,
+            timeBucket: e.timeBucket as Task['timeBucket'],
+            startTime: e.startTime,
+          };
+        };
+
+        // One set() => one history entry => one undo (see moveTasksToDate).
+        set((state) => projectItems(state.items.map((i) => (
+          i.type !== 'habit' && byId.has(i.id) ? ({ ...i, ...updatesFor(i.id) } as Item) : i
+        ))));
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item.id)).catch(console.error),
         );
       },
 
@@ -1940,7 +2018,15 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           ...projectItems(state.items.map((i) =>
-            // Custom types hold projects too — see cleanupOrphanedReferences.
+            // Custom types hold projects too, so this has to reach them: it is
+            // the ONLY live repair. cleanupOrphanedReferences below looks like
+            // a safety net and is not — it has no callers anywhere in the app.
+            //
+            // In-session only, and that is pre-existing and symmetric with
+            // removeHabitGroup: dbDeleteProject stamps projects.deleted_at and
+            // items.project is plain text with no FK and no trigger, so a
+            // reload re-reads the dead name. Name-referenced containers are the
+            // documented parked limitation (migration 024).
             i.type !== 'habit' && i.project === project?.name ? { ...i, project: undefined } : i
           )),
         }));
@@ -1966,18 +2052,31 @@ export const usePlannerStore = create<PlannerStore>()(
         return get().projects.find((p) => p.name === name);
       },
 
+      // TASK-LIKE, not 'task'. These three used findItem(id, 'task') and wrote
+      // dbUpdateItem(id, 'task', …) while every affordance that reaches them —
+      // project-block's availableTasks, its move button, and the drag arming —
+      // reads the `tasks` PROJECTION, which is `type !== 'habit'`. So a custom
+      // item rendered a live "move to block" button and a live drop target, and
+      // the verb returned state unchanged: no row moved, no DB write (db.ts
+      // filters .eq('type', type), so 'task' matches zero rows for a custom
+      // item), and the group path still reported success and cleared the
+      // selection. Armed on the way in, dead on arrival.
       moveTaskToProjectBlock: (taskId) => {
-        const moved = findItem(taskId, 'task');
+        const moved = findTaskLike(taskId);
         setNextActionLabel(`Move task into project block: ${moved?.title || 'Unknown'}`);
         // resolveDateStr = toDateStr(selectedDate, userTimezone) — the user-tz
         // day the canvas is derived against, so a machine-tz off-by-one can't
         // file this into a project block on the wrong day.
         const selectedDateStr = resolveDateStr();
         let taskUpdates: Partial<Task> | null = null;
+        let dbType = 'task';
 
         set((state) => {
-          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
+          const task = state.items.find(
+            (i) => i.id === taskId && i.type !== 'habit'
+          ) as TaskItem | undefined;
           if (!task || !task.project) return state;
+          dbType = dbTypeOf(task);
 
           const project = state.projects.find((p) => p.name === task.project);
           if (!project || !project.startTime || !project.timeBucket) return state;
@@ -1993,11 +2092,11 @@ export const usePlannerStore = create<PlannerStore>()(
           };
 
           return projectItems(state.items.map((i) =>
-            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+            i.id === taskId && i.type !== 'habit' ? { ...i, ...taskUpdates! } as Item : i
           ));
         });
 
-        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, dbType, taskUpdates).catch(console.error);
       },
 
       moveTasksToProjectBlock: (taskIds) => {
@@ -2007,10 +2106,11 @@ export const usePlannerStore = create<PlannerStore>()(
         // file this into a project block on the wrong day.
         const selectedDateStr = resolveDateStr();
         const updatesMap = new Map<string, Partial<Task>>();
+        const dbTypes = new Map<string, string>();
 
         set((state) => {
           const firstTask = state.items.find(
-            (i): i is TaskItem => i.type === 'task' && taskIds.includes(i.id)
+            (i): i is TaskItem => i.type !== 'habit' && taskIds.includes(i.id)
           );
           if (!firstTask || !firstTask.project) return state;
 
@@ -2018,7 +2118,8 @@ export const usePlannerStore = create<PlannerStore>()(
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           return projectItems(state.items.map((i) => {
-            if (i.type !== 'task' || !taskIds.includes(i.id)) return i;
+            if (i.type === 'habit' || !taskIds.includes(i.id)) return i;
+            dbTypes.set(i.id, dbTypeOf(i));
             const updates: Partial<Task> = {
               inProjectBlock: true,
               previousStartTime: i.startTime,
@@ -2034,18 +2135,22 @@ export const usePlannerStore = create<PlannerStore>()(
         });
 
         updatesMap.forEach((updates, id) =>
-          dbUpdateItem(id, 'task', updates).catch(console.error)
+          dbUpdateItem(id, dbTypes.get(id) ?? 'task', updates).catch(console.error)
         );
       },
 
       moveTaskOutOfProjectBlock: (taskId) => {
-        const moved = findItem(taskId, 'task');
+        const moved = findTaskLike(taskId);
         setNextActionLabel(`Move task out of project block: ${moved?.title || 'Unknown'}`);
         let taskUpdates: Partial<Task> | null = null;
+        let dbType = 'task';
 
         set((state) => {
-          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
+          const task = state.items.find(
+            (i) => i.id === taskId && i.type !== 'habit'
+          ) as TaskItem | undefined;
           if (!task) return state;
+          dbType = dbTypeOf(task);
           taskUpdates = {
             inProjectBlock: false,
             startTime: task.previousStartTime,
@@ -2054,11 +2159,11 @@ export const usePlannerStore = create<PlannerStore>()(
             previousStartDate: undefined,
           };
           return projectItems(state.items.map((i) =>
-            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+            i.id === taskId && i.type !== 'habit' ? { ...i, ...taskUpdates! } as Item : i
           ));
         });
 
-        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, dbType, taskUpdates).catch(console.error);
       },
 
       addHabitGroup: (name, emoji, color) => {
@@ -2086,6 +2191,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
       removeHabitGroup: (id) => {
         const group = get().habitGroups.find((g) => g.id === id);
+        // The sibling of removeProject's label, and now load-bearing: the delete
+        // confirm promises "⌘Z brings the group back", and without this the
+        // entry that undo offers is titled "Unknown action" — a correct
+        // operation the history cannot name.
+        setNextActionLabel(`Delete habit group: ${group?.name || 'Unknown'}`);
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
           ...projectItems(state.items.map((i) =>
@@ -2129,8 +2239,14 @@ export const usePlannerStore = create<PlannerStore>()(
 
         set(projectItems(state.items.map((i) => {
           // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
-          // (registry containerKind 'projects'), so the orphan sweep has to
-          // reach them or a deleted project strands them on a dead name.
+          // (registry containerKind 'projects'), so this has to reach them.
+          //
+          // NB this whole action currently has ZERO CALLERS — it is declared,
+          // implemented, and wired to nothing. Kept correct rather than deleted
+          // because the container work (memory/plans/display-menu.md, phase B)
+          // wants exactly this sweep once containers move to ids. If you wire
+          // it up, note that it only mutates state: persisting the repair needs
+          // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
           if (i.type !== 'habit' && i.project && !projectNames.has(i.project)) {
             return { ...i, project: undefined };
           }

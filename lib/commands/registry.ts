@@ -343,9 +343,10 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['unblock'],
     placeholder: 'Which task?',
     emptyLabel: 'No task is in a project block',
-    // moveTaskOutOfProjectBlock resolves against type 'task' specifically, so
-    // custom types are out even though they are otherwise task-shaped.
-    eligible: (item) => item.type === 'task' && !!item.inProjectBlock,
+    // Task-like, matching the verb: moveTaskOutOfProjectBlock resolves against
+    // findTaskLike now, so a custom item that got into a block can get out of
+    // one. It used to resolve 'task' exactly, which is why this was narrower.
+    eligible: (item) => item.type !== 'habit' && !!item.inProjectBlock,
     run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
   }),
   // Pause / Resume deliberately ignore the dateStr these predicates are handed:

@@ -57,8 +57,27 @@ describe('normalizeFilters — rehydrating a stored payload', () => {
     expect(twice.containers).toEqual(['project:Work']);
   });
 
-  it('does not re-prefix a legacy name that already looks prefixed', () => {
-    expect(normalizeFilters({ projects: ['group:health'] }).containers).toEqual(['group:health']);
+  it('prefixes a legacy name that CONTAINS a colon, rather than assuming it is a ref', () => {
+    // Project names are unvalidated free text — manage-categories only trims,
+    // and no migration adds a CHECK. A contains-a-colon test would leave this
+    // bare, `projectNamesFrom` would drop it, and the project filter would
+    // silently stop narrowing while the trigger still counted one active
+    // clause. This asserts the whole round trip, not just the prefixing.
+    const merged = normalizeFilters({ projects: ['Client: Acme', 'Work'] });
+
+    expect(merged.containers).toEqual(['project:Client: Acme', 'project:Work']);
+    expect(projectNamesFrom(merged.containers)).toEqual(['Client: Acme', 'Work']);
+  });
+
+  it('prefixes a legacy name that looks like a ref for the other namespace', () => {
+    // A project literally named "group:health" is a legal project name. Treated
+    // as an already-formed ref it would resolve to a habit GROUP — the wrong
+    // container entirely. The legacy array only ever held project names.
+    const merged = normalizeFilters({ projects: ['group:health'] });
+
+    expect(merged.containers).toEqual(['project:group:health']);
+    expect(projectNamesFrom(merged.containers)).toEqual(['group:health']);
+    expect(groupNamesFrom(merged.containers)).toEqual([]);
   });
 
   it('prefers the new field when a blob carries both', () => {
