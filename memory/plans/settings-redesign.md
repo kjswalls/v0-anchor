@@ -169,6 +169,11 @@ untouched.
 
 1. Generate the `settings.*` palette commands from the manifest (the guard test is
    already in place).
+1. **Default view is settled — last-used wins**, so the row never comes back. What's
+   left is deleting `planner-store`'s `defaultView` field, which duplicates `viewMode`
+   and has no readers, plus its hydration line in `supabase-provider`. `default_view`
+   the *column* stays: it is the cross-device mirror of the last-used view, not a
+   preference. See [deferred-settings-features.md](deferred-settings-features.md).
 2. Timezone is surfaced read-only — there is no `setUserTimezone` action, only the
    PATCH route plus a `setState` in supabase-provider. Making it editable needs both.
 3. The Look preview mounts the real `BucketCard` (safe — no dnd, reads only

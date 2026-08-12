@@ -7,9 +7,17 @@ because the feature behind them was never built, and we still want it.**
 This file holds the issue text for those six, so the intent survives the deletion. Each states
 the *real* blocker, verified against the repo — not the row that was standing in for it.
 
-**Filing:** `gh` is not installed on this machine, so these have not been filed yet. Once
-`gh auth login` is done against `kjswalls/v0-anchor`, each `##` section below is one issue
-(heading = title, body = everything under it).
+**Five are issues. One is not.** Default view was settled on 2026-08-12 — last-used wins, the
+row is gone for good, and what's left is a small cleanup rather than a feature. Its section
+stays here because the reasoning is worth more than the row was.
+
+**Filing:** `gh` 2.97.0 is installed but not authenticated, so nothing has been filed yet.
+Once `gh auth login` is done against `kjswalls/v0-anchor`, each `##` section below **except
+Default view** is one issue (heading = title, body = everything under it).
+
+Suggested order, most-load-bearing first: the EOD cron (a shipped feature that has never once
+run), then item reminders (the largest real gap), then morning check time. Notification
+preferences depends on there being notifications worth preferring; sound effects is last.
 
 ---
 
@@ -162,36 +170,66 @@ Verify the route's auth: a cron endpoint reachable without a shared secret is a 
 
 ---
 
-## Default view — make it authoritative, or delete the column
+## ~~Default view~~ — DECIDED: last-used wins. Not an issue; a small cleanup.
 
-**Removed row:** "Default view" under Calendar.
+**Removed row:** "Default view" under Calendar. **It is not coming back.**
 
 ### Why it was removed
 
-It doesn't just go unread — **the app overwrites it behind your back.**
+It didn't just go unread — **the app overwrote it behind your back.**
 
-- `lib/planner-store.ts:1902-1905` — `setViewMode()` sets `defaultView: viewMode` *and* calls
+- `lib/planner-store.ts:1980-1983` — `setViewMode()` sets `defaultView: viewMode` *and* calls
   `saveSettings(userId, { default_view: viewMode })`.
-- `lib/view-store.ts:161` — `setScope()` calls `usePlannerStore.getState().setViewMode(scope)`.
+- `lib/view-store.ts:153-157` — `setScope()` calls `usePlannerStore.getState().setViewMode(scope)`.
 
-So every flip of the day/week capsule rewrites the stored default. Whatever you picked in
-settings survives until the next time you look at a week.
+So every flip of the day/week capsule rewrote the stored "default". Whatever you picked in
+settings survived until the next time you looked at a week.
 
-Separately, `adoptedLegacy` is true for every existing user, so `view-store`'s `scope` is the
-real startup view regardless of what the column says.
+### The decision (2026-08-12)
 
-### The decision
+**Option (a): last-used wins.** Anchor opens where you left off, the setting is gone for good,
+and the mechanism stays exactly as it is — which is what Things and Notion Calendar do.
 
-Two coherent options, and the current state is neither:
+The important part: **the behaviour is already correct, and `default_view` is load-bearing.**
+It is not a dead column, it is the *cross-device mirror of the last-used view*, and the chain
+that makes it work is not obvious:
 
-- **(a) Last-used wins.** Delete the setting for good, keep the mirroring, and document that
-  Anchor opens where you left off. This is what the app does *today* and it's defensible —
-  it's what Things and Notion Calendar do.
-- **(b) A real default.** Stop `setScope` from writing `default_view`; have the shell read
-  `default_view` on cold start only. Then the settings row means something.
+1. `view-store.scope` is persisted to localStorage and is the startup view on a known device.
+2. On a **new** device localStorage is empty, so `scope` falls back to `'day'`.
+3. `supabase-provider` hydrates `planner-store.viewMode` from `default_view`.
+4. `adoptLegacyViewPrefs()` — which runs whenever `adoptedLegacy` is false, i.e. on any device
+   that has never mounted the new shell — copies `viewMode` into `scope`.
 
-If (b): note WCAG 3.2.2 — changing the setting must **not** switch the view you're currently
-looking at. It applies to the next cold start, and the row copy should say so.
+So the column is what carries "where you left off" to a second machine. **Do not drop it, and
+do not rename it** — a name in `STABLE_SETTINGS_COLUMNS` that the DB lacks makes `loadSettings`
+fall through to `DEFAULT_SETTINGS` and silently reset *every* setting for *every* user. The
+name is misleading; a comment is the correct price to pay for that, not a migration.
+
+### The cleanup that remains
+
+Small, and purely about deleting a duplicate that no longer means anything:
+
+- `lib/planner-store.ts` — delete the `defaultView` field, `setDefaultView`, the
+  `defaultView: view` writes at 744/1981, and the `partialize` entry at 2324. **It has no
+  readers**; `viewMode` does all the work. `setDefaultView` has no callers either.
+- `components/providers/supabase-provider.tsx:106` — drop the `defaultView:` hydration line.
+  Keep line 109 (`viewMode`), which is step 3 of the chain above.
+- `lib/view-store.ts:155` — the comment says "planner-store persists default_view", which is
+  true but reads like an aside. Say what it is: the cross-device last-used mirror.
+
+Both halves must land together — the store field and its hydration are one type.
+
+**Not done yet:** at time of writing a second session held `supabase-provider.tsx` and
+`view-store.ts` with uncommitted edits, so this was deliberately deferred rather than risk
+clobbering it.
+
+### Why not the other option
+
+**(b) a real default** — stop `setScope` writing the column, read it on cold start only — was
+rejected. It buys a settings row whose whole job is to answer a question the app already
+answers better by watching what you do. Recorded so nobody re-derives it. (If it ever comes
+back: WCAG 3.2.2 means changing the setting must **not** switch the view you are currently
+looking at — it applies to the next cold start, and the copy has to say so.)
 
 ---
 
