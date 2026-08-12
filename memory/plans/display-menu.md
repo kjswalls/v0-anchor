@@ -140,6 +140,30 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   browser zone differs from their setting. It matters for Phase 4 (sort by date) and 5a
   (group by day), so fix it there or before, with its own tests. The fix is to build the
   weekday from `dateStr` rather than from the `Date`.
+- **The mobile shell renders `MobileHeader` above every `activeTab` guard**
+  (`mobile-shell.tsx:55`), so anything mounted there rides all three tabs. Gate on
+  `useMobileNavStore(s => s.activeTab)`, not on the header's own existence.
+- **Mobile never reads `view.scope`.** `MobileViewRouter` dispatches on `layout` alone and
+  hardcodes `data-view-scope="day"` (`mobile-view-router.tsx:34`); `commands/registry.ts`
+  hides both scope commands there for the same reason. But `scope` PERSISTS across the
+  768px breakpoint, and `useIsMobile` is a live `matchMedia` listener — a narrowed window,
+  a snapped half-screen or a rotated tablet all reach the phone shell carrying whatever
+  scope was last set. Any mobile surface deriving behaviour from `scope` must state its
+  own instead, or it answers for a view nobody is looking at, with nothing on that surface
+  able to correct it.
+- **Nothing clears `canvasGroupBy` on a scope or layout change** (`view-store.ts:154-167`).
+  So a control that HIDES itself when the current view cannot honour grouping strands the
+  clause: the trigger keeps counting it with no row to account for it. Unhonoured values
+  stay visible and disabled with the reason on the rail — the same grammar Buckets already
+  uses. Phase 4's Ordering is the second axis with this shape; use the same rule.
+- **Don't derive an ARIA role from close-behaviour.** `ValueRow` mapped
+  `keepOpen ? menuitemcheckbox : menuitemradio`, which made the "Switch to List" ACTION a
+  sixth unselected radio among five real grouping values — in the default view, so it is
+  what a first-run screen-reader user hears. Action rows take `role="menuitem"` explicitly.
+- **A props-level test passes while the MOUNT is wrong.** Both mobile defects above lived
+  in `mobile-header.tsx`, not in `DisplayMenu`, and every component test stayed green.
+  `tests/unit/display-menu.test.tsx` now renders `MobileHeader` itself; it needs
+  `next/navigation` and `@/lib/supabase` (with an `auth` object) mocked to do so.
 - **The Ordering row is NOT in the menu yet.** Phase 3 shipped Structure(Grouping) · Filter ·
   Show · Reset; Ordering arrives with `lib/sort-rows.ts` in Phase 4. A row that renders and
   does nothing is the exact defect this project exists to remove, so it waits for its verb.

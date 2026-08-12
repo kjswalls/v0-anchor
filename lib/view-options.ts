@@ -65,22 +65,35 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<CanvasGroupBy>[] = [
 ];
 
 /**
- * Which canvas group-by values the CURRENT layout actually honours.
+ * Which canvas group-by values the CURRENT view actually honours, and why not.
  *
  * Not cosmetic: `day-list.tsx:164` passes canvasGroupBy to buildListGroups and
  * gets every branch, while `day-buckets.tsx:112` tests `=== 'project'` and
  * nothing else. So on Buckets, choosing Priority renders identically to None.
- * The Display menu keeps those values visible but disabled with the reason on
- * the rail, rather than hiding them — a menu whose contents change shape as you
- * switch layouts is harder to learn than one where a row explains itself.
  *
- * Widened by Phase 5a, which is what makes Buckets honour the rest.
+ * Returns null when the value IS honoured, or the short reason for its rail when
+ * it is not. The Display menu keeps unhonoured values visible and disabled with
+ * that reason rather than hiding them: a menu whose contents change shape as you
+ * switch layouts is harder to learn than one where a row explains itself — and a
+ * hidden row cannot account for the clause the trigger's count is still adding
+ * up, since neither setScope nor setLayout clears canvasGroupBy.
+ *
+ * Widened by Phase 5a, which is what makes Buckets and Week honour the rest.
  */
-export function groupByHonouredBy(layout: ViewLayout, value: CanvasGroupBy): boolean {
-  if (value === 'none') return true;
-  if (layout === 'list') return true;
-  if (layout === 'buckets') return value === 'project';
-  return false;
+export function groupByBlockedBy(
+  scope: ViewScope,
+  layout: ViewLayout,
+  value: CanvasGroupBy
+): string | null {
+  if (value === 'none') return null;
+  // Seven columns already spend the primary axis; a second partition inside a
+  // cell averaging two rows is decoration.
+  if (scope === 'week') return 'Day only';
+  // A row's y position IS its time, so a heading either breaks the axis or
+  // floats free of it. Phase 5b gives Schedule lanes instead of headings.
+  if (layout === 'schedule') return 'Not on Schedule';
+  if (layout === 'list') return null;
+  return value === 'project' ? null : 'List only';
 }
 
 /** The braindump's own group-by vocabulary — a different, smaller union. */

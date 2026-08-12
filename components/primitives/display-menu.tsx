@@ -41,10 +41,11 @@ import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
   TYPE_OPTIONS,
-  groupByHonouredBy,
+  groupByBlockedBy,
   type CanvasGroupBy,
 } from '@/lib/view-options';
 import type { Priority } from '@/lib/planner-types';
+import type { ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -136,6 +137,7 @@ function ValueRow({
   icon: Icon,
   rail,
   disabled,
+  role,
 }: {
   label: string;
   checked: boolean;
@@ -145,12 +147,20 @@ function ValueRow({
   icon?: LucideIcon;
   rail?: string;
   disabled?: boolean;
+  /**
+   * Overrides the checkbox/radio default for rows that are ACTIONS rather than
+   * values — "Switch to List" sits among the grouping options but selects
+   * nothing, and deriving its role from close-behaviour announced it to a screen
+   * reader as a sixth, unselected radio option in the set.
+   */
+  role?: 'menuitem';
 }) {
+  const resolvedRole = role ?? (keepOpen ? 'menuitemcheckbox' : 'menuitemradio');
   return (
     <DropdownMenuItem
       className={cn(ROW, checked && 'font-semibold')}
-      role={keepOpen ? 'menuitemcheckbox' : 'menuitemradio'}
-      aria-checked={checked}
+      role={resolvedRole}
+      aria-checked={resolvedRole === 'menuitem' ? undefined : checked}
       disabled={disabled}
       onSelect={(e) => {
         // Multi-select stays open so a three-project selection is three clicks,
@@ -209,11 +219,25 @@ export function DisplayMenu({
   surface,
   trigger = 'label',
   align = 'end',
+  scope: scopeProp,
 }: {
   surface: DisplaySurface;
   /** Labelled pill for the canvas capsule; 24px icon for the braindump header. */
   trigger?: 'label' | 'icon';
   align?: 'start' | 'end';
+  /**
+   * The scope the MOUNTING SHELL actually renders by, when that is not the
+   * store's.
+   *
+   * Mobile is day-only by construction: MobileViewRouter reads `layout` and
+   * hardcodes `data-view-scope="day"` (mobile-view-router.tsx:34), and the
+   * palette hides both scope commands there for the same reason
+   * (commands/registry.ts:623-626). So the phone states its scope rather than
+   * inheriting a preference it never renders by — a stale `scope: 'week'` in the
+   * persisted blob would otherwise report Grouping as unavailable on a surface
+   * that honours it, with nothing on that surface able to correct it.
+   */
+  scope?: ViewScope;
 }) {
   const projects = usePlannerStore((s) => s.projects);
   const habitGroups = usePlannerStore((s) => s.habitGroups);
@@ -269,19 +293,27 @@ export function DisplayMenu({
 
   /* ── grouping ─────────────────────────────────────────────────────────── */
 
-  /**
-   * Grouping renders only where something honours it.
-   *
-   * On the canvas that is Day × List (every branch) and Day × Buckets (project
-   * only). Both Schedules spend the axis on time — a row's y position IS its
-   * time, so a heading either breaks the axis or floats free of it. Both week
-   * layouts spend it on seven columns. Phase 5a widens this; today a row here
-   * would be inert in four of six views, which is the defect being fixed.
-   */
-  const showGrouping = !isCanvas || (view.scope === 'day' && view.layout !== 'schedule');
+  const scope = scopeProp ?? view.scope;
 
+  /**
+   * The Grouping row ALWAYS renders on the canvas; individual values disable
+   * themselves where the current view cannot honour them.
+   *
+   * It used to hide the whole section on Schedule and Week, which had two
+   * failures. Neither `setScope` nor `setLayout` clears `canvasGroupBy`
+   * (view-store.ts:154-167), so grouping on Day × List and then switching to
+   * Schedule left the trigger counting a clause with no row to account for it —
+   * "Display (1 active)" over a panel where nothing is set. And a menu whose
+   * sections appear and vanish as you switch layouts is harder to learn than one
+   * whose rows explain themselves, which is the grammar this menu already uses
+   * for values inside Buckets.
+   */
   const groupOptions = isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS;
   const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
+  /** The reason the CURRENT value is inert, or null when it is honoured. */
+  const groupBlocked = isCanvas
+    ? groupByBlockedBy(scope, view.layout, groupBy as CanvasGroupBy)
+    : null;
 
   /* ── trigger ──────────────────────────────────────────────────────────── */
 
@@ -328,50 +360,67 @@ export function DisplayMenu({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align={align} className={PANEL} data-testid="display-menu">
-        {showGrouping && (
-          <>
-            <Cap>Structure</Cap>
-            <SubRow icon={Rows3} label="Grouping" rail={groupLabel} set={groupSet}>
-              {groupOptions.map((o) => {
-                // On the canvas a value the current layout cannot honour stays
-                // visible and disabled with the reason on its rail, rather than
-                // vanishing — a menu whose contents change shape as you switch
-                // layouts is harder to learn than one that explains itself.
-                const honoured = !isCanvas || groupByHonouredBy(view.layout, o.value as CanvasGroupBy);
-                return (
-                  <ValueRow
-                    key={o.value}
-                    icon={o.icon}
-                    label={o.label}
-                    rail={honoured ? undefined : 'List only'}
-                    disabled={!honoured}
-                    checked={groupBy === o.value}
-                    keepOpen={false}
-                    onToggle={() =>
-                      isCanvas
-                        ? view.setCanvasGroupBy(o.value as CanvasGroupBy)
-                        : view.setBraindumpGroupBy(o.value as 'none' | 'type' | 'project')
-                    }
-                  />
-                );
-              })}
-              {isCanvas && view.layout !== 'list' && (
-                <>
-                  <DropdownMenuSeparator />
-                  {/* The live row that resolves a disabled value in one click. */}
-                  <ValueRow
-                    icon={ArrowRight}
-                    label="Switch to List"
-                    checked={false}
-                    keepOpen={false}
-                    onToggle={() => view.setLayout('list')}
-                  />
-                </>
-              )}
-            </SubRow>
+        <Cap>Structure</Cap>
+        <SubRow
+          icon={Rows3}
+          label="Grouping"
+          // The rail carries the reason when the chosen value is inert HERE, so
+          // the row accounts for the clause the trigger is counting.
+          rail={groupBlocked ? `${groupLabel} · ${groupBlocked}` : groupLabel}
+          set={groupSet}
+        >
+          {groupOptions.map((o) => {
+            // A value the current view cannot honour stays visible and disabled
+            // with the reason on its rail, rather than vanishing.
+            const blocked = isCanvas
+              ? groupByBlockedBy(scope, view.layout, o.value as CanvasGroupBy)
+              : null;
+            return (
+              <ValueRow
+                key={o.value}
+                icon={o.icon}
+                label={o.label}
+                rail={blocked ?? undefined}
+                disabled={!!blocked}
+                checked={groupBy === o.value}
+                keepOpen={false}
+                onToggle={() =>
+                  isCanvas
+                    ? view.setCanvasGroupBy(o.value as CanvasGroupBy)
+                    : view.setBraindumpGroupBy(o.value as 'none' | 'type' | 'project')
+                }
+              />
+            );
+          })}
+          {/* The live rows that resolve a disabled value in one click. Scope
+              first: on Week every value is blocked, so switching layout alone
+              would not unblock anything. Only offered where the shell can
+              actually honour it — the phone has no scope to switch. */}
+          {isCanvas && (scope === 'week' || view.layout !== 'list') && (
             <DropdownMenuSeparator />
-          </>
-        )}
+          )}
+          {isCanvas && scope === 'week' && !scopeProp && (
+            <ValueRow
+              icon={ArrowRight}
+              label="Switch to Day"
+              checked={false}
+              keepOpen={false}
+              role="menuitem"
+              onToggle={() => view.setScope('day')}
+            />
+          )}
+          {isCanvas && view.layout !== 'list' && (
+            <ValueRow
+              icon={ArrowRight}
+              label="Switch to List"
+              checked={false}
+              keepOpen={false}
+              role="menuitem"
+              onToggle={() => view.setLayout('list')}
+            />
+          )}
+        </SubRow>
+        <DropdownMenuSeparator />
 
         <Cap>Filter</Cap>
 

@@ -45,10 +45,27 @@ vi.mock('@/lib/db', () => ({
   restoreProgram: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
-vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+vi.mock('@/lib/supabase', () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: null }, error: null })),
+      signOut: vi.fn(async () => ({ error: null })),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+  })),
+}));
+// MobileHeader renders UserProfileDropdown, which calls useRouter — outside a
+// Next tree that throws "invariant expected app router to be mounted".
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 import { DisplayMenu } from '@/components/primitives/display-menu';
+import { MobileHeader } from '@/components/mobile/mobile-header';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 
@@ -257,26 +274,87 @@ describe('each surface renders only what it can honour', () => {
     expect(within(menu).getByRole('menuitem', { name: /Project \/ Group/ })).toBeInTheDocument();
   });
 
-  it('drops Grouping entirely on Schedule, where y position is already time', async () => {
+  it('blocks every grouping value on Schedule, where y position is already time', async () => {
     seed({ layout: 'schedule' });
     render(<DisplayMenu surface="canvas" />);
 
-    openMenu();
-    const menu = await screen.findByTestId('display-menu');
+    await openSub('Grouping');
 
-    expect(within(menu).queryByRole('menuitem', { name: /Grouping/ })).toBeNull();
-    // The filters still render — only the axis Schedule has spent is gone.
-    expect(within(menu).getByRole('menuitem', { name: /Priority/ })).toBeInTheDocument();
+    const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
+    expect(priority).toHaveAttribute('data-disabled');
+    expect(priority).toHaveTextContent('Not on Schedule');
+    // Project too — Schedule honours none of them, unlike Buckets.
+    expect(screen.getByRole('menuitemradio', { name: /^Project/ })).toHaveAttribute('data-disabled');
+    // None stays live: it is how you turn grouping off from here.
+    expect(screen.getByRole('menuitemradio', { name: /None/ })).not.toHaveAttribute('data-disabled');
   });
 
-  it('drops Grouping on week, where seven columns already spend the axis', async () => {
+  it('blocks grouping on week, where seven columns already spend the axis', async () => {
     seed({ scope: 'week', layout: 'list' });
     render(<DisplayMenu surface="canvas" />);
 
-    openMenu();
-    const menu = await screen.findByTestId('display-menu');
+    await openSub('Grouping');
 
-    expect(within(menu).queryByRole('menuitem', { name: /Grouping/ })).toBeNull();
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
+      'Day only'
+    );
+    // On week EVERY value is blocked, so switching layout alone unblocks
+    // nothing — the escape has to offer scope first.
+    fireEvent.click(screen.getByRole('menuitem', { name: /Switch to Day/ }));
+    expect(view().scope).toBe('day');
+  });
+
+  it('keeps the Grouping row mounted where the count still includes it', async () => {
+    // Neither setScope nor setLayout clears canvasGroupBy, so grouping on
+    // Day x List and switching to Schedule leaves a clause set. Hiding the
+    // section left the trigger reading "Display (1 active)" over a panel where
+    // nothing was set and nothing could unset it.
+    seed({ layout: 'schedule', canvasGroupBy: 'priority' });
+    render(<DisplayMenu surface="canvas" />);
+
+    expect(screen.getByTestId('display-trigger-canvas')).toHaveAttribute(
+      'aria-label',
+      'Display (1 active)'
+    );
+
+    openMenu();
+    const row = within(await screen.findByTestId('display-menu')).getByRole('menuitem', {
+      name: /Grouping/,
+    });
+    // The row accounts for the clause AND says why it is doing nothing.
+    expect(row).toHaveTextContent('Priority');
+    expect(row).toHaveTextContent('Not on Schedule');
+  });
+
+  it('states the phone s own scope rather than inheriting one it never renders by', async () => {
+    // Mobile is day-only by construction, but `scope` persists across the 768px
+    // breakpoint. Without the prop a stale 'week' would report Grouping as
+    // unavailable on a surface that honours it, with no way to correct it — the
+    // only writers of scope are the desktop capsule and two mobile-hidden
+    // palette commands.
+    seed({ scope: 'week', layout: 'list' });
+    render(<DisplayMenu surface="canvas" trigger="icon" scope="day" />);
+
+    await openSub('Grouping');
+
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).not.toHaveAttribute(
+      'data-disabled'
+    );
+    // And it does not offer a scope switch the phone cannot honour.
+    expect(screen.queryByRole('menuitem', { name: /Switch to Day/ })).toBeNull();
+  });
+
+  it('announces the escape rows as actions, not as unselected options', async () => {
+    // Deriving the role from close-behaviour made "Switch to List" a sixth,
+    // unselected radio in a set of five real grouping values — and it renders
+    // in the DEFAULT view, so it is what a first-run screen reader hears.
+    seed({ layout: 'buckets' });
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Grouping');
+    const escape = await screen.findByRole('menuitem', { name: /Switch to List/ });
+
+    expect(escape).not.toHaveAttribute('aria-checked');
   });
 
   it('keeps a value Buckets cannot honour visible, disabled, and explained', async () => {
@@ -304,8 +382,69 @@ describe('each surface renders only what it can honour', () => {
     render(<DisplayMenu surface="canvas" />);
 
     await openSub('Grouping');
-    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Switch to List/ }));
+    // menuitem, not menuitemradio — it is an action, not a value in the set.
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Switch to List/ }));
 
     expect(view().layout).toBe('list');
+  });
+});
+
+/**
+ * The mobile mount, tested through MobileHeader rather than through DisplayMenu.
+ *
+ * Both defects here were in the MOUNT, not the component, and a props-level test
+ * passes with the mount wrong — which is exactly what happened. Reverting
+ * mobile-header.tsx to the shipped `<DisplayMenu surface="canvas"
+ * trigger="icon" />` leaves every other case in this file green and fails these.
+ */
+describe('the mobile header mount', () => {
+  const renderHeader = () =>
+    render(<MobileHeader onOpenSettings={() => {}} onOpenBugReport={() => {}} />);
+
+  afterEach(() => useMobileNavStore.setState({ activeTab: 'today' }));
+
+  it('does not ride the Braindump tab, where a second identical trigger already sits', () => {
+    // MobileShell renders MobileHeader above every activeTab guard
+    // (mobile-shell.tsx:55), so an ungated mount appears on all three tabs. On
+    // Braindump that is two pixel-identical triggers with the same accessible
+    // name, the header one writing canvasFilters while the list below reads
+    // braindumpFilters — "Hide finished" would move nothing.
+    useMobileNavStore.setState({ activeTab: 'braindump' });
+    renderHeader();
+
+    expect(screen.queryByTestId('display-trigger-canvas')).toBeNull();
+  });
+
+  it('does not ride the Chat tab, which reads no view store at all', () => {
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    renderHeader();
+
+    expect(screen.queryByTestId('display-trigger-canvas')).toBeNull();
+  });
+
+  it('mounts on Today', () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderHeader();
+
+    expect(screen.getByTestId('display-trigger-canvas')).toBeInTheDocument();
+  });
+
+  it('keeps Grouping live under a stale week scope, because the phone is day-only', async () => {
+    // `scope` persists across the 768px breakpoint, and useIsMobile is a live
+    // matchMedia listener — a narrowed desktop window, a snapped half-screen or
+    // a rotated tablet all reach the phone shell carrying whatever scope was
+    // last set. MobileViewRouter ignores it and renders day either way, so the
+    // menu must too, or Grouping reports unavailable on a surface that honours
+    // it, with nothing on that surface able to correct it.
+    seed({ scope: 'week', layout: 'list' });
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderHeader();
+
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Grouping/ }));
+
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).not.toHaveAttribute(
+      'data-disabled'
+    );
   });
 });
