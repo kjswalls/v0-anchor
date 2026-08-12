@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
@@ -21,7 +22,6 @@ import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
 import { ManageCollectionsDialog } from '@/components/planner/manage-collections-dialog';
-import { SettingsDialog } from '@/components/planner/settings-dialog';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
@@ -48,7 +48,7 @@ import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
+import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
@@ -131,6 +131,7 @@ export function AppShell() {
   // unschedule it fires is picked up by the already-mounted toast subscriber.
   useOverdueSweep();
 
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
@@ -525,22 +526,6 @@ export function AppShell() {
         onOpenChange={(open) => !open && closeDialog()}
       />
 
-      <SettingsDialog
-        open={activeDialog?.type === 'settings'}
-        onOpenChange={(open) => !open && closeDialog()}
-        onOpenKeyboardShortcuts={() => openDialog({ type: 'keyboard-shortcuts' })}
-        onReportBug={() => openDialog({ type: 'bug-report' })}
-        onReplayTour={async () => {
-          const supabase = createClient();
-          const { data } = await supabase.auth.getUser();
-          const uid = data.user?.id;
-          if (!uid) return;
-          await resetOnboardingComplete(uid);
-          setTourUserId(uid);
-          setShowTour(true);
-        }}
-      />
-
       <KeyboardShortcutsModal
         open={activeDialog?.type === 'keyboard-shortcuts'}
         onOpenChange={(open) => !open && closeDialog()}
@@ -550,7 +535,9 @@ export function AppShell() {
         <OnboardingTour
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
-          onOpenSettings={() => openDialog({ type: 'settings' })}
+          // The tour calls handleComplete() before this fires, so navigating
+          // away doesn't abandon it. Beacon is the pane the step is about.
+          onOpenSettings={() => router.push('/settings/beacon')}
           onExpandChat={() => setChatExpanded(true)}
           onCollapseChat={() => setChatExpanded(false)}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}

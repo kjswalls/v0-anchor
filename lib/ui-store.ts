@@ -16,7 +16,9 @@ export type ActiveDialog =
   | { type: 'manage-categories'; tab?: string }
   /** `tab` opens a specific panel — 'routines' | 'programs'. */
   | { type: 'manage-collections'; tab?: string }
-  | { type: 'settings' }
+  // Settings is a route (/settings), not a dialog — see
+  // app/settings/[[...pane]]/page.tsx. Removed rather than left as a dead
+  // variant so nothing can dispatch to a surface no longer mounted anywhere.
   | { type: 'keyboard-shortcuts' }
   | { type: 'bug-report' };
 
@@ -25,6 +27,13 @@ export interface ConfirmRequest {
   description: string;
   confirmLabel?: string;
   destructive?: boolean;
+  /**
+   * Overrides the action button's `data-testid`, for the handful of confirms a
+   * spec has to name individually. There is ONE AlertDialog in the app, so
+   * without this every prompt answers to `confirm-dialog-confirm` and a test
+   * that means "the attach warning" would happily click a delete.
+   */
+  testId?: string;
   onConfirm: () => void;
 }
 

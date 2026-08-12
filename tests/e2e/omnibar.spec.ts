@@ -146,7 +146,11 @@ test.describe('Omnibar', () => {
     await expect(omnibarPanel(page).locator('[data-command-id="app.feedback"]')).toHaveCount(0);
 
     await settings.click();
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+    // Settings is a route now, not a dialog — so this asserts the URL and the
+    // page root rather than role="dialog". The test is still about "running a
+    // command opens its surface"; only the surface changed.
+    await expect(page).toHaveURL(/\/settings(\/|$)/, { timeout: 5_000 });
+    await expect(page.getByTestId('settings-page')).toBeVisible({ timeout: 10_000 });
   });
 
   test('the palette exposes an add-habit command (the only habit entry point)', async ({ page }) => {

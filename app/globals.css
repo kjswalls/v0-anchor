@@ -1259,3 +1259,37 @@ body {
     width: 356px !important;
   }
 }
+
+/* ─── Theme swap ──────────────────────────────────────────────────────────────
+   next-themes' `disableTransitionOnChange` is deliberately NOT set (see
+   app/layout.tsx). It repainted the whole screen in one frame with nothing
+   easing, which is indistinguishable from a page reload — the single most
+   common complaint about the theme control.
+
+   Dropping it on its own would be worse: transitions here are property-scoped
+   by convention, so a handful of elements would animate while everything else
+   snapped. Instead lib/theme-transition.ts opens this window for ~180ms around
+   the swap, and only colour properties are granted a transition — never
+   `all`, which would drag layout, transform and opacity into it and make the
+   lime accent fade through its parents.
+
+   `!important` is load-bearing: it has to beat the property-scoped transitions
+   already declared on cards, chips and rows, which would otherwise run on their
+   own durations and break the screen into pieces mid-swap. */
+:root[data-theme-changing] *,
+:root[data-theme-changing] *::before,
+:root[data-theme-changing] *::after {
+  transition-property: background-color, border-color, color, fill, stroke,
+    text-decoration-color, box-shadow !important;
+  transition-duration: 180ms !important;
+  transition-timing-function: var(--ease-out-soft) !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme-changing] *,
+  :root[data-theme-changing] *::before,
+  :root[data-theme-changing] *::after {
+    transition-duration: 0s !important;
+  }
+}

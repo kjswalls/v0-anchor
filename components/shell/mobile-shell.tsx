@@ -13,6 +13,7 @@ import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { ScopeRail } from '@/components/sidebar/scope-rail';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
+import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
@@ -26,6 +27,7 @@ import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 export function MobileShell() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
+  const router = useRouter();
 
   // Close any open row swipe-actions when switching tabs.
   useEffect(() => closeAllRowSwipes(), [activeTab]);
@@ -51,7 +53,7 @@ export function MobileShell() {
   return (
     <div className="flex h-[100dvh] flex-col bg-background md:hidden">
       <MobileHeader
-        onOpenSettings={() => openDialog({ type: 'settings' })}
+        onOpenSettings={() => router.push('/settings')}
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
 
@@ -79,7 +81,7 @@ export function MobileShell() {
           className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
         >
         {activeTab === 'chat' ? (
-          <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
+          <MobileChatPanel onOpenSettings={() => router.push('/settings/beacon')} />
         ) : (
           /* Content lives in a floating rounded panel on the paper backdrop —
              the mobile echo of the desktop canvas. In light mode canvas and

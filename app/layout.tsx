@@ -76,12 +76,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        {/* No `disableTransitionOnChange`: it injected `transition: none` across
+            the document and repainted every colour in one frame, which reads as
+            a page reload. lib/theme-transition.ts + the `data-theme-changing`
+            rule in globals.css grant a short, colour-only transition instead. */}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SupabaseProvider>
             {children}
           </SupabaseProvider>

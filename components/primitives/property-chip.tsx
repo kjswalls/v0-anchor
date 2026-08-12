@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
  */
 export function PropertyChip({
   icon: Icon,
+  id,
+  ariaLabel,
   label,
   value,
   swatch,
@@ -33,6 +35,11 @@ export function PropertyChip({
   testId,
 }: {
   icon?: LucideIcon;
+  /** Lets a <label htmlFor> point at the trigger. Without it the association is
+   *  silently dropped and the chip's only accessible name is its own value. */
+  id?: string;
+  /** An explicit accessible name, for a chip whose visible text is just a value. */
+  ariaLabel?: string;
   /** Shown when `value` is empty — the noun for this property. */
   label: string;
   /** The set value. Empty/undefined renders the unset (dashed) state. */
@@ -82,6 +89,8 @@ export function PropertyChip({
       <PopoverTrigger asChild>
         <button
           type="button"
+          id={id}
+          aria-label={ariaLabel}
           disabled={disabled}
           data-testid={testId}
           data-set={isSet || undefined}

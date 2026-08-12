@@ -1,12 +1,12 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { Sparkles, ChevronDown } from 'lucide-react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { useUIStore } from '@/lib/ui-store';
 import { RELAY } from '@/lib/relay-config';
 
 /**
@@ -17,7 +17,7 @@ import { RELAY } from '@/lib/relay-config';
  */
 export function ChatPanel({ focusSignal }: { focusSignal: number }) {
   const toggleChat = useSidebarStore((s) => s.toggleChat);
-  const { openDialog } = useUIStore();
+  const router = useRouter();
   const provider = useAISettingsStore((s) => s.provider);
   const agentId = useChatStore((s) => s.openclawAgentIdDisplay);
   const isStreaming = useChatStore((s) => s.isLoading);
@@ -55,7 +55,7 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
           variant="desktop"
           hideHeader
           focusSignal={focusSignal}
-          onOpenSettings={() => openDialog({ type: 'settings' })}
+          onOpenSettings={() => router.push('/settings/beacon')}
         />
       </div>
     </section>

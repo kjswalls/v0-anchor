@@ -989,8 +989,16 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'app',
     icon: Settings,
     keywords: 'settings preferences options account api key',
+    // The shortcut id stays 'system_settings' byte-for-byte even though the
+    // command now opens a route: keyboard-shortcuts-store persists user
+    // rebindings BY ID, and commands.test.ts asserts the id list exhaustively.
     shortcut: { id: 'system_settings', keys: ['meta', ','], allowInInput: true },
-    run: () => useUIStore.getState().openDialog({ type: 'settings' }),
+    run: (ctx) => {
+      // navigate is optional on CommandContext (see types.ts), so this falls
+      // back to a full load rather than doing nothing when it's absent.
+      if (ctx.navigate) ctx.navigate('/settings');
+      else if (typeof window !== 'undefined') window.location.assign('/settings');
+    },
   },
   {
     id: 'app.categories',

@@ -17,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { RELAY } from '@/lib/relay-config';
-import { useUIStore } from '@/lib/ui-store';
 import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
 import { cn } from '@/lib/utils';
@@ -43,7 +42,6 @@ function getInitials(email: string, name?: string | null): string {
  */
 export function UserCard() {
   const router = useRouter();
-  const { openDialog } = useUIStore();
   const { habits, actionLog, historyIndex, undo, redo, canUndo, canRedo } = usePlannerStore();
 
   const [email, setEmail] = useState<string | null>(null);
@@ -148,7 +146,7 @@ export function UserCard() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => openDialog({ type: 'settings' })} className="cursor-pointer">
+          <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
           </DropdownMenuItem>

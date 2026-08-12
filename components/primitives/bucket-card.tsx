@@ -241,6 +241,9 @@ interface BucketCardProps {
   density?: 'full' | 'mini';
   /** Which drawing of a bucket. Defaults to the rail; see BucketStyle. */
   variant?: BucketStyle;
+  /** False for a specimen: always open, no chevron, and the shared
+   *  `collapsedBuckets` flag is ignored rather than merely unreachable. */
+  collapsible?: boolean;
   children: React.ReactNode;
   className?: string;
 }
@@ -341,6 +344,7 @@ export function BucketCard({
   contentMaxH,
   density = 'full',
   variant = 'spine',
+  collapsible = true,
   children,
   className,
 }: BucketCardProps) {
@@ -368,7 +372,11 @@ export function BucketCard({
   // nothing, so collapsing would visibly ADD a mark. The stored flag survives a
   // bucket emptying and re-filling; it just isn't reachable while there is
   // nothing in there.
-  const canCollapse = !isEmpty;
+  // A specimen (the settings Look preview) must be a function of the settings
+  // being previewed, not of planner state: `collapsedBuckets` is a persisted,
+  // shared flag, so a user who had shut Morning on the grid would open
+  // /settings/look and find an empty card that no Look row appears to change.
+  const canCollapse = !isEmpty && collapsible;
   const isShut = collapsed && canCollapse;
 
   // What sits under the caption, in priority order:
