@@ -29,11 +29,9 @@ import { useWeekColumns } from '@/lib/use-week-columns';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
-import { useViewStore } from '@/lib/view-store';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
-import { deriveDayItems } from '@/lib/day-items';
-import { inactiveItemIdsOn } from '@/lib/active';
+import { useDayItemsForDates } from '@/hooks/use-day-items';
 import { programBoundaries, boundaryLabel } from '@/lib/program-boundaries';
 import { cn } from '@/lib/utils';
 
@@ -293,23 +291,18 @@ function WeekScheduleColumn({
 }
 
 export function WeekSchedule({ activeId }: { activeId: string | null }) {
+  // Only what this file still reads for itself. Everything the day pipeline
+  // needs — tasks, habits, projects, items, routines, the two show* prefs, and
+  // both view-store filter slices — is read by useDayItemsForDates now.
+  // `programs` stays: the boundary rail is Week × Schedule's own.
   const {
     selectedDate,
     weekStartDay,
     navDirection,
-    tasks,
-    habits,
-    projects,
-    items: allItems,
-    routines,
     programs,
-    showCompletedTasks,
-    showPausedOnGrid,
     userTimezone,
     showCurrentTimeIndicator,
   } = usePlannerStore();
-  const typeFilter = useViewStore((s) => s.typeFilter);
-  const canvasFilters = useViewStore((s) => s.canvasFilters);
   const timeFormatStr = useTimeFormat();
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nowMin = useNowMinutes(timezone);
@@ -320,46 +313,29 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [selectedDate, weekStartsOn]);
 
-  // Derive all seven days once here (deriveDayItems is pure — no hooks in the
-  // loop) so both the shared hour range and the columns come from one pass.
+  // All seven days from the one shared pipeline, so the shared hour range and
+  // the columns come from one pass — and so a rule added to the canvas filter
+  // set lands here without anyone remembering this file exists. The plural hook
+  // is what makes that possible: Week × Schedule needs every column resolved
+  // before it can size any of them, which is why this used to be a verbatim
+  // second copy of use-day-items' body.
+  const days = useDayItemsForDates(weekDays);
+
   const perDay: ColumnData[] = useMemo(() => {
     const dateStrs = weekDays.map((d) => toDateStr(d, timezone));
     const boundaries = programBoundaries(dateStrs, programs);
     return weekDays.map((d, i) => {
-        const dateStr = dateStrs[i];
-        const items = deriveDayItems({
-          tasks,
-          habits,
-          projects,
-          date: d,
-          dateStr,
-          timezone,
-          typeFilter,
-          showCompletedTasks,
-          filters: canvasFilters,
-          // Per COLUMN, not per week: a pause ending mid-week — or a program's
-          // range starting on Wednesday — must show the handoff in the right
-          // column rather than blanking or filling all seven.
-          inactiveItemIds: showPausedOnGrid
-            ? undefined
-            : inactiveItemIdsOn(allItems, dateStr, {
-                userTimezone: timezone,
-                routines,
-                programs,
-              }),
-        });
-        const boundary = boundaries.get(dateStr);
-        return {
-          date: d,
-          dateStr,
-          timed: deriveTimedEntries(items),
-          untimed: deriveUntimedRows(items),
-          boundary: boundary ? boundaryLabel(boundary) : undefined,
-        };
-      });
-  },
-    [weekDays, tasks, habits, projects, allItems, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]
-  );
+      const dateStr = dateStrs[i];
+      const boundary = boundaries.get(dateStr);
+      return {
+        date: d,
+        dateStr,
+        timed: deriveTimedEntries(days[i]),
+        untimed: deriveUntimedRows(days[i]),
+        boundary: boundary ? boundaryLabel(boundary) : undefined,
+      };
+    });
+  }, [weekDays, days, programs, timezone]);
 
   // One shared range + hour height across the gutter and all 7 columns so the
   // labels stay aligned. Range spans the union of every day's items when idle,

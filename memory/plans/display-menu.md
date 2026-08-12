@@ -113,9 +113,9 @@ exist. Verified against `a1c03c2`:
 | Phase | Content | Size | Status |
 |---|---|---|---|
 | **Step 1** | `containerKind: 'projects'` on the custom template + the two sweeps that tested `type === 'task'` | <1 h | **shipped** `a81018a` |
-| **0** | One `ViewFilters`; custom `merge`; legacy read-time normalizer; `Priority[]` convergence | ~½ d | in progress |
-| **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | |
-| **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | |
+| **0** | One `ViewFilters`; custom `merge`; legacy read-time normalizer; `Priority[]` convergence | ~½ d | **shipped** `dba554f` + `cb82e05` |
+| **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | **shipped** `0d36efc` + `adf944d` |
+| **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | **shipped** — `useDayItemsForDates` |
 | **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | |
 | **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | |
 | **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and the Schedule's Anytime strip | ~6 d | |
@@ -129,6 +129,21 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
 ---
 
 ## Gotchas that cost time to find
+
+- **`deriveDayItems` reads the weekday in the BROWSER's zone and the date in the USER's.**
+  Tasks and habits go through `shouldShowOnDate(row, dateStr, timezone)`, which is
+  tz-resolved. Project blocks go through `date.getDay()` / `date.getDate()`
+  (`day-items.ts:161-162`), which are not. When the two zones differ the same column can
+  be Thursday for a task and Wednesday for a block, so a Thursday block renders on
+  Wednesday. Found while folding Phase 2; **not fixed** — it predates the fold, is
+  identical on both sides of it, and changing it changes what renders for anyone whose
+  browser zone differs from their setting. It matters for Phase 4 (sort by date) and 5a
+  (group by day), so fix it there or before, with its own tests. The fix is to build the
+  weekday from `dateStr` rather than from the `Date`.
+- **Don't `git checkout --` a file you haven't staged.** The Phase 2 hook is a new
+  function in an existing file; reverting a mutation-test edit that way restored HEAD's
+  version and silently discarded the work. Copy to the scratchpad first, or stage before
+  mutating.
 
 - **`containerId` must enter `taskShape` AND `habitShape`** in `packages/types` before Phase
   B, or undo silently reverts a container change. `diffItem` (`planner-store.ts:576-584`)
