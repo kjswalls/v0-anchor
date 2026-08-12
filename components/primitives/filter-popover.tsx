@@ -4,6 +4,12 @@ import { ListFilter, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Priority, Project } from '@/lib/planner-types';
+import {
+  EMPTY_VIEW_FILTERS,
+  containerRef,
+  projectNamesFrom,
+  type ViewFilters,
+} from '@/lib/filters';
 import { CategoryIcon } from '@/lib/category-icons';
 import { cn } from '@/lib/utils';
 
@@ -14,11 +20,8 @@ import { cn } from '@/lib/utils';
  * a lime dot when any filter is active.
  */
 
-export interface FilterPopoverValue {
-  projects: string[];
-  priorities: Priority[];
-  hideCompleted: boolean;
-}
+/** @deprecated Alias of the one shape in lib/filters.ts. */
+export type FilterPopoverValue = ViewFilters;
 
 const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
 
@@ -34,8 +37,9 @@ export function FilterPopover({
   const toggle = <T extends string>(list: T[], item: T): T[] =>
     list.includes(item) ? list.filter((v) => v !== item) : [...list, item];
 
+  const selectedProjects = projectNamesFrom(value.containers);
   const activeCount =
-    value.projects.length + value.priorities.length + (value.hideCompleted ? 1 : 0);
+    value.containers.length + value.priorities.length + (value.hideFinished ? 1 : 0);
 
   return (
     <Popover>
@@ -79,12 +83,15 @@ export function FilterPopover({
             <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Project</div>
             <div className="max-h-40 space-y-0.5 overflow-y-auto pb-2">
               {projects.map((project) => {
-                const active = value.projects.includes(project.name);
+                const active = selectedProjects.includes(project.name);
                 return (
                   <button
                     key={project.name}
                     onClick={() =>
-                      onChange({ ...value, projects: toggle(value.projects, project.name) })
+                      onChange({
+                        ...value,
+                        containers: toggle(value.containers, containerRef('project', project.name)),
+                      })
                     }
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
                   >
@@ -106,16 +113,16 @@ export function FilterPopover({
         )}
 
         <button
-          onClick={() => onChange({ ...value, hideCompleted: !value.hideCompleted })}
+          onClick={() => onChange({ ...value, hideFinished: !value.hideFinished })}
           className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
         >
           <span
             className={cn(
               'flex h-3.5 w-3.5 items-center justify-center rounded border',
-              value.hideCompleted ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+              value.hideFinished ? 'border-primary bg-primary' : 'border-muted-foreground/40'
             )}
           >
-            {value.hideCompleted && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            {value.hideFinished && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
           </span>
           Hide completed
         </button>
@@ -125,7 +132,7 @@ export function FilterPopover({
             <div className="my-1 h-px bg-border" />
             <button
               className="flex w-full items-center rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-              onClick={() => onChange({ projects: [], priorities: [], hideCompleted: false })}
+              onClick={() => onChange(EMPTY_VIEW_FILTERS)}
             >
               <X className="mr-1 h-3 w-3" />
               Clear filters

@@ -51,6 +51,12 @@ import { addDays, subDays } from 'date-fns';
 
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
+import {
+  EMPTY_VIEW_FILTERS,
+  containerRef,
+  isEmptyFilters,
+  projectNamesFrom,
+} from '../filters';
 import { useUIStore, openAddDialog } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
@@ -570,7 +576,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Never flattened: names are free text, so flattening lets a project
       // called "Today" or "List" outrank the built-in command of that name.
       options: () => {
-        const active = view().canvasFilters.projects;
+        const active = projectNamesFrom(view().canvasFilters.containers);
         return planner().projects.map((p) => ({
           value: p.name,
           label: p.name,
@@ -583,11 +589,12 @@ export const STATIC_COMMANDS: Command[] = [
       if (!arg) return;
       const store = view();
       const current = store.canvasFilters;
+      const ref = containerRef('project', arg);
       store.setCanvasFilters({
         ...current,
-        projects: current.projects.includes(arg)
-          ? current.projects.filter((p) => p !== arg)
-          : [...current.projects, arg],
+        containers: current.containers.includes(ref)
+          ? current.containers.filter((c) => c !== ref)
+          : [...current.containers, ref],
       });
     },
   },
@@ -600,9 +607,9 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['clear'],
     availableWhen: () => {
       const f = view().canvasFilters;
-      return f.projects.length > 0 || f.priorities.length > 0 || f.hideCompleted;
+      return !isEmptyFilters(f);
     },
-    run: () => view().setCanvasFilters({ projects: [], priorities: [], hideCompleted: false }),
+    run: () => view().setCanvasFilters(EMPTY_VIEW_FILTERS),
   },
   {
     id: 'view.scopeDay',

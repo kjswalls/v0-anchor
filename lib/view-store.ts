@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, Priority, TimeBucket } from './planner-types';
+import type { GroupBy, TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
+import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -53,29 +54,24 @@ export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
  */
 export type BucketStyle = 'spine' | 'tray';
 
-export interface BraindumpFilters {
-  projects: string[];
-  priorities: string[];
-  hideCompleted: boolean;
-}
+/**
+ * The filter shape lives in lib/filters.ts, which is store-free so the pure
+ * derivation modules can import it too.
+ *
+ * There used to be FOUR declarations of one concept — `BraindumpFilters`,
+ * `CanvasFilters`, `DayItemFilters` and `FilterPopoverValue` — and two of them
+ * disagreed: `priorities` was `string[]` on one and `Priority[]` on the other,
+ * for a value that only ever came from a `Priority[]` const.
+ *
+ * The braindump and the canvas still hold SEPARATE VALUES; only the shape is
+ * shared.
+ */
+export type { ViewFilters };
+export { EMPTY_VIEW_FILTERS };
 
-const EMPTY_BRAINDUMP_FILTERS: BraindumpFilters = {
-  projects: [],
-  priorities: [],
-  hideCompleted: false,
-};
-
-export interface CanvasFilters {
-  projects: string[];
-  priorities: Priority[];
-  hideCompleted: boolean;
-}
-
-const EMPTY_CANVAS_FILTERS: CanvasFilters = {
-  projects: [],
-  priorities: [],
-  hideCompleted: false,
-};
+/** @deprecated Aliases so the rename lands in one commit. Prefer `ViewFilters`. */
+export type BraindumpFilters = ViewFilters;
+export type CanvasFilters = ViewFilters;
 
 interface ViewStore {
   scope: ViewScope;
@@ -83,8 +79,8 @@ interface ViewStore {
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
-  braindumpFilters: BraindumpFilters;
-  canvasFilters: CanvasFilters;
+  braindumpFilters: ViewFilters;
+  canvasFilters: ViewFilters;
   typeMode: TypeMode;
   scheduleMarkStyle: ScheduleMarkStyle;
   /**
@@ -120,8 +116,8 @@ interface ViewStore {
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
-  setBraindumpFilters: (filters: BraindumpFilters) => void;
-  setCanvasFilters: (filters: CanvasFilters) => void;
+  setBraindumpFilters: (filters: ViewFilters) => void;
+  setCanvasFilters: (filters: ViewFilters) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
   /** `null` hands the choice back to the width-derived default. */
@@ -146,8 +142,8 @@ export const useViewStore = create<ViewStore>()(
       typeFilter: 'all',
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
-      braindumpFilters: EMPTY_BRAINDUMP_FILTERS,
-      canvasFilters: EMPTY_CANVAS_FILTERS,
+      braindumpFilters: EMPTY_VIEW_FILTERS,
+      canvasFilters: EMPTY_VIEW_FILTERS,
       typeMode: 'sans',
       scheduleMarkStyle: 'nodes',
       weekDaysVisible: null,
@@ -213,6 +209,34 @@ export const useViewStore = create<ViewStore>()(
       // and re-run the legacy adoption on a fixture.
       name: 'anchor-view',
       version: 1,
+      /**
+       * Deep-merge the two filter objects; shallow-merge everything else.
+       *
+       * The sentence above — "keeps the initial value for any key the persisted
+       * payload lacks" — is true of TOP-LEVEL keys only. zustand's default merge
+       * is `{...current, ...persisted}`, so a NESTED object is replaced
+       * wholesale: a stored `canvasFilters` that predates `containers` wins
+       * entirely, `filters.containers` reads `undefined`, and `.length` throws
+       * on the first render. That is a white screen, not a degraded filter.
+       *
+       * And the e2e suite cannot catch it. tests/e2e/helpers/session.ts seeds a
+       * blob that OMITS both filter objects, so every spec rehydrates fresh
+       * defaults and stays green while a real browser breaks. The unit test in
+       * tests/unit/view-store-merge.test.ts exists for exactly that gap — do not
+       * delete it because "e2e covers this".
+       *
+       * A `merge` is independent of `version`, so this needs no bump (see above
+       * for why a bump is not available anyway).
+       */
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ViewStore> & Record<string, unknown>;
+        return {
+          ...current,
+          ...p,
+          braindumpFilters: normalizeFilters(p.braindumpFilters),
+          canvasFilters: normalizeFilters(p.canvasFilters),
+        };
+      },
     }
   )
 );

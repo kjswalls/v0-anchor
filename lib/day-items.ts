@@ -1,5 +1,6 @@
 import type { Task, Habit, Project, TimeBucket } from './planner-types';
 import { shouldShowOnDate, isCompletedOnDate, isRecurring } from './recurrence';
+import { EMPTY_VIEW_FILTERS, projectNamesFrom, type ViewFilters } from './filters';
 
 /**
  * Pure derivation of what a single day shows, per bucket. Extracted from
@@ -9,14 +10,15 @@ import { shouldShowOnDate, isCompletedOnDate, isRecurring } from './recurrence';
 
 export const BUCKET_ORDER: TimeBucket[] = ['anytime', 'morning', 'afternoon', 'evening'];
 
-/** Canvas filter set (view-store canvasFilters). All-empty = no-op. */
-export interface DayItemFilters {
-  projects: string[];
-  priorities: string[];
-  hideCompleted: boolean;
-}
+/**
+ * Canvas filter set (view-store `canvasFilters`). All-empty = no-op.
+ *
+ * @deprecated Alias of the one shape in lib/filters.ts. Was a fourth
+ * independent declaration of the same three fields.
+ */
+export type DayItemFilters = ViewFilters;
 
-const NO_FILTERS: DayItemFilters = { projects: [], priorities: [], hideCompleted: false };
+const NO_FILTERS = EMPTY_VIEW_FILTERS;
 
 export interface DayItemsInput {
   tasks: Task[];
@@ -69,8 +71,11 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   const { tasks, habits, projects, dateStr, date, timezone, typeFilter, showCompletedTasks } = input;
   const filters = input.filters ?? NO_FILTERS;
   const inactive = input.inactiveItemIds;
-  // hideCompleted stacks on the existing showCompletedTasks preference
-  const hideDoneTasks = !showCompletedTasks || filters.hideCompleted;
+  // hideFinished stacks on the existing showCompletedTasks preference
+  const hideDoneTasks = !showCompletedTasks || filters.hideFinished;
+  // Phase 0 keeps the old project-name semantics exactly; Phase 1 replaces this
+  // with the registry-resolved container axis (so habits answer with `group`).
+  const filterProjects = projectNamesFrom(filters.containers);
 
   // Tasks that belong to this day
   const dayTasks =
@@ -81,7 +86,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
           if (hideDoneTasks && task.status === 'completed') return false;
           if (filters.priorities.length && (!task.priority || !filters.priorities.includes(task.priority)))
             return false;
-          if (filters.projects.length && (!task.project || !filters.projects.includes(task.project)))
+          if (filterProjects.length && (!task.project || !filterProjects.includes(task.project)))
             return false;
           if (!task.startDate) return false;
           // startDate is yyyy-MM-dd; tolerate legacy ISO strings
@@ -99,13 +104,16 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   // Habits that occur on this day. Habits carry no priority/project, so an
   // active priority or project filter hides them entirely (same rule as the
   // braindump's filters).
+  //
+  // PHASE 1 DELETES THIS WIPE. It is preserved verbatim here only so Phase 0
+  // stays a pure rename — the behaviour change ships alone and revertable.
   const dayHabits =
-    typeFilter === 'tasks' || filters.priorities.length || filters.projects.length
+    typeFilter === 'tasks' || filters.priorities.length || filterProjects.length
       ? []
       : habits.filter((h) => {
           if (inactive?.has(h.id)) return false;
           if (!shouldShowOnDate(h, dateStr, timezone)) return false;
-          if (filters.hideCompleted && isCompletedOnDate(h, dateStr)) return false;
+          if (filters.hideFinished && isCompletedOnDate(h, dateStr)) return false;
           return true;
         });
 

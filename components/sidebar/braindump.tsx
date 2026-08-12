@@ -13,6 +13,12 @@ import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
+import {
+  EMPTY_VIEW_FILTERS,
+  activeFilterCount,
+  containerRef,
+  projectNamesFrom,
+} from '@/lib/filters';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -33,13 +39,14 @@ function FilterPopover() {
     useViewStore();
   const projects = usePlannerStore((s) => s.projects);
 
-  const toggle = (list: string[], value: string) =>
+  // Generic, so `priorities` keeps its Priority[] element type. Untyped, this
+  // widened to string[] — which is how the braindump and the canvas ended up
+  // declaring the same field with two different element types.
+  const toggle = <T extends string>(list: T[], value: T): T[] =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
-  const activeCount =
-    braindumpFilters.projects.length +
-    braindumpFilters.priorities.length +
-    (braindumpFilters.hideCompleted ? 1 : 0);
+  const selectedProjects = projectNamesFrom(braindumpFilters.containers);
+  const activeCount = activeFilterCount(braindumpFilters);
   // The dot also signals an active grouping (group-by lives in this popover).
   const isActive = activeCount > 0 || braindumpGroupBy !== 'none';
 
@@ -111,14 +118,17 @@ function FilterPopover() {
             <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Project</div>
             <div className="max-h-40 space-y-0.5 overflow-y-auto pb-2">
               {projects.map((project) => {
-                const active = braindumpFilters.projects.includes(project.name);
+                const active = selectedProjects.includes(project.name);
                 return (
                   <button
                     key={project.name}
                     onClick={() =>
                       setBraindumpFilters({
                         ...braindumpFilters,
-                        projects: toggle(braindumpFilters.projects, project.name),
+                        containers: toggle(
+                          braindumpFilters.containers,
+                          containerRef('project', project.name)
+                        ),
                       })
                     }
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
@@ -142,17 +152,17 @@ function FilterPopover() {
 
         <button
           onClick={() =>
-            setBraindumpFilters({ ...braindumpFilters, hideCompleted: !braindumpFilters.hideCompleted })
+            setBraindumpFilters({ ...braindumpFilters, hideFinished: !braindumpFilters.hideFinished })
           }
           className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
         >
           <span
             className={cn(
               'flex h-3.5 w-3.5 items-center justify-center rounded border',
-              braindumpFilters.hideCompleted ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+              braindumpFilters.hideFinished ? 'border-primary bg-primary' : 'border-muted-foreground/40'
             )}
           >
-            {braindumpFilters.hideCompleted && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            {braindumpFilters.hideFinished && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
           </span>
           Hide completed
         </button>
@@ -162,9 +172,7 @@ function FilterPopover() {
             <div className="my-1 h-px bg-border" />
             <button
               className="flex w-full items-center rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-              onClick={() =>
-                setBraindumpFilters({ projects: [], priorities: [], hideCompleted: false })
-              }
+              onClick={() => setBraindumpFilters(EMPTY_VIEW_FILTERS)}
             >
               <X className="mr-1 h-3 w-3" />
               Clear filters
@@ -388,27 +396,35 @@ export function Braindump() {
   }, [items, routines, programs, userTimezone]);
 
   const rows: RowItem[] = useMemo(() => {
+    // Phase 0 keeps the old project-name semantics exactly; Phase 1 replaces
+    // this with the registry-resolved container axis.
+    const filterProjects = projectNamesFrom(braindumpFilters.containers);
+
     const unscheduledTasks = tasks.filter((task) => {
       if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
-      if (braindumpFilters.hideCompleted && task.status === 'completed') return false;
+      if (braindumpFilters.hideFinished && task.status === 'completed') return false;
       if (braindumpFilters.priorities.length && (!task.priority || !braindumpFilters.priorities.includes(task.priority)))
         return false;
-      if (braindumpFilters.projects.length && (!task.project || !braindumpFilters.projects.includes(task.project)))
+      if (filterProjects.length && (!task.project || !filterProjects.includes(task.project)))
         return false;
       return true;
     });
 
     // Habits belong in the braindump when nothing places them on a day:
     // no bucket and no recurrence.
+    //
+    // PHASE 1 DELETES THIS WIPE — preserved verbatim so Phase 0 is a pure
+    // rename. (It is guarding a list that is already empty in practice: a habit
+    // cannot reach repeatFrequency 'none' through any UI path.)
     const unscheduledHabits =
-      braindumpFilters.priorities.length || braindumpFilters.projects.length
+      braindumpFilters.priorities.length || filterProjects.length
         ? []
         : habits.filter((habit) => {
             if (suppressedIds.has(habit.id)) return false;
             if (habit.timeBucket) return false;
             if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
-            if (braindumpFilters.hideCompleted && habit.status === 'done') return false;
+            if (braindumpFilters.hideFinished && habit.status === 'done') return false;
             return true;
           });
 
