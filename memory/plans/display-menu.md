@@ -140,6 +140,16 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   browser zone differs from their setting. It matters for Phase 4 (sort by date) and 5a
   (group by day), so fix it there or before, with its own tests. The fix is to build the
   weekday from `dateStr` rather than from the `Date`.
+- **A test named for a guard must assert a field that guard can write.** `removeProject`
+  has one `set()` and writes exactly `projects` and `project: undefined`. A case titled
+  "leaves a habit alone" that asserted `group` was true under every implementation,
+  including one with the guard deleted — `group` belongs to `removeHabitGroup`. Before
+  writing an assertion, name the write the verb actually performs.
+- **The `getTime()` memo key in `use-day-items.ts` is not pinned by a test.** Keying on
+  the resolved `dateStr` instead passes all eight cases, because the fixture runs at
+  12:00Z with the process zone equal to `userTimezone`. Pinning it needs a test whose
+  browser zone diverges from the user's — the same setup the project-block weekday bug
+  above needs. Write both together in Phase 4/5a.
 - **Don't `git checkout --` a file you haven't staged.** The Phase 2 hook is a new
   function in an existing file; reverting a mutation-test edit that way restored HEAD's
   version and silently discarded the work. Copy to the scratchpad first, or stage before

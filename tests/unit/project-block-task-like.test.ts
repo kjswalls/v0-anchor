@@ -226,10 +226,22 @@ describe('removeProject clears the deleted name off every type that holds one', 
   });
 
   it('leaves a habit alone — its container is a group, and groups are not projects', () => {
+    // The fixture is deliberately a habit that ALSO carries a project, which is
+    // why it needs the cast: habitShape has `group` and no `project`
+    // (packages/types/src/schemas.ts:209), so the schema forbids this state.
+    // The `type !== 'habit'` guard at planner-store.ts:2030 is therefore
+    // insurance rather than load-bearing — but insurance you can delete without
+    // a test going red is insurance nobody will keep.
     seed([{ ...item('h1'), type: 'habit', group: 'Health' } as Item]);
 
     store().removeProject('p-work');
 
+    // `project`, not `group`. removeProject has one set() and writes exactly two
+    // things: the projects array, and `project: undefined` on the rows it
+    // reaches. It never touches `group` — that is removeHabitGroup's verb — so
+    // asserting `group` here was true under every possible implementation,
+    // including one with the guard deleted.
+    expect(byId('h1').project).toBe('Work');
     expect(byId('h1').group).toBe('Health');
   });
 
