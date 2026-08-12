@@ -212,6 +212,7 @@ export function TeachingLine({ children }: { children: React.ReactNode }) {
 export function IdentityRow({
   id,
   name,
+  accentName,
   icon,
   color,
   label,
@@ -223,6 +224,8 @@ export function IdentityRow({
 }: {
   id: string;
   name: string;
+  /** The string the accent hashes, when it is not the displayed name — see ObjectRow. */
+  accentName?: string;
   icon?: string;
   color?: string;
   /** "Routine", "Program", … — used for the control aria-labels. */
@@ -282,7 +285,7 @@ export function IdentityRow({
 
         <ColorSwatchPicker
           value={color}
-          fallback={accentColorForName(name)}
+          fallback={accentColorForName(accentName ?? name)}
           onSelect={(next) => onPatch({ color: next })}
           aria-label={`${label} color`}
         />

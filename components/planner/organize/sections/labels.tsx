@@ -304,6 +304,9 @@ export function TypesSection({
               icon={type.icon}
               color={type.color}
               name={type.label}
+              // The SLUG, because that is what item-registry hashes for a
+              // custom type's accent — the label is only what it is called.
+              accentName={type.name}
               selected={selectedId === type.id}
               pill={null}
               count={countTypeItems(items, type.name)}
@@ -354,6 +357,7 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
       <IdentityRow
         id={type.id}
         name={type.label}
+        accentName={type.name}
         icon={type.icon}
         color={type.color}
         label="Item type"

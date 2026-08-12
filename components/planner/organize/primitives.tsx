@@ -94,6 +94,7 @@ export function ObjectRow({
   icon,
   color,
   name,
+  accentName,
   selected,
   pill,
   pillTestId,
@@ -106,6 +107,17 @@ export function ObjectRow({
   /** Stored accent; falls back to the name hash, same as everywhere else. */
   color?: string;
   name: string;
+  /**
+   * The string the accent hashes, when it is NOT the displayed name.
+   *
+   * Only item types need this, and they need it because their display label and
+   * their identity are different strings: item-registry's buildCustomTypeConfig
+   * derives a type's accent from `def.name`, the SLUG, since that is the value
+   * in `items.type`. Hash the label instead and a type called "Side Quest"
+   * (slug `side-quest`) renders one colour here and another in the add dialog,
+   * the item chips and Beacon's context.
+   */
+  accentName?: string;
   selected: boolean;
   /**
    * Non-null exactly when the object is NOT carrying its members. Required
@@ -171,7 +183,7 @@ export function ObjectRow({
           the ScopeRail's existing idiom, not a new one. */}
       <span
         className="flex w-[18px] shrink-0 justify-center"
-        style={{ color: color ?? accentColorForName(name) }}
+        style={{ color: color ?? accentColorForName(accentName ?? name) }}
       >
         <CategoryIcon glyph={icon} name={name} className="h-3.5 w-3.5 shrink-0 text-current" />
       </span>

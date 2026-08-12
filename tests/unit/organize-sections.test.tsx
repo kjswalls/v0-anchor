@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { accentColorForName } from '@/lib/accent-colors';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
 /**
@@ -406,6 +407,18 @@ describe('the label sections', () => {
     // assertion has to name the filled pair rather than the substring.
     expect(id('project-delete').className).not.toContain('bg-destructive text-destructive-foreground');
     expect(id('project-delete').className).toContain('border-destructive/40');
+  });
+
+  it('hashes an item type’s accent from its slug, not its label', () => {
+    // item-registry's buildCustomTypeConfig derives a custom type's accent from
+    // `def.name` — the slug — because that is the value in items.type. Hashing
+    // the label instead makes the console the one surface in the app that paints
+    // a multi-word type a different colour from the add dialog and the chips.
+    seed({ itemTypes: [{ id: 't1', name: 'side-quest', label: 'Side Quest', labelPlural: 'Side Quests' }] });
+    open('types');
+    const glyph = id('type-row').querySelector('span[style]') as HTMLElement;
+    expect(glyph.style.color).toBe(accentColorForName('side-quest'));
+    expect(glyph.style.color).not.toBe(accentColorForName('Side Quest'));
   });
 
   it('lets a colour be set AND put back to Auto', () => {

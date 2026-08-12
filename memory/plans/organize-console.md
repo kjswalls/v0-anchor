@@ -552,7 +552,22 @@ green.
 
 ### Phase 2 — The plate
 
-**Status 2026-08-12 — DONE, wiring included. Build green, 844 unit tests, lint 0 errors.**
+**Status 2026-08-12 — built and wired. Build green, 845 unit tests, lint 0 errors.**
+**Ten of the twelve doors are live. Two are NOT built and are not "retargeting" —**
+door 4 (`⌘⇧,`) and door 6 (the user-card row) are net-new affordances that never existed
+for either dialog, so there was nothing to retarget. Nothing advertises either one, so no
+affordance lies; they are outstanding work, not a regression. Recorded here rather than
+left implied by a ledger line that said "wiring included".
+
+**Door 4 as specced cannot be built, and the plan was wrong to call `⌘⇧,` free.**
+`lib/commands/keys.ts` deliberately does NOT push `shift` for a shift-produced symbol —
+`e.key` already carries it, which is why `report_bug` registers `['?']` and not
+`['shift','/']`. `⌘⇧,` emits `e.key === '<'` on a US layout, so `pressedKeys` returns
+`['<','mod']` while `['meta','shift',',']` normalizes to `[',','mod','shift']`;
+`matchesBinding` compares lengths first and can never match. Registering the specced
+binding would paint a keycap in the shortcuts modal for a shortcut that never fires. A
+working binding is `['mod','<']` — layout-dependent, and therefore a design decision to
+take rather than wiring that was skipped.
 Work moved to its own worktree (`D:/Code/v0-anchor-organize`, branch `feat/organize-console`)
 after a parallel session in the shared checkout committed one of these edits into its own
 history by accident. Branches are per-worktree, so a branch alone could not have isolated it.
