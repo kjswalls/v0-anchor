@@ -263,9 +263,23 @@ describe('groupBySupport — how far a value reaches', () => {
     expect(groupBySupport('week', 'buckets', 'priority')).toEqual({ honoured: true, note: null });
   });
 
-  it('reaches the Anytime strip on both Schedules and says so', () => {
+  it('honours Schedule outright now that the grid partitions on x', () => {
+    // Phase 5b: Day divides into lanes where the field can afford them and falls
+    // back to focus where it cannot; Week is always focus. Which of the two you
+    // get depends on the measured field and the group count, which a rail cannot
+    // state — the cap row above the grid shows it instead.
     for (const scope of ['day', 'week'] as const) {
-      expect(groupBySupport(scope, 'schedule', 'project')).toEqual({
+      expect(groupBySupport(scope, 'schedule', 'project')).toEqual({ honoured: true, note: null });
+      expect(groupBySupport(scope, 'schedule', 'routine')).toEqual({ honoured: true, note: null });
+    }
+  });
+
+  it('keeps Time bucket on Schedule to the Anytime strip', () => {
+    // y already IS time. Four bucket-lanes would be a diagonal staircase with
+    // three quarters of the field dead, so the grid declines it and the strip
+    // still sections by it — honoured, partly, which is what the rail says.
+    for (const scope of ['day', 'week'] as const) {
+      expect(groupBySupport(scope, 'schedule', 'bucket')).toEqual({
         honoured: true,
         note: 'Anytime only',
       });

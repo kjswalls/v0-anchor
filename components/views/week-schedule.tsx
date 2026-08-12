@@ -31,6 +31,9 @@ import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { groupRows } from '@/lib/grouping';
+import { planLanes, isReceded, type LanePlan } from '@/lib/schedule-lanes';
+import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
+import { LaneCapRow } from '@/components/primitives/lane-cap';
 import { groupBySupport } from '@/lib/view-options';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -113,11 +116,21 @@ function WeekScheduleColumn({
   today,
   nowY,
   showBoundaryRail,
+  lanePlan,
 }: {
   col: ColumnData;
   hours: number[];
   gridStartMin: number;
   hourPx: number;
+  /**
+   * The WEEK's lane plan, built once over all seven columns and handed down.
+   *
+   * Not per column: focus is a question about the week ("where does Deep Work
+   * land"), and a per-column plan would give the same group a different lane key
+   * set on a day it happens to be absent from — so focusing it would recede that
+   * whole column instead of leaving it empty.
+   */
+  lanePlan: LanePlan;
   /** Width the week scale control asks for. The column may still exceed it —
    *  see minColPx below. */
   colPx: number;
@@ -132,6 +145,7 @@ function WeekScheduleColumn({
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
 
@@ -310,6 +324,7 @@ function WeekScheduleColumn({
               hourPx={hourPx}
               variant="week"
               layout={overlap.get(entry.item.id)}
+              receded={isReceded(lanePlan, focusedKey, entry.item.id)}
             />
           ))}
           {nowY !== null && <NowMarker top={nowY} />}
@@ -366,6 +381,27 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     });
   }, [weekDays, days, programs, timezone]);
 
+  /**
+   * ONE plan for the whole week — see the prop's note on WeekScheduleColumn.
+   *
+   * `variant: 'week'` forces focus mode unconditionally, and that is arithmetic
+   * rather than a compromise: at every derived default on every common monitor a
+   * week column is exactly one 140px channel, so there is nothing to divide.
+   * Focus costs zero pixels and answers the question a week grid otherwise
+   * cannot — where does this group actually land across the week.
+   */
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const lanePlan = useMemo(
+    () =>
+      planLanes(
+        perDay.flatMap((c) => c.timed.map((e) => ({ itemType: e.itemType, item: e.item }))),
+        canvasGroupBy,
+        { variant: 'week', routines }
+      ),
+    [perDay, canvasGroupBy, routines]
+  );
+
   // One shared range + hour height across the gutter and all 7 columns so the
   // labels stay aligned. Range spans the union of every day's items when idle,
   // the full day while dragging (every hour a drop target) or resizing (see/reach
@@ -404,6 +440,13 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   return (
     <ScrollArea className="h-full flex-1">
+      {/* Focus's only caption, above the grid. `data-wide` matches the row below
+          it: every canvas-container on the page has to flip together or they
+          lose the shared left edge the utility exists to guarantee.
+          Renders nothing at all when nothing is grouped. */}
+      <div data-wide="true" className="canvas-container pt-6">
+        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
+      </div>
       <div ref={weekColsRef} data-wide="true" className="canvas-container flex gap-2 py-6 pb-20">
         {/* Hour gutter — same top offsets as the columns so labels line up, and
             the same bare left-aligned mono marks the day view uses. Week has no
@@ -523,6 +566,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               today={isToday(col.date)}
               nowY={col.dateStr === todayStr ? nowY : null}
               showBoundaryRail={showBoundaryRail}
+              lanePlan={lanePlan}
             />
           ))}
         </div>

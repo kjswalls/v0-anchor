@@ -352,11 +352,10 @@ describe('each surface renders only what it can honour', () => {
     expect(within(menu).getByRole('menuitem', { name: /Project \/ Group/ })).toBeInTheDocument();
   });
 
-  it('says which PART of Schedule a grouping reaches, and keeps the row live', async () => {
-    // Phase 5a: the hour grid still cannot take headings — a row's y position IS
-    // its time — but the Anytime strip above it is an ordinary row list and now
-    // groups. So the value is honoured, partly, and a disabled row would be a
-    // lie in the other direction.
+  it('honours Schedule outright, and keeps Time bucket to the Anytime strip', async () => {
+    // Phase 5b put the partition on x — lanes where the field affords them,
+    // focus where it does not — so most values carry no qualification at all.
+    // Time bucket is the exception: y already IS time.
     seed({ layout: 'schedule' });
     render(<DisplayMenu surface="canvas" />);
 
@@ -364,10 +363,11 @@ describe('each surface renders only what it can honour', () => {
 
     const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
     expect(priority).not.toHaveAttribute('data-disabled');
-    expect(priority).toHaveTextContent('Anytime only');
-    expect(screen.getByRole('menuitemradio', { name: /^Project/ })).not.toHaveAttribute(
-      'data-disabled'
-    );
+    expect(priority).not.toHaveTextContent('Anytime only');
+
+    const bucket = screen.getByRole('menuitemradio', { name: /Time bucket/ });
+    expect(bucket).not.toHaveAttribute('data-disabled');
+    expect(bucket).toHaveTextContent('Anytime only');
   });
 
   it('honours grouping on week now that the week surfaces section their own rows', async () => {

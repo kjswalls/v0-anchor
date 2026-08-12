@@ -165,12 +165,14 @@ describe('Day × Schedule asks for grouping, in the Anytime strip', () => {
     expect(headingsIn('unscheduled:anytime')).toEqual(['Anytime']);
   });
 
-  it('sections the strip under its own heading', () => {
-    // The hour grid below cannot take headings — a row's y position IS its time
-    // — so this strip is the whole of what Schedule honours until 5b's lanes.
+  it('replaces its own heading with the group headings', () => {
+    // Not nested under "Anytime". Two headings deep read as a stutter, and as a
+    // literal "Anytime › Anytime" when grouping by time bucket — which the
+    // Phase 5a review caught. The strip is already identified by its position
+    // and by being the drop target.
     seed('project');
     mount(<DaySchedule activeId={null} />);
-    expect(headingsIn('unscheduled:anytime')).toEqual(['Anytime', 'Work', 'Home']);
+    expect(headingsIn('unscheduled:anytime')).toEqual(['Work', 'Home']);
   });
 
   it('leaves the timed grid alone', () => {

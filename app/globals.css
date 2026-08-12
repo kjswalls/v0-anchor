@@ -675,6 +675,22 @@
   /* Done goes the other way — INTO the well. The lamp is off, so the block sinks
      to the grey the whole set used to sit at. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
+  /* Off-group, while another lane is focused. Its OWN value, never an alias of
+     --sched-pane-done: reusing that would make every receded INCOMPLETE block
+     read as finished on a focused day, which is a false claim about the work
+     rather than a dimmer one. So it goes flatter and cooler than the resting
+     pane while staying clearly above the canvas — recession is "not what you
+     asked about", not "done" and not "gone". */
+  --grp-off-pane: color-mix(in oklab, var(--surface-2) 42%, transparent);
+  /* The hairline that replaces the plate's shadow when it recedes. A receded
+     block keeps its edge — losing it entirely turns the grid into a field of
+     floating titles. */
+  --grp-off-edge: color-mix(in oklab, var(--border) 70%, transparent);
+  /* Accent marks on a receded block. NOT an opacity on the block: three lime
+     things live inside one (the done checkbox, the selection mark, and the whole
+     accent of a project-less task), and lime is the one colour that never fades.
+     The rail and bead take this ink instead, and everything lime stays lime. */
+  --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
   --sched-shadow: var(--sched-lit), var(--shadow-elev-md);
   --sched-shadow-hover: var(--sched-lit), var(--shadow-elev-lg);
   /* Done: the modelling goes out, but the card keeps floating. */
@@ -873,6 +889,14 @@
   /* Floors at a real step above the canvas: surface-3/32 resolves to ~0.224 over
      a 0.21 ground, which is vanishing rather than receding. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+
+  /* Off-group, dark. Same floor argument as done: on a 0.21 canvas a thin
+     translucent plate vanishes rather than recedes, so this keeps more of
+     surface-2 than light does. Still its own value, not the done token — see
+     the light block. */
+  --grp-off-pane: color-mix(in oklab, var(--surface-2) 55%, transparent);
+  --grp-off-edge: oklch(1 0 0 / 9%);
+  --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
   --sched-wash: 0.55;
   --sched-wash-hover: 0.78;

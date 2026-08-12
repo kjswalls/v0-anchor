@@ -119,14 +119,11 @@ exist. Verified against `a1c03c2`:
 | **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | **shipped** — Ordering deferred to 4 |
 | **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | **shipped** |
 | **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and both Schedules' Anytime strips | ~6 d | **shipped** |
-| **5b** | Schedule lanes + Week focus/recede | ~5 d | |
+| **5b** | Schedule lanes + Week focus/recede | ~5 d | **shipped** |
 
-**Carried into 5b from the 5a review:** grouping by **Time bucket on Schedule** nests an
-"Anytime" section inside the strip's own "Anytime" heading. Reproduced by mounting
-`DaySchedule`; harmless and not a defect (the strip spans all four buckets, so the
-partition is real information nothing else on Schedule shows), but 5b rewrites this exact
-code and should resolve the label collision in the view — most likely by dropping the
-strip's own heading whenever it renders sections.
+**Carried into 5b from the 5a review and done:** the strip's own "Anytime" heading now
+gives way to the group headings rather than sitting above them, so grouping by Time bucket
+no longer renders "Anytime › Anytime".
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
 | **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | |
 | **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | |
@@ -248,6 +245,31 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   when the timed rows were handed to the grouping pass, because that renders them inside
   the groups AND leaves the spine below intact. Assert the whole sequence: six rows, this
   order, once each.
+- **Lanes are one `layoutOverlaps` call PER LANE, not one call with lanes in it.** That is
+  semantics, not tuning: two blocks in different lanes may share a time but never a column,
+  so they must not cluster, column-pack or occlude each other. `LayoutOptions.root` supplies
+  the lane's band and every existing rule then runs against the lane's width. Passing a root
+  changes one other thing deliberately — **every** entry gets a layout, including
+  un-overlapped ones, because the ABSENCE of a layout means "the whole field" to the
+  renderer, which is exactly the wrong default once a block belongs to a lane.
+- **`isReceded` must return false for a row the plan never saw.** The obvious
+  `laneKeyOf(...) !== active` gives the opposite, and did — caught on the first test run,
+  against a docstring three lines above asserting the safe behaviour. The failure modes are
+  not symmetric: a stray at full strength stands out; a receded stray is work greyed out
+  for a reason nothing on screen can explain.
+- **Focus is resolved against the current plan, never cleared on a group-by change.** A
+  key held in a store that knows nothing about grouping outlives the lanes that named it.
+  Resolving makes it stop applying; clearing it would need a cross-store hook on every
+  writer of `canvasGroupBy` and would still miss a rehydrate.
+- **A ref written during render is a lint error** (`Cannot access refs during render`), so
+  `useFieldWidth`'s freeze holds the EXPOSED value in state instead. Gating the observer on
+  a `freeze` dep is not the alternative: it tears down and re-attaches, which fires an
+  immediate measurement — the one thing the freeze exists to prevent.
+- **A render test can pass because of a missing input rather than the rule it names.**
+  `WeekSchedule` passes no `fieldWidth` at all, so its "never divides" case stayed green
+  with the `variant === 'day'` rule deleted. The rule is pinned in the pure test, which
+  hands week an explicit width; the render test now says plainly what it does and does not
+  cover.
 - **Deleting a RULE can hollow out a test that used to guard it.** The two cases pinning
   the phone's `scope` prop were real red-green guards while `groupByBlockedBy` answered
   'Day only' for every value on week. 5a deleted that rule, and since both cases seeded

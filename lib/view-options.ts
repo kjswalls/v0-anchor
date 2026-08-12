@@ -112,10 +112,18 @@ export function groupBySupport(
     return FULL;
   }
 
-  // A row's y position IS its time, so the grid itself cannot take headings.
-  // The Anytime strip above it is an ordinary row list and can. Phase 5b gives
-  // the grid lanes, which is the same partition expressed on x.
-  if (layout === 'schedule') return { honoured: true, note: 'Anytime only' };
+  if (layout === 'schedule') {
+    // Time-of-day does not become lanes: y already IS it, so four bucket-lanes
+    // would be a diagonal staircase with three quarters of the field dead. The
+    // Anytime strip still sections by it, which is the honest half.
+    if (value === 'bucket') return { honoured: true, note: 'Anytime only' };
+    // Phase 5b: the grid partitions on x. Day divides into lanes where the field
+    // can afford them and falls back to focus where it cannot; Week is always
+    // focus. Both are the grouping, honoured — which of the two you get is
+    // arithmetic the menu cannot state in a rail (it depends on the measured
+    // field and the group count), and the cap row above the grid shows it.
+    return FULL;
+  }
 
   return FULL;
 }

@@ -292,14 +292,62 @@ export type LayoutOptions = {
   fieldWidth?: number | null;
   /** Hard override, for tests and for a caller that knows better than the width. */
   maxCols?: number;
+  /**
+   * The band the root cluster is placed into, as percentages of the field.
+   * Omitted, it is the whole field, which is every pre-5b caller.
+   *
+   * This is the whole of the lanes mechanism. `placeSiblings` already derives its
+   * channel budget from the `area` it is handed rather than from the field, so a
+   * lane's band substituted at the root makes column packing, containment, the
+   * inset cascade and the content-band pass all run inside a lane exactly as they
+   * ran inside the field. Callers run the pass once per lane over that lane's
+   * entries and merge, which also keeps CLUSTERING per lane — two blocks in
+   * different lanes share a time but not a column, so they are not a conflict.
+   *
+   * Passing it changes one other thing, deliberately: every entry gets a layout,
+   * including one with nothing overlapping it. Without a root band the absence of
+   * a layout MEANS "the whole field", which is exactly the wrong default once the
+   * block belongs to a lane.
+   */
+  root?: { leftPct: number; rightPct: number };
 };
+
+/** The band-only layout an un-overlapped block gets inside a lane. */
+function soloLayout(leftPct: number, rightPct: number): BlockLayout {
+  return {
+    depth: 0,
+    left: band(leftPct, 0),
+    right: band(rightPct, 4),
+    paneLeft: `${LANE_PX}px`,
+    paneRight: '0px',
+    railX: 5,
+    beadX: 3,
+    z: 2,
+    zHover: HOVER_Z,
+    wash: 'full',
+    solid: false,
+    pockets: [],
+    branchTicks: [],
+    beadOnPocket: false,
+    contentTop: null,
+    contentHeight: null,
+    handleTopLane: false,
+    handleBottomLane: false,
+    widthFraction: (100 - leftPct - rightPct) / 100,
+  };
+}
 
 export function layoutOverlaps(
   entries: OverlapEntry[],
-  { hourPx, gridStartMin, variant = 'day', fieldWidth, maxCols }: LayoutOptions
+  { hourPx, gridStartMin, variant = 'day', fieldWidth, maxCols, root }: LayoutOptions
 ): OverlapLayout {
   const out: OverlapLayout = new Map();
-  if (entries.length < 2) return out;
+  // A lone entry in a lane still needs its band; a lone entry on the open field
+  // is already where it belongs.
+  if (entries.length < 2) {
+    if (root) for (const e of entries) out.set(e.id, soloLayout(root.leftPct, root.rightPct));
+    return out;
+  }
 
   const isWeek = variant === 'week';
   const maxDepth = isWeek ? 0 : MAX_DEPTH_DAY;
@@ -601,9 +649,18 @@ export function layoutOverlaps(
 
     placeSiblings(
       cluster.filter((c) => !c.parent),
-      { leftPct: 0, leftPx: 0, rightPct: 0, rightPx: 4 },
+      { leftPct: root?.leftPct ?? 0, leftPx: 0, rightPct: root?.rightPct ?? 0, rightPx: 4 },
       0
     );
+  }
+
+  // Everything the clustering skipped — a lone block, or a cluster of one. Under
+  // a root band its absence would read as "the whole field"; see LayoutOptions.
+  if (root) {
+    const laidOut = new Set(placed.map((p) => p.node.e.id));
+    for (const e of entries) {
+      if (!laidOut.has(e.id)) out.set(e.id, soloLayout(root.leftPct, root.rightPct));
+    }
   }
 
   /*
