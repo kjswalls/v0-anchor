@@ -1940,7 +1940,8 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           ...projectItems(state.items.map((i) =>
-            i.type === 'task' && i.project === project?.name ? { ...i, project: undefined } : i
+            // Custom types hold projects too — see cleanupOrphanedReferences.
+            i.type !== 'habit' && i.project === project?.name ? { ...i, project: undefined } : i
           )),
         }));
 
@@ -2127,7 +2128,10 @@ export const usePlannerStore = create<PlannerStore>()(
         const groupNames = new Set(state.habitGroups.map(g => g.name));
 
         set(projectItems(state.items.map((i) => {
-          if (i.type === 'task' && i.project && !projectNames.has(i.project)) {
+          // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
+          // (registry containerKind 'projects'), so the orphan sweep has to
+          // reach them or a deleted project strands them on a dead name.
+          if (i.type !== 'habit' && i.project && !projectNames.has(i.project)) {
             return { ...i, project: undefined };
           }
           if (i.type === 'habit' && !groupNames.has(i.group)) {

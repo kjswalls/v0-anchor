@@ -416,7 +416,13 @@ export function buildCustomTypeConfig(
     // Manual ordering is per-type ("order" sequences would collide); custom
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
-    containerKind: null,
+    // Project-shaped, because the rest of this config already is: `fields` is
+    // TASK_FIELDS (which carries `project`), containerLabel is 'Project', and
+    // itemFromRow/itemToRow read and write row.project for custom items
+    // unconditionally. Left null, a custom item carried a real project value
+    // that no container question could see — the dialog never rendered the
+    // picker, and buildListGroups filed every custom item under "No project".
+    containerKind: 'projects',
     containerRequired: false,
     orphanContainerFallback: null,
     counters: { streak: false, dailyCounts: false },
