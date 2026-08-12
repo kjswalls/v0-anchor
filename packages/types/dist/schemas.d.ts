@@ -213,6 +213,21 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -243,6 +258,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -270,6 +286,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -297,6 +314,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -324,6 +342,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -345,6 +364,12 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
+    /**
+     * Stable id of the group named by `group` (migration 027). The habit-side
+     * twin of `projectId` — see its note on taskShape for why the name stays and
+     * why this has to live in the shape rather than only in the DB.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -377,6 +402,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -397,6 +423,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, {
@@ -417,6 +444,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -437,6 +465,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
@@ -482,6 +511,21 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -514,6 +558,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -542,6 +587,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -570,6 +616,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -598,6 +645,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -619,6 +667,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
+    /**
+     * Stable id of the group named by `group` (migration 027). The habit-side
+     * twin of `projectId` — see its note on taskShape for why the name stays and
+     * why this has to live in the shape rather than only in the DB.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -653,6 +707,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -674,6 +729,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, {
@@ -695,6 +751,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -716,6 +773,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
@@ -755,6 +813,21 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -790,6 +863,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -819,6 +893,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -848,6 +923,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -877,6 +953,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -917,6 +994,21 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -949,6 +1041,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -977,6 +1070,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -997,6 +1091,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     id: z.ZodString;
     title: z.ZodString;
     group: z.ZodString;
+    /**
+     * Stable id of the group named by `group` (migration 027). The habit-side
+     * twin of `projectId` — see its note on taskShape for why the name stays and
+     * why this has to live in the shape rather than only in the DB.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -1031,6 +1131,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -1052,6 +1153,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, z.ZodObject<{
@@ -1090,6 +1192,21 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -1125,6 +1242,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1154,6 +1272,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1182,6 +1301,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1204,6 +1324,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 } | {
@@ -1232,6 +1353,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1260,6 +1382,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1282,6 +1405,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     notes?: string | null | undefined;
+    groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 } | {
@@ -1310,6 +1434,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     previousStartDate?: string | undefined;
     notes?: string | null | undefined;
     parentItemId?: string | undefined;
+    projectId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
@@ -1377,11 +1502,26 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     previousStartTime: z.ZodOptional<z.ZodString>;
     previousStartDate: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.ZodOptional<z.ZodString>;
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
-}, "pausedAt" | "pausedUntil">, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil" | "projectId">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -1510,10 +1650,16 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      * sweep's resume grace.
      */
     pausedUntil: z.ZodOptional<z.ZodString>;
+    /**
+     * Stable id of the group named by `group` (migration 027). The habit-side
+     * twin of `projectId` — see its note on taskShape for why the name stays and
+     * why this has to live in the shape rather than only in the DB.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
-}, "pausedAt" | "pausedUntil">, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil" | "groupId">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "done" | "skipped" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -2247,6 +2393,21 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
         /** Parent item id — this item is a subtask when set (items.parent_item_id). */
         parentItemId: z.ZodOptional<z.ZodString>;
+        /**
+         * Stable id of the project named by `project` (migration 027).
+         *
+         * `project` STAYS the name and stays authoritative for display — this pair is
+         * deliberately redundant, because the legacy projection has to emit a name
+         * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+         * silently and feeding ids to a model with no id↔name map. The id is what
+         * survives a rename; the fan-out keeps the name correct.
+         *
+         * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+         * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+         * field outside it never enters an undo patch — undo would send the old name
+         * back while the id still pointed at the new container.
+         */
+        projectId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
         /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -2277,6 +2438,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2304,6 +2466,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2331,6 +2494,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2358,6 +2522,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2379,6 +2544,12 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: z.ZodString;
         title: z.ZodString;
         group: z.ZodString;
+        /**
+         * Stable id of the group named by `group` (migration 027). The habit-side
+         * twin of `projectId` — see its note on taskShape for why the name stays and
+         * why this has to live in the shape rather than only in the DB.
+         */
+        groupId: z.ZodOptional<z.ZodString>;
         streak: z.ZodNumber;
         status: z.ZodEnum<["pending", "done", "skipped"]>;
         completedDates: z.ZodArray<z.ZodString, "many">;
@@ -2411,6 +2582,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }, {
@@ -2431,6 +2603,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, {
@@ -2451,6 +2624,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }, {
@@ -2471,6 +2645,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, "many">;
@@ -2561,6 +2736,21 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
         /** Parent item id — this item is a subtask when set (items.parent_item_id). */
         parentItemId: z.ZodOptional<z.ZodString>;
+        /**
+         * Stable id of the project named by `project` (migration 027).
+         *
+         * `project` STAYS the name and stays authoritative for display — this pair is
+         * deliberately redundant, because the legacy projection has to emit a name
+         * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+         * silently and feeding ids to a model with no id↔name map. The id is what
+         * survives a rename; the fan-out keeps the name correct.
+         *
+         * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+         * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+         * field outside it never enters an undo patch — undo would send the old name
+         * back while the id still pointed at the new container.
+         */
+        projectId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
         /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -2593,6 +2783,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2621,6 +2812,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2641,6 +2833,12 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         id: z.ZodString;
         title: z.ZodString;
         group: z.ZodString;
+        /**
+         * Stable id of the group named by `group` (migration 027). The habit-side
+         * twin of `projectId` — see its note on taskShape for why the name stays and
+         * why this has to live in the shape rather than only in the DB.
+         */
+        groupId: z.ZodOptional<z.ZodString>;
         streak: z.ZodNumber;
         status: z.ZodEnum<["pending", "done", "skipped"]>;
         completedDates: z.ZodArray<z.ZodString, "many">;
@@ -2675,6 +2873,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }, {
@@ -2696,6 +2895,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, z.ZodObject<{
@@ -2734,6 +2934,21 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
         /** Parent item id — this item is a subtask when set (items.parent_item_id). */
         parentItemId: z.ZodOptional<z.ZodString>;
+        /**
+         * Stable id of the project named by `project` (migration 027).
+         *
+         * `project` STAYS the name and stays authoritative for display — this pair is
+         * deliberately redundant, because the legacy projection has to emit a name
+         * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+         * silently and feeding ids to a model with no id↔name map. The id is what
+         * survives a rename; the fan-out keeps the name correct.
+         *
+         * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+         * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+         * field outside it never enters an undo patch — undo would send the old name
+         * back while the id still pointed at the new container.
+         */
+        projectId: z.ZodOptional<z.ZodString>;
         /** Who's working this item: 'openclaw' | 'beacon' | free text. */
         assignee: z.ZodOptional<z.ZodString>;
         /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -2769,6 +2984,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2798,6 +3014,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2826,6 +3043,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2848,6 +3066,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     } | {
@@ -2876,6 +3095,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2904,6 +3124,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -2926,6 +3147,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     } | {
@@ -2954,6 +3176,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3087,6 +3310,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3109,6 +3333,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }[];
@@ -3156,6 +3381,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3178,6 +3404,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     } | {
@@ -3206,6 +3433,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3261,6 +3489,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3283,6 +3512,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }[];
@@ -3330,6 +3560,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
@@ -3352,6 +3583,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         notes?: string | null | undefined;
+        groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     } | {
@@ -3380,6 +3612,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         previousStartDate?: string | undefined;
         notes?: string | null | undefined;
         parentItemId?: string | undefined;
+        projectId?: string | undefined;
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;

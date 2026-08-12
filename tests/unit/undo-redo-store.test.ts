@@ -21,6 +21,9 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
+  // The rename fan-out (migration 027) — updateProject/updateHabitGroup call it
+  // whenever the name actually changes.
+  renameContainerMembers: vi.fn(async () => {}),
   createHabitGroup: vi.fn(async () => {}),
   updateHabitGroup: vi.fn(async () => {}),
   deleteHabitGroup: vi.fn(async () => {}),

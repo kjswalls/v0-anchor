@@ -43,6 +43,7 @@ import {
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
+  renameContainerMembers as dbRenameContainerMembers,
   fetchRoutines,
   createRoutine as dbCreateRoutine,
   updateRoutine as dbUpdateRoutine,
@@ -359,6 +360,37 @@ const projectItems = (items: Item[]) => ({
   ) as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
 });
+
+/**
+ * A container NAME write implies an ID write (migration 027).
+ *
+ * Every surface that files an item still speaks in names — the item dialog's
+ * chips, the agent API, the braindump — and converting those ~15 call sites is
+ * explicitly out of scope. So the resolution happens once, here, at the moment
+ * a name is written: the name stays authoritative for display, and the id it
+ * resolves to is what survives the container being renamed.
+ *
+ * Returning `undefined` for an unmatched name is correct, not a fallback. Some
+ * items name a container that has no row at all — 12 of them on the live
+ * database name a project called "Housework" — and inventing a link for those
+ * would file them under whatever container is created with that name next.
+ */
+const projectIdFor = (name: string | undefined, projects: Project[]) =>
+  name ? projects.find((p) => p.name === name)?.id : undefined;
+
+/**
+ * The habit-group twin, with the case-insensitive fallback the group surfaces
+ * already use — getHabitGroupEmoji and getHabitGroupColor both normalise, and
+ * addHabitGroup de-dupes case-insensitively, so an exact-only match here would
+ * strand a habit that says "personal" against a group row named "Personal".
+ */
+const groupIdFor = (name: string | undefined, groups: HabitGroupType[]) =>
+  name
+    ? (
+        groups.find((g) => g.name === name) ??
+        groups.find((g) => g.name.toLowerCase() === name.toLowerCase())
+      )?.id
+    : undefined;
 
 // History management for undo/redo
 /**
@@ -1163,6 +1195,7 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: 0, // custom types aren't manually orderable (created_at sorts)
+          projectId: projectIdFor(itemData.project, get().projects),
         };
         set((state) => ({
           ...projectItems([...state.items, item]),
@@ -1186,6 +1219,7 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
+          projectId: projectIdFor(taskData.project, get().projects),
         };
         set((state) => ({
           ...projectItems([...state.items, task]),
@@ -1216,6 +1250,14 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // Re-file: the id follows the name, INCLUDING to undefined. Key
+        // presence is the test, not truthiness — clearing `project` is how
+        // unfiling is expressed, and leaving a stale id behind would let a
+        // later rename of the old container pull the name back onto an item
+        // the user had already taken out of it.
+        if ('project' in updates) {
+          newUpdates.projectId = projectIdFor(updates.project, get().projects);
         }
 
         updateItemAction(id, 'task', newUpdates);
@@ -1905,6 +1947,7 @@ export const usePlannerStore = create<PlannerStore>()(
           skippedDates: [],
           dailyCounts: {},
           currentDayCount: 0,
+          groupId: groupIdFor(habitData.group, get().habitGroups),
         };
         set((state) => ({
           ...projectItems([...state.items, habit]),
@@ -1926,6 +1969,10 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || habit.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // See updateTask — the id follows the name on every re-file.
+        if ('group' in updates) {
+          newUpdates.groupId = groupIdFor(updates.group, get().habitGroups);
         }
 
         updateItemAction(id, 'habit', newUpdates);
@@ -2050,14 +2097,38 @@ export const usePlannerStore = create<PlannerStore>()(
       updateProject: (id, updates) => {
         const project = get().projects.find((p) => p.id === id);
         setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
+        // THE RENAME FAN-OUT (migration 027). Members hold the name for display
+        // and the id for identity; renaming has to move the name on every one of
+        // them or the container silently empties. Keyed on projectId, so a
+        // member whose text drifted still follows and a same-named stranger does
+        // not. Guarded on the name actually changing — an emoji or colour edit
+        // arrives through this same action.
+        const renamedTo =
+          updates.name !== undefined && project && updates.name !== project.name
+            ? updates.name
+            : null;
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type !== 'habit' && i.projectId === id
+                    ? { ...i, project: renamedTo }
+                    : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
+        if (userId) {
+          dbUpdateProject(userId, id, updates).catch(console.error);
+          if (renamedTo) {
+            dbRenameContainerMembers(userId, 'project_id', id, renamedTo).catch(console.error);
+          }
+        }
       },
 
       removeProject: (id) => {
@@ -2075,7 +2146,17 @@ export const usePlannerStore = create<PlannerStore>()(
             // items.project is plain text with no FK and no trigger, so a
             // reload re-reads the dead name. Name-referenced containers are the
             // documented parked limitation (migration 024).
-            i.type !== 'habit' && i.project === project?.name ? { ...i, project: undefined } : i
+            // Both halves, or the store contradicts itself: an item reading
+            // unfiled while still carrying the id would follow the container's
+            // next rename straight back into a project it had left.
+            //
+            // The DB row keeps BOTH on purpose — deleteProject only stamps
+            // deleted_at, so the link survives for a Trash restore to reconnect
+            // (Phase 4). That in-session/persisted asymmetry is pre-existing and
+            // unchanged here; 027 makes fixing it possible, it does not fix it.
+            i.type !== 'habit' && (i.projectId === project?.id || i.project === project?.name)
+              ? { ...i, project: undefined, projectId: undefined }
+              : i
           )),
         }));
 
@@ -2227,14 +2308,32 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       updateHabitGroup: (id, updates) => {
+        const group = get().habitGroups.find((g) => g.id === id);
+        // See updateProject — the same fan-out, for the same reason.
+        const renamedTo =
+          updates.name !== undefined && group && updates.name !== group.name
+            ? updates.name
+            : null;
         set((state) => ({
           habitGroups: state.habitGroups.map((g) =>
             g.id === id ? { ...g, ...updates } : g
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type === 'habit' && i.groupId === id ? { ...i, group: renamedTo } : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
+        if (userId) {
+          dbUpdateHabitGroup(userId, id, updates).catch(console.error);
+          if (renamedTo) {
+            dbRenameContainerMembers(userId, 'group_id', id, renamedTo).catch(console.error);
+          }
+        }
       },
 
       removeHabitGroup: (id) => {
@@ -2247,8 +2346,17 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
           ...projectItems(state.items.map((i) =>
-            i.type === 'habit' && i.group === group?.name
-              ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
+            // Reassigns rather than unassigns — see the confirm copy, which
+            // names the destination. The id moves with the name (027): a
+            // destination that exists as a row hands over its id, and the
+            // 'Personal' fallback resolves to undefined when no such row exists,
+            // which is the honest answer for an account whose default groups
+            // were never persisted.
+            i.type === 'habit' && (i.groupId === group?.id || i.group === group?.name)
+              ? (() => {
+                  const dest = state.habitGroups.find((g) => g.id !== id);
+                  return { ...i, group: dest?.name || 'Personal', groupId: dest?.id };
+                })()
               : i
           )),
         }));

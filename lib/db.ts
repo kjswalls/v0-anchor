@@ -40,6 +40,10 @@ interface ItemRow {
   // task-side
   priority?: string | null;
   project?: string | null;
+  // Container ids (migration 027). The text columns above/below stay — these
+  // are what survive a rename, those are what the legacy projection emits.
+  project_id?: string | null;
+  group_id?: string | null;
   start_date?: string | null;
   duration?: number | null;
   is_scheduled?: boolean | null;
@@ -76,6 +80,7 @@ function itemFromRow(row: ItemRow): Item {
       title: row.title,
       priority: (row.priority ?? undefined) as Task['priority'],
       project: row.project ?? undefined,
+      projectId: row.project_id ?? undefined,
       startDate: row.start_date ?? undefined,
       status: row.status as Task['status'],
       timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
@@ -106,6 +111,7 @@ function itemFromRow(row: ItemRow): Item {
       id: row.id,
       title: row.title,
       group: row.group ?? '',
+      groupId: row.group_id ?? undefined,
       streak: row.streak ?? 0,
       status: row.status as Habit['status'],
       completedDates: row.completed_dates ?? [],
@@ -130,6 +136,7 @@ function itemFromRow(row: ItemRow): Item {
     title: row.title,
     priority: (row.priority ?? undefined) as Task['priority'],
     project: row.project ?? undefined,
+    projectId: row.project_id ?? undefined,
     startDate: row.start_date ?? undefined,
     status: row.status as Task['status'],
     timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
@@ -177,6 +184,25 @@ function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_u
   };
 }
 
+/**
+ * Container ids, emitted ONLY when set — the same PGRST204 guard as
+ * pauseColumns, for the same reason: an INSERT naming a column absent from
+ * PostgREST's schema cache is rejected outright, so writing these
+ * unconditionally would break EVERY item create against a pre-027 database,
+ * not only container-bearing ones.
+ *
+ * 027's header calls for database-first deploy, which makes that window
+ * impossible in the forward direction. This guard is for the two cases that
+ * order does not cover: a fresh clone pointed at an un-migrated project, and a
+ * rollback of the migration under a deployed build.
+ */
+function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'group_id'>> {
+  if (item.type === 'habit') {
+    return item.groupId !== undefined ? { group_id: item.groupId } : {};
+  }
+  return item.projectId !== undefined ? { project_id: item.projectId } : {};
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -200,6 +226,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       current_day_count: item.currentDayCount ?? null,
       notes: item.notes ?? null,
       ...pauseColumns(item),
+      ...containerColumns(item),
     };
   }
   // task and custom items share the task-shaped column set; the DB type is
@@ -233,6 +260,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
     ...pauseColumns(item),
+    ...containerColumns(item),
   };
 }
 
@@ -255,6 +283,10 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('title' in updates) row.title = updates.title;
   if ('priority' in updates) row.priority = updates.priority ?? null;
   if ('project' in updates) row.project = updates.project ?? null;
+  // Container id (027). Nulls pass through — unfiling clears both halves, and
+  // the purge cron's ON DELETE SET NULL can leave the id null while the text
+  // survives, which is the state a later re-file has to be able to overwrite.
+  if ('projectId' in updates) row.project_id = updates.projectId ?? null;
   if ('startDate' in updates) row.start_date = updates.startDate ?? null;
   if ('status' in updates) row.status = updates.status;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
@@ -290,6 +322,10 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
   if ('group' in updates && updates.group != null) row.group = updates.group;
+  // Container id (027) — see the task allowlist. No null guard, unlike `group`
+  // above: the group NAME kept legacy NOT NULL semantics, but the id is
+  // nullable by design and clearing it is a real operation.
+  if ('groupId' in updates) row.group_id = updates.groupId ?? null;
   if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
   if ('completedDates' in updates && updates.completedDates != null) row.completed_dates = updates.completedDates;
@@ -1227,6 +1263,39 @@ export async function updateProject(userId: string, id: string, updates: Partial
   const { error } = await supabase.from('projects').update(row).eq('id', id);
   if (error) throw error;
   notifyPlugins(userId, 'projects.updated', { action: 'update', id, updates });
+}
+
+/**
+ * Fan a rename out to the members' NAME column, keyed on the id (027).
+ *
+ * This is the whole point of Phase 0. Before the id existed, renaming a
+ * container left every member holding the old string with nothing to resolve it
+ * by, so the rename silently emptied the container — and the Organize console
+ * turns renaming into a one-keystroke action.
+ *
+ * Keyed on project_id, never on the old name: a member whose text drifted (an
+ * agent write, a half-applied earlier rename) still follows, and an item that
+ * merely happens to share the old name but belongs to no row does not get
+ * dragged along.
+ *
+ * Deliberately NOT filtered on deleted_at. A soft-deleted member is still a
+ * member — it can come back out of the Trash, and it should come back holding
+ * the container's current name rather than the one it had when it was deleted.
+ */
+export async function renameContainerMembers(
+  userId: string,
+  column: 'project_id' | 'group_id',
+  id: string,
+  name: string,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('items')
+    .update({ [column === 'project_id' ? 'project' : 'group']: name })
+    .eq('user_id', userId)
+    .eq(column, id);
+  if (error) throw error;
 }
 
 export async function deleteProject(userId: string, id: string, client?: DbClient): Promise<void> {

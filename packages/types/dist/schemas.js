@@ -172,6 +172,21 @@ const taskShape = {
     // (TaskUpdateSchema) carry the strict enum instead.
     /** Parent item id — this item is a subtask when set (items.parent_item_id). */
     parentItemId: z.string().optional(),
+    /**
+     * Stable id of the project named by `project` (migration 027).
+     *
+     * `project` STAYS the name and stays authoritative for display — this pair is
+     * deliberately redundant, because the legacy projection has to emit a name
+     * and a uuid would still `safeParse` past it (both are `z.string()`), failing
+     * silently and feeding ids to a model with no id↔name map. The id is what
+     * survives a rename; the fan-out keeps the name correct.
+     *
+     * It has to live in the SHAPE, not merely in the DB: `diffItem` iterates
+     * `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a
+     * field outside it never enters an undo patch — undo would send the old name
+     * back while the id still pointed at the new container.
+     */
+    projectId: z.string().optional(),
     /** Who's working this item: 'openclaw' | 'beacon' | free text. */
     assignee: z.string().optional(),
     /** Agent progress state — write vocabulary: queued|working|blocked|done|failed. */
@@ -185,6 +200,12 @@ const habitShape = {
     id: z.string(),
     title: z.string(),
     group: z.string(),
+    /**
+     * Stable id of the group named by `group` (migration 027). The habit-side
+     * twin of `projectId` — see its note on taskShape for why the name stays and
+     * why this has to live in the shape rather than only in the DB.
+     */
+    groupId: z.string().optional(),
     streak: z.number(),
     status: HabitStatusSchema,
     completedDates: z.array(z.string()),
@@ -352,7 +373,15 @@ export const TaskCreateSchema = z
     // write access to pausing is a deliberate Phase 4 decision, so strip it here.
     // PATCH needs no equivalent: TaskUpdateSchema/HabitUpdateSchema are
     // hand-enumerated and drop unknown keys.
-    .omit({ pausedAt: true, pausedUntil: true })
+    //
+    // projectId is stripped for a different reason, and permanently. The agent
+    // surface speaks in NAMES — that is the entire point of the legacy projection
+    // — and an agent holds no id↔name map, so a body carrying both could only
+    // disagree with itself. Accepting one would mean choosing which half wins on
+    // every drifted POST. `project` stays the agent's field; lib/db.ts resolves
+    // the id from it server-side, so an agent-created item is linked correctly
+    // without ever naming an id.
+    .omit({ pausedAt: true, pausedUntil: true, projectId: true })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
     .object({
@@ -377,8 +406,9 @@ export const HabitCreateSchema = z
     timesPerDay: z.number().int().optional(),
     currentDayCount: z.number().int().optional(),
 })
-    // See TaskCreateSchema — pause is not agent-writable in v1.
-    .omit({ pausedAt: true, pausedUntil: true })
+    // See TaskCreateSchema — pause is not agent-writable in v1, and groupId is
+    // resolved server-side from `group` rather than accepted.
+    .omit({ pausedAt: true, pausedUntil: true, groupId: true })
     .superRefine(requireCustomDays);
 // Update schemas keep requireCustomDays too: a PATCH that sets
 // repeatFrequency 'custom' (or legacy 'weekly') without non-empty repeatDays
