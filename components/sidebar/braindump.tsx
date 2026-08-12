@@ -270,18 +270,13 @@ export function Braindump() {
 
     // Concatenation is the DEFAULT order, not the only one. All tasks then all
     // habits is an accidental type grouping baked into the sort — nobody chose
-    // it; it is what building the list in two passes produces. Under Title it
-    // interleaves properly, and under Priority the habits (which carry none)
-    // gather at the end because that is what the data says, not because of the
-    // order the two filters ran in.
-    return sortRows(
-      [
-        ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
-        ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
-      ],
-      braindumpSortBy
-    );
-  }, [tasks, habits, braindumpFilters, braindumpSortBy, suppressedIds]);
+    // it; it is what building the list in two passes produces. The ordering is
+    // applied in `grouped` below, per group, NOT here: see the note there.
+    return [
+      ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
+      ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
+    ];
+  }, [tasks, habits, braindumpFilters, suppressedIds]);
 
   /**
    * Everything currently set aside — the home paused work would otherwise not
@@ -345,8 +340,20 @@ export function Braindump() {
 
   const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 
+  /**
+   * Grouped first, then sorted WITHIN each group — the order Day × List uses,
+   * and the rule the plan states: grouping owns the outer order.
+   *
+   * Sorting `rows` before this ran instead made the SECTIONS move. The map is
+   * filled by walking the row list, so its insertion order — which is what
+   * `[...groups.entries()]` returns — became "whichever group owns the first
+   * row under the current ordering". Grouping by Project with Ordering off
+   * rendered [Work, Home]; switching to Title A–Z rendered [Home, Work]. The
+   * rows inside were right either way, which is why it reads as a jump rather
+   * than as a bug.
+   */
   const grouped: [string, RowItem[]][] = useMemo(() => {
-    if (braindumpGroupBy === 'none') return [['', rows]];
+    if (braindumpGroupBy === 'none') return [['', sortRows(rows, braindumpSortBy)]];
     const groups = new Map<string, RowItem[]>();
     for (const row of rows) {
       const key =
@@ -358,8 +365,11 @@ export function Braindump() {
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(row);
     }
-    return [...groups.entries()];
-  }, [rows, braindumpGroupBy]);
+    return [...groups.entries()].map(([key, groupRows]): [string, RowItem[]] => [
+      key,
+      sortRows(groupRows, braindumpSortBy),
+    ]);
+  }, [rows, braindumpGroupBy, braindumpSortBy]);
 
   return (
     <section

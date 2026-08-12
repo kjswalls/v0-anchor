@@ -125,23 +125,32 @@ describe('the habit comparator deriveDayItems uses', () => {
     // The old comparator was `a.startTime && b.startTime ? compare : 0`, which
     // answers 0 the moment EITHER side lacks a time — and most habits have
     // none. That is not a weak ordering: untimed rows stayed wherever the
-    // filter emitted them, so a 9am habit could render below an untimed one and
-    // the arrangement shifted as unrelated items came and went.
-    const untimed = dayHabit({ title: 'untimed', order: 0 });
-    const timed = dayHabit({ title: 'nine am', startTime: '09:00', order: 1 });
+    // filter emitted them, so a 9am habit could render below an untimed one.
+    //
+    // This is the ONE case that distinguishes the two comparators on data the
+    // app can actually produce. No `order` on these fixtures: habitShape has no
+    // such field (packages/types/src/schemas.ts:206) and the registry says
+    // `orderable: false` — inventing one through the cast would make the test
+    // assert behaviour no habit can reach.
+    const untimed = dayHabit({ title: 'untimed' });
+    const timed = dayHabit({ title: 'nine am', startTime: '09:00' });
 
     const r = deriveDayItems(input({ habits: [untimed, timed] }));
 
     expect(r.habitsByBucket.morning.map((h) => h.title)).toEqual(['nine am', 'untimed']);
   });
 
-  it('falls back to order for two untimed habits', () => {
-    const second = dayHabit({ title: 'second', order: 2 });
-    const first = dayHabit({ title: 'first', order: 1 });
+  it('leaves two untimed habits in the order they arrived', () => {
+    // NOT "falls back to order" — byTimeThenOrder's `order` tail is inert for
+    // habits, so this is the stable sort holding them still. It matters anyway:
+    // dbListItems loads `ORDER BY "order", created_at`, so what they hold is
+    // creation order rather than something that drifts as siblings change.
+    const second = dayHabit({ title: 'second' });
+    const first = dayHabit({ title: 'first' });
 
     const r = deriveDayItems(input({ habits: [second, first] }));
 
-    expect(r.habitsByBucket.morning.map((h) => h.title)).toEqual(['first', 'second']);
+    expect(r.habitsByBucket.morning.map((h) => h.title)).toEqual(['second', 'first']);
   });
 
   it('still orders two timed habits by time', () => {

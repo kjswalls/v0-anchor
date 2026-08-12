@@ -169,9 +169,26 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   'default')` returns the same array, routine grouping keeps `routine_items.sort_order` —
   the only place that sequence is visible outside the manager — until the user picks an
   ordering, which then wins.
-- **`sortRows` returns its input array unchanged for `'default'`.** Deliberate: it is the
-  value nearly everyone is on, and a fresh array every render would invalidate the
-  callers' memos for nothing. Callers must not mutate the result.
+- **`sortRows` returns its input array unchanged for `'default'`.** The derivation's own
+  order IS the default, so there is nothing to do. Callers must not mutate the result.
+- **Group FIRST, then sort within each group — on every surface.** The braindump shipped
+  the other way round for one commit, and the failure is instructive: its grouping map is
+  filled by walking the row list, so `[...groups.entries()]` returns whichever group owned
+  the first row. Sorting the flat list first made the SECTION HEADINGS reorder while the
+  rows inside each stayed correct. Phase 5a's shared `lib/grouping.ts` must take unsorted
+  rows and let the caller sort per group.
+- **Habits carry no `order`.** `habitShape` omits it (`packages/types/src/schemas.ts:206`),
+  `itemFromRow`'s habit branch never reads it, `reorderTasks` early-returns on
+  `type !== 'task'`, and the registry says `orderable: false`
+  (`item-registry.ts:319`). So `byTimeThenOrder`'s `order` tail is inert for habits —
+  two untimed habits compare equal and hold their load order (`ORDER BY "order",
+  created_at`). Do not write a test that supplies `order` on a habit fixture through a
+  cast: it asserts behaviour production cannot reach, and it typechecks only because of
+  the cast.
+- **Re-run `tsc` AFTER adding test files, not just after touching source.** Four errors
+  shipped in Phase 4 because the typecheck ran before the new test file existed and never
+  again. `pnpm test` does not typecheck, and neither CI nor the Vercel build gates on it
+  (`next.config.mjs` sets `ignoreBuildErrors`).
 - **`view.clearFilters` in the palette and Reset display now differ.** Reset clears the
   filters, the grouping AND the type filter; the palette command clears `canvasFilters`
   only, which its own label ("Clear canvas filters") states honestly. Phase 6 owns parity —

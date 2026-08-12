@@ -151,10 +151,16 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     // `a.startTime && b.startTime ? compare : 0`, which returns 0 the moment
     // EITHER side lacks a time — and most habits have none. A comparator that
     // answers 0 for every pair involving an untimed row is not a weak ordering:
-    // it leaves those rows wherever the filter happened to emit them, so a 9am
-    // habit could render below an untimed one, and the arrangement changed as
-    // unrelated items came and went. Now timed rows lead in time order and
-    // untimed ones follow by `order`, exactly as tasks do.
+    // it left those rows wherever the filter happened to emit them, so a 9am
+    // habit could render BELOW an untimed one.
+    //
+    // What this fixes is exactly that: timed rows now lead, in time order. The
+    // `order` tail is inert for habits — habitShape has no `order`
+    // (packages/types/src/schemas.ts:206), itemFromRow's habit branch never
+    // reads one, and the registry says `orderable: false` (item-registry.ts:319)
+    // — so two untimed habits still compare equal. That is fine and deliberate:
+    // the sort is stable and dbListItems loads `ORDER BY "order", created_at`,
+    // so they hold their creation order rather than drifting.
     .sort(byTimeThenOrder)
     .forEach((h) => habitsByBucket[h.timeBucket as TimeBucket].push(h));
 

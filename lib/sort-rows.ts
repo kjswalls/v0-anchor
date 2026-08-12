@@ -70,9 +70,11 @@ const byTitle = (a: SortableRow, b: SortableRow): number =>
 /**
  * Sort a rendered row list.
  *
- * 'default' returns the SAME ARRAY, not a copy — the derivation's own order is
- * the default, and preserving identity keeps callers' memos from invalidating
- * on every render for the value nearly everyone is on.
+ * 'default' returns the SAME ARRAY, not a copy: the derivation's own order IS
+ * the default, so there is nothing to do. (It also skips an O(n) copy per
+ * render. It does not yet save any caller a memo invalidation — all three hand
+ * this a freshly-built array literal — so don't claim that until one of them
+ * memoizes.)
  *
  * Every other value copies before sorting (Array#sort mutates) and relies on
  * sort stability, which ES2019 guarantees: rows comparing equal keep the
