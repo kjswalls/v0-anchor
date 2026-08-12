@@ -49,10 +49,17 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
    * key was safe. With that gone the mapping is total: same dateStr in, same
    * derivation out, whatever instant produced it.
    *
-   * `timezone` is a dep of the memo, so a zone change re-resolves these before
-   * they are compared.
+   * Resolving them is memoized on the INSTANT key — strictly finer than the
+   * dateStr key below, so it cannot serve a stale string — because `toDateStr`
+   * builds an uncached `Intl.DateTimeFormat` per call (~50µs, against ~0.05µs to
+   * read `getTime()`). Week × Buckets mounts 28 cells that each call this, and
+   * dnd-kit re-renders every droppable on each collision-target change while the
+   * planner deps are untouched. Doing it in the render body cost ~1.3ms on every
+   * one of those.
    */
-  const dateStrs = dates.map((d) => toDateStr(d, timezone));
+  const instantKey = dates.map((d) => d.getTime()).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dateStrs = useMemo(() => dates.map((d) => toDateStr(d, timezone)), [instantKey, timezone]);
   const dateKey = dateStrs.join(',');
 
   return useMemo(

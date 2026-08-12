@@ -70,8 +70,30 @@ describe('groupRows — the container axis', () => {
     const out = groupRows([h('h1', { group: 'Work' }), t('t1', { project: 'Work' })], 'project');
 
     expect(labels(out)).toEqual(['Work', 'Work']);
-    expect(out.map((g) => g.key)).toEqual(['group:Work', 'project:Work']);
+    // The group key is case-folded (see the case-variant case below); the
+    // project key is not. The namespaces keep them apart either way.
+    expect(out.map((g) => g.key)).toEqual(['group:work', 'project:Work']);
     expect(new Set(out.map((g) => g.key)).size).toBe(2);
+  });
+
+  it('merges two case-variant spellings of ONE habit group', () => {
+    // The filter folds case for `group:` refs — a deliberate asymmetry
+    // (filters.ts:140-150), because makeAddDraft writes a lowercase 'personal'
+    // against DEFAULT_HABIT_GROUPS' 'Personal' whenever the groups list has not
+    // loaded. Keyed on the raw ref, grouping split them into two sections that
+    // the menu's single "Personal" checkbox selects together.
+    const out = groupRows([h('h1', { group: 'personal' }), h('h2', { group: 'Personal' })], 'project');
+
+    expect(out).toHaveLength(1);
+    expect(ids(out[0])).toEqual(['h1', 'h2']);
+    // First spelling seen wins the heading — the store's own order.
+    expect(out[0].label).toBe('personal');
+  });
+
+  it('does NOT fold case for projects, which compare exactly everywhere else', () => {
+    const out = groupRows([t('t1', { project: 'work' }), t('t2', { project: 'Work' })], 'project');
+
+    expect(out.map((g) => g.key)).toEqual(['project:work', 'project:Work']);
   });
 
   it('says which SIDE of the axis is unset rather than merging the two', () => {
@@ -199,7 +221,12 @@ describe('groupRows — the contract every caller depends on', () => {
 
     expect(out).toHaveLength(1);
     expect(out[0].label).toBe('');
-    expect(out[0].rows).toHaveLength(5);
+    // The SAME ARRAY, unreordered. 'none' is both stores' default and the flat
+    // producer for Week x List, both Anytime strips and the braindump, and
+    // nothing downstream re-orders it — sortRows('default') is an identity and
+    // the two Schedules never call it at all. So whatever this returns reaches
+    // the DOM, and asserting only the length let a sort inside this branch pass.
+    expect(out[0].rows).toBe(rows);
   });
 
   it('returns nothing at all for no rows', () => {

@@ -136,13 +136,16 @@ const renderBuckets = () =>
 const morning = () => document.querySelector('[data-dnd-bucket="morning"]') as HTMLElement;
 
 /**
- * Section headings inside the card, in render order.
+ * GroupSection headings inside the card, in render order.
  *
- * `.slice(1)` drops the BucketCard's own collapse toggle, which carries
- * aria-expanded too and always reads "Morning" here.
+ * Matched on `group/heading` rather than on `button[aria-expanded]` alone,
+ * because BucketCard's own collapse toggle carries that attribute too and would
+ * read "Morning" at the front of every answer.
  */
 const headings = (root: HTMLElement) =>
-  [...root.querySelectorAll('button[aria-expanded]')].map((el) => el.textContent?.trim()).slice(1);
+  [...root.querySelectorAll('button[aria-expanded]')]
+    .filter((el) => el.className.includes('group/heading'))
+    .map((el) => el.textContent?.trim());
 
 /** Row titles inside the card, in DOM order. */
 const rowOrder = (root: HTMLElement) =>

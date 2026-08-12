@@ -75,6 +75,16 @@ interface Building<T> extends RowGroup<T> {
  * that is all a heading is, and `variant="canvas"` draws no glyph, so there is
  * nothing else to disagree.
  *
+ * Habit-group keys are CASE-FOLDED, project keys are not — the same asymmetry
+ * `sameContainer` documents (lib/filters.ts:140-150), and the one
+ * `getHabitGroupColor` and `GroupSection`'s glyph lookup already use. It is not
+ * a preference: `makeAddDraft` writes a lowercase 'personal' against
+ * DEFAULT_HABIT_GROUPS' capitalised 'Personal' whenever the groups list has not
+ * loaded yet, so both spellings live in real data. Grouping keyed on the raw ref
+ * would put them in two sections that the menu's SINGLE "Personal" checkbox
+ * selects together. The label is the first spelling seen, which is the store's
+ * own order.
+ *
  * Unset is kind-TAGGED — `none:project` / `none:group` — rather than sharing the
  * filter's single `NO_CONTAINER` sentinel. The filter needs one checkbox that
  * catches both sides of the axis; a heading has room to say which side it is,
@@ -87,7 +97,10 @@ function containerSection(row: GroupableRow): { key: string; label: string; unse
   // templates answer with a kind — but the registry types `containerKind` as
   // nullable, and a row of such a type must still land somewhere.
   if (ref === null) return { key: 'container:na', label: 'No container', unset: true };
-  if (ref !== NO_CONTAINER) return { key: ref, label: containerName(ref), unset: false };
+  if (ref !== NO_CONTAINER) {
+    const key = ref.startsWith('group:') ? ref.toLowerCase() : ref;
+    return { key, label: containerName(ref), unset: false };
+  }
   const kind = getItemTypeConfig(typeName).containerKind;
   return kind === 'habitGroups'
     ? { key: `${NO_CONTAINER}group`, label: 'No group', unset: true }

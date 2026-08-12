@@ -120,6 +120,13 @@ exist. Verified against `a1c03c2`:
 | **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | **shipped** |
 | **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and both Schedules' Anytime strips | ~6 d | **shipped** |
 | **5b** | Schedule lanes + Week focus/recede | ~5 d | |
+
+**Carried into 5b from the 5a review:** grouping by **Time bucket on Schedule** nests an
+"Anytime" section inside the strip's own "Anytime" heading. Reproduced by mounting
+`DaySchedule`; harmless and not a defect (the strip spans all four buckets, so the
+partition is real information nothing else on Schedule shows), but 5b rewrites this exact
+code and should resolve the label collision in the view — most likely by dropping the
+strip's own heading whenever it renders sections.
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
 | **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | |
 | **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | |
@@ -241,8 +248,31 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   when the timed rows were handed to the grouping pass, because that renders them inside
   the groups AND leaves the spine below intact. Assert the whole sequence: six rows, this
   order, once each.
+- **Deleting a RULE can hollow out a test that used to guard it.** The two cases pinning
+  the phone's `scope` prop were real red-green guards while `groupByBlockedBy` answered
+  'Day only' for every value on week. 5a deleted that rule, and since both cases seeded
+  `layout: 'list'` — the one layout whose answer does not vary by scope — they went on
+  passing with the prop ignored entirely. Every previous tautology in this project was one
+  I wrote badly; this one I wrote well and then broke from the other end. When a phase
+  changes a predicate, re-run the tests that name it **with the predicate stubbed**, not
+  just green.
 - **`BucketCard`'s own collapse toggle carries `aria-expanded` too.** A
-  `button[aria-expanded]` sweep for section headings inside a bucket picks it up first.
+  `button[aria-expanded]` sweep for section headings inside a bucket picks it up first —
+  filter on `group/heading`, which is `GroupSection`'s own class, rather than slicing the
+  first result off.
+- **`toDateStr` builds an uncached `Intl.DateTimeFormat` per call** (`recurrence.ts:47-49`,
+  ~50µs against ~0.05µs for `getTime()`). Week × Buckets mounts 28 cells that each call
+  `useDayItems`, and dnd-kit re-renders every droppable on each collision-target change
+  with the planner deps untouched — so resolving dates in a render body costs ~1.3ms on
+  every one of those. `use-day-items` memoizes the resolution on the INSTANT key, which is
+  strictly finer than the dateStr key it feeds and so cannot serve a stale string.
+- **Habit-group refs case-fold; project refs do not — and grouping has to agree.**
+  `sameContainer` (`filters.ts:149`), `getHabitGroupColor` and `GroupSection`'s glyph
+  lookup all fold `group:` refs, because `makeAddDraft` writes a lowercase 'personal'
+  against DEFAULT_HABIT_GROUPS' 'Personal' whenever the groups list has not loaded yet.
+  `lib/grouping.ts` keyed on the raw ref for one commit, which split one habit group into
+  two sections that the menu's single checkbox selects together. Phase A′ still owns the
+  general normalization; this is only the grouping key.
 - **Day × Buckets groups its untimed rows; Week × Buckets groups the whole cell.** Not an
   oversight — the day card has `scheduled:{bucket}:before|after:{type}:{id}` drop zones
   between its timed rows and `inferDropTime` reads the neighbours' times, so that spine

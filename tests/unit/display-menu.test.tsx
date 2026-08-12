@@ -415,20 +415,37 @@ describe('each surface renders only what it can honour', () => {
 
   it('states the phone s own scope rather than inheriting one it never renders by', async () => {
     // Mobile is day-only by construction, but `scope` persists across the 768px
-    // breakpoint. Without the prop a stale 'week' would report Grouping as
-    // unavailable on a surface that honours it, with no way to correct it — the
-    // only writers of scope are the desktop capsule and two mobile-hidden
-    // palette commands.
-    seed({ scope: 'week', layout: 'list' });
+    // breakpoint, so the phone states its scope rather than reading one it never
+    // renders by.
+    //
+    // Seeded on BUCKETS deliberately. `groupBySupport` reads `scope` in exactly
+    // one arm — `layout === 'buckets'`, where day says "Untimed rows only" and
+    // week says nothing — and returns FULL for every scope on list. Phase 5a
+    // deleted the blanket `if (scope === 'week') return 'Day only'` this case
+    // used to catch, and on `layout: 'list'` it then asserted a truth
+    // independent of the prop: it stayed green with `scope` ignored entirely.
+    seed({ scope: 'week', layout: 'buckets' });
     render(<DisplayMenu surface="canvas" trigger="icon" scope="day" />);
 
     await openSub('Grouping');
 
-    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).not.toHaveAttribute(
-      'data-disabled'
+    // The DAY rail, on a store that says week.
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
+      'Untimed rows only'
     );
-    // And it does not offer a scope switch the phone cannot honour.
-    expect(screen.queryByRole('menuitem', { name: /Switch to Day/ })).toBeNull();
+  });
+
+  it('reports the WEEK rail when no scope prop overrides the store', async () => {
+    // The other half of the case above — without it, "shows the day rail" could
+    // be true because the rail is the same everywhere.
+    seed({ scope: 'week', layout: 'buckets' });
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Grouping');
+
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).not.toHaveTextContent(
+      'Untimed rows only'
+    );
   });
 
   it('announces the escape row as an action, not as an unselected option', async () => {
@@ -494,7 +511,8 @@ describe('each surface renders only what it can honour', () => {
  * Both defects here were in the MOUNT, not the component, and a props-level test
  * passes with the mount wrong — which is exactly what happened. Reverting
  * mobile-header.tsx to the shipped `<DisplayMenu surface="canvas"
- * trigger="icon" />` leaves every other case in this file green and fails these.
+ * trigger="icon" />` leaves every other case in this file green and fails the
+ * three tab cases plus the scope case below.
  */
 describe('the mobile header mount', () => {
   const renderHeader = () =>
@@ -528,22 +546,25 @@ describe('the mobile header mount', () => {
     expect(screen.getByTestId('display-trigger-canvas')).toBeInTheDocument();
   });
 
-  it('keeps Grouping live under a stale week scope, because the phone is day-only', async () => {
+  it('answers for DAY under a stale week scope, because the phone is day-only', async () => {
     // `scope` persists across the 768px breakpoint, and useIsMobile is a live
     // matchMedia listener — a narrowed desktop window, a snapped half-screen or
     // a rotated tablet all reach the phone shell carrying whatever scope was
     // last set. MobileViewRouter ignores it and renders day either way, so the
-    // menu must too, or Grouping reports unavailable on a surface that honours
-    // it, with nothing on that surface able to correct it.
-    seed({ scope: 'week', layout: 'list' });
+    // menu must too.
+    //
+    // Buckets, not list: that is the only layout whose answer differs by scope
+    // (see the DisplayMenu case above), and it is the phone's default. On list
+    // this asserted something true with or without the prop.
+    seed({ scope: 'week', layout: 'buckets' });
     useMobileNavStore.setState({ activeTab: 'today' });
     renderHeader();
 
     openMenu();
     fireEvent.click(await screen.findByRole('menuitem', { name: /Grouping/ }));
 
-    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).not.toHaveAttribute(
-      'data-disabled'
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
+      'Untimed rows only'
     );
   });
 });
