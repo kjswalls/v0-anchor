@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { getShortcutBindings, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
-import { STATIC_COMMANDS, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
+import { MOD, STATIC_COMMANDS, isAvailable, matchesBinding, pressedKeys } from '@/lib/commands';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import type { CommandContext } from '@/lib/commands';
 
@@ -34,6 +34,38 @@ function isFocusedOnInput(): boolean {
   );
 }
 
+/**
+ * Real modifiers only. Shift alone does NOT qualify, and that is the point:
+ * `?` reaches us as the bare key ['?'] (see isShiftProducedSymbol in keys.ts),
+ * so treating shift as a modifier would let the shortcuts modal open from a
+ * surface that has claimed the keyboard, while `⌘⇧,` still passes on its 'mod'.
+ */
+const REAL_MODIFIERS = new Set([MOD, 'ctrl', 'alt']);
+
+/**
+ * A mounted surface can claim the bare-key space by putting
+ * `data-keys-local="true"` on its root.
+ *
+ * `isFocusedOnInput` is not enough on its own, and the gap is not theoretical.
+ * A surface whose rows are <button>s — the Organize console's list, for one —
+ * is not "typing" by that test, so every single-letter global still fires from
+ * a focused row: `n` opens the add dialog and REPLACES the console in the
+ * single ActiveDialog slot, `v` switches the planner view behind it, `?` opens
+ * the shortcuts modal, and `⌫` matches `delete_hovered`, which preventDefaults
+ * before any local handler runs while lib/hovered-item.ts may still be pointing
+ * at a task on the canvas. Typing a routine's name would destroy the surface
+ * being typed into.
+ *
+ * Only bare bindings are withheld. Every mod-combo (⌘K, ⌘Z, ⌘,, ⌘\) keeps
+ * working, so the app's chrome is never trapped behind a local surface.
+ *
+ * Queried lazily — only once a bare binding has actually matched — so the
+ * common keystroke costs an array scan and no DOM work.
+ */
+function bareKeysAreClaimed(): boolean {
+  return !!document.querySelector('[data-keys-local="true"]');
+}
+
 export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHandlers = {}) {
   // Subscribing keeps the effect in sync with rebindings; the keys themselves
   // are read non-reactively at keypress time.
@@ -63,9 +95,15 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
       if (pressed.length === 0) return;
 
       const typing = isFocusedOnInput();
+      const bare = !pressed.some((key) => REAL_MODIFIERS.has(key));
 
       for (const binding of getShortcutBindings()) {
         if (!matchesBinding(pressed, binding.keys)) continue;
+
+        // A surface that has claimed the bare-key space wins over every
+        // single-letter global. Checked on the matched binding rather than up
+        // front so the DOM is only touched when a shortcut would have fired.
+        if (bare && bareKeysAreClaimed()) return;
 
         const command = commandByShortcutId.get(binding.id);
 

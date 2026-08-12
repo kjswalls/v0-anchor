@@ -59,6 +59,7 @@ import {
   isPausedOn,
   isProgramActiveOn,
   inactiveItemIdsOn,
+  resolvePauseWrite,
   suppressionReason,
   suppressionLabel,
 } from './active';
@@ -285,8 +286,15 @@ interface PlannerStore {
   addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }) => string;
   updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
   removeRoutine: (id: string) => void;
-  /** Pause/resume a routine. Same today-resolved, dateless semantics as items. */
-  setRoutinePaused: (id: string, paused: boolean, until?: string) => void;
+  /**
+   * Pause/resume a routine. Same today-resolved, dateless semantics as items.
+   *
+   * `until` distinguishes three things and the difference is load-bearing:
+   * `undefined` is "not specified" (what the bare toggles pass, and what keeps
+   * them idempotent), `null` is "clear the resume date", and a string is "come
+   * back on this day". Resolved through active.ts's resolvePauseWrite.
+   */
+  setRoutinePaused: (id: string, paused: boolean, until?: string | null) => void;
 
   // Programs (migration 024). A period of life — summer, a school year — holding
   // items and/or whole routines. Same undo/redo treatment as routines, and
@@ -852,19 +860,59 @@ export const usePlannerStore = create<PlannerStore>()(
         // and had to fix on the item side. Same reasoning, same shape.
         const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
         const todayStr = toDateStr(new Date(), tz);
-        if (isPausedOn(routine, todayStr, tz) === paused) return;
-        // Manual resume normalizes pausedUntil to today rather than clearing
-        // the pair — the interval stays on the row for the sweep's grace.
-        const updates: Partial<Routine> = paused
-          ? { pausedAt: new Date().toISOString(), pausedUntil: until }
-          : { pausedUntil: todayStr };
+
+        // Delegated to resolvePauseWrite rather than hand-built here, which is
+        // both a simplification and a BUG FIX. This action used to open with
+        //
+        //     if (isPausedOn(routine, todayStr, tz) === paused) return;
+        //
+        // — an idempotence guard that also swallowed the one request it should
+        // have honoured: a new resume date on a pause that is already running.
+        // Since a resume date can only be chosen while something is paused,
+        // `pausedUntil` was unreachable from the UI entirely; the third
+        // parameter has been on this signature, unwritable, since it landed.
+        //
+        // resolvePauseWrite (lib/active.ts) is the one definition of what the
+        // pause VERB means in terms of columns, and already states this case:
+        // "Already paused: honour a new resume date, but leave pausedAt where it
+        // is" — never restamping the lower bound, which would drag it forward
+        // and un-hide the days between. Every previously-supported call resolves
+        // identically: a two-argument toggle still writes nothing when the
+        // routine is already in the requested state, and a manual resume still
+        // normalizes to `pausedUntil = todayStr` rather than clearing the pair,
+        // so the interval survives on the row for the sweep's grace.
+        //
+        // `until` is `string | null | undefined`, and the three are distinct:
+        // undefined = "not specified" (the toggles), null = "clear the date",
+        // a string = "come back then".
+        const write = resolvePauseWrite(
+          routine,
+          { paused, pausedUntil: until },
+          todayStr,
+          new Date().toISOString(),
+          tz
+        );
+        // A `reason` is a request the resolver refused (a resume date already in
+        // the past). The UI cannot produce one — the picker disables today and
+        // everything before it — so there is nothing to report here.
+        if (!('patch' in write)) return;
+        const updates = write.patch as Partial<Routine>;
+        if (Object.keys(updates).length === 0) return;
+
         // Writes directly rather than delegating to updateRoutine: that action
         // stamps its own "Edit routine" label, and the history subscriber fires
         // synchronously on its set(), so a label applied afterwards would land
         // on whatever the user does NEXT.
-        setNextActionLabel(`${paused ? 'Pause' : 'Resume'} routine: ${routine.name}`);
+        //
+        // A pausedUntil-only write is neither a pause nor a resume — it moves
+        // the end of one already running — and gets its own label so undo can
+        // name it.
+        const verb = !('pausedAt' in updates) && paused ? 'Resume date' : paused ? 'Pause' : 'Resume';
+        setNextActionLabel(`${verb} routine: ${routine.name}`);
         set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
         const userId = get().userId;
+        // dbUpdateRoutine keys on `'pausedUntil' in updates` (lib/db.ts:958), so
+        // an explicit-undefined value still writes paused_until = null.
         if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
       },
 

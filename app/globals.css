@@ -636,6 +636,22 @@
      shadowed elev-sm pill and two competing drops read muddy. */
   --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
 
+  /* The Organize console's plate — a 938×640 surface standing on the frosted
+     app, one step below the body panel's 30px radius with a scrim between them.
+
+     Not --shadow-elev-lg, which is tuned for popovers: a 24px ambient at 16%
+     under a 200px menu reads as a lift, and the SAME shadow under a plate two
+     thirds the width of the window reads as a hard dark edge drawn around it.
+     A large surface needs a longer, softer falloff at lower alpha — the drop
+     has to be bigger than the thing casting it looks, or the eye reads a border.
+
+     Plain custom property, consumed as shadow-[var(--shadow-elev-plate)] and
+     never as a named @theme utility, for the reason the whole elev family is:
+     Tailwind inlines theme shadows into --tw-shadow and the .dark re-tune below
+     would never be seen. See memory/plans/organize-console.md. */
+  --shadow-elev-plate:
+    0 24px 64px oklch(0 0 0 / 14%), 0 4px 12px oklch(0 0 0 / 10%);
+
   /* ── Schedule blocks — "the rail is the lamp" ──────────────────────────────
      A block is glass standing beside a 12px lane. The lane carries a hairline
      rail; the accent swells it to 2px for exactly as long as the event runs, and
@@ -853,6 +869,17 @@
   --shadow-elev-bar:
     inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%),
     0 6px 18px -4px oklch(0 0 0 / 45%);
+
+  /* The console plate, dark. The `inset 0 1px 0` light-catch is mandatory, not
+     decorative: on the near-black ramp a drop shadow alone does not read at all,
+     and the whole dark elevation system is (a) a lighter surface than its base
+     plus (b) a 1px lit lip along the top edge. The plate is --modal (0.21) over
+     the backdrop (0.173), which is only 0.037 of separation — the lip is what
+     turns that into an edge. Alphas roughly triple light's, the same ratio the
+     rest of this block carries. */
+  --shadow-elev-plate:
+    inset 0 1px 0 oklch(1 0 0 / 10%),
+    0 24px 64px oklch(0 0 0 / 50%), 0 4px 12px oklch(0 0 0 / 40%);
 
   /* Schedule blocks, dark. Only the leaf values are re-declared — --sched-shadow
      and friends compose from these with var(), and a custom property is
