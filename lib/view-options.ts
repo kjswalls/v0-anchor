@@ -11,10 +11,11 @@ import {
   Folder,
   Flag,
   Hourglass,
+  Shapes,
   type LucideIcon,
 } from 'lucide-react';
 import type { GroupBy } from './planner-types';
-import type { TypeFilter, ViewLayout, ViewScope } from './view-store';
+import type { BraindumpGroupBy, TypeFilter, ViewLayout, ViewScope } from './view-store';
 
 /**
  * The canonical option lists for the canvas view controls, shared by the
@@ -61,4 +62,30 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<CanvasGroupBy>[] = [
   // List layout only, like Priority — the Buckets layout honours Project alone
   // and the command's own description says so.
   { value: 'routine', label: 'Routine', icon: Repeat },
+];
+
+/**
+ * Which canvas group-by values the CURRENT layout actually honours.
+ *
+ * Not cosmetic: `day-list.tsx:164` passes canvasGroupBy to buildListGroups and
+ * gets every branch, while `day-buckets.tsx:112` tests `=== 'project'` and
+ * nothing else. So on Buckets, choosing Priority renders identically to None.
+ * The Display menu keeps those values visible but disabled with the reason on
+ * the rail, rather than hiding them — a menu whose contents change shape as you
+ * switch layouts is harder to learn than one where a row explains itself.
+ *
+ * Widened by Phase 5a, which is what makes Buckets honour the rest.
+ */
+export function groupByHonouredBy(layout: ViewLayout, value: CanvasGroupBy): boolean {
+  if (value === 'none') return true;
+  if (layout === 'list') return true;
+  if (layout === 'buckets') return value === 'project';
+  return false;
+}
+
+/** The braindump's own group-by vocabulary — a different, smaller union. */
+export const BRAINDUMP_GROUP_BY_OPTIONS: ViewOption<BraindumpGroupBy>[] = [
+  { value: 'none', label: 'None', icon: Layers },
+  { value: 'type', label: 'Type', icon: Shapes },
+  { value: 'project', label: 'Project', icon: Folder },
 ];

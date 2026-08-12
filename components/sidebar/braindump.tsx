@@ -2,28 +2,21 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, FolderOpen, ListFilter, X, Check, Moon, ChevronRight } from 'lucide-react';
+import { AlignLeft, FolderOpen, Moon, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
-import { CategoryIcon } from '@/lib/category-icons';
+import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
-import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  activeFilterCount,
-  containerRef,
-  passesFilters,
-  projectNamesFrom,
-} from '@/lib/filters';
+import { useViewStore } from '@/lib/view-store';
+import { passesFilters } from '@/lib/filters';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
-import type { Priority, Task, Habit } from '@/lib/planner-types';
+import type { Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,158 +25,6 @@ import { cn } from '@/lib/utils';
  * source/target for scheduling ('sidebar' droppable = unschedule, see
  * lib/dnd/CONTRACT.md).
  */
-
-const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
-
-function FilterPopover() {
-  const { braindumpGroupBy, setBraindumpGroupBy, braindumpFilters, setBraindumpFilters } =
-    useViewStore();
-  const projects = usePlannerStore((s) => s.projects);
-
-  // Generic, so `priorities` keeps its Priority[] element type. Untyped, this
-  // widened to string[] — which is how the braindump and the canvas ended up
-  // declaring the same field with two different element types.
-  const toggle = <T extends string>(list: T[], value: T): T[] =>
-    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-
-  const selectedProjects = projectNamesFrom(braindumpFilters.containers);
-  const activeCount = activeFilterCount(braindumpFilters);
-  // The dot also signals an active grouping (group-by lives in this popover).
-  const isActive = activeCount > 0 || braindumpGroupBy !== 'none';
-
-  const groupOptions: { value: BraindumpGroupBy; label: string }[] = [
-    { value: 'none', label: 'None' },
-    { value: 'type', label: 'Type' },
-    { value: 'project', label: 'Project' },
-  ];
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('relative h-6 w-6 text-muted-foreground hover:text-foreground', isActive && 'text-foreground')}
-          aria-label={isActive ? 'Filter and group (active)' : 'Filter and group'}
-        >
-          <ListFilter className="h-4 w-4" />
-          {isActive && (
-            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-52 p-2">
-        <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Group by</div>
-        <div className="flex gap-1 pb-2">
-          {groupOptions.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setBraindumpGroupBy(opt.value)}
-              className={cn(
-                'flex-1 rounded-md px-2 py-1 text-xs transition-colors',
-                braindumpGroupBy === opt.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Priority</div>
-        <div className="flex gap-1 pb-2">
-          {PRIORITIES.map((p) => (
-            <button
-              key={p}
-              onClick={() =>
-                setBraindumpFilters({
-                  ...braindumpFilters,
-                  priorities: toggle(braindumpFilters.priorities, p),
-                })
-              }
-              className={cn(
-                'flex-1 rounded-md px-2 py-1 text-xs capitalize transition-colors',
-                braindumpFilters.priorities.includes(p)
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-
-        {projects.length > 0 && (
-          <>
-            <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Project</div>
-            <div className="max-h-40 space-y-0.5 overflow-y-auto pb-2">
-              {projects.map((project) => {
-                const active = selectedProjects.includes(project.name);
-                return (
-                  <button
-                    key={project.name}
-                    onClick={() =>
-                      setBraindumpFilters({
-                        ...braindumpFilters,
-                        containers: toggle(
-                          braindumpFilters.containers,
-                          containerRef('project', project.name)
-                        ),
-                      })
-                    }
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
-                  >
-                    <span
-                      className={cn(
-                        'flex h-3.5 w-3.5 items-center justify-center rounded border',
-                        active ? 'border-primary bg-primary' : 'border-muted-foreground/40'
-                      )}
-                    >
-                      {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-                    </span>
-                    <CategoryIcon glyph={project.emoji} name={project.name} />
-                    {project.name}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={() =>
-            setBraindumpFilters({ ...braindumpFilters, hideFinished: !braindumpFilters.hideFinished })
-          }
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
-        >
-          <span
-            className={cn(
-              'flex h-3.5 w-3.5 items-center justify-center rounded border',
-              braindumpFilters.hideFinished ? 'border-primary bg-primary' : 'border-muted-foreground/40'
-            )}
-          >
-            {braindumpFilters.hideFinished && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-          </span>
-          Hide completed
-        </button>
-
-        {activeCount > 0 && (
-          <>
-            <div className="my-1 h-px bg-border" />
-            <button
-              className="flex w-full items-center rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-              onClick={() => setBraindumpFilters(EMPTY_VIEW_FILTERS)}
-            >
-              <X className="mr-1 h-3 w-3" />
-              Clear filters
-            </button>
-          </>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /**
  * Persistent capture card at the foot of the sidebar — a boxed-plus and a
@@ -531,7 +372,12 @@ export function Braindump() {
           <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
             Braindump
           </h2>
-          <FilterPopover />
+          {/* Portalled, so the sidebar's 280px minimum never constrains the
+              240px panel — which is the decisive advantage over a persistent
+              chip bar. A bar would sit IN FLOW above a grid whose hour height is
+              derived from remaining column height, so adding your first filter
+              would visibly re-scale every hour row of the day. */}
+          <DisplayMenu surface="braindump" trigger="icon" align="start" />
           <Button
             variant="ghost"
             size="icon"

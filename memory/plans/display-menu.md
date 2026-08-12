@@ -116,7 +116,7 @@ exist. Verified against `a1c03c2`:
 | **0** | One `ViewFilters`; custom `merge`; legacy read-time normalizer; `Priority[]` convergence | ~½ d | **shipped** `dba554f` + `cb82e05` |
 | **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | **shipped** `0d36efc` + `adf944d` |
 | **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | **shipped** — `useDayItemsForDates` |
-| **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | |
+| **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | **shipped** — Ordering deferred to 4 |
 | **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | |
 | **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and the Schedule's Anytime strip | ~6 d | |
 | **5b** | Schedule lanes + Week focus/recede | ~5 d | |
@@ -140,6 +140,20 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   browser zone differs from their setting. It matters for Phase 4 (sort by date) and 5a
   (group by day), so fix it there or before, with its own tests. The fix is to build the
   weekday from `dateStr` rather than from the `Date`.
+- **The Ordering row is NOT in the menu yet.** Phase 3 shipped Structure(Grouping) · Filter ·
+  Show · Reset; Ordering arrives with `lib/sort-rows.ts` in Phase 4. A row that renders and
+  does nothing is the exact defect this project exists to remove, so it waits for its verb.
+- **`view.clearFilters` in the palette and Reset display now differ.** Reset clears the
+  filters, the grouping AND the type filter; the palette command clears `canvasFilters`
+  only, which its own label ("Clear canvas filters") states honestly. Phase 6 owns parity —
+  when it lands, both should route through one function.
+- **`@testing-library/user-event` is not a dependency.** Component tests use `fireEvent`.
+  Radix's `DropdownMenuTrigger` opens on **pointerdown**, not click, so `fireEvent.click` on
+  a trigger leaves the menu shut and every query beneath it fails for the wrong reason. Sub
+  triggers and items do respond to click. jsdom also needs `PointerEvent`,
+  `hasPointerCapture`, `scrollIntoView` and `ResizeObserver` shimmed — see the top of
+  `tests/unit/display-menu.test.tsx`, which carries them locally rather than editing the
+  shared `tests/unit/setup.ts`.
 - **A test named for a guard must assert a field that guard can write.** `removeProject`
   has one `set()` and writes exactly `projects` and `project: undefined`. A case titled
   "leaves a habit alone" that asserted `group` was true under every implementation,

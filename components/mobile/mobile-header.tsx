@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
 
@@ -105,6 +106,12 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
             <MessageSquarePlus className="h-4 w-4" />
           </Button>
 
+          {/* Three of the seven surfaces exist on a phone, and until now none of
+              them had any filter affordance at all — the command palette was the
+              only path, on a device with no keyboard to open it with. The icon
+              trigger costs 24px. */}
+          <DisplayMenu surface="canvas" trigger="icon" />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -124,7 +131,9 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
                   <DropdownMenuItem key={l.value} onClick={() => setLayout(l.value)} className="gap-2 text-sm">
                     <Icon className="h-4 w-4 text-muted-foreground" />
                     <span className="flex-1">{l.label}</span>
-                    {l.value === layout && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+                    {/* Inherited colour — `text-primary-foreground` is --lime-ink,
+                        meant to sit ON a lime fill, not on the popover ground. */}
+                    {l.value === layout && <Check className="h-3.5 w-3.5" />}
                   </DropdownMenuItem>
                 );
               })}
