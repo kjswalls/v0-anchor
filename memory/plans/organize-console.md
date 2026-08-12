@@ -761,6 +761,53 @@ draft that needs one green run before it means anything. `cleanupTestLabels` is 
 alongside it: `cleanupTestCollections` only ever swept `routines`/`programs`, so a spec
 creating projects would have littered the shared test user every run.
 
+**Review 2026-08-12 (commit `9485675`). Four lenses, seven findings confirmed, four
+refuted.** Three defects, and each is a different way for a control to look correct.
+
+**"Custom…" was an inert menu option.** Absorbing `EditProjectDialog` dropped the one piece
+of state it carried (`isCustomDuration`). Derived from the stored duration alone, picking
+Custom… wrote nothing → `isPreset` never moved → the controlled Select snapped back → the
+field never mounted. Every project starts at a preset and this console is the app's ONLY
+writer of `Project.duration`, so no custom length was reachable anywhere, and a project
+already holding one lost it permanently on the next preset click. The mode is state again,
+reset on `project.id` change (the detail pane reuses the instance across selections) and
+latched on commit, so typing 90 into a field you deliberately opened does not collapse it.
+
+**A confirming click on the lit part-of-day segment discarded the start time.** A segment
+is a `<button>`, not a Radix Select, so a re-pick fires the handler and it re-seeded the
+band opening — 14:30 under Afternoon → 12:00, on a gesture that changes nothing. The old
+dialog was accidentally safe: Radix's `useControllableState` suppresses `onValueChange` on
+a re-pick. Guarded at the call site, not in `SegmentedOption` — the routines/programs users
+re-pick into idempotent writes and should keep working the way they do.
+
+**Both new e2e tests were vacuous, identically.** Neither filed its fixture under the label
+it deleted, so each ran the `n === 0` arm of the copy and then asserted an unrelated row
+still existed. The project test would have stayed green if delete had removed every item it
+owned. Fixed by naming the doomed container at create time (both columns are free text with
+no FK, so the item may precede the row) and asserting the count clause, which fails loudly
+if the association ever breaks again. The habit test now reads the destination out of the
+copy and watches that row's count grow — **in-session, deliberately**: the reassignment is
+store-only (`dbDeleteHabitGroup` stamps `deleted_at`, `items."group"` has no FK or trigger),
+so a reload assertion would go RED on correct code. That is the parked
+name-reference limitation; **Phase 0 is what would let these assert after a reload.**
+
+**Why the entry path had never been tested: jsdom ships no Pointer Capture API.** Radix
+Select's trigger calls `hasPointerCapture` on pointerdown, and a missing method THROWS
+inside React's dispatch — so the menu silently never opens and the test still reports
+green. Stubbed in `tests/unit/setup.ts` beside the `scrollIntoView` and `matchMedia` gaps,
+which is what made a `pick()` helper possible. The new tests drive the real control instead
+of calling `onValueChange`, because a synthetic handler call cannot reproduce a *controlled*
+value snapping back — the whole bug. Three of the four fail against the unfixed component;
+that was verified, not assumed.
+
+**Refuted, and worth keeping refuted:** that `NON_DAY_REPEATS` mis-mirrors day-items.ts on
+`'none'` (`lib/recurrence.ts` is canonical and agrees with the console; day-items.ts's
+missing `case 'none'` is pre-existing and unobservable); that buffered fields commit twice
+on Enter (they do — both writes are identical, the history subscriber JSON-diffs, and
+`notifyPlugins` runs client-side against an empty registry, so it is one redundant idempotent
+PATCH, not a defect); and that a committed `0100` sticks in the field (it self-corrects the
+moment the value actually moves, and the deleted dialog held it longer).
+
 Absorb `EditProjectDialog` into the project detail and **delete it**, ending a
 modal-inside-a-modal. Convert its buffered `Cancel`/`Save Changes` contract to the
 console's single save rule — **discrete controls patch live, every text and number input
