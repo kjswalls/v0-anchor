@@ -8,6 +8,7 @@ import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { sortRows } from '@/lib/sort-rows';
 import { ProgramNotice } from '@/components/views/program-notice';
 import { toDateStr } from '@/lib/recurrence';
 import type { Task, Habit, GroupBy, TimeBucket, Routine } from '@/lib/planner-types';
@@ -159,9 +160,22 @@ export function DayList() {
   const { tasksByBucket, habitsByBucket, totalCount } = useDayItems();
   const { selectedDate, navDirection, userTimezone, routines } = usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const sortBy = useViewStore((s) => s.canvasSortBy);
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy, routines);
+  /**
+   * Sorted WITHIN each group, after grouping — the two axes are independent and
+   * grouping owns the outer order.
+   *
+   * 'default' returns the same array, so routine grouping keeps the routine's
+   * own sequence (routine_items.sort_order, the only place that order is visible
+   * outside the manager). An explicit Ordering overrides it, which is the right
+   * precedence: the user asked for it on this surface, now.
+   */
+  const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy, routines).map((g) => ({
+    ...g,
+    rows: sortRows(g.rows, sortBy),
+  }));
 
   return (
     <ScrollArea className="h-full flex-1">

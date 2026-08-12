@@ -7,6 +7,8 @@ import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { sortRows } from '@/lib/sort-rows';
+import { useViewStore } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,12 +19,19 @@ import { cn } from '@/lib/utils';
 function DaySection({ date }: { date: Date }) {
   const { tasksByBucket, habitsByBucket, totalCount } = useDayItems(date);
   const { selectedDate, setSelectedDate } = usePlannerStore();
+  const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
 
-  const rows = [
-    ...BUCKET_ORDER.flatMap((b) => habitsByBucket[b]).map((h) => ({ itemType: 'habit' as const, item: h })),
-    ...BUCKET_ORDER.flatMap((b) => tasksByBucket[b]).map((t) => ({ itemType: 'task' as const, item: t })),
-  ];
+  // Post-derivation, never inside deriveDayItems — see lib/sort-rows.ts. Each
+  // day section is its own list, which is why Week × List honours ordering
+  // while both Buckets layouts and both Schedules do not.
+  const rows = sortRows(
+    [
+      ...BUCKET_ORDER.flatMap((b) => habitsByBucket[b]).map((h) => ({ itemType: 'habit' as const, item: h })),
+      ...BUCKET_ORDER.flatMap((b) => tasksByBucket[b]).map((t) => ({ itemType: 'task' as const, item: t })),
+    ],
+    sortBy
+  );
 
   return (
     <section>

@@ -111,6 +111,8 @@ function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
     typeFilter: 'all',
     canvasGroupBy: 'none',
     braindumpGroupBy: 'none',
+    canvasSortBy: 'default',
+    braindumpSortBy: 'default',
     canvasFilters: EMPTY_VIEW_FILTERS,
     braindumpFilters: EMPTY_VIEW_FILTERS,
     ...viewOverrides,
@@ -241,19 +243,95 @@ describe('Reset display', () => {
     expect(reset).toHaveAttribute('data-disabled');
   });
 
-  it('counts grouping and type alongside the filter clauses', async () => {
+  it('counts grouping, ordering and type alongside the filter clauses', async () => {
     seed({
       canvasGroupBy: 'priority',
+      canvasSortBy: 'title',
       typeFilter: 'habits',
       canvasFilters: { ...EMPTY_VIEW_FILTERS, priorities: ['high'], hideFinished: true },
     });
     render(<DisplayMenu surface="canvas" />);
 
-    // grouping + type + one priority + hideFinished
+    // grouping + ordering + type + one priority + hideFinished
     expect(screen.getByTestId('display-trigger-canvas')).toHaveAttribute(
       'aria-label',
-      'Display (4 active)'
+      'Display (5 active)'
     );
+  });
+
+  it('clears the ordering too', async () => {
+    seed({ canvasSortBy: 'priority', braindumpSortBy: 'title' });
+    render(<DisplayMenu surface="canvas" />);
+
+    openMenu();
+    fireEvent.click(await screen.findByTestId('display-reset'));
+
+    expect(view().canvasSortBy).toBe('default');
+    // Not the other surface's — Reset is per-surface.
+    expect(view().braindumpSortBy).toBe('title');
+  });
+});
+
+describe('Ordering', () => {
+  it('writes to the surface it is mounted on', async () => {
+    render(<DisplayMenu surface="braindump" trigger="icon" align="start" />);
+
+    openMenu('braindump');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ordering/ }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Title/ }));
+
+    expect(view().braindumpSortBy).toBe('title');
+    expect(view().canvasSortBy).toBe('default');
+  });
+
+  it('is blocked on Buckets, where the timed spine has to stay in time order', async () => {
+    // inferDropTime resolves a drop as +-30 min from its NEIGHBOUR's time, so
+    // re-sorting the spine would assign a time contradicting where the row
+    // visibly landed.
+    seed({ layout: 'buckets' });
+    render(<DisplayMenu surface="canvas" />);
+
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ordering/ }));
+
+    const byTitle = await screen.findByRole('menuitemradio', { name: /Title/ });
+    expect(byTitle).toHaveAttribute('data-disabled');
+    expect(byTitle).toHaveTextContent('List only');
+    // Default stays live — it is how you turn an ordering off from here.
+    expect(screen.getByRole('menuitemradio', { name: /Default/ })).not.toHaveAttribute(
+      'data-disabled'
+    );
+  });
+
+  it('stays available on Week x List, where each day section is its own list', async () => {
+    // Scope does not block ordering, unlike grouping.
+    seed({ scope: 'week', layout: 'list' });
+    render(<DisplayMenu surface="canvas" />);
+
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Ordering/ }));
+
+    expect(await screen.findByRole('menuitemradio', { name: /Title/ })).not.toHaveAttribute(
+      'data-disabled'
+    );
+  });
+
+  it('keeps its row mounted on Schedule so the count has somewhere to live', async () => {
+    // Same rule as Grouping: nothing clears canvasSortBy on a layout change.
+    seed({ layout: 'schedule', canvasSortBy: 'title' });
+    render(<DisplayMenu surface="canvas" />);
+
+    expect(screen.getByTestId('display-trigger-canvas')).toHaveAttribute(
+      'aria-label',
+      'Display (1 active)'
+    );
+
+    openMenu();
+    const row = within(await screen.findByTestId('display-menu')).getByRole('menuitem', {
+      name: /Ordering/,
+    });
+    expect(row).toHaveTextContent('Title');
+    expect(row).toHaveTextContent('List only');
   });
 });
 

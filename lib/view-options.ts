@@ -12,9 +12,11 @@ import {
   Flag,
   Hourglass,
   Shapes,
+  ArrowDownAZ,
   type LucideIcon,
 } from 'lucide-react';
 import type { GroupBy } from './planner-types';
+import type { SortBy } from './sort-rows';
 import type { BraindumpGroupBy, TypeFilter, ViewLayout, ViewScope } from './view-store';
 
 /**
@@ -94,6 +96,28 @@ export function groupByBlockedBy(
   if (layout === 'schedule') return 'Not on Schedule';
   if (layout === 'list') return null;
   return value === 'project' ? null : 'List only';
+}
+
+export const SORT_BY_OPTIONS: ViewOption<SortBy>[] = [
+  { value: 'default', label: 'Default', icon: List },
+  { value: 'priority', label: 'Priority', icon: Flag },
+  { value: 'title', label: 'Title A–Z', icon: ArrowDownAZ },
+];
+
+/**
+ * Why the current LAYOUT cannot honour an ordering, or null when it can.
+ *
+ * Only List. `inferDropTime` resolves a drop as ±30 min from its neighbour's
+ * time, so a Buckets card's timed spine has to stay in `startTime` order or
+ * "drop after this row" assigns a time contradicting where the row landed.
+ * Schedule is the same argument taken to its limit: there, y position IS time.
+ *
+ * Scope does NOT block it — Week × List honours ordering exactly as Day × List
+ * does, since each day section is its own list.
+ */
+export function sortByBlockedBy(layout: ViewLayout, value: SortBy): string | null {
+  if (value === 'default') return null;
+  return layout === 'list' ? null : 'List only';
 }
 
 /** The braindump's own group-by vocabulary — a different, smaller union. */

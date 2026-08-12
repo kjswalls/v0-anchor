@@ -147,7 +147,15 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   const habitsByBucket = emptyBuckets<Habit>();
   dayHabits
     .filter((h) => h.timeBucket)
-    .sort((a, b) => (a.startTime && b.startTime ? a.startTime.localeCompare(b.startTime) : 0))
+    // The same comparator as tasks. It used to be
+    // `a.startTime && b.startTime ? compare : 0`, which returns 0 the moment
+    // EITHER side lacks a time — and most habits have none. A comparator that
+    // answers 0 for every pair involving an untimed row is not a weak ordering:
+    // it leaves those rows wherever the filter happened to emit them, so a 9am
+    // habit could render below an untimed one, and the arrangement changed as
+    // unrelated items came and went. Now timed rows lead in time order and
+    // untimed ones follow by `order`, exactly as tasks do.
+    .sort(byTimeThenOrder)
     .forEach((h) => habitsByBucket[h.timeBucket as TimeBucket].push(h));
 
   // Projects with recurring time blocks that land on this day.

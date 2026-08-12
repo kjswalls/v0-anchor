@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  ArrowUpDown,
   Check,
   ChevronDown,
   Eye,
@@ -42,6 +43,8 @@ import {
   CANVAS_GROUP_BY_OPTIONS,
   TYPE_OPTIONS,
   groupByBlockedBy,
+  sortByBlockedBy,
+  SORT_BY_OPTIONS,
   type CanvasGroupBy,
 } from '@/lib/view-options';
 import type { Priority } from '@/lib/planner-types';
@@ -60,9 +63,11 @@ import { cn } from '@/lib/utils';
  * nothing can make an item disappear; below it everything can. One separator
  * buys a safety affordance that costs nothing to teach.
  *
- * Ordering is deliberately absent until Phase 4 builds `lib/sort-rows.ts`. A row
- * that renders and does nothing is the exact defect this menu exists to remove —
- * the palette has offered five group-by values inert in four of six views.
+ * Both Structure rows follow one rule: they always render, and individual VALUES
+ * disable themselves with the reason on the rail where the current view cannot
+ * honour them. Hiding the row instead strands the clause — nothing clears
+ * `canvasGroupBy` or `canvasSortBy` on a scope or layout change, so the trigger
+ * would keep counting something with no row to account for it.
  */
 
 export type DisplaySurface = 'canvas' | 'braindump';
@@ -272,7 +277,9 @@ export function DisplayMenu({
    */
   const typeSet = isCanvas && view.typeFilter !== 'all';
   const groupSet = groupBy !== 'none';
-  const activeCount = activeFilterCount(filters) + (groupSet ? 1 : 0) + (typeSet ? 1 : 0);
+  const sortSet = (isCanvas ? view.canvasSortBy : view.braindumpSortBy) !== 'default';
+  const activeCount =
+    activeFilterCount(filters) + (groupSet ? 1 : 0) + (sortSet ? 1 : 0) + (typeSet ? 1 : 0);
 
   /**
    * Reset clears everything this menu OWNS for this surface. `showPausedOnGrid`
@@ -285,9 +292,11 @@ export function DisplayMenu({
     setFilters(EMPTY_VIEW_FILTERS);
     if (isCanvas) {
       view.setCanvasGroupBy('none');
+      view.setCanvasSortBy('default');
       view.setTypeFilter('all');
     } else {
       view.setBraindumpGroupBy('none');
+      view.setBraindumpSortBy('default');
     }
   };
 
@@ -314,6 +323,10 @@ export function DisplayMenu({
   const groupBlocked = isCanvas
     ? groupByBlockedBy(scope, view.layout, groupBy as CanvasGroupBy)
     : null;
+
+  const sortBy = isCanvas ? view.canvasSortBy : view.braindumpSortBy;
+  const sortLabel = SORT_BY_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Default';
+  const sortBlocked = isCanvas ? sortByBlockedBy(view.layout, sortBy) : null;
 
   /* ── trigger ──────────────────────────────────────────────────────────── */
 
@@ -418,6 +431,44 @@ export function DisplayMenu({
               role="menuitem"
               onToggle={() => view.setLayout('list')}
             />
+          )}
+        </SubRow>
+
+        <SubRow
+          icon={ArrowUpDown}
+          label="Ordering"
+          rail={sortBlocked ? `${sortLabel} · ${sortBlocked}` : sortLabel}
+          set={sortSet}
+        >
+          {SORT_BY_OPTIONS.map((o) => {
+            const blocked = isCanvas ? sortByBlockedBy(view.layout, o.value) : null;
+            return (
+              <ValueRow
+                key={o.value}
+                icon={o.icon}
+                label={o.label}
+                rail={blocked ?? undefined}
+                disabled={!!blocked}
+                checked={sortBy === o.value}
+                keepOpen={false}
+                onToggle={() =>
+                  isCanvas ? view.setCanvasSortBy(o.value) : view.setBraindumpSortBy(o.value)
+                }
+              />
+            );
+          })}
+          {isCanvas && view.layout !== 'list' && (
+            <>
+              <DropdownMenuSeparator />
+              <ValueRow
+                icon={ArrowRight}
+                label="Switch to List"
+                checked={false}
+                keepOpen={false}
+                role="menuitem"
+                onToggle={() => view.setLayout('list')}
+              />
+            </>
           )}
         </SubRow>
         <DropdownMenuSeparator />

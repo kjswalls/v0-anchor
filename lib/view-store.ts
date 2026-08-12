@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { GroupBy, TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { isSortBy, type SortBy } from './sort-rows';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -79,6 +80,9 @@ interface ViewStore {
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
+  /** Ordering, per surface. List surfaces only — see lib/sort-rows.ts. */
+  canvasSortBy: SortBy;
+  braindumpSortBy: SortBy;
   braindumpFilters: ViewFilters;
   canvasFilters: ViewFilters;
   typeMode: TypeMode;
@@ -116,6 +120,8 @@ interface ViewStore {
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
+  setCanvasSortBy: (sortBy: SortBy) => void;
+  setBraindumpSortBy: (sortBy: SortBy) => void;
   setBraindumpFilters: (filters: ViewFilters) => void;
   setCanvasFilters: (filters: ViewFilters) => void;
   setTypeMode: (mode: TypeMode) => void;
@@ -142,6 +148,8 @@ export const useViewStore = create<ViewStore>()(
       typeFilter: 'all',
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
+      canvasSortBy: 'default',
+      braindumpSortBy: 'default',
       braindumpFilters: EMPTY_VIEW_FILTERS,
       canvasFilters: EMPTY_VIEW_FILTERS,
       typeMode: 'sans',
@@ -166,6 +174,8 @@ export const useViewStore = create<ViewStore>()(
         usePlannerStore.getState().setGroupBy(canvasGroupBy);
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
+      setCanvasSortBy: (canvasSortBy) => set({ canvasSortBy }),
+      setBraindumpSortBy: (braindumpSortBy) => set({ braindumpSortBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
       setTypeMode: (typeMode) => set({ typeMode }),
@@ -235,6 +245,13 @@ export const useViewStore = create<ViewStore>()(
           ...p,
           braindumpFilters: normalizeFilters(p.braindumpFilters),
           canvasFilters: normalizeFilters(p.canvasFilters),
+          // Scalars, so the shallow spread already supplies the default for a
+          // blob that predates them. Coerced anyway because the value reaches a
+          // COMPARATOR: an unrecognised string falls through sortRows' branches
+          // to the priority arm and silently reorders the list, and a persisted
+          // payload is user-editable in devtools.
+          canvasSortBy: isSortBy(p.canvasSortBy) ? p.canvasSortBy : 'default',
+          braindumpSortBy: isSortBy(p.braindumpSortBy) ? p.braindumpSortBy : 'default',
         };
       },
     }

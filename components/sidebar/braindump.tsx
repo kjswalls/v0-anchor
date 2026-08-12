@@ -13,6 +13,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
+import { sortRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -211,7 +212,7 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
 export function Braindump() {
   const { tasks, habits, items, routines, programs, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
-  const { braindumpGroupBy, braindumpFilters } = useViewStore();
+  const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
@@ -267,11 +268,20 @@ export function Braindump() {
       return true;
     });
 
-    return [
-      ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
-      ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
-    ];
-  }, [tasks, habits, braindumpFilters, suppressedIds]);
+    // Concatenation is the DEFAULT order, not the only one. All tasks then all
+    // habits is an accidental type grouping baked into the sort — nobody chose
+    // it; it is what building the list in two passes produces. Under Title it
+    // interleaves properly, and under Priority the habits (which carry none)
+    // gather at the end because that is what the data says, not because of the
+    // order the two filters ran in.
+    return sortRows(
+      [
+        ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
+        ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
+      ],
+      braindumpSortBy
+    );
+  }, [tasks, habits, braindumpFilters, braindumpSortBy, suppressedIds]);
 
   /**
    * Everything currently set aside — the home paused work would otherwise not

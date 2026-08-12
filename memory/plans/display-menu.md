@@ -117,7 +117,7 @@ exist. Verified against `a1c03c2`:
 | **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | **shipped** `0d36efc` + `adf944d` |
 | **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | **shipped** — `useDayItemsForDates` |
 | **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | **shipped** — Ordering deferred to 4 |
-| **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | |
+| **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | **shipped** |
 | **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and the Schedule's Anytime strip | ~6 d | |
 | **5b** | Schedule lanes + Week focus/recede | ~5 d | |
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
@@ -164,9 +164,14 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   in `mobile-header.tsx`, not in `DisplayMenu`, and every component test stayed green.
   `tests/unit/display-menu.test.tsx` now renders `MobileHeader` itself; it needs
   `next/navigation` and `@/lib/supabase` (with an `auth` object) mocked to do so.
-- **The Ordering row is NOT in the menu yet.** Phase 3 shipped Structure(Grouping) · Filter ·
-  Show · Reset; Ordering arrives with `lib/sort-rows.ts` in Phase 4. A row that renders and
-  does nothing is the exact defect this project exists to remove, so it waits for its verb.
+- **Grouping and Ordering are independent axes, and grouping owns the outer order.**
+  `day-list.tsx` sorts WITHIN each group, after `buildListGroups`. Because `sortRows(rows,
+  'default')` returns the same array, routine grouping keeps `routine_items.sort_order` —
+  the only place that sequence is visible outside the manager — until the user picks an
+  ordering, which then wins.
+- **`sortRows` returns its input array unchanged for `'default'`.** Deliberate: it is the
+  value nearly everyone is on, and a fresh array every render would invalidate the
+  callers' memos for nothing. Callers must not mutate the result.
 - **`view.clearFilters` in the palette and Reset display now differ.** Reset clears the
   filters, the grouping AND the type filter; the palette command clears `canvasFilters`
   only, which its own label ("Clear canvas filters") states honestly. Phase 6 owns parity —
