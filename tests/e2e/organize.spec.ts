@@ -151,14 +151,25 @@ test.describe('organize — projects, types and groups', () => {
   test('deleting a project unfiles its items instead of deleting them', async ({ page }) => {
     // The delete copy promises exactly this, and "delete" otherwise reads as
     // subtraction. The item must still exist afterwards.
+    //
+    // THE TASK IS FILED UNDER THE PROJECT BEING DELETED, and that is the whole
+    // test. With an unfiled fixture the confirm renders its "nothing is filed
+    // under it" arm, removeProject's rewriting branch matches no rows, and the
+    // closing assertion says only that an unrelated task exists — it would stay
+    // green if the delete removed every item it owned, which is precisely what
+    // the title claims to guard. `items.project` is free text with no FK, so a
+    // task may name the project before the row exists.
     const title = testTitle('org-unfile');
-    const taskId = await createTestTask(page, { title });
     const name = scope.title('Temporary');
+    const taskId = await createTestTask(page, { title, project: name });
     try {
       await reloadApp(page);
       await openConsole(page, 'Projects');
       await createLabel(page, 'project', name);
       await page.getByTestId('project-delete').click();
+      // Reads the count out of the copy, which fails loudly if the association
+      // ever breaks — the survival assertion below would not.
+      await expect(page.getByTestId('confirm-dialog')).toContainText('Its 1 item stays');
       await page.getByTestId('category-delete-confirm').click();
       await closeConsole(page);
 
@@ -210,9 +221,13 @@ test.describe('organize — projects, types and groups', () => {
     // removeHabitGroup REASSIGNS rather than unassigns, and the old dialog's copy
     // claimed the opposite. The console names the destination; this proves the
     // sentence and the write agree.
+    // THE HABIT GOES IN THE DOOMED GROUP. An empty group exercises the "nothing
+    // moves" arm, where the destination clause never renders and the write
+    // rewrites no rows — the test would then stay green with the reassignment
+    // pointed anywhere, or removed.
     const title = testTitle('org-group');
-    const habitId = await createTestHabit(page, { title, timeBucket: 'morning' });
     const doomed = scope.title('Doomed');
+    const habitId = await createTestHabit(page, { title, timeBucket: 'morning', group: doomed });
     try {
       await reloadApp(page);
       await openConsole(page, 'Habit groups');
@@ -221,14 +236,31 @@ test.describe('organize — projects, types and groups', () => {
       await page.getByTestId('group-delete').click();
       // Asserted on the confirm itself rather than by walking up from the button
       // with an xpath — the prompt is the surface the user actually reads, and
-      // `confirm-dialog` is a stable id the shell owns.
-      await expect(page.getByTestId('confirm-dialog')).toContainText(
-        '⌘Z brings the group back'
-      );
+      // `confirm-dialog` is a stable id the shell owns. The tail is asserted
+      // separately because labels.tsx appends it to BOTH arms, so on its own it
+      // cannot tell the two apart.
+      const copy = (await page.getByTestId('confirm-dialog').textContent())!;
+      expect(copy).toContain('Its 1 habit moves to');
+      expect(copy).toContain('⌘Z brings the group back');
+      const destination = /moves to “([^”]+)”/.exec(copy)?.[1];
+      expect(destination).toBeTruthy();
+
+      // The count the destination row shows, BEFORE the delete. Read in-session
+      // and asserted in-session: the reassignment is deliberately store-only —
+      // dbDeleteHabitGroup stamps deleted_at and `items."group"` is free text
+      // with no FK or trigger, so a reload would re-read the dead name and this
+      // assertion would go red on correct code.
+      const destRow = page
+        .locator('[data-testid="group-row"]')
+        .filter({ hasText: destination! })
+        .first();
+      const before = Number(/(\d+)\s*$/.exec((await destRow.textContent())!)![1]);
+
       await page.getByTestId('category-delete-confirm').click();
+      await expect(destRow).toContainText(String(before + 1));
       await closeConsole(page);
 
-      // The habit is still here — a group delete never deletes work.
+      // And nothing was deleted — a group delete never deletes work.
       await expect(itemCard(page, habitId)).toHaveCount(1);
     } finally {
       await cleanupTestData(page, [], [habitId]);

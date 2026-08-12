@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -92,6 +93,26 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
   const days = project.repeatDays ?? [];
   const isPreset = DURATIONS.includes(duration);
 
+  /**
+   * "Custom…" is a DISPLAY MODE, not a value, so the reveal has to live in
+   * state. Deriving it from the stored duration alone — which is what absorbing
+   * the dialog first did — makes the option inert: picking it writes nothing,
+   * so `isPreset` never changes, so the controlled Select snaps back to the
+   * preset and the minutes field never mounts. Every project starts at a preset
+   * (60 by default), so that made arbitrary durations unreachable app-wide.
+   *
+   * Reset on project change rather than keyed at the call site: the detail pane
+   * reuses this instance across selections, and a flag left set would open the
+   * next project on a custom field it never asked for.
+   */
+  const [wantsCustom, setWantsCustom] = useState(false);
+  const [lastId, setLastId] = useState(project.id);
+  if (lastId !== project.id) {
+    setLastId(project.id);
+    setWantsCustom(false);
+  }
+  const showCustom = wantsCustom || !isPreset;
+
   return (
     <>
       <SettingRow label="Time block" description="A repeating slot on the grid, held for this project.">
@@ -126,8 +147,15 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
                   testId={`project-bucket-${b.value}`}
                   // Moves the start time to the new bucket's opening, because a
                   // 5am start filed under Evening is a block the grid draws
-                  // outside its own band.
-                  onClick={() => patch({ timeBucket: b.value, startTime: b.defaultTime })}
+                  // outside its own band. Guarded on the value actually
+                  // changing: a segment is a button, not a Radix Select, so a
+                  // confirming click on the lit one fires too — and re-seeding
+                  // the opening there would silently discard a start time the
+                  // user typed (14:30 under Afternoon snaps to 12:00).
+                  onClick={() => {
+                    if (bucket === b.value) return;
+                    patch({ timeBucket: b.value, startTime: b.defaultTime });
+                  }}
                 >
                   {b.label}
                 </SegmentedOption>
@@ -149,12 +177,17 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
           <SettingRow label="For">
             <div className="flex shrink-0 items-center gap-1.5">
               <Select
-                value={isPreset ? String(duration) : 'custom'}
+                value={showCustom ? 'custom' : String(duration)}
                 onValueChange={(v) => {
                   // Switching to Custom writes nothing — it reveals the field.
                   // Writing a placeholder here would put a number on the grid
                   // the user never chose.
-                  if (v !== 'custom') patch({ duration: Number(v) });
+                  if (v === 'custom') {
+                    setWantsCustom(true);
+                    return;
+                  }
+                  setWantsCustom(false);
+                  patch({ duration: Number(v) });
                 }}
               >
                 <SelectTrigger className="h-[26px] w-[132px] text-sm" data-testid="project-duration">
@@ -169,7 +202,7 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
                   <SelectItem value="custom">Custom…</SelectItem>
                 </SelectContent>
               </Select>
-              {!isPreset && (
+              {showCustom && (
                 <BufferedInput
                   type="number"
                   min={1}
@@ -181,7 +214,13 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
                   // `6` on the way to `60` and put a six-minute block on the grid
                   // for as long as it takes to type the second digit.
                   validate={(next) => Number.isFinite(Number(next)) && Number(next) > 0}
-                  onCommit={(next) => patch({ duration: Number(next) })}
+                  onCommit={(next) => {
+                    // Latch the mode too, or typing a number that happens to be
+                    // a preset (90, 120) collapses the field the instant it
+                    // commits — the user is left in the list they just left.
+                    setWantsCustom(true);
+                    patch({ duration: Number(next) });
+                  }}
                 />
               )}
             </div>

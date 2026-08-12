@@ -98,6 +98,19 @@ const id = (testId: string) => screen.getByTestId(testId);
 const maybe = (testId: string) => screen.queryByTestId(testId);
 const click = (testId: string) => fireEvent.click(id(testId));
 
+/**
+ * Drive a Radix Select the way a user does, rather than calling its
+ * `onValueChange` directly — the bug this exists to catch was a CONTROLLED value
+ * snapping back, which a synthetic handler call cannot reproduce because it
+ * never re-renders the trigger. Opens on pointerdown (setup.ts stubs the pointer
+ * capture jsdom lacks) and picks by option role, since the trigger renders the
+ * selected label too and a bare text query would match both.
+ */
+const pick = (triggerTestId: string, option: string) => {
+  fireEvent.pointerDown(id(triggerTestId), { pointerType: 'mouse', button: 0, ctrlKey: false });
+  fireEvent.click(screen.getByRole('option', { name: option }));
+};
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
@@ -588,6 +601,59 @@ describe('the project time block', () => {
     const p = usePlannerStore.getState().projects[0];
     expect(p.timeBucket).toBe('evening');
     expect(p.startTime).toBe('17:00');
+  });
+
+  it('leaves a re-picked part of day alone', () => {
+    // A segment is a button, not a Radix Select — a confirming click on the lit
+    // one fires its handler too. Re-seeding the band opening there would throw
+    // away a start time the user typed, on a gesture that changes nothing.
+    openProject(project({ timeBucket: 'afternoon', startTime: '14:30', repeatFrequency: 'daily' }));
+    click('project-bucket-afternoon');
+    const p = usePlannerStore.getState().projects[0];
+    expect(p.startTime).toBe('14:30');
+    expect(p.timeBucket).toBe('afternoon');
+  });
+
+  it('reveals the custom minutes field through the Custom… option', () => {
+    // THE ENTRY PATH, not the field. Seeding a non-preset duration mounts the
+    // field directly and proves nothing about how a user reaches it: every
+    // project starts on a preset (60 by default), so if picking Custom… does not
+    // reveal the field, no duration outside the eight presets is reachable at
+    // all. Choosing it must also write nothing — a placeholder would put a
+    // number on the grid the user never chose.
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', duration: 60, repeatFrequency: 'daily' }));
+    expect(maybe('project-duration-custom')).toBeNull();
+
+    pick('project-duration', 'Custom…');
+    expect(maybe('project-duration-custom')).not.toBeNull();
+    expect(usePlannerStore.getState().projects[0].duration).toBe(60);
+
+    const field = id('project-duration-custom') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '75' } });
+    fireEvent.blur(field);
+    expect(usePlannerStore.getState().projects[0].duration).toBe(75);
+  });
+
+  it('keeps the custom field open when the typed value happens to be a preset', () => {
+    // Otherwise the field vanishes the instant it commits — typing 90 in a field
+    // the user opened deliberately collapses it back to the list they left.
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', duration: 60, repeatFrequency: 'daily' }));
+    pick('project-duration', 'Custom…');
+
+    const field = id('project-duration-custom') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: '90' } });
+    fireEvent.blur(field);
+    expect(usePlannerStore.getState().projects[0].duration).toBe(90);
+    expect(maybe('project-duration-custom')).not.toBeNull();
+  });
+
+  it('picking a preset closes the custom field and writes the preset', () => {
+    openProject(project({ timeBucket: 'morning', startTime: '05:00', duration: 25, repeatFrequency: 'daily' }));
+    expect(maybe('project-duration-custom')).not.toBeNull();
+
+    pick('project-duration', '45 minutes');
+    expect(usePlannerStore.getState().projects[0].duration).toBe(45);
+    expect(maybe('project-duration-custom')).toBeNull();
   });
 
   it('buffers the custom duration instead of writing every digit', () => {
