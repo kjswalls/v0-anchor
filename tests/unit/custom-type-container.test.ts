@@ -11,8 +11,13 @@ import type { ItemTypeDef } from '@anchor-app/types';
  * picker (it gates on `config.containerKind`), and buildListGroups filed every
  * custom item under "No project" no matter what it actually held.
  *
- * These pin the fix and the two sweeps that had to widen with it. They are
- * written against the REGISTRY rather than a rendered dialog because the
+ * These pin the registry ANSWER only. The consequences of that answer — the
+ * three project-block move verbs and `removeProject`'s sweep, both of which had
+ * to widen from `type === 'task'` once custom items started answering with a
+ * project — are pinned in project-block-task-like.test.ts, which mocks the
+ * store. Nothing here asserts either.
+ *
+ * Written against the REGISTRY rather than a rendered dialog because the
  * registry is the thing every surface asks — the dialog, grouping, the filter
  * pass-through rule, and (later) the container registry's `eligibleTypes`.
  */
