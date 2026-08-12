@@ -1001,25 +1001,28 @@ export const STATIC_COMMANDS: Command[] = [
     },
   },
   {
+    // The id and the aliases are FROZEN even though the surface was renamed:
+    // ids are the stable handle the e2e suite and command-usage ranking key on,
+    // and an alias is muscle memory. Only the label follows the rename.
     id: 'app.categories',
-    label: 'Manage projects & groups',
+    label: 'Organize projects & groups',
     group: 'app',
     icon: FolderOpen,
-    keywords: 'projects groups categories manage folders edit',
+    keywords: 'projects groups categories manage organize folders edit labels',
     aliases: ['projects', 'groups'],
-    run: () => useUIStore.getState().openDialog({ type: 'manage-categories' }),
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'projects' }),
   },
   {
     id: 'app.collections',
-    label: 'Manage routines & programs',
+    label: 'Organize routines & programs',
     group: 'app',
     icon: RepeatIcon,
-    keywords: 'routines programs collections manage group pause',
+    keywords: 'routines programs collections manage organize group pause',
     aliases: ['routines'],
-    // Not gated on collectionsAvailable: the dialog explains the situation
+    // Not gated on collectionsAvailable: the console explains the situation
     // better than a missing row does, and a row that silently disappears reads
     // as a broken palette rather than an unavailable feature.
-    run: () => useUIStore.getState().openDialog({ type: 'manage-collections' }),
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'routines' }),
   },
   {
     id: 'app.shortcuts',

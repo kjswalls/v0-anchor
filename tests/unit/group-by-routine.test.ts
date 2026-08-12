@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildListGroups } from '@/components/views/day-list';
-import { swapMembers } from '@/components/planner/manage-collections-dialog';
+import { swapMembers } from '@/lib/collections';
 import type { Task, Habit, Routine, TimeBucket } from '@/lib/planner-types';
 
 /**

@@ -20,8 +20,7 @@ import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
-import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
-import { ManageCollectionsDialog } from '@/components/planner/manage-collections-dialog';
+import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
@@ -514,15 +513,15 @@ export function AppShell() {
         onOpenChange={(open) => !open && closeDialog()}
       />
 
-      <ManageCategoriesDialog
-        open={activeDialog?.type === 'manage-categories'}
-        defaultTab={activeDialog?.type === 'manage-categories' ? activeDialog.tab : undefined}
-        onOpenChange={(open) => !open && closeDialog()}
-      />
-
-      <ManageCollectionsDialog
-        open={activeDialog?.type === 'manage-collections'}
-        defaultTab={activeDialog?.type === 'manage-collections' ? activeDialog.tab : undefined}
+      {/* Two unconditional mounts became one. The console is a component rather
+          than a route so it keeps the shell's services — the DndContext, the
+          undo toast, and ⌘Z, which every delete confirm's copy now explicitly
+          promises. */}
+      <OrganizeConsole
+        open={activeDialog?.type === 'organize'}
+        section={activeDialog?.type === 'organize' ? activeDialog.section : undefined}
+        focusId={activeDialog?.type === 'organize' ? activeDialog.focusId : undefined}
+        focusNew={activeDialog?.type === 'organize' ? activeDialog.focusNew : undefined}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

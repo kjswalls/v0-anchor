@@ -618,51 +618,60 @@ export interface DestinationRecord {
   /** Where it actually lives, shown on the result row. */
   where: string;
   keywords: string[];
-  /** Dispatched on click. The page supplies the implementation. */
-  action: 'manage-categories' | 'manage-collections' | 'connect-openclaw' | 'openclaw-docs';
-  tab?: string;
+  /**
+   * Dispatched on click. The page supplies the implementation.
+   *
+   * `manage-categories` and `manage-collections` collapsed into one `organize`
+   * when the two dialogs became one console — the split was never about what
+   * the user wanted, only about which dialog happened to own the row.
+   */
+  action: 'organize' | 'connect-openclaw' | 'openclaw-docs';
+  /** For `organize`: which section to land on. */
+  section?: string;
 }
 
 export const DESTINATIONS: DestinationRecord[] = [
   {
     id: 'dest.projects',
-    label: 'Manage projects',
-    where: 'Planner',
-    keywords: ['project', 'folder', 'colour', 'color', 'container'],
-    action: 'manage-categories',
-    tab: 'projects',
+    label: 'Projects',
+    // Names the real surface. "Planner" was true of a dialog reachable from two
+    // unrelated places; these five now live in one console with a name.
+    where: 'Organize',
+    keywords: ['project', 'folder', 'colour', 'color', 'container', 'manage'],
+    action: 'organize',
+    section: 'projects',
   },
   {
     id: 'dest.groups',
     label: 'Habit groups',
-    where: 'Planner',
+    where: 'Organize',
     keywords: ['group', 'habit', 'category', 'wellness', 'work'],
-    action: 'manage-categories',
-    tab: 'groups',
+    action: 'organize',
+    section: 'groups',
   },
   {
     id: 'dest.types',
     label: 'Item types',
-    where: 'Planner',
+    where: 'Organize',
     keywords: ['custom type', 'registry', 'task type', 'habit type', 'kind'],
-    action: 'manage-categories',
-    tab: 'types',
+    action: 'organize',
+    section: 'types',
   },
   {
     id: 'dest.routines',
     label: 'Routines',
-    where: 'Planner',
+    where: 'Organize',
     keywords: ['routine', 'recurring', 'template', 'stack'],
-    action: 'manage-collections',
-    tab: 'routines',
+    action: 'organize',
+    section: 'routines',
   },
   {
     id: 'dest.programs',
     label: 'Programs',
-    where: 'Planner',
+    where: 'Organize',
     keywords: ['program', 'plan', 'course', 'block', 'season'],
-    action: 'manage-collections',
-    tab: 'programs',
+    action: 'organize',
+    section: 'programs',
   },
   {
     id: 'dest.openclaw',

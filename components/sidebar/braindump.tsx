@@ -536,8 +536,8 @@ export function Braindump() {
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={() => openDialog({ type: 'manage-categories' })}
-            aria-label="Manage projects & groups"
+            onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+            aria-label="Organize projects & groups"
           >
             <FolderOpen className="h-4 w-4" />
           </Button>

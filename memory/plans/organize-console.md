@@ -552,7 +552,38 @@ green.
 
 ### Phase 2 — The plate
 
-**Status 2026-08-12 — the whole tree is built and green; only the WIRING is left.**
+**Status 2026-08-12 — DONE, wiring included. Build green, 844 unit tests, lint 0 errors.**
+Work moved to its own worktree (`D:/Code/v0-anchor-organize`, branch `feat/organize-console`)
+after a parallel session in the shared checkout committed one of these edits into its own
+history by accident. Branches are per-worktree, so a branch alone could not have isolated it.
+
+**Twelve doors, not seven.** The settings-route rewrite added five `DESTINATIONS` records
+(`dest.projects`, `dest.groups`, `dest.types`, `dest.routines`, `dest.programs`) between
+the survey and the build. Their `action` union collapsed from
+`manage-categories | manage-collections` to a single `organize`, and `tab` became `section`.
+Their `where` now reads `Organize` rather than `Planner` — the old value described a dialog
+reachable from two unrelated places; these five now live in one console with a name.
+
+`ActiveDialog` gained `organize` (NOT `console`, as originally specced — `console` reads as
+the browser's, and the variant should carry the product's name) and lost both old variants
+outright rather than keeping aliases: two variants pointing at one component is how a
+caller ends up opening the right surface on the wrong section for a year. Palette command
+**ids and aliases are frozen** per decision 1 (`app.categories`, `app.collections`,
+`projects`, `groups`, `routines`); only labels followed the rename.
+
+**`focusId` is threaded and now reveals its row.** The ScopeRail's rows and the program
+notice deep-link to a specific object, so `ObjectRow` scrolls itself into view with
+`block: 'nearest'` when selected — a no-op when it is already visible, so ordinary
+clicking never jumps the list. Scroll only, never focus: the plate's focus trap runs on
+open and a second claim on the same tick lands the ring somewhere nobody intended.
+
+**One defect found while moving, invisible to every reviewer.** `lib/collections.ts`
+contained a literal **NUL byte** — `` `${id}\0${name}` `` where a separator was meant. It
+parsed, ran, and passed every test, but git classified the file as binary and stopped
+producing diffs for it, which is why five review lenses reading it as text saw nothing.
+The composite key is gone; the two values are compared as two values.
+
+Original status line: **the whole tree is built and green; only the WIRING is left.**
 `organize-console.tsx`, `console-rail.tsx`, `primitives.tsx`, `detail-parts.tsx`,
 `member-list.tsx`, `escape-ladder.tsx`, `sections/{routines,programs,labels}.tsx`.
 184 unit tests green across the console files and their neighbours, lint 0/0, tsc clean.

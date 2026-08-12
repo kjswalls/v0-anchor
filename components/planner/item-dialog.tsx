@@ -1222,13 +1222,13 @@ export function ItemDialog({
                     close();
                     // Replaces this dialog rather than stacking on it —
                     // openDialog swaps the single active slot. Same escape the
-                    // type chip's "Manage types…" row makes.
-                    useUIStore.getState().openDialog({ type: 'manage-collections' });
+                    // type chip's "Organize types…" row makes.
+                    useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
                   }}
                   testId="item-dialog-routine-manage"
                 >
                   <Plus className="size-3.5" />
-                  Manage routines…
+                  Organize routines…
                 </ChipOption>
               </div>
             )}
@@ -1272,14 +1272,14 @@ export function ItemDialog({
                   onSelect={() => {
                     close();
                     useUIStore.getState().openDialog({
-                      type: 'manage-collections',
-                      tab: 'programs',
+                      type: 'organize',
+                      section: 'programs',
                     });
                   }}
                   testId="item-dialog-program-manage"
                 >
                   <Plus className="size-3.5" />
-                  Manage programs…
+                  Organize programs…
                 </ChipOption>
               </div>
             )}
@@ -1856,11 +1856,11 @@ export function ItemDialog({
                     // swaps the single active slot.
                     useUIStore
                       .getState()
-                      .openDialog({ type: 'manage-categories', tab: 'types' });
+                      .openDialog({ type: 'organize', section: 'types' });
                   }}
                 >
                   <Plus className="size-3.5" />
-                  Manage types…
+                  Organize types…
                 </ChipOption>
               </>
             )}

@@ -177,10 +177,15 @@ export function useNameDraft(id: string, name: string, commit: (next: string) =>
   // "adjusting state when a prop changes" pattern. An effect paints one frame
   // holding the PREVIOUS container's text, and that frame is live: a blur or an
   // Enter landing in it commits the old name onto the new object.
-  const source = `${id} ${name}`;
-  const [lastSource, setLastSource] = useState(source);
-  if (source !== lastSource) {
-    setLastSource(source);
+  // Compared as two values rather than joined into one key: there is then no
+  // separator to choose, and nothing a name could contain that would make two
+  // different (id, name) pairs look identical. The first version of this joined
+  // them with a template literal and the separator went in as a literal NUL —
+  // invisible in every editor, harmless at runtime, and enough to make git
+  // treat the whole file as binary and stop producing diffs for it.
+  const [last, setLast] = useState({ id, name });
+  if (last.id !== id || last.name !== name) {
+    setLast({ id, name });
     setDraft(name);
   }
 

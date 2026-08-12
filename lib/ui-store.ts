@@ -12,10 +12,26 @@ export type ActiveDialog =
   /** `tab` is the registry type name ('task', 'habit', or a custom slug). */
   | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date; title?: string }
   | { type: 'edit-item'; item: Item }
-  /** `tab` opens a specific panel — 'projects' | 'groups' | 'types'. */
-  | { type: 'manage-categories'; tab?: string }
-  /** `tab` opens a specific panel — 'routines' | 'programs'. */
-  | { type: 'manage-collections'; tab?: string }
+  /**
+   * The Organize console — one surface for every container and label. Replaced
+   * `manage-categories` and `manage-collections`, which are gone rather than
+   * kept as aliases: two variants pointing at one component is how a caller
+   * ends up opening the right dialog on the wrong section for a year.
+   *
+   * `section` is a bare string because it arrives from the palette, the settings
+   * manifest and `ActiveDialog` alike; the console validates it and falls back
+   * to routines, so a stale value lands somewhere real instead of on an empty
+   * plate. See components/planner/organize/console-rail.tsx for the vocabulary.
+   */
+  | {
+      type: 'organize';
+      /** 'routines' | 'programs' | 'projects' | 'types' | 'groups' | 'trash'. */
+      section?: string;
+      /** Select this object on arrival. */
+      focusId?: string;
+      /** Put the cursor in the create row — the ScopeRail's `+`. */
+      focusNew?: boolean;
+    }
   // Settings is a route (/settings), not a dialog — see
   // app/settings/[[...pane]]/page.tsx. Removed rather than left as a dead
   // variant so nothing can dispatch to a surface no longer mounted anywhere.

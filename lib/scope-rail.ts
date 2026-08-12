@@ -21,8 +21,8 @@
  *      is a resolver DELTA — flip the switch in a copy of the world, re-run
  *      `inactiveItemIdsOn`, diff. The same delta drives the hover preview, so
  *      the number and the ghost can never disagree about what is about to
- *      happen. (The manager's attach confirm already reasons this way; see
- *      `wouldHide` in manage-collections-dialog.tsx.)
+ *      happen. (The Organize console's attach confirm already reasons this way;
+ *      see `wouldHide` in components/planner/organize/sections/programs.tsx.)
  *
  * See memory/plans/programs-routines.md, Phase 5.
  */

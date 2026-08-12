@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { ChevronRight, Moon } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { accentColorForName } from '@/lib/accent-colors';
@@ -116,8 +117,29 @@ export function ObjectRow({
   count: number;
   onSelect: () => void;
 }) {
+  const ref = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Keep the selected row visible.
+   *
+   * The case that needs it is the deep link: the ScopeRail and the program
+   * notice open the console on a specific object, and the twelfth routine in a
+   * list is below the fold, so without this the console arrives looking like
+   * nothing was selected while the detail pane discusses something you cannot
+   * see. `block: 'nearest'` makes it a no-op when the row is already in view, so
+   * ordinary clicking never jumps the list under the cursor.
+   *
+   * Scroll only, never focus: the plate has a focus trap that runs on open, and
+   * a second claim on the same tick is how a dialog ends up with a focus ring
+   * somewhere its author never intended.
+   */
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onSelect}
       data-testid={testId}

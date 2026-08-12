@@ -30,9 +30,9 @@ import { createContext, useCallback, useContext, useEffect, useRef } from 'react
  * focused, and do I have something to clear" — so no ordering rule is needed
  * and two rungs can never both claim one press.
  *
- * NOTE this is also a live bug in `manage-collections-dialog.tsx`, which has
- * carried the same dead `stopPropagation` rungs since it shipped. It goes when
- * that file does.
+ * The dialog this replaced carried the same dead `stopPropagation` rungs from
+ * the day it shipped to the day it was deleted, and nobody noticed — which is
+ * the argument for the registry rather than for four more local handlers.
  */
 
 /** Returns true when this rung consumed the press. */

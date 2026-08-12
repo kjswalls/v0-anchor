@@ -118,7 +118,9 @@ export function ScopeRail() {
               type="button"
               data-testid="scope-rail-add"
               aria-label="New routine or program"
-              onClick={() => openDialog({ type: 'manage-collections', tab: 'routines' })}
+              // `focusNew` puts the cursor straight in the create row, so `+`
+              // means "make one" rather than "go and look at the list".
+              onClick={() => openDialog({ type: 'organize', section: 'routines', focusNew: true })}
               className="text-muted-foreground hover:text-foreground -mr-1 flex h-5 w-5 items-center justify-center rounded transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -153,10 +155,14 @@ export function ScopeRail() {
                   setProgramState(row.id, programStateForSwitch(program, !row.localOn, todayStr));
                 }
               }}
+              // Straight to THIS row's detail, not to the top of the list —
+              // the rail row and the console row are the same object, so
+              // arriving anywhere else is the console losing the thread.
               onOpen={() =>
                 openDialog({
-                  type: 'manage-collections',
-                  tab: row.kind === 'program' ? 'programs' : 'routines',
+                  type: 'organize',
+                  section: row.kind === 'program' ? 'programs' : 'routines',
+                  focusId: row.id,
                 })
               }
             />
