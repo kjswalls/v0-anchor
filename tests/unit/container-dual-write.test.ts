@@ -224,6 +224,86 @@ describe('the repair sweeps move both halves', () => {
   });
 });
 
+describe('renaming a container carries its items', () => {
+  it('rewrites the name mirror and persists it', () => {
+    // The parked limitation this phase unparks: before container_id, renaming
+    // 'Work' left every task pointing at a string that named nothing.
+    seed([
+      task('t1', { project: 'Work', containerId: 'p-work' } as Partial<Item>),
+      task('t2', { project: 'Side', containerId: 'p-side' } as Partial<Item>),
+    ]);
+
+    store().updateProject('p-work', { name: 'Client Work' });
+
+    expect(view('t1').project).toBe('Client Work');
+    expect(view('t1').containerId).toBe('p-work');
+    expect(view('t2').project).toBe('Side');
+    // In-session is not enough — a reload re-reads the row.
+    expect(vi.mocked(db.updateItem).mock.calls.map((c) => [c[0], c[2]])).toEqual([
+      ['t1', { project: 'Client Work', containerId: 'p-work' }],
+    ]);
+  });
+
+  it('catches an item the backfill has not reached, by name', () => {
+    seed([task('t1', { project: 'Work' } as Partial<Item>)]);
+    store().updateProject('p-work', { name: 'Client Work' });
+    expect(view('t1').project).toBe('Client Work');
+    // ...and gives it the id on the way through.
+    expect(view('t1').containerId).toBe('p-work');
+  });
+
+  it('follows the ID when the name mirror has drifted', () => {
+    // ID first, name second. This item's name is stale; the id is the truth.
+    seed([task('t1', { project: 'Stale', containerId: 'p-work' } as Partial<Item>)]);
+    store().updateProject('p-work', { name: 'Client Work' });
+    expect(view('t1').project).toBe('Client Work');
+  });
+
+  it('does not sweep up another container\'s items when renaming ONTO its name', () => {
+    // This pins the match against the OLD name, not the new one. Renaming
+    // 'Work' to 'Side' must not collect the real Side's tasks — which is what
+    // `sameContainerName(kind, held, newName)` would do, and it is an easy
+    // slip because both strings are in scope. (The id-first ORDER is pinned by
+    // the drifted-mirror case above, not by this one.)
+    // t2 deliberately carries NO containerId: with one it takes the id branch
+    // and never reaches the name comparison this is about, which is how the
+    // first version of this test passed under the very mutation it names.
+    seed([
+      task('t1', { project: 'Work', containerId: 'p-work' } as Partial<Item>),
+      task('t2', { project: 'Side' } as Partial<Item>),
+    ]);
+
+    store().updateProject('p-work', { name: 'Side' });
+
+    expect(view('t2').containerId).toBeUndefined();
+    expect(vi.mocked(db.updateItem).mock.calls.map((c) => c[0])).toEqual(['t1']);
+  });
+
+  it('leaves items alone when the edit is not a rename', () => {
+    seed([task('t1', { project: 'Work', containerId: 'p-work' } as Partial<Item>)]);
+    store().updateProject('p-work', { emoji: 'icon:Star' });
+    expect(vi.mocked(db.updateItem)).not.toHaveBeenCalled();
+  });
+
+  it('renames a habit group, folding the stale spelling', () => {
+    // `group` is non-optional on the wire, so a stranded habit does not merely
+    // lose a category — it names a group that does not exist.
+    seed([habit('h1', { group: 'personal' }), habit('h2', { group: 'Health' })]);
+
+    store().updateHabitGroup('g-personal', { name: 'Me Time' });
+
+    expect(view('h1').group).toBe('Me Time');
+    expect(view('h1').containerId).toBe('g-personal');
+    expect(view('h2').group).toBe('Health');
+  });
+
+  it('does not cross the axis: a project rename never touches habits', () => {
+    seed([habit('h1', { group: 'Work', containerId: 'g-x' })]);
+    store().updateProject('p-work', { name: 'Client Work' });
+    expect(view('h1').group).toBe('Work');
+  });
+});
+
 // The containerId → container_id column mapping is pinned in
 // tests/unit/db-allowlists.test.ts, which does not mock @/lib/db. It cannot live
 // here: this file mocks the whole module to observe the writes.

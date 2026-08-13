@@ -660,6 +660,51 @@ function withContainerId<T extends Partial<Task> | Partial<Habit>>(
   return { ...updates, containerId: match?.id };
 }
 
+/**
+ * Every item that must follow a renamed container, already rewritten.
+ *
+ * Renaming a project or a habit group used to change one row and leave every
+ * item pointing at a string that no longer named anything — the parked
+ * limitation migration 024 records. `container_id` is what unparks it, and this
+ * is where that pays out.
+ *
+ * Matching is ID FIRST, name second, which is the whole dual-write read rule:
+ * an item that has been backfilled follows its container even if its name
+ * mirror has drifted, and one that has not is still caught by the name it
+ * carries. The order matters — name-first would let a rename TO an existing
+ * container's name sweep up that container's items as well.
+ *
+ * Returns the rewritten items rather than mutating, so the caller can apply
+ * them and the container row in ONE set(). Two sets would be two history
+ * entries, which makes one rename take two ⌘Z to reverse — the same reason
+ * `Memberships` exists on the add actions.
+ */
+function renamedItems(
+  items: readonly Item[],
+  kind: ClassifyKind,
+  containerId: string,
+  oldName: string,
+  newName: string,
+): Item[] {
+  const field = getContainerKindConfig(kind).itemField!;
+  const wantsHabit = kind === 'group';
+  const out: Item[] = [];
+  for (const item of items) {
+    // `!== 'habit'` on the project side, because custom types are project-shaped.
+    if (wantsHabit ? item.type !== 'habit' : item.type === 'habit') continue;
+    const held = item as unknown as Record<string, unknown>;
+    const heldId = held.containerId;
+    const heldName = held[field];
+    const matches =
+      typeof heldId === 'string' && heldId
+        ? heldId === containerId
+        : typeof heldName === 'string' && sameContainerName(kind, heldName, oldName);
+    if (!matches) continue;
+    out.push({ ...item, [field]: newName, containerId } as Item);
+  }
+  return out;
+}
+
 // Per-type diff for undo/redo db sync — fields come from the schema-derived
 // registry lists, so a new schema field can never silently drop out of sync.
 const diffItem = (from: Item, to: Item): Record<string, unknown> => {
@@ -2078,14 +2123,37 @@ export const usePlannerStore = create<PlannerStore>()(
       updateProject: (id, updates) => {
         const project = get().projects.find((p) => p.id === id);
         setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
+
+        // Computed from get() BEFORE the set rather than inside the updater —
+        // a set() reducer must stay pure, and this needs to be readable
+        // afterwards to issue the writes.
+        const renamedTo =
+          project && typeof updates.name === 'string' && updates.name !== project.name
+            ? updates.name
+            : null;
+        const moved = renamedTo
+          ? renamedItems(get().items, 'project', id, project!.name, renamedTo)
+          : [];
+        const byId = new Map(moved.map((i) => [i.id, i]));
+
         set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === id ? { ...p, ...updates } : p
-          ),
+          projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+          ...(moved.length
+            ? projectItems(state.items.map((i) => byId.get(i.id) ?? i))
+            : {}),
         }));
 
         const userId = get().userId;
         if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
+        // One PATCH per item, unbatched — the same shape (and the same cost)
+        // undoing a rename already has. Worth batching if a rename ever spans
+        // hundreds of items; correctness first while the verb is new.
+        for (const item of moved) {
+          dbUpdateItem(item.id, dbTypeOf(item), {
+            project: renamedTo!,
+            containerId: id,
+          }).catch(console.error);
+        }
       },
 
       removeProject: (id) => {
@@ -2268,14 +2336,35 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       updateHabitGroup: (id, updates) => {
+        // The sibling of updateProject's rename — see the note there. Habits
+        // need it more, not less: `group` is non-optional on the wire, so a
+        // habit stranded by a rename is not merely uncategorised, it names a
+        // group that does not exist.
+        const group = get().habitGroups.find((g) => g.id === id);
+        const renamedTo =
+          group && typeof updates.name === 'string' && updates.name !== group.name
+            ? updates.name
+            : null;
+        const moved = renamedTo
+          ? renamedItems(get().items, 'group', id, group!.name, renamedTo)
+          : [];
+        const byId = new Map(moved.map((i) => [i.id, i]));
+
         set((state) => ({
-          habitGroups: state.habitGroups.map((g) =>
-            g.id === id ? { ...g, ...updates } : g
-          ),
+          habitGroups: state.habitGroups.map((g) => (g.id === id ? { ...g, ...updates } : g)),
+          ...(moved.length
+            ? projectItems(state.items.map((i) => byId.get(i.id) ?? i))
+            : {}),
         }));
 
         const userId = get().userId;
         if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
+        for (const item of moved) {
+          dbUpdateItem(item.id, dbTypeOf(item), {
+            group: renamedTo!,
+            containerId: id,
+          }).catch(console.error);
+        }
       },
 
       removeHabitGroup: (id) => {
