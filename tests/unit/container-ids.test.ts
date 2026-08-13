@@ -115,12 +115,30 @@ beforeEach(async () => {
 });
 
 describe('renaming a container fans the new name out to its members', () => {
-  it('moves the name on members, keyed by id', () => {
+  it('moves the name on members, keyed by id', async () => {
     store().updateProject('pr-work', { name: 'Deep Work' });
     expect((find('task-member') as { project?: string }).project).toBe('Deep Work');
+    // Awaited, because the DB fan-out is CHAINED onto the container write
+    // rather than fired beside it — a 23505 on the container (a rename onto a
+    // trashed name, which takenBy cannot see) must not leave the members
+    // rewritten. A synchronous assertion here would pass on either wiring.
+    await Promise.resolve();
     expect(db.renameContainerMembers).toHaveBeenCalledWith(
       USER, 'project_id', 'pr-work', 'Deep Work'
     );
+  });
+
+  it('does NOT fan out when the container write fails', async () => {
+    // The whole reason the two are chained. takenBy only sees live containers,
+    // so a rename onto a soft-deleted project's name reaches the DB and raises
+    // 23505 there; the member fan-out touches no unique index and would happily
+    // succeed on its own, leaving the container named one thing and all of its
+    // items another.
+    vi.mocked(db.updateProject).mockRejectedValueOnce(new Error('23505'));
+    store().updateProject('pr-work', { name: 'Trashed Name' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(db.renameContainerMembers).not.toHaveBeenCalled();
   });
 
   it('leaves a same-named non-member alone', () => {
@@ -140,9 +158,10 @@ describe('renaming a container fans the new name out to its members', () => {
     expect(db.renameContainerMembers).not.toHaveBeenCalled();
   });
 
-  it('does the same for habit groups', () => {
+  it('does the same for habit groups', async () => {
     store().updateHabitGroup('gr-well', { name: 'Health' });
     expect((find('habit-member') as { group?: string }).group).toBe('Health');
+    await Promise.resolve();
     expect(db.renameContainerMembers).toHaveBeenCalledWith(
       USER, 'group_id', 'gr-well', 'Health'
     );

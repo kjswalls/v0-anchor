@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ProjectTimeBlock } from '../project-time-block';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useViewStore } from '@/lib/view-store';
 import { byName, matching } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { ObjectRow, SettingRow } from '../primitives';
@@ -134,6 +135,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
   const projects = usePlannerStore((s) => s.projects);
   const updateProject = usePlannerStore((s) => s.updateProject);
   const removeProject = usePlannerStore((s) => s.removeProject);
+  const renameContainerRef = useViewStore((s) => s.renameContainerRef);
   const confirm = useUIStore((s) => s.confirm);
 
   const n = countProjectItems(items, project.name);
@@ -169,12 +171,18 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
             Project · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'}
           </>
         }
-        onPatch={(patch) =>
+        onPatch={(patch) => {
+          // Before the store moves the name out from under us: the persisted
+          // canvas/braindump filters hold `project:<NAME>`, and a stale ref
+          // matches nothing rather than degrading — the view empties.
+          if (patch.name && patch.name !== project.name) {
+            renameContainerRef('project', project.name, patch.name);
+          }
           updateProject(project.id, {
             ...renameIconKey(patch, 'emoji'),
             ...('name' in patch && { name: patch.name }),
-          })
-        }
+          });
+        }}
       />
 
       <div className="bg-border my-4 h-px" />
@@ -487,6 +495,7 @@ function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => v
   const habitGroups = usePlannerStore((s) => s.habitGroups);
   const updateHabitGroup = usePlannerStore((s) => s.updateHabitGroup);
   const removeHabitGroup = usePlannerStore((s) => s.removeHabitGroup);
+  const renameContainerRef = useViewStore((s) => s.renameContainerRef);
   const confirm = useUIStore((s) => s.confirm);
 
   const n = countGroupHabits(items, group.name);
@@ -520,12 +529,16 @@ function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => v
             Habit group · <span className="font-num">{n}</span> {n === 1 ? 'habit' : 'habits'}
           </>
         }
-        onPatch={(patch) =>
+        onPatch={(patch) => {
+          // See ProjectDetail — the same persisted-ref hazard.
+          if (patch.name && patch.name !== group.name) {
+            renameContainerRef('group', group.name, patch.name);
+          }
           updateHabitGroup(group.id, {
             ...renameIconKey(patch, 'emoji'),
             ...('name' in patch && { name: patch.name }),
-          })
-        }
+          });
+        }}
       />
 
       <DangerZone

@@ -205,6 +205,10 @@ export function useNameDraft(
   if (last.id !== id || last.name !== name) {
     setLast({ id, name });
     setDraft(name);
+    // The problem goes with the draft that caused it. Left behind, a refusal
+    // earned by one container is re-parented onto the next one selected — and
+    // it names a clash that container does not have.
+    setProblem(null);
   }
 
   return {
@@ -220,22 +224,24 @@ export function useNameDraft(
       setDraft(name);
       setProblem(null);
     },
-    commit: () => {
+    /** True when the name was accepted — callers use it to decide whether to blur. */
+    commit: (): boolean => {
       const next = draft.trim();
       if (!next || next === name) {
         setDraft(name);
         setProblem(null);
-        return;
+        return true;
       }
       const said = validate?.(next) ?? null;
       if (said) {
         // The draft STAYS. Snapping back to the old name here would discard
         // what they typed and leave nothing to correct.
         setProblem(said);
-        return;
+        return false;
       }
       setProblem(null);
       commit(next);
+      return true;
     },
   };
 }

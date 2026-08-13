@@ -269,8 +269,12 @@ export function IdentityRow({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              nameDraft.commit();
-              e.currentTarget.blur();
+              // Blur only on acceptance. Leaving a refused name on an UNFOCUSED
+              // field strands it: the Escape rung below requires focus, so the
+              // next Escape would close the whole console instead of putting
+              // the old name back, and the sentence explaining the refusal
+              // would sit under a field the user has to click into again.
+              if (nameDraft.commit()) e.currentTarget.blur();
             }
           }}
           aria-label={`${label} name`}

@@ -211,3 +211,50 @@ describe('isEmptyFilters', () => {
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, hideFinished: true })).toBe(false);
   });
 });
+
+/**
+ * A rename now has to reach the PERSISTED filter refs (migration 027 / Phase 0b).
+ *
+ * `containers` holds `project:Work` — a NAME, in localStorage, from before
+ * containers had stable ids. Renaming was parked until 027, so these could never
+ * go stale; now they can, and a stale ref does not degrade gracefully.
+ * `passesContainerFilter` matches nothing, so the canvas or the braindump
+ * empties completely and the only clue on screen is a filter chip naming a
+ * project that no longer exists.
+ */
+describe('renameContainerRef follows a container rename', () => {
+  beforeEach(() => {
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Wellness'] },
+      braindumpFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work'] },
+    });
+  });
+
+  it('rewrites the ref in both filter sets', () => {
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).not.toContain('project:Work');
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:Deep Work']);
+  });
+
+  it('leaves refs of the other kind alone', () => {
+    // `project:Work` and `group:Work` are different selections; renaming the
+    // project must not silently retarget a group's chip.
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).toContain('group:Wellness');
+  });
+
+  it('does not leave a duplicate when both were selected', () => {
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'project:Home'] },
+    });
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Home');
+    expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:Home']);
+  });
+
+  it('is inert when nothing referenced the old name', () => {
+    const before = useViewStore.getState().canvasFilters;
+    useViewStore.getState().renameContainerRef('project', 'Untouched', 'Renamed');
+    expect(useViewStore.getState().canvasFilters).toBe(before);
+  });
+});

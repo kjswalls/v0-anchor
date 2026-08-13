@@ -2124,10 +2124,24 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) {
-          dbUpdateProject(userId, id, updates).catch(console.error);
-          if (renamedTo) {
-            dbRenameContainerMembers(userId, 'project_id', id, renamedTo).catch(console.error);
-          }
+          // CHAINED, not fired side by side, and this is the safety net under
+          // `takenBy`. That guard can only see LIVE projects — the store never
+          // loads soft-deleted ones — while projects_user_id_name_key is a
+          // plain unique index that spans them. So renaming onto a TRASHED
+          // project's name passes the guard, and the two writes do not fail
+          // together: the container UPDATE raises 23505 while the member
+          // fan-out touches no unique index and succeeds. The container would
+          // keep its old name while every member claimed the new one.
+          //
+          // Sequencing them turns that corruption into an ordinary optimistic
+          // update that reverts on reload, which is the failure mode every
+          // other write in this store already has. A better message needs the
+          // trashed names, which arrive with the Trash in Phase 4.
+          const write = dbUpdateProject(userId, id, updates);
+          (renamedTo
+            ? write.then(() => dbRenameContainerMembers(userId, 'project_id', id, renamedTo))
+            : write
+          ).catch(console.error);
         }
       },
 
@@ -2329,10 +2343,12 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) {
-          dbUpdateHabitGroup(userId, id, updates).catch(console.error);
-          if (renamedTo) {
-            dbRenameContainerMembers(userId, 'group_id', id, renamedTo).catch(console.error);
-          }
+          // Chained for the same reason as updateProject — see the note there.
+          const write = dbUpdateHabitGroup(userId, id, updates);
+          (renamedTo
+            ? write.then(() => dbRenameContainerMembers(userId, 'group_id', id, renamedTo))
+            : write
+          ).catch(console.error);
         }
       },
 

@@ -506,13 +506,37 @@ async function lookupContainerId(
   // unique across deleted rows too, so there is at most one candidate, and
   // keeping the link is what lets a Trash restore reconnect its members.
   try {
-    let query = supabase.from(table).select('id').eq('name', name);
+    let query = supabase.from(table).select('id, name').eq('name', name);
     if (userId) query = query.eq('user_id', userId);
     const { data, error } = await query.limit(1);
     // Distinguish "no such container" (null — clear the id) from "cannot ask"
     // (undefined — leave the column out of the write entirely).
     if (error) return undefined;
-    return data?.[0]?.id ?? null;
+    if (data?.[0]?.id) return data[0].id;
+
+    // HABIT GROUPS FOLD CASE, and matching the store here is not tidiness. The
+    // client resolver (groupIdFor), getHabitGroupEmoji, getHabitGroupColor and
+    // addHabitGroup's de-dupe all normalise, so an agent naming "wellness"
+    // against a row called "Wellness" is filing into a group the app considers
+    // the same one. Exact-only, this returns null — and null does not merely
+    // fail to link, it CLEARS an id that was already correct, putting the item
+    // outside the rename fan-out. Projects stay exact, matching projectIdFor.
+    //
+    // A second round trip rather than `ilike`: a container legitimately named
+    // "100%" or "a_b" would turn into a wildcard pattern and match the wrong
+    // row. Container counts are small (10 projects, 3 groups on the live
+    // database) and this only runs after an exact miss.
+    if (table !== 'habit_groups') return null;
+    let all = supabase.from(table).select('id, name');
+    if (userId) all = all.eq('user_id', userId);
+    const { data: rows, error: allError } = await all;
+    if (allError) return undefined;
+    const folded = name.toLowerCase();
+    return (
+      (rows as { id: string; name: string }[] | null)?.find(
+        (r) => r.name.toLowerCase() === folded,
+      )?.id ?? null
+    );
   } catch {
     // Creating an item must never fail because a container lookup did. The
     // worst case here is the pre-027 behaviour — a row with a name and no id —
@@ -520,6 +544,49 @@ async function lookupContainerId(
     // lookup would instead lose the item the user just typed.
     return undefined;
   }
+}
+
+/**
+ * Fill in the container id implied by a name-only PATCH. Agent path only —
+ * `updateTask`/`updateHabit` are the legacy wrappers, and `lib/agent-api.ts` is
+ * their only caller in the tree (the store calls `updateItem` directly, and
+ * `planner().updateTask` is the unrelated store action).
+ *
+ * THAT SEPARATION IS THE WHOLE POINT, and putting this in `updateItem` was a
+ * bug. A name-only patch does NOT reliably mean "re-file": undo sends one too.
+ * Renaming a project rewrites its members' `project` text in the same set(), so
+ * undo's `diffItem` produces exactly `{project: <old name>}` — no id, because
+ * the member's id never moved. Resolved there, that patch looked like a re-file
+ * into a container whose name had not been restored yet (the item loop runs
+ * before `syncContainers`, and both are unawaited), so it wrote
+ * `project_id = null` onto every member and silently unlinked the container it
+ * was supposed to be restoring. Requiring an explicit agent entry point makes
+ * that unrepresentable rather than merely unlikely.
+ */
+async function withResolvedUpdate(
+  supabase: DbClient,
+  kind: 'task' | 'habit',
+  updates: Record<string, unknown>,
+  userId?: string,
+): Promise<Record<string, unknown>> {
+  const nameKey = kind === 'habit' ? 'group' : 'project';
+  const idKey = kind === 'habit' ? 'groupId' : 'projectId';
+  // An explicit id wins; no name means nothing to re-file.
+  if (!(nameKey in updates) || idKey in updates) return updates;
+  const name = updates[nameKey];
+  // Null, not "leave it": an agent moving an item to a container with no row
+  // has to CLEAR the old id, or the fan-out drags the item back into the
+  // container it was moved out of.
+  const resolved =
+    typeof name === 'string' && name
+      ? await lookupContainerId(
+          supabase,
+          kind === 'habit' ? 'habit_groups' : 'projects',
+          name,
+          userId,
+        )
+      : null;
+  return resolved === undefined ? updates : { ...updates, [idKey]: resolved };
 }
 
 /**
@@ -564,22 +631,6 @@ export async function updateItem(
   const row = updatesToRow(type, updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  // A NAME write with no id alongside it is an agent re-file — see
-  // lookupContainerId. Leaving the old id in place here is worse than the
-  // pre-027 behaviour it replaces: the fan-out treats the id as truth, so the
-  // next rename of the PREVIOUS container would rewrite this item's name and
-  // pull it back into a project it was explicitly moved out of. The store
-  // always sends both halves, so this never fires for a client write.
-  const nameKey = type === 'habit' ? 'group' : 'project';
-  const idKey = type === 'habit' ? 'group_id' : 'project_id';
-  if (nameKey in row && !(idKey in row)) {
-    const name = row[nameKey];
-    const resolved =
-      typeof name === 'string' && name
-        ? await lookupContainerId(supabase, type === 'habit' ? 'habit_groups' : 'projects', name, userId)
-        : null;
-    if (resolved !== undefined) row[idKey] = resolved;
-  }
   const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
   if (error) throw error;
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
@@ -1226,7 +1277,9 @@ export async function createTask(userId: string, task: Task, client?: DbClient):
 }
 
 export async function updateTask(id: string, updates: Partial<Task>, userId?: string, client?: DbClient): Promise<void> {
-  return updateItem(id, 'task', updates, userId, client);
+  const supabase = client ?? createClient();
+  const resolved = await withResolvedUpdate(supabase, 'task', updates as Record<string, unknown>, userId);
+  return updateItem(id, 'task', resolved as Partial<Task>, userId, supabase);
 }
 
 export async function deleteTask(id: string, userId?: string, client?: DbClient): Promise<void> {
@@ -1253,7 +1306,9 @@ export async function createHabit(userId: string, habit: Habit, client?: DbClien
 }
 
 export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string, client?: DbClient): Promise<void> {
-  return updateItem(id, 'habit', updates, userId, client);
+  const supabase = client ?? createClient();
+  const resolved = await withResolvedUpdate(supabase, 'habit', updates as Record<string, unknown>, userId);
+  return updateItem(id, 'habit', resolved as Partial<Habit>, userId, supabase);
 }
 
 export async function deleteHabit(id: string, userId?: string, client?: DbClient): Promise<void> {

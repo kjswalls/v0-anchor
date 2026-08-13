@@ -118,6 +118,21 @@ interface ViewStore {
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
   setBraindumpFilters: (filters: ViewFilters) => void;
   setCanvasFilters: (filters: ViewFilters) => void;
+  /**
+   * Follow a container rename through the persisted filter refs.
+   *
+   * `containers` holds `project:Work` / `group:Wellness` — NAMES, in
+   * localStorage, from before containers had stable ids. Renaming was parked
+   * until migration 027, so these could never go stale; now they can, and a
+   * stale ref does not degrade gracefully: `passesContainerFilter` matches
+   * nothing, so the canvas or the braindump empties completely and the only
+   * clue is a filter chip naming a project that no longer exists.
+   *
+   * Called from the rename site rather than from planner-store's action,
+   * because this store already imports planner-store and the reverse would
+   * close a cycle.
+   */
+  renameContainerRef: (kind: 'project' | 'group', from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
   /** `null` hands the choice back to the width-derived default. */
@@ -168,6 +183,25 @@ export const useViewStore = create<ViewStore>()(
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
+
+      renameContainerRef: (kind, from, to) => {
+        const oldRef = `${kind}:${from}`;
+        const newRef = `${kind}:${to}`;
+        const swap = (filters: ViewFilters): ViewFilters => {
+          if (!filters.containers.includes(oldRef)) return filters;
+          // Through a Set: renaming Work → Home while BOTH were selected would
+          // otherwise leave two identical refs, and the chip row would render
+          // "Home" twice.
+          return {
+            ...filters,
+            containers: [...new Set(filters.containers.map((c) => (c === oldRef ? newRef : c)))],
+          };
+        };
+        set((s) => ({
+          canvasFilters: swap(s.canvasFilters),
+          braindumpFilters: swap(s.braindumpFilters),
+        }));
+      },
       setTypeMode: (typeMode) => set({ typeMode }),
       setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
       // Clamped on the way IN, so nothing downstream has to defend against a

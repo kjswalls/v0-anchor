@@ -507,6 +507,35 @@ describe('the label sections', () => {
     expect(field.value).toBe('home');
   });
 
+  it('keeps focus on a refused name, so Escape still reverts it', () => {
+    // Enter blurs only on acceptance. Blurred while refused, the name is
+    // stranded: the Escape rung requires focus, so the next Escape would close
+    // the whole console instead of putting the old name back.
+    openWork();
+    const field = id('project-name-input') as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: 'Home' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(document.activeElement).toBe(field);
+    expect(maybe('project-name-problem')).not.toBeNull();
+  });
+
+  it('does not carry a refusal to the next project selected', () => {
+    // The sentence belongs to the draft that earned it. Left behind, it is
+    // re-parented onto another container and accuses it of a clash it does not
+    // have.
+    openWork();
+    const field = id('project-name-input') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'Home' } });
+    fireEvent.blur(field);
+    expect(maybe('project-name-problem')).not.toBeNull();
+
+    fireEvent.click(
+      screen.getAllByTestId('project-row').find((r) => r.dataset.projectId === 'pr2')!
+    );
+    expect(maybe('project-name-problem')).toBeNull();
+  });
+
   it('still allows fixing your own capitalisation', () => {
     // The collision test excludes self, or a rename to your own name in a
     // different case would be refused as a clash with yourself.
