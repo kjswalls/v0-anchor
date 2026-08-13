@@ -170,8 +170,26 @@ export function swapMembers(ids: string[], a: string, b: string): string[] {
  * switching selection in a two-pane layout carries the PREVIOUS container's
  * half-typed draft into the next one's field.
  */
-export function useNameDraft(id: string, name: string, commit: (next: string) => void) {
+export function useNameDraft(
+  id: string,
+  name: string,
+  commit: (next: string) => void,
+  /**
+   * Returns a sentence when the typed name cannot be used, or null.
+   *
+   * Load-bearing for projects and habit groups, not decoration: both tables
+   * carry UNIQUE (user_id, name), and the two writes a rename issues do NOT
+   * fail together. `update projects set name=…` raises 23505 and is swallowed
+   * by the store's `.catch(console.error)`, while the members' fan-out — keyed
+   * on project_id, touching no unique index — SUCCEEDS. The container keeps its
+   * old name while every one of its items claims the new one, which reads as
+   * the items having moved into a different project entirely. Refusing before
+   * the write is the only place this can be caught.
+   */
+  validate?: (next: string) => string | null,
+) {
   const [draft, setDraft] = useState(name);
+  const [problem, setProblem] = useState<string | null>(null);
 
   // Adjusted during render rather than in an effect — React's documented
   // "adjusting state when a prop changes" pattern. An effect paints one frame
@@ -191,14 +209,32 @@ export function useNameDraft(id: string, name: string, commit: (next: string) =>
 
   return {
     draft,
-    setDraft,
-    reset: () => setDraft(name),
+    problem,
+    setDraft: (next: string) => {
+      setDraft(next);
+      // Clears as they type. A problem that outlives the text that caused it
+      // reads as the field being broken rather than the name being taken.
+      if (problem) setProblem(null);
+    },
+    reset: () => {
+      setDraft(name);
+      setProblem(null);
+    },
     commit: () => {
       const next = draft.trim();
       if (!next || next === name) {
         setDraft(name);
+        setProblem(null);
         return;
       }
+      const said = validate?.(next) ?? null;
+      if (said) {
+        // The draft STAYS. Snapping back to the old name here would discard
+        // what they typed and leave nothing to correct.
+        setProblem(said);
+        return;
+      }
+      setProblem(null);
       commit(next);
     },
   };

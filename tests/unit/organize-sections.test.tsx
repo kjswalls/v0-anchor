@@ -460,17 +460,79 @@ describe('the label sections', () => {
     expect(id('group-detail')).toHaveAttribute('data-group-id', 'g1');
   });
 
-  it('says why a project cannot be renamed yet, instead of showing a dead input', () => {
+  /* ── renaming, unparked by migration 027 ─────────────────────────────── */
+
+  const openWork = () => {
     seed({
-      items: [task('i1', 'Plan', { project: 'Work' })],
-      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+      items: [task('i1', 'Plan', { project: 'Work', projectId: 'pr1' })],
+      projects: [
+        { id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' },
+        { id: 'pr2', name: 'Home', emoji: 'icon:House' },
+      ],
     });
     open('projects');
-    click('project-row');
-    // A disabled input reads as a bug; a sentence reads as a decision.
-    expect(maybe('project-name-input')).toBeNull();
-    expect(id('project-name')).toHaveTextContent('Work');
-    expect(screen.getByText(/Renaming is parked/)).toBeInTheDocument();
+    // By id, not `click('project-row')` — two projects are seeded so the plain
+    // testid matches both, and list order is not this test's business.
+    fireEvent.click(
+      screen.getAllByTestId('project-row').find((r) => r.dataset.projectId === 'pr1')!
+    );
+  };
+
+  it('renames a project and carries its items with it', () => {
+    // The whole point of Phase 0. Before stable ids this input was read-only,
+    // because a rename left every member holding a string nothing resolved.
+    openWork();
+    const field = id('project-name-input') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'Deep Work' } });
+    fireEvent.blur(field);
+
+    expect(usePlannerStore.getState().projects[0].name).toBe('Deep Work');
+    expect((usePlannerStore.getState().items[0] as { project?: string }).project).toBe('Deep Work');
+  });
+
+  it('refuses a name another project already has, and SAYS so', () => {
+    // Both tables are UNIQUE (user_id, name) and the rename's two writes do not
+    // fail together: the container UPDATE raises 23505 and is swallowed, while
+    // the id-keyed member fan-out succeeds. Work would keep its name while its
+    // items all claimed "Home" — which reads as them moving into Home.
+    openWork();
+    const field = id('project-name-input') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'home' } });
+    fireEvent.blur(field);
+
+    expect(id('project-name-problem')).toHaveTextContent('already have a project called');
+    expect(usePlannerStore.getState().projects[0].name).toBe('Work');
+    expect((usePlannerStore.getState().items[0] as { project?: string }).project).toBe('Work');
+    // The typed text stays — snapping back would leave nothing to correct.
+    expect(field.value).toBe('home');
+  });
+
+  it('still allows fixing your own capitalisation', () => {
+    // The collision test excludes self, or a rename to your own name in a
+    // different case would be refused as a clash with yourself.
+    openWork();
+    const field = id('project-name-input') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'WORK' } });
+    fireEvent.blur(field);
+    expect(usePlannerStore.getState().projects[0].name).toBe('WORK');
+    expect(maybe('project-name-problem')).toBeNull();
+  });
+
+  it('leaves an item type’s SLUG alone while its label is renamed', () => {
+    // The one container whose name is identity rather than a label: items.type
+    // stores the slug, so it can never follow a rename — 027 changes nothing
+    // here. The row edits the label and the meta line shows the slug.
+    seed({ itemTypes: [{ id: 't1', name: 'goal', label: 'Goal', labelPlural: 'Goals' }] });
+    open('types');
+    click('type-row');
+    const field = id('type-name-input') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'Objective' } });
+    fireEvent.blur(field);
+
+    const def = usePlannerStore.getState().itemTypes[0];
+    expect(def.label).toBe('Objective');
+    expect(def.name).toBe('goal');
+    expect(id('type-meta')).toHaveTextContent('goal');
   });
 
   it('refuses a reserved or duplicate item-type slug, and SAYS why', () => {

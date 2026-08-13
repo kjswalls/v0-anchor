@@ -250,7 +250,6 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         color={program.color}
         label="Program"
         testPrefix="program"
-        editable
         meta={
           <>
             Program · <span className="font-num">{itemCount}</span>{' '}

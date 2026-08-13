@@ -168,7 +168,6 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
         color={routine.color}
         label="Routine"
         testPrefix="routine"
-        editable
         meta={
           <>
             Routine · <span className="font-num">{liveCount}</span>{' '}

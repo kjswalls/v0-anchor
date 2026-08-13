@@ -203,11 +203,16 @@ export function TeachingLine({ children }: { children: React.ReactNode }) {
  * ~15 PATCHes, evicting the user's real history from a 50-deep stack.
  * Committed on blur and on Enter; Escape resets; blank or unchanged reverts.
  *
- * `editable=false` renders a static title plus one honest sentence instead of a
- * disabled input. Projects and habit groups are referenced BY NAME by their
- * children, so renaming orphans them — parked at the data-model level until the
- * stable-id migration (Phase 0). A disabled input reads as a bug; a sentence
- * reads as a decision.
+ * EVERY container is renameable now. This row carried an `editable=false` mode
+ * that rendered a static title plus one honest sentence — projects and habit
+ * groups were referenced BY NAME by their children, so a rename orphaned them —
+ * and migration 027 removed the reason: children carry stable ids, the rename
+ * fans out, and `validate` refuses a collision before it is written. The mode
+ * and its note are gone rather than left behind as a permanently-true flag; git
+ * has them if a surface ever needs to say no again.
+ *
+ * Item types were never parked and are a different shape: this row edits their
+ * LABEL, while the immutable slug (items.type) is shown in the meta line.
  */
 export function IdentityRow({
   id,
@@ -217,10 +222,9 @@ export function IdentityRow({
   color,
   label,
   testPrefix,
-  editable,
-  parkedNote,
   meta,
   onPatch,
+  validate,
 }: {
   id: string;
   name: string;
@@ -231,14 +235,17 @@ export function IdentityRow({
   /** "Routine", "Program", … — used for the control aria-labels. */
   label: string;
   testPrefix: string;
-  editable: boolean;
-  /** Shown under the meta line when `editable` is false. */
-  parkedNote?: string;
   /** `Routine · 6 items · in 1 program` — numerals in font-num. */
   meta: React.ReactNode;
   onPatch: (patch: { name?: string; icon?: string; color?: string }) => void;
+  /**
+   * Refuses a name before it is written, returning the sentence to show. Both
+   * container tables are UNIQUE (user_id, name) and the rename's two writes do
+   * not fail together — see useNameDraft.
+   */
+  validate?: (next: string) => string | null;
 }) {
-  const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }));
+  const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }), validate);
   const ref = useRef<HTMLInputElement>(null);
 
   // Rung: put the name back the way it was. Only claimed when the field is
@@ -254,34 +261,24 @@ export function IdentityRow({
       <div className="flex h-8 items-center gap-3">
         <IconPicker value={icon} name={name} onSelect={(next) => onPatch({ icon: next })} />
 
-        {editable ? (
-          <input
-            ref={ref}
-            value={nameDraft.draft}
-            onChange={(e) => nameDraft.setDraft(e.target.value)}
-            onBlur={nameDraft.commit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                nameDraft.commit();
-                e.currentTarget.blur();
-              }
-            }}
-            aria-label={`${label} name`}
-            data-testid={`${testPrefix}-name-input`}
-            // Borderless, styled as the heading it is. The well only appears
-            // under focus, so a settled pane reads as a title rather than a form.
-            className="text-foreground focus:bg-surface-3 -mx-1 min-w-0 flex-1 truncate rounded-[5px] border-0 bg-transparent px-1 py-0.5 text-lg font-semibold outline-none focus:shadow-[var(--shadow-inset-well)]"
-          />
-        ) : (
-          <span
-            title={name}
-            data-testid={`${testPrefix}-name`}
-            className="text-foreground min-w-0 flex-1 truncate text-lg font-semibold"
-          >
-            {name}
-          </span>
-        )}
+        <input
+          ref={ref}
+          value={nameDraft.draft}
+          onChange={(e) => nameDraft.setDraft(e.target.value)}
+          onBlur={nameDraft.commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              nameDraft.commit();
+              e.currentTarget.blur();
+            }
+          }}
+          aria-label={`${label} name`}
+          data-testid={`${testPrefix}-name-input`}
+          // Borderless, styled as the heading it is. The well only appears
+          // under focus, so a settled pane reads as a title rather than a form.
+          className="text-foreground focus:bg-surface-3 -mx-1 min-w-0 flex-1 truncate rounded-[5px] border-0 bg-transparent px-1 py-0.5 text-lg font-semibold outline-none focus:shadow-[var(--shadow-inset-well)]"
+        />
 
         <ColorSwatchPicker
           value={color}
@@ -298,8 +295,14 @@ export function IdentityRow({
         {meta}
       </p>
 
-      {!editable && parkedNote && (
-        <p className="text-muted-foreground mt-1.5 max-w-[58ch] text-xs">{parkedNote}</p>
+
+      {nameDraft.problem && (
+        <p
+          className="text-destructive mt-1.5 max-w-[58ch] text-xs"
+          data-testid={`${testPrefix}-name-problem`}
+        >
+          {nameDraft.problem}
+        </p>
       )}
     </div>
   );

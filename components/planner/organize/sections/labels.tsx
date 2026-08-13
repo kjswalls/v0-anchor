@@ -36,11 +36,18 @@ import type { HabitGroupType, Item, ItemTypeDef, Project } from '@/lib/planner-t
  * on each, and `tests/` reaches none of it. Every testid here is new, which is
  * what makes Phase 3's e2e possible.
  *
- * WHY THE NAMES ARE NOT EDITABLE YET: `items.project` and `items."group"` are
- * NAME references — a rename orphans every child. That is Phase 0's migration,
- * and until it lands each detail says so in a sentence rather than showing a
- * disabled input, because a disabled input reads as a bug and a sentence reads
- * as a decision.
+ * THE NAMES ARE EDITABLE, as of migration 027. `items.project` and
+ * `items."group"` were NAME references, so a rename orphaned every child and
+ * both details said so in a sentence instead of showing a disabled input. The
+ * children carry stable ids now and `updateProject`/`updateHabitGroup` fan the
+ * new name out to every member, so the sentences are gone and the fields are
+ * live — guarded by `takenBy`, because the rename's two writes do not fail
+ * together and a collision would leave a container's items claiming a name the
+ * container itself never got.
+ *
+ * ONE NAME IS STILL FROZEN, permanently: an item type's `name` is the DB slug
+ * stored in `items.type`, so it is identity rather than a label. That row edits
+ * `label`/`labelPlural` and shows the slug in its meta line.
  */
 
 /* ── projects ─────────────────────────────────────────────────────────── */
@@ -123,6 +130,8 @@ export function ProjectsSection({
 
 function ProjectDetail({ project, onBack }: { project: Project; onBack: () => void }) {
   const items = usePlannerStore((s) => s.items);
+  // Siblings, for the rename collision check — see takenBy.
+  const projects = usePlannerStore((s) => s.projects);
   const updateProject = usePlannerStore((s) => s.updateProject);
   const removeProject = usePlannerStore((s) => s.removeProject);
   const confirm = useUIStore((s) => s.confirm);
@@ -152,16 +161,20 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
         color={project.color}
         label="Project"
         testPrefix="project"
-        editable={false}
-        parkedNote={`Renaming is parked: your items point at this project by name, so a rename would unfile ${
-          n === 1 ? 'the one' : `all ${n}`
-        } of them. Stable ids land first.`}
+        // Unparked by migration 027: items point at this project by ID now, and
+        // updateProject fans the new name out to every member in the same set().
+        validate={(next) => takenBy(projects, project.id, next, 'project')}
         meta={
           <>
             Project · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'}
           </>
         }
-        onPatch={(patch) => updateProject(project.id, renameIconKey(patch, 'emoji'))}
+        onPatch={(patch) =>
+          updateProject(project.id, {
+            ...renameIconKey(patch, 'emoji'),
+            ...('name' in patch && { name: patch.name }),
+          })
+        }
       />
 
       <div className="bg-border my-4 h-px" />
@@ -328,7 +341,6 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
         // Editable, unlike projects and habit groups: a type's children point at
         // its SLUG, not its label, so renaming the label orphans nothing. The
         // slug itself is what is permanent, and the meta line shows it.
-        editable
         meta={
           <>
             Item type · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'} ·{' '}
@@ -501,16 +513,19 @@ function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => v
         color={group.color}
         label="Habit group"
         testPrefix="group"
-        editable={false}
-        parkedNote={`Renaming is parked: your habits point at this group by name, so a rename would strand ${
-          n === 1 ? 'the one' : `all ${n}`
-        } of them. Stable ids land first.`}
+        // Unparked by migration 027 — see ProjectDetail.
+        validate={(next) => takenBy(habitGroups, group.id, next, 'habit group')}
         meta={
           <>
             Habit group · <span className="font-num">{n}</span> {n === 1 ? 'habit' : 'habits'}
           </>
         }
-        onPatch={(patch) => updateHabitGroup(group.id, renameIconKey(patch, 'emoji'))}
+        onPatch={(patch) =>
+          updateHabitGroup(group.id, {
+            ...renameIconKey(patch, 'emoji'),
+            ...('name' in patch && { name: patch.name }),
+          })
+        }
       />
 
       <DangerZone
@@ -550,10 +565,13 @@ function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => v
  * this replaces, which passes `{ color }` straight through and whose db writer
  * has always keyed on `'color' in updates`.
  *
- * `name` is deliberately dropped: all three are referenced BY NAME by their
- * children, so renaming orphans them until the stable-id migration. IdentityRow
- * renders these three as read-only, so no name key can arrive anyway — but if
- * one ever did, silently ignoring it is the safe direction.
+ * `name` is still dropped HERE, and now for one reason rather than three.
+ * Projects and habit groups pass it back in explicitly at their call sites,
+ * because 027 gave their children stable ids and updateProject/updateHabitGroup
+ * fan the new name out. Item types are different and always will be: their
+ * `name` is the DB SLUG stored in items.type, not a label, so a rename there
+ * would orphan every item of that type with no fan-out possible. The item-type
+ * row edits `label`/`labelPlural` and leaves the slug alone.
  */
 function renameIconKey<K extends 'emoji' | 'icon'>(
   patch: { name?: string; icon?: string; color?: string },
@@ -566,6 +584,34 @@ function renameIconKey<K extends 'emoji' | 'icon'>(
   if (patch.icon !== undefined) next[iconKey] = patch.icon as never;
   if ('color' in patch) next.color = patch.color;
   return next;
+}
+
+/**
+ * Refuse a rename that would collide with a sibling.
+ *
+ * Both tables carry UNIQUE (user_id, name), and a rename issues TWO writes that
+ * do not fail together: the container UPDATE raises 23505 and is swallowed by
+ * the store's `.catch(console.error)`, while the id-keyed member fan-out
+ * succeeds. The container would keep its old name while every one of its items
+ * claimed the new one — which reads as the items having moved into the OTHER
+ * project. Nothing downstream can detect that, so it has to be refused here.
+ *
+ * Case-insensitive, excluding self. Insensitive because the app's own lookups
+ * are (getHabitGroupColor normalises, addHabitGroup de-dupes that way) and two
+ * containers differing only in case are indistinguishable in a list. Excluding
+ * self so that fixing the capitalisation of your own project is still allowed —
+ * a rename to a different id is the collision, a rename to your own case is not.
+ */
+function takenBy(
+  siblings: { id: string; name: string }[],
+  selfId: string,
+  next: string,
+  noun: string,
+): string | null {
+  const clash = siblings.find(
+    (s) => s.id !== selfId && s.name.toLowerCase() === next.toLowerCase()
+  );
+  return clash ? `You already have a ${noun} called “${clash.name}”.` : null;
 }
 
 /* ── counts and slugs ─────────────────────────────────────────────────── */
