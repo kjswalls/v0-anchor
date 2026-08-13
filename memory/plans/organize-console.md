@@ -532,6 +532,42 @@ fixing your own capitalisation is still legal). A refused name keeps what you ty
 **`editable` and `parkedNote` are deleted, not left true.** All five call sites passed the
 same value; the read-only span had no test or e2e reference.
 
+**Review 2026-08-12 (commit `0a38733`). Five lenses, sixteen confirmed, four refuted —
+seven distinct defects.**
+
+**`takenBy` could not see the trash.** The store never loads soft-deleted containers, while
+`projects_user_id_name_key` is a plain unique index that **spans** them — 6 of 10 projects
+on the live database are trashed and still holding their names. Renaming onto one passed
+the guard and produced exactly the split write it exists to prevent; the review reproduced
+it against production inside a rolling-back block (container write 23505, fan-out 12 rows
+succeeded). **The two writes are now chained**, so a rejected container rename can never
+leave the members rewritten. A better *message* needs the trashed names — Phase 4.
+
+**Undo of a rename NULLed every member's id, and that was mine.** 81c5c21 put the
+resolution in `updateItem` behind *"a name write with no id is an agent re-file — the store
+always sends both halves."* False: the fan-out rewrites members' `project` in the same
+`set()`, so undo's `diffItem` yields exactly `{project: <old name>}`. Resolved there it
+read as a re-file into a container whose name had not been restored yet (the item loop runs
+before `syncContainers`, both unawaited) and wrote `project_id = null` across the
+membership. **Moved to `updateTask`/`updateHabit`** — `lib/agent-api.ts` is their only
+caller — so an explicit entry point decides, not the shape of a patch. *Second time a
+comment of mine asserted something the code did not do.*
+
+**`lookupContainerId` folded case for projects but not groups** — and on update that wrote
+NULL over an already-correct id. Groups now fold with a second small query rather than
+`ilike`, because a group named `100%` or `a_b` would otherwise become a wildcard.
+
+**A rename invalidated persisted filters.** `canvasFilters`/`braindumpFilters` store
+`project:<NAME>` in localStorage; a stale ref matches nothing, so the view **empties** with
+only a chip naming a vanished project as the clue. `renameContainerRef` lives in view-store
+and is called from the rename site — view-store imports planner-store, so the reverse would
+close a cycle.
+
+Plus: a refusal sentence outlived its draft and was re-parented onto the next container;
+Enter blurred even when refused, stranding the name (the Escape rung needs focus); and one
+more test that could not fail — the PGRST204 guard's create-path assertion collapses "no
+such container" and "cannot ask" into the same output.
+
 *Still open, deliberately:*
 - Delete clears both halves in the store while the DB row keeps them, so a restore can
   reconnect members. Pre-existing; **027 makes fixing it possible and does not fix it.**
