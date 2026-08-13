@@ -495,9 +495,53 @@ no id↔name map, so a body carrying both could only disagree with itself. Both 
 schemas `.omit()` the field (the pause precedent); the update schemas are hand-enumerated
 and never accepted it.
 
-*Still open:* delete clears both halves in the store while the DB row keeps them, so a
-restore can reconnect members. That in-session/persisted asymmetry is pre-existing —
-**027 makes fixing it possible and does not fix it. Phase 4 owns it.**
+**Review 2026-08-12 (commit `81c5c21`). Eleven confirmed, nine refuted — and six of the
+eleven were one root cause, which was mine.** I wrote, in the types comment justifying the
+`.omit()` and again in the commit body, that `lib/db.ts` resolved the name to an id
+server-side. **It did not** — `grep project lib/agent-api.ts` returns nothing. The omission
+was right; it is only SAFE beside a resolver, and I shipped it without one. `lookupContainerId`
+now exists on both the create and update paths.
+
+**The update half was new harm, not an omission.** An agent PATCH re-filing an item wrote
+the name and left the old id. Pre-027 that was inert; after the fan-out it is not, because
+the fan-out treats the id as truth — renaming the PREVIOUS container would rewrite that
+item's name and pull it back. An unmatched name now clears the id: *"no such container"*
+and *"cannot ask"* are different answers and the caller needs both.
+
+Two bugs found while writing that fix, neither of them reported: **filters must precede
+`.limit()`** (supabase-js returns a transform builder with no `.eq()`, and `DbClient` is
+`any`, so nothing would have flagged the throw), and **a failed lookup must never take an
+item create down with it**.
+
+**I also wrote another vacuous test** — the same shape the Phase 3 review caught. The
+case-insensitive group assertion checked a value the fixture had already seeded, so
+deleting the whole resolution left it green. Now it moves the habit to a *different* group.
+
+### Phase 0b — renaming is unparked *(commit `61c9a8f`)*
+
+The payoff. Both details lose their honest sentence and the field goes live.
+
+**`takenBy` is not optional, and why is the interesting part.** Both tables are
+UNIQUE (user_id, name), and a rename's two writes **do not fail together**: the container
+UPDATE raises 23505 and is swallowed by `.catch(console.error)`, while the id-keyed member
+fan-out succeeds. Rename Work→Home when Home exists and the container keeps its name while
+every one of its items claims Home's — which reads as the items having moved. Nothing
+downstream can detect it. Case-insensitive (the app's own lookups are), excluding self (so
+fixing your own capitalisation is still legal). A refused name keeps what you typed.
+
+**`editable` and `parkedNote` are deleted, not left true.** All five call sites passed the
+same value; the read-only span had no test or e2e reference.
+
+*Still open, deliberately:*
+- Delete clears both halves in the store while the DB row keeps them, so a restore can
+  reconnect members. Pre-existing; **027 makes fixing it possible and does not fix it.**
+- **Renaming through the agent API does not fan out** — the fan-out lives in the store
+  action, and `/api/agent/projects/[id]` calls `dbUpdateProject` directly. No shipped agent
+  can reach it (the plugin registers no project/group tools), but it is a live endpoint.
+- **Undoing a rename cannot revert soft-deleted members** — the store fan-out maps over
+  `state.items`, which never holds trashed rows, while the DB fan-out is unfiltered.
+
+All three are Phase 4's.
 
 `items.project` / `items."group"` stop being name references. **The text columns are
 KEPT, not dropped** — rollback ballast, and the permanent legacy agent projection still
