@@ -64,38 +64,6 @@ const pauseFields = {
   pausedUntil: z.string().optional(),
 }
 
-// ── Container id (Phase B) ─────────────────────────────────────────────────────
-// The stable half of the container reference. `items.project` / `items."group"`
-// hold container NAMES, which is exactly why renaming one has been parked since
-// unification: a rename orphans every item pointing at the old string.
-// `container_id` is the id of the row in `projects` or `habit_groups`; the name
-// stays as a mirror for the whole dual-write window, and the legacy tasks[] /
-// habits[] projections keep serving it.
-//
-// ONE field for both kinds, not projectId + groupId, because Project and Habit
-// Group are ONE axis with two namespaces (lib/container-registry.ts) — an item
-// answers with exactly one container, and which table it lives in is a question
-// about the item's TYPE, not about the reference.
-//
-// Spread into BOTH taskShape and habitShape, which is two edit sites — see the
-// pauseFields note above for why a single shared block would reach task + custom
-// only.
-//
-// It has to be IN the shapes rather than beside them: `diffItem`
-// (planner-store.ts) iterates `getItemTypeConfig(...).fields`, which is
-// Object.keys(taskShape) / Object.keys(habitShape), so a field outside the shape
-// never enters an undo patch. Undo would send the old NAME back and leave
-// container_id pointing at the new container — success in the UI, a revert on
-// the next reload.
-//
-// Additive-optional, like parentItemId/assignee/aiStatus before it: an
-// already-deployed OpenClaw build strips the unknown key rather than rejecting
-// the whole projection.
-const containerIdField = {
-  /** Row id in `projects` or `habit_groups` — which one is decided by the item's type. */
-  containerId: z.string().optional(),
-}
-
 // custom frequency requires at least one repeat day — shared by every item shape
 const requireCustomDays = (
   data: { repeatFrequency?: string | null; repeatDays?: number[] | null },
@@ -205,7 +173,6 @@ const taskShape = {
   title: z.string(),
   priority: PrioritySchema.optional(),
   project: z.string().optional(),
-  ...containerIdField,
   startDate: z.string().optional(),   // yyyy-MM-dd
   status: TaskStatusSchema,
   timeBucket: TimeBucketSchema.optional(),
@@ -240,7 +207,6 @@ const habitShape = {
   id: z.string(),
   title: z.string(),
   group: z.string(),
-  ...containerIdField,
   streak: z.number(),
   status: HabitStatusSchema,
   completedDates: z.array(z.string()),
@@ -427,15 +393,7 @@ export const TaskCreateSchema = z
   // write access to pausing is a deliberate Phase 4 decision, so strip it here.
   // PATCH needs no equivalent: TaskUpdateSchema/HabitUpdateSchema are
   // hand-enumerated and drop unknown keys.
-  //
-  // containerId is stripped for a different reason than pause, and a firmer one:
-  // during dual-write the id and the name are two spellings of one fact, and a
-  // body carrying both is a body that can contradict itself. Worse, an id is
-  // guessable in a way a name is not — accepting one would let a caller point an
-  // item at a container row it has no claim to, and RLS covers `items` rather
-  // than the value in that column. Agents send the NAME; the route resolves the
-  // id, so there is exactly one writer.
-  .omit({ pausedAt: true, pausedUntil: true, containerId: true })
+  .omit({ pausedAt: true, pausedUntil: true })
   .superRefine(requireCustomDays)
 
 export const HabitCreateSchema = z
@@ -461,8 +419,8 @@ export const HabitCreateSchema = z
     timesPerDay: z.number().int().optional(),
     currentDayCount: z.number().int().optional(),
   })
-  // See TaskCreateSchema — neither pause nor containerId is agent-writable.
-  .omit({ pausedAt: true, pausedUntil: true, containerId: true })
+  // See TaskCreateSchema — pause is not agent-writable in v1.
+  .omit({ pausedAt: true, pausedUntil: true })
   .superRefine(requireCustomDays)
 
 // Update schemas keep requireCustomDays too: a PATCH that sets

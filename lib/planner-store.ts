@@ -68,14 +68,7 @@ import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } fr
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
-import {
-  classifyKindForItemType,
-  findContainer,
-  foldContainerName,
-  getContainerKindConfig,
-  sameContainerName,
-  type ClassifyKind,
-} from './container-registry';
+import { foldContainerName, sameContainerName } from './container-registry';
 
 interface PlannerStore {
   /**
@@ -609,102 +602,6 @@ const autoCorrectBucket = (
 ): TimeBucket | undefined =>
   time && bucket && bucket !== 'anytime' ? getBucketForTime(time) : bucket;
 
-/* ── the container's two halves (Phase B) ──────────────────────────────────── */
-
-/** The live rows for a classify kind. The one branch the registry cannot make. */
-const containerRowsFor = (
-  kind: ClassifyKind,
-  state: { projects: Project[]; habitGroups: HabitGroupType[] },
-): { id: string; name: string }[] => (kind === 'group' ? state.habitGroups : state.projects);
-
-/**
- * Keep the ID half of a container reference in step with the NAME half.
- *
- * During the dual-write window `items.project` / `items."group"` and
- * `items.container_id` are two spellings of one fact, and the one thing that
- * must never happen is a write that moves one without the other — that is a row
- * whose name says Work and whose id says Wellness, and nothing on any surface
- * could explain it.
- *
- * So this sits at the SINGLE update funnel (`updateItemAction`) rather than at
- * the call sites that build patches. There are three of those today and the
- * dialog batches a dozen fields into one of them; stamping per-site is how the
- * fourth one gets forgotten.
- *
- * A patch that does not mention the container is returned untouched — `'field'
- * in updates` rather than a truthiness test, because CLEARING a container is a
- * real gesture (`project: undefined`) and must clear the id too, which is
- * exactly what a truthiness test would skip.
- *
- * An unresolvable name yields `containerId: undefined` rather than leaving the
- * old id in place. That is the honest answer: the app has never validated that
- * `items.project` names a live project — `removeProject`'s sweep is in-session
- * only, so a reload re-reads the dead name — and pointing the id at the
- * previous container would invent a reference the name never had.
- */
-function withContainerId<T extends Partial<Task> | Partial<Habit>>(
-  updates: T,
-  typeName: string,
-  state: { projects: Project[]; habitGroups: HabitGroupType[] },
-): T {
-  const kind = classifyKindForItemType(getItemTypeConfig(typeName).containerKind);
-  if (kind === null) return updates;
-  const field = getContainerKindConfig(kind).itemField!;
-  if (!(field in updates)) return updates;
-  const name = (updates as Record<string, unknown>)[field];
-  const match = findContainer(
-    kind,
-    typeof name === 'string' ? name : undefined,
-    containerRowsFor(kind, state),
-  );
-  return { ...updates, containerId: match?.id };
-}
-
-/**
- * Every item that must follow a renamed container, already rewritten.
- *
- * Renaming a project or a habit group used to change one row and leave every
- * item pointing at a string that no longer named anything — the parked
- * limitation migration 024 records. `container_id` is what unparks it, and this
- * is where that pays out.
- *
- * Matching is ID FIRST, name second, which is the whole dual-write read rule:
- * an item that has been backfilled follows its container even if its name
- * mirror has drifted, and one that has not is still caught by the name it
- * carries. The order matters — name-first would let a rename TO an existing
- * container's name sweep up that container's items as well.
- *
- * Returns the rewritten items rather than mutating, so the caller can apply
- * them and the container row in ONE set(). Two sets would be two history
- * entries, which makes one rename take two ⌘Z to reverse — the same reason
- * `Memberships` exists on the add actions.
- */
-function renamedItems(
-  items: readonly Item[],
-  kind: ClassifyKind,
-  containerId: string,
-  oldName: string,
-  newName: string,
-): Item[] {
-  const field = getContainerKindConfig(kind).itemField!;
-  const wantsHabit = kind === 'group';
-  const out: Item[] = [];
-  for (const item of items) {
-    // `!== 'habit'` on the project side, because custom types are project-shaped.
-    if (wantsHabit ? item.type !== 'habit' : item.type === 'habit') continue;
-    const held = item as unknown as Record<string, unknown>;
-    const heldId = held.containerId;
-    const heldName = held[field];
-    const matches =
-      typeof heldId === 'string' && heldId
-        ? heldId === containerId
-        : typeof heldName === 'string' && sameContainerName(kind, heldName, oldName);
-    if (!matches) continue;
-    out.push({ ...item, [field]: newName, containerId } as Item);
-  }
-  return out;
-}
-
 // Per-type diff for undo/redo db sync — fields come from the schema-derived
 // registry lists, so a new schema field can never silently drop out of sync.
 const diffItem = (from: Item, to: Item): Record<string, unknown> => {
@@ -784,11 +681,10 @@ export const usePlannerStore = create<PlannerStore>()(
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
-        const patch = withContainerId(updates, itemTypeName(found), get());
         set((state) => projectItems(
-          state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...patch } as Item : i)),
+          state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
         ));
-        dbUpdateItem(id, dbTypeOf(found), patch).catch(console.error);
+        dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
       };
 
       const resolveDateStr = (date?: Date): string => {
@@ -1211,24 +1107,16 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Add ${config.label.toLowerCase()}: ${itemData.title}`);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
 
-        // Stamped at construction, not after the set(): the optimistic item and
-        // the row dbCreateItem writes are the same object, so resolving here is
-        // what stops a newly created item from being the one row in the table
-        // with a name and no id.
-        const item: Item = withContainerId(
-          {
-            ...itemData,
-            type: 'custom',
-            customType,
-            timeBucket,
-            id: crypto.randomUUID(),
-            status: 'pending',
-            isScheduled: !!timeBucket,
-            order: 0, // custom types aren't manually orderable (created_at sorts)
-          },
+        const item: Item = {
+          ...itemData,
+          type: 'custom',
           customType,
-          get(),
-        ) as Item;
+          timeBucket,
+          id: crypto.randomUUID(),
+          status: 'pending',
+          isScheduled: !!timeBucket,
+          order: 0, // custom types aren't manually orderable (created_at sorts)
+        };
         set((state) => ({
           ...projectItems([...state.items, item]),
           routines: withMembership(state.routines, item.id, memberships?.routineIds),
@@ -1243,19 +1131,15 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Add task: ${taskData.title}`);
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
-        const task: TaskItem = withContainerId(
-          {
-            ...taskData,
-            type: 'task',
-            timeBucket,
-            id: crypto.randomUUID(),
-            status: 'pending',
-            isScheduled: !!timeBucket,
-            order: get().tasks.length,
-          },
-          'task',
-          get(),
-        ) as TaskItem;
+        const task: TaskItem = {
+          ...taskData,
+          type: 'task',
+          timeBucket,
+          id: crypto.randomUUID(),
+          status: 'pending',
+          isScheduled: !!timeBucket,
+          order: get().tasks.length,
+        };
         set((state) => ({
           ...projectItems([...state.items, task]),
           routines: withMembership(state.routines, task.id, memberships?.routineIds),
@@ -1963,22 +1847,18 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Add habit: ${habitData.title}`);
         const timeBucket = autoCorrectBucket(habitData.startTime, habitData.timeBucket);
 
-        const habit: HabitItem = withContainerId(
-          {
-            ...habitData,
-            type: 'habit',
-            timeBucket,
-            id: crypto.randomUUID(),
-            streak: 0,
-            status: 'pending',
-            completedDates: [],
-            skippedDates: [],
-            dailyCounts: {},
-            currentDayCount: 0,
-          },
-          'habit',
-          get(),
-        ) as HabitItem;
+        const habit: HabitItem = {
+          ...habitData,
+          type: 'habit',
+          timeBucket,
+          id: crypto.randomUUID(),
+          streak: 0,
+          status: 'pending',
+          completedDates: [],
+          skippedDates: [],
+          dailyCounts: {},
+          currentDayCount: 0,
+        };
         set((state) => ({
           ...projectItems([...state.items, habit]),
           routines: withMembership(state.routines, habit.id, memberships?.routineIds),
@@ -2123,37 +2003,14 @@ export const usePlannerStore = create<PlannerStore>()(
       updateProject: (id, updates) => {
         const project = get().projects.find((p) => p.id === id);
         setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
-
-        // Computed from get() BEFORE the set rather than inside the updater —
-        // a set() reducer must stay pure, and this needs to be readable
-        // afterwards to issue the writes.
-        const renamedTo =
-          project && typeof updates.name === 'string' && updates.name !== project.name
-            ? updates.name
-            : null;
-        const moved = renamedTo
-          ? renamedItems(get().items, 'project', id, project!.name, renamedTo)
-          : [];
-        const byId = new Map(moved.map((i) => [i.id, i]));
-
         set((state) => ({
-          projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-          ...(moved.length
-            ? projectItems(state.items.map((i) => byId.get(i.id) ?? i))
-            : {}),
+          projects: state.projects.map((p) =>
+            p.id === id ? { ...p, ...updates } : p
+          ),
         }));
 
         const userId = get().userId;
         if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
-        // One PATCH per item, unbatched — the same shape (and the same cost)
-        // undoing a rename already has. Worth batching if a rename ever spans
-        // hundreds of items; correctness first while the verb is new.
-        for (const item of moved) {
-          dbUpdateItem(item.id, dbTypeOf(item), {
-            project: renamedTo!,
-            containerId: id,
-          }).catch(console.error);
-        }
       },
 
       removeProject: (id) => {
@@ -2171,11 +2028,8 @@ export const usePlannerStore = create<PlannerStore>()(
             // items.project is plain text with no FK and no trigger, so a
             // reload re-reads the dead name. Name-referenced containers are the
             // documented parked limitation (migration 024).
-            // Both halves, always. A sweep that cleared the name and left
-            // container_id behind would leave the item pointing at a deleted
-            // project through the half nothing on screen renders.
             i.type !== 'habit' && project && i.project && sameContainerName('project', i.project, project.name)
-              ? { ...i, project: undefined, containerId: undefined }
+              ? { ...i, project: undefined }
               : i
           )),
         }));
@@ -2336,35 +2190,14 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       updateHabitGroup: (id, updates) => {
-        // The sibling of updateProject's rename — see the note there. Habits
-        // need it more, not less: `group` is non-optional on the wire, so a
-        // habit stranded by a rename is not merely uncategorised, it names a
-        // group that does not exist.
-        const group = get().habitGroups.find((g) => g.id === id);
-        const renamedTo =
-          group && typeof updates.name === 'string' && updates.name !== group.name
-            ? updates.name
-            : null;
-        const moved = renamedTo
-          ? renamedItems(get().items, 'group', id, group!.name, renamedTo)
-          : [];
-        const byId = new Map(moved.map((i) => [i.id, i]));
-
         set((state) => ({
-          habitGroups: state.habitGroups.map((g) => (g.id === id ? { ...g, ...updates } : g)),
-          ...(moved.length
-            ? projectItems(state.items.map((i) => byId.get(i.id) ?? i))
-            : {}),
+          habitGroups: state.habitGroups.map((g) =>
+            g.id === id ? { ...g, ...updates } : g
+          ),
         }));
 
         const userId = get().userId;
         if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
-        for (const item of moved) {
-          dbUpdateItem(item.id, dbTypeOf(item), {
-            group: renamedTo!,
-            containerId: id,
-          }).catch(console.error);
-        }
       },
 
       removeHabitGroup: (id) => {
@@ -2381,14 +2214,11 @@ export const usePlannerStore = create<PlannerStore>()(
           // groups list has not loaded yet, so `i.group === group.name` left
           // exactly those habits pointing at a group that no longer exists —
           // the orphan this reassignment is here to prevent.
-          ...projectItems(state.items.map((i) => {
-            if (!(i.type === 'habit' && group && sameContainerName('group', i.group, group.name))) return i;
-            // The fallback is a ROW, so the id half comes from the same lookup
-            // the name half does. 'Personal' with no id is the genuinely
-            // container-less case — the last group was just deleted.
-            const fallback = state.habitGroups.find((g) => g.id !== id);
-            return { ...i, group: fallback?.name || 'Personal', containerId: fallback?.id };
-          })),
+          ...projectItems(state.items.map((i) =>
+            i.type === 'habit' && group && sameContainerName('group', i.group, group.name)
+              ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
+              : i
+          )),
         }));
 
         const userId = get().userId;
@@ -2436,11 +2266,10 @@ export const usePlannerStore = create<PlannerStore>()(
           // it up, note that it only mutates state: persisting the repair needs
           // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
           if (i.type !== 'habit' && i.project && !projectNames.has(foldContainerName('project', i.project))) {
-            return { ...i, project: undefined, containerId: undefined };
+            return { ...i, project: undefined };
           }
           if (i.type === 'habit' && !groupNames.has(foldContainerName('group', i.group))) {
-            // Both halves from one row — see removeHabitGroup's fallback.
-            return { ...i, group: state.habitGroups[0]?.name || 'Personal', containerId: state.habitGroups[0]?.id };
+            return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
           }
           return i;
         })));

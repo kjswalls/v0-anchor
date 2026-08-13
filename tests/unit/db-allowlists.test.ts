@@ -44,20 +44,3 @@ describe('db updatesToRow allowlists cover every schema field', () => {
     });
   }
 });
-
-describe('containerId maps to container_id, and a clear means null', () => {
-  // The parameterized sweep above proves the field is not DROPPED. It cannot
-  // prove which column it lands in, and it probes with a truthy value only —
-  // so a guard copied from `group` (`&& updates.containerId != null`) would
-  // pass it while making "remove this item from its project" a silent no-op
-  // that reverts on reload.
-  it('names the column', () => {
-    expect(updatesToRow('task', { containerId: 'p-work' })).toEqual({ container_id: 'p-work' });
-    expect(updatesToRow('habit', { containerId: 'g-health' })).toEqual({ container_id: 'g-health' });
-  });
-
-  it('sends null rather than omitting the key when cleared', () => {
-    expect(updatesToRow('task', { containerId: undefined })).toEqual({ container_id: null });
-    expect(updatesToRow('habit', { containerId: undefined })).toEqual({ container_id: null });
-  });
-});

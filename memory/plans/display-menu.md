@@ -7,8 +7,9 @@ but has no UI) and ordering (which does not exist at all) on every surface that 
 them.
 
 **Status (2026-08-12):** Phases 0–5b and Step 6's A + A′ shipped on
-`feat/display-menu-impl`, each followed by an adversarial review. Phase B (`container_id`)
-is what remains, and it is the one phase that needs the database.
+`feat/display-menu-impl`, each followed by an adversarial review. **The plan is complete
+here** — Phase B belongs to `feat/organize-console`, which shipped it as migration 027
+plus its app half. See the ledger for what that means and what NOT to rebuild.
 
 Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
@@ -127,16 +128,28 @@ gives way to the group headings rather than sitting above them, so grouping by T
 no longer renders "Anytime › Anytime".
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | **shipped** `dbe2960` |
 | **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | **shipped** `2fe86a0` |
-| **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | **app side shipped** `00be1ce` + `611c6c4`; **migration 025 authored, NOT applied** |
+| **B** | container ids + backfill + dual-write + undo wiring + rename | ~2 d | **DONE ELSEWHERE** — migration 027 + app half on `feat/organize-console` |
 
-**B's migration has not run.** `supabase/migrations/025_container_id.sql` is written
-and idempotent but was never applied — the Supabase MCP server is unauthorized and
-`.mcp.json`'s project-scoped entry is pending approval. **Apply it before deploying
-the app**: the order is asymmetric. Pre-app is safe (the column reads as `undefined`);
-post-app is not, because the app already dual-writes and PostgREST rejects a whole row
-on an unknown column. Nothing is verified against a real database yet — the backfill's
-two predicates in particular (`p.name = i.project`, `lower(g.name) = lower(i."group")`)
-have only been reasoned about.
+**Phase B is not this plan's work and never should have been.** Decision 9 said so —
+*"its Phase 0 and this plan's Phase B are the **same migration**; schedule it once"* —
+and it was scheduled once, on `feat/organize-console`, which shipped it on 2026-08-12:
+`7e12c2d` (migration 027, applied and verified against the live DB), `c24e92b` (the
+rename fan-out), `61c9a8f` (the rename UI), `81c5c21` (agent writes reach the id) and
+`0a38733` (the trash-blind rename guard, and undo unlinking members). Do not build any
+part of it here.
+
+**The design there is TWO columns — `items.project_id` and `items.group_id` — not one
+`container_id`.** Each carries a real FK with `ON DELETE SET NULL`, which a single
+column pointing at either of two tables cannot. This plan's "one axis, two namespaces"
+framing argues for one column; 027 weighed that against referential integrity and chose
+integrity. The axis stays one axis app-side regardless — that is what `itemField` is for.
+
+**What the live database revealed** (worth keeping, whoever asks next): 206 items name
+a container that has no row. 194 habits are in a `Personal` group that does not exist in
+`habit_groups` at all — written by `orphanContainerFallback: 'Personal'` and the two
+`|| 'Personal'` fallbacks in `removeHabitGroup` / `cleanupOrphanedReferences` — and 12
+tasks name a deleted project, `Housework`. Both backfills correctly leave those null.
+That is the whole argument for id references in one number.
 
 **A shipped four kinds, not five.** `role: 'classify' \| 'gate'` over projects +
 habit groups (classify) and routines + programs (gate); `item_types` stays out per
@@ -410,31 +423,37 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   `group` (`&& updates.containerId != null`) passes it while making "remove this item
   from its project" a no-op that reverts on reload. Any nullable field needs its own
   clearing case.
-- **`containerId` is not agent-writable, and that is a security call as much as a
-  consistency one.** `.omit()`ed from both create schemas, absent from both update
-  schemas. During dual-write the id and the name are two spellings of one fact so a body
-  carrying both can contradict itself — but also, an id is guessable where a name is
-  not, and RLS covers `items`, not the value in that column. Agents send the name; the
-  route resolves the id.
-- **`items.container_id` has no FK, on purpose.** The referent is one of two tables
-  chosen by `items.type`, which one foreign key cannot express. A CHECK-plus-two-columns
-  design loses the one-axis property; a per-row validation trigger costs a lookup on
-  every insert to enforce what the app resolves from its loaded container list anyway.
-  The cost is a danglable id — which is exactly the state the NAME column has always
-  been in, so it adds no new class of inconsistency. Migration 025 carries the repair
-  query.
-- **`containerId` must enter `taskShape` AND `habitShape`** in `packages/types` before Phase
-  B, or undo silently reverts a container change. `diffItem` (`planner-store.ts:576-584`)
-  iterates `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside
-  the shape never enters an undo patch: undo sends the *label* back and leaves
-  `container_id` on the new container. UI shows success; next reload shows the revert.
-  Additive-optional is safe — the `parentItemId`/`assignee`/`aiStatus` precedent — but
-  CLAUDE.md makes the committed `dist/` a CI gate, so it must be planned.
-- **No migration creates `projects` or `habit_groups`.** Thirteen tables are created across
-  `supabase/migrations/`; neither of those is among them. They exist only in the stale
-  `supabase/schema.sql`. Any SQL touching them needs `to_regclass` guards — the SQL mirror
-  of the `unavailable()` pattern migration 024 uses app-side. Worth checking separately how
-  `.env.test` and any fresh Supabase project get provisioned.
+- **CHECK `git log --all` AND THE REMOTE LEDGER BEFORE AUTHORING A MIGRATION.** This
+  worktree branches from `a1c03c2`; `supabase/migrations/` here stops at 024, and that
+  was read as "024 is the latest". It is not — it is only the latest *on this branch*.
+  The remote ledger already held 025 `theme_palette`, 026 `user_extensions` and 027
+  `container_ids`, none of them in this tree. A duplicate `container_id` column was
+  authored, applied to the shared database, and dropped again an hour later; the ledger
+  insert silently no-opped on `on conflict do nothing` because 025 was taken, so the
+  column existed with no ledger row — precisely the drift CLAUDE.md warns about. The
+  directory is the source of truth for *schema*; the ledger is the record of what is
+  *applied*, and other branches move it. `select version, name from
+  supabase_migrations.schema_migrations order by version` costs one query.
+- **Container ids are not agent-writable, on either design.** `feat/organize-console`
+  `.omit()`s `projectId`/`groupId` from both create schemas, and this plan reached the
+  same call independently for `containerId`: during dual-write the id and the name are
+  two spellings of one fact, so a body carrying both can contradict itself — and an id is
+  guessable where a name is not, while RLS covers `items` rather than the value in that
+  column. Agents send the NAME; the route resolves the id (`81c5c21`).
+- **An id field must enter `taskShape` AND `habitShape`** in `packages/types`, or undo
+  silently reverts a container change. `diffItem` (`planner-store.ts`) iterates
+  `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside the
+  shape never enters an undo patch: undo sends the *label* back and leaves the id on the
+  new container. UI shows success; next reload shows the revert. Additive-optional is
+  safe — the `parentItemId`/`assignee`/`aiStatus` precedent — but CLAUDE.md makes the
+  committed `dist/` a CI gate. 027's app half does this with `projectId`/`groupId`.
+- **`projects` and `habit_groups` DO exist in the live database, but no migration
+  creates them.** Verified by query, not inference: `to_regclass` returns both. They were
+  created out-of-band and survive in the tree only in the stale `supabase/schema.sql`, so
+  a fresh Supabase project provisioned from migrations alone would have neither — which
+  is why any SQL touching them still needs `to_regclass` guards, the mirror of the
+  `unavailable()` pattern 024 uses app-side. Worth settling separately how `.env.test`
+  and a fresh project get provisioned.
 - **Undoing a rename is O(N) unbatched PATCHes.** `planner-store.ts:2274-2299` runs one
   `dbUpdateItem` per restored item with no batching.
 - **`ScrollArea` silently drops `max-h`** — every scroll box in the menu is plain
