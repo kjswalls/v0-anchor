@@ -306,3 +306,49 @@ export function adoptLegacyViewPrefs() {
     adoptedLegacy: true,
   });
 }
+
+/**
+ * Keep the persisted filter refs following their containers' names.
+ *
+ * DRIVEN BY THE STORE, not by the rename call site, and that difference is the
+ * whole point. Called optimistically from the Organize console, the remap had no
+ * inverse: undo restored the container's old name and the localStorage ref kept
+ * the new one, so a single ⌘Z after a rename emptied the canvas — a NEW way to
+ * cause exactly the harm the remap was added to prevent, and a worse one,
+ * because localStorage survives the reload that would have fixed it.
+ *
+ * Comparing the id's name against its PREVIOUS name makes rename, undo and redo
+ * one case instead of three: whatever moves a container's name, the refs follow.
+ *
+ * Known gap, and it is narrow: if the container UPDATE is rejected by the DB the
+ * store stays optimistic, so refs and store agree until a reload re-reads the
+ * old name — and the ref is then stale. Nothing here can see that rejection.
+ * Carrying ids in the refs instead of names is the real fix and is a persisted-
+ * format change; `takenBy` already refuses the collision that causes almost
+ * every such rejection.
+ */
+const remapRefs = (
+  kind: 'project' | 'group',
+  before: { id: string; name: string }[],
+  after: { id: string; name: string }[],
+) => {
+  for (const now of after) {
+    const was = before.find((b) => b.id === now.id);
+    if (was && was.name !== now.name) {
+      useViewStore.getState().renameContainerRef(kind, was.name, now.name);
+    }
+  }
+};
+
+// Optional-called because this runs at IMPORT time, and a unit test that mocks
+// `@/lib/planner-store` with only the members it needs has no `subscribe` — the
+// module-level call then throws while the mocked module is being evaluated, and
+// the failure surfaces as an unrelated suite collecting zero tests. Real zustand
+// always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
+// drives the actual store.
+usePlannerStore.subscribe?.((state, prev) => {
+  if (state.projects !== prev.projects) remapRefs('project', prev.projects, state.projects);
+  if (state.habitGroups !== prev.habitGroups) {
+    remapRefs('group', prev.habitGroups, state.habitGroups);
+  }
+});

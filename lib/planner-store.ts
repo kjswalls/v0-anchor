@@ -2139,7 +2139,17 @@ export const usePlannerStore = create<PlannerStore>()(
           // trashed names, which arrive with the Trash in Phase 4.
           const write = dbUpdateProject(userId, id, updates);
           (renamedTo
-            ? write.then(() => dbRenameContainerMembers(userId, 'project_id', id, renamedTo))
+            ? write.then(() => {
+                // A ROUND TRIP HAS PASSED, so re-check before firing. Chaining
+                // fixed the split write but moved this dispatch AFTER undo's:
+                // undo restores the old name with plain per-item writes and no
+                // fan-out of its own, so a ⌘Z landing inside this window used to
+                // be overwritten here — the container reverted while every
+                // member kept the name the user had just undone, and unlike an
+                // ordinary optimistic write that state survives a reload.
+                if (get().projects.find((p) => p.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'project_id', id, renamedTo);
+              })
             : write
           ).catch(console.error);
         }
@@ -2343,10 +2353,14 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) {
-          // Chained for the same reason as updateProject — see the note there.
+          // Chained, and re-checked on resume, for the same two reasons as
+          // updateProject — see the notes there.
           const write = dbUpdateHabitGroup(userId, id, updates);
           (renamedTo
-            ? write.then(() => dbRenameContainerMembers(userId, 'group_id', id, renamedTo))
+            ? write.then(() => {
+                if (get().habitGroups.find((g) => g.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'group_id', id, renamedTo);
+              })
             : write
           ).catch(console.error);
         }

@@ -49,7 +49,12 @@ test.describe('organize — projects, types and groups', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
-    await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
+    // NOT cleanupByTitlePrefix(TEST_TITLE_PREFIX) — the header above says why
+    // and the first full-suite run proved it: sweeping the BARE prefix
+    // hard-deletes every other spec's fixtures mid-test under `fullyParallel`,
+    // and they do the same to this one. This spec passed 7/7 alone and failed
+    // in the parallel run for exactly that reason. globalSetup already sweeps
+    // the bare prefix once, before anything is running.
     await cleanupTestLabels(scope.prefix);
     await reloadApp(page);
   });

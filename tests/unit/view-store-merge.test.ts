@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useViewStore } from '@/lib/view-store';
+import { usePlannerStore } from '@/lib/planner-store';
 import {
   EMPTY_VIEW_FILTERS,
   containerRef,
@@ -238,10 +239,19 @@ describe('renameContainerRef follows a container rename', () => {
   });
 
   it('leaves refs of the other kind alone', () => {
-    // `project:Work` and `group:Work` are different selections; renaming the
-    // project must not silently retarget a group's chip.
+    // The group must share the project's NAME, or the assertion passes against a
+    // kind-blind implementation too: `group:Wellness` could never be confused
+    // with a project called Work no matter how the matching worked, so the
+    // earlier fixture proved nothing. `group:Work` is the only shape that can
+    // catch a rewrite that ignores the prefix.
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Work'] },
+    });
     useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
-    expect(useViewStore.getState().canvasFilters.containers).toContain('group:Wellness');
+    expect(useViewStore.getState().canvasFilters.containers).toEqual([
+      'project:Deep Work',
+      'group:Work',
+    ]);
   });
 
   it('does not leave a duplicate when both were selected', () => {
@@ -256,5 +266,50 @@ describe('renameContainerRef follows a container rename', () => {
     const before = useViewStore.getState().canvasFilters;
     useViewStore.getState().renameContainerRef('project', 'Untouched', 'Renamed');
     expect(useViewStore.getState().canvasFilters).toBe(before);
+  });
+
+  /**
+   * The remap is driven by the STORE, not by the rename call site — which is
+   * what makes undo work. Fired optimistically from the console it had no
+   * inverse: undo restored the container's old name and the ref kept the new
+   * one, so one ⌘Z after a rename emptied the canvas. Worse than the stale ref
+   * it was added to prevent, because localStorage survives the reload that
+   * would otherwise have repaired it.
+   */
+  it('follows a rename made through the planner store', () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Deep Work', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Deep Work');
+  });
+
+  it('follows it BACK when the rename is reverted', () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Deep Work', emoji: 'icon:Briefcase' }],
+    });
+    // What undo does: same id, previous name.
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Work');
+    expect(useViewStore.getState().canvasFilters.containers).not.toContain('project:Deep Work');
+  });
+
+  it('ignores a DIFFERENT container that merely arrives holding the old name', () => {
+    // Keyed on the id, so deleting Work and creating an unrelated project later
+    // named Work does not retarget a ref that belonged to the first one.
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr2', name: 'Something Else', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Work');
   });
 });

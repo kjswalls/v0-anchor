@@ -167,6 +167,42 @@ describe('renaming a container fans the new name out to its members', () => {
     );
   });
 
+  it('drops a fan-out whose rename was undone while the write was in flight', async () => {
+    // Chaining fixed the split write but moved this dispatch AFTER undo's.
+    // Undo restores the old name with plain per-item writes and no fan-out of
+    // its own, so a ⌘Z landing inside the container write's round trip used to
+    // be overwritten here: the container reverted while every member kept the
+    // name the user had just undone — and unlike an ordinary optimistic write,
+    // that state survives a reload.
+    let release!: () => void;
+    vi.mocked(db.updateProject).mockReturnValueOnce(
+      new Promise<void>((resolve) => { release = () => resolve(); })
+    );
+
+    store().updateProject('pr-work', { name: 'Deep Work' });
+    store().undo();
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(db.renameContainerMembers).not.toHaveBeenCalled();
+  });
+
+  it('still fans out when nothing intervened', async () => {
+    // The guard must not swallow the ordinary case it is wrapped around.
+    let release!: () => void;
+    vi.mocked(db.updateProject).mockReturnValueOnce(
+      new Promise<void>((resolve) => { release = () => resolve(); })
+    );
+    store().updateProject('pr-work', { name: 'Deep Work' });
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(db.renameContainerMembers).toHaveBeenCalledWith(
+      USER, 'project_id', 'pr-work', 'Deep Work'
+    );
+  });
+
   it('undo puts the members back, not just the container', () => {
     // The fan-out shares ONE set() with the rename, so both halves land in a
     // single history snapshot. Split across two, undo would restore the old
