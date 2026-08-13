@@ -29,15 +29,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import {
   EMPTY_VIEW_FILTERS,
-  NO_CONTAINER,
   NO_PRIORITY,
   activeFilterCount,
-  containerRef,
-  groupNamesFrom,
-  projectNamesFrom,
   type PriorityFilterValue,
   type ViewFilters,
 } from '@/lib/filters';
+import { NO_CONTAINER, containerRef, namesOfKind } from '@/lib/container-registry';
 import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
@@ -264,8 +261,8 @@ export function DisplayMenu({
 
   /* ── what is set ──────────────────────────────────────────────────────── */
 
-  const selectedProjects = projectNamesFrom(filters.containers);
-  const selectedGroups = groupNamesFrom(filters.containers);
+  const selectedProjects = namesOfKind(filters.containers, 'project');
+  const selectedGroups = namesOfKind(filters.containers, 'group');
 
   /**
    * The count behind the trigger dot and the Reset badge.

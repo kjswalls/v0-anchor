@@ -51,12 +51,8 @@ import { addDays, subDays } from 'date-fns';
 
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  containerRef,
-  isEmptyFilters,
-  projectNamesFrom,
-} from '../filters';
+import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
+import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, openAddDialog } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
@@ -572,7 +568,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Never flattened: names are free text, so flattening lets a project
       // called "Today" or "List" outrank the built-in command of that name.
       options: () => {
-        const active = projectNamesFrom(view().canvasFilters.containers);
+        const active = namesOfKind(view().canvasFilters.containers, 'project');
         return planner().projects.map((p) => ({
           value: p.name,
           label: p.name,

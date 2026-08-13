@@ -1,11 +1,7 @@
 import type { Task, Habit, Project, TimeBucket } from './planner-types';
 import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from './recurrence';
-import {
-  EMPTY_VIEW_FILTERS,
-  containerRef,
-  passesFilters,
-  type ViewFilters,
-} from './filters';
+import { EMPTY_VIEW_FILTERS, passesFilters, type ViewFilters } from './filters';
+import { containerRef } from './container-registry';
 
 /**
  * Pure derivation of what a single day shows, per bucket. Extracted from

@@ -2,15 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { deriveDayItems, type DayItemsInput } from '@/lib/day-items';
 import {
   EMPTY_VIEW_FILTERS,
-  NO_CONTAINER,
   NO_PRIORITY,
-  containerRef,
   containerRefOf,
   passesContainerFilter,
   passesPriorityFilter,
   typeNameOf,
   type ViewFilters,
 } from '@/lib/filters';
+import { NO_CONTAINER, containerRef } from '@/lib/container-registry';
 import type { Habit, Item, Project, Task } from '@/lib/planner-types';
 
 /**

@@ -1,16 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  containerRef,
-  isEmptyFilters,
-  normalizeFilters,
-  projectNamesFrom,
-  groupNamesFrom,
-  containerName,
-  containerKindOf,
-} from '@/lib/filters';
+import { EMPTY_VIEW_FILTERS, isEmptyFilters, normalizeFilters } from '@/lib/filters';
+import { containerKindOf, containerName, containerRef, namesOfKind } from '@/lib/container-registry';
+
+const projectNamesFrom = (refs: string[]) => namesOfKind(refs, 'project');
+const groupNamesFrom = (refs: string[]) => namesOfKind(refs, 'group');
 
 /**
  * The rehydration gap the e2e suite structurally cannot cover.

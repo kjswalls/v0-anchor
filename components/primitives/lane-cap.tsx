@@ -2,7 +2,7 @@
 
 import { usePlannerStore } from '@/lib/planner-store';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
-import { containerKindOf, containerName } from '@/lib/filters';
+import { containerKindOf, containerName } from '@/lib/container-registry';
 import { resolveFocus, type LanePlan } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
