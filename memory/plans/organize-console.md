@@ -568,6 +568,54 @@ Enter blurred even when refused, stranding the name (the Escape rung needs focus
 more test that could not fail — the PGRST204 guard's create-path assertion collapses "no
 such container" and "cannot ask" into the same output.
 
+### The review pattern has a hole: FIX commits were never reviewed
+
+**Three fix commits in a row introduced a bug**, and each was caught only because a later
+phase happened to sweep the same code:
+
+| commit | was fixing | introduced |
+|---|---|---|
+| `81c5c21` | Phase 0's review | undo NULLing every member's `project_id` |
+| `0a38733` | Phase 0b's review | the chained fan-out outrunning undo; the filter remap with no inverse |
+
+`0a38733` was the first fix commit to get a review of its own (`18dad7f`), and it found two
+HIGH defects immediately. **Review the fix, not just the build.**
+
+**The chained fan-out outran undo.** Chaining fixed the split write but moved the dispatch
+AFTER undo's per-item writes, so a ⌘Z inside the container write's round trip was
+overwritten when the chain resumed — container reverted, members kept the undone name, and
+**it survives a reload** because `items.project` is plain text with no join. The deferred
+write now re-checks the container still holds the name it is fanning out.
+
+**`renameContainerRef` was optimistic with no inverse** — a NEW way to empty the canvas, and
+worse than a stale ref because localStorage survives the repairing reload. Now driven by a
+planner-store subscription keyed on container **id**, so rename/undo/redo are one case.
+*Gap left open:* a DB-rejected rename leaves the store optimistic, so a reload can still
+strand a ref. Carrying ids in the refs is the real fix and is a persisted-format change.
+
+### The e2e spec ran for the first time (`ba632fd`) — and static review had missed both
+
+Three phases of adversarial review passed over a spec that had never executed. Its first run
+found an **app-level data race no lens caught**, because no lens ran the app.
+
+- **`initializeStore` replaces `projects`/`habitGroups`/`items` wholesale** when its fetch
+  resolves, so anything written between mount and that resolve is silently discarded.
+  Reachable by a real user on a slow connection. `data-loaded` on `view-root` is the signal
+  `waitForAppReady` was missing — note `userId && !isLoading`, because `isLoading` is FALSE
+  at rest and the bare check passes before the fetch is even issued.
+- **The suite could not run honestly from a worktree.** `localhost:3000` was hardcoded in
+  four places and `reuseExistingServer` ADOPTS whatever owns the port — so a second checkout
+  silently tests another branch. All four derive from `BASE_URL` now (`E2E_BASE_URL` to
+  override). The worst was `global-setup`'s storageState **origin**: a mismatch is not an
+  error, the localStorage seed just never applies.
+- The dedicated e2e user is `a2afc7e7` / `anchor-e2e@anchor.test`, confirmed separate from
+  the personal account, and owns **zero habit groups** — which is why `removeHabitGroup`'s
+  `'Personal'` fallback fires there.
+
+*Full suite:* 82 passed / 22 failed / 22 did not run. **None attributable to the readiness
+gate** (its message appears nowhere), and the pass count is up on the config's documented
+79/13 baseline. The residue is the shared-test-user contention the config already describes.
+
 *Still open, deliberately:*
 - Delete clears both halves in the store while the DB row keeps them, so a restore can
   reconnect members. Pre-existing; **027 makes fixing it possible and does not fix it.**
