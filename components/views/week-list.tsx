@@ -65,7 +65,7 @@ function DaySection({ date }: { date: Date }) {
             // 'none' comes back as one section with an empty label, which is
             // this view's own default look: a flat list under the date heading.
             g.label ? (
-              <GroupSection key={g.key} label={g.label} variant="canvas">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row as never} date={date} />
                 ))}

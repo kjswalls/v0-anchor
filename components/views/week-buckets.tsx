@@ -126,7 +126,7 @@ function WeekBucketCell({
             ))}
             {grouped
               ? grouped.map((g) => (
-                  <GroupSection key={g.key} label={g.label} variant="canvas">
+                  <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
                     {g.rows.map((row) => (
                       <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                     ))}

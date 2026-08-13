@@ -451,7 +451,7 @@ export function Braindump() {
         <div className="px-[14px] py-2">
           {grouped.map((g) =>
             g.label ? (
-              <GroupSection key={g.key} label={g.label} className="pt-5 first:pt-1">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} className="pt-5 first:pt-1">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}

@@ -68,6 +68,7 @@ import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } fr
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
+import { foldContainerName, sameContainerName } from './container-registry';
 
 interface PlannerStore {
   /**
@@ -1989,7 +1990,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
       addProject: (name, emoji) => {
         setNextActionLabel(`Add project: ${name}`);
-        const alreadyExists = get().projects.some((p) => p.name === name);
+        const alreadyExists = get().projects.some((p) => sameContainerName('project', p.name, name));
         if (alreadyExists) return;
 
         const project: Project = { id: crypto.randomUUID(), name, emoji };
@@ -2027,7 +2028,9 @@ export const usePlannerStore = create<PlannerStore>()(
             // items.project is plain text with no FK and no trigger, so a
             // reload re-reads the dead name. Name-referenced containers are the
             // documented parked limitation (migration 024).
-            i.type !== 'habit' && i.project === project?.name ? { ...i, project: undefined } : i
+            i.type !== 'habit' && project && i.project && sameContainerName('project', i.project, project.name)
+              ? { ...i, project: undefined }
+              : i
           )),
         }));
 
@@ -2035,8 +2038,13 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbDeleteProject(userId, id).catch(console.error);
       },
 
+      // These three, and every identity lookup below, ask the container registry
+      // whether this kind folds rather than spelling a comparison. Projects do
+      // not fold, so they are `===` in effect — written this way so the policy
+      // has one home and the two kinds read the same, not two idioms whose
+      // difference you have to already know about.
       getProjectEmoji: (name) => {
-        const project = get().projects.find((p) => p.name === name);
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
         return project?.emoji || '';
       },
 
@@ -2044,12 +2052,12 @@ export const usePlannerStore = create<PlannerStore>()(
       // name-hash ramp remains the no-choice default, so nothing changes for
       // projects that never picked one.
       getProjectColor: (name) => {
-        const project = get().projects.find((p) => p.name === name);
-        return project?.color || accentColorForName(name);
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
+        return project?.color || accentColorForName(foldContainerName('project', name));
       },
 
       getProject: (name) => {
-        return get().projects.find((p) => p.name === name);
+        return get().projects.find((p) => sameContainerName('project', p.name, name));
       },
 
       // TASK-LIKE, not 'task'. These three used findItem(id, 'task') and wrote
@@ -2078,7 +2086,9 @@ export const usePlannerStore = create<PlannerStore>()(
           if (!task || !task.project) return state;
           dbType = dbTypeOf(task);
 
-          const project = state.projects.find((p) => p.name === task.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, task.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           taskUpdates = {
@@ -2114,7 +2124,9 @@ export const usePlannerStore = create<PlannerStore>()(
           );
           if (!firstTask || !firstTask.project) return state;
 
-          const project = state.projects.find((p) => p.name === firstTask.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, firstTask.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           return projectItems(state.items.map((i) => {
@@ -2167,8 +2179,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addHabitGroup: (name, emoji, color) => {
-        const normalized = name.toLowerCase();
-        const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
+        const alreadyExists = get().habitGroups.some((g) => sameContainerName('group', g.name, name));
         if (alreadyExists) return;
 
         const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
@@ -2198,8 +2209,13 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Delete habit group: ${group?.name || 'Unknown'}`);
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
+          // Folded, unlike every version before A′. `makeAddDraft` writes a
+          // lowercase 'personal' against the seeded 'Personal' whenever the
+          // groups list has not loaded yet, so `i.group === group.name` left
+          // exactly those habits pointing at a group that no longer exists —
+          // the orphan this reassignment is here to prevent.
           ...projectItems(state.items.map((i) =>
-            i.type === 'habit' && i.group === group?.name
+            i.type === 'habit' && group && sameContainerName('group', i.group, group.name)
               ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
               : i
           )),
@@ -2210,14 +2226,13 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       getHabitGroupEmoji: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         return group?.emoji || '';
       },
 
       getHabitGroupColor: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const normalized = foldContainerName('group', name);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         if (group?.color) return group.color;
 
         // Theme-aware tokens (app/globals.css). Stored group.color above passes
@@ -2234,8 +2249,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
       cleanupOrphanedReferences: () => {
         const state = get();
-        const projectNames = new Set(state.projects.map(p => p.name));
-        const groupNames = new Set(state.habitGroups.map(g => g.name));
+        // Keyed on the FOLDED name so membership answers the same question the
+        // rest of the app does: a habit stored as 'personal' is not an orphan
+        // while a group called 'Personal' exists.
+        const projectNames = new Set(state.projects.map((p) => foldContainerName('project', p.name)));
+        const groupNames = new Set(state.habitGroups.map((g) => foldContainerName('group', g.name)));
 
         set(projectItems(state.items.map((i) => {
           // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
@@ -2247,10 +2265,10 @@ export const usePlannerStore = create<PlannerStore>()(
           // wants exactly this sweep once containers move to ids. If you wire
           // it up, note that it only mutates state: persisting the repair needs
           // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
-          if (i.type !== 'habit' && i.project && !projectNames.has(i.project)) {
+          if (i.type !== 'habit' && i.project && !projectNames.has(foldContainerName('project', i.project))) {
             return { ...i, project: undefined };
           }
-          if (i.type === 'habit' && !groupNames.has(i.group)) {
+          if (i.type === 'habit' && !groupNames.has(foldContainerName('group', i.group))) {
             return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
           }
           return i;

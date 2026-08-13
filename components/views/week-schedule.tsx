@@ -286,7 +286,7 @@ function WeekScheduleColumn({
             shows fewer rows at rest — that is the cost of having asked. */}
         {untimedGroups.map((g) =>
           g.label ? (
-            <GroupSection key={g.key} label={g.label} variant="canvas">
+            <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
               {g.rows.map((row) => (
                 <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
               ))}

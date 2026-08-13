@@ -226,7 +226,26 @@ export function classifyKindForItemType(itemTypeKey: ItemTypeContainerKind): Cla
 }
 
 /**
- * The comparison key for a ref — the single expression of the case policy.
+ * The comparison key for a bare NAME of a known kind — the single expression of
+ * the case policy, and the one every other fold is built from.
+ *
+ * Names, not refs, because that is what the store holds: `items.group` is
+ * `'personal'`, `habitGroups[i].name` is `'Personal'`, and every identity lookup
+ * in planner-store.ts compares those two directly. Before A′ six of them
+ * compared exactly and three folded by hand, which is how deleting the habit
+ * group 'Personal' left a habit stored as 'personal' pointing at a row that no
+ * longer existed.
+ */
+export function foldContainerName(kind: ClassifyKind, name: string): string {
+  return CONTAINER_KINDS[kind].caseFold ? name.toLowerCase() : name;
+}
+
+/** Do these two bare names name the same container of this kind? */
+export const sameContainerName = (kind: ClassifyKind, a: string, b: string): boolean =>
+  foldContainerName(kind, a) === foldContainerName(kind, b);
+
+/**
+ * The comparison key for a ref.
  *
  * Everything that compares, dedupes or keys on a container ref goes through
  * here: `sameContainerRef`, and `lib/grouping.ts`'s section key. Keyed on the
@@ -239,8 +258,8 @@ export function classifyKindForItemType(itemTypeKey: ItemTypeContainerKind): Cla
  */
 export function foldRef(ref: string): string {
   const kind = containerKindOf(ref);
-  if (!kind || !CONTAINER_KINDS[kind].caseFold) return ref;
-  return containerRef(kind, containerName(ref).toLowerCase());
+  if (!kind) return ref;
+  return containerRef(kind, foldContainerName(kind, containerName(ref)));
 }
 
 /** Do these two refs name the same container? See `foldRef` for the case policy. */

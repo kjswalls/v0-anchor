@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { BUCKET_LABEL_INK } from '@/components/primitives/bucket-card';
 import { CategoryIcon } from '@/lib/category-icons';
+import { containerKindOf, containerName, sameContainerName } from '@/lib/container-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
 
 /**
  * Section heading: a category icon (lib/category-icons) + label in the content
- * color + a chevron that collapses/expands the rows. When the label names a
+ * color + a chevron that collapses/expands the rows. When the section names a
  * project or habit group, its stored glyph (a picked icon token) drives the
  * icon — resolved from the live store so editing a project's icon updates the
  * heading; otherwise the icon derives from the label name. Icon matches the
@@ -24,11 +25,27 @@ import { cn } from '@/lib/utils';
  */
 export function GroupSection({
   label,
+  groupKey,
   children,
   className,
   variant = 'sidebar',
 }: {
   label: string;
+  /**
+   * `RowGroup.key` — the prefixed ref when this section names a container.
+   *
+   * The glyph is resolved from THIS, not from `label`, because a label has had
+   * its namespace thrown away and a heading is not the only thing that can be
+   * called "Work". Before A′ the lookup matched a project by bare label first
+   * and a habit group second, which meant a project named "High" put its emoji
+   * on the Priority › High heading, and (once the braindump carries habits) a
+   * habit group would borrow the same-named project's icon — the seeds disagree
+   * on two of their three: 🧘/💚 for Wellness, 🏠/⭐ for Personal.
+   *
+   * Omitted means "this section is not a container" — no store lookup at all,
+   * and `CategoryIcon` derives from the name as it always has.
+   */
+  groupKey?: string;
   children: React.ReactNode;
   className?: string;
   variant?: 'canvas' | 'sidebar';
@@ -38,11 +55,14 @@ export function GroupSection({
   // Subscribe to the arrays (not the getter fns) so a glyph edit re-renders.
   const projects = usePlannerStore((s) => s.projects);
   const habitGroups = usePlannerStore((s) => s.habitGroups);
-  const lower = label.toLowerCase();
+  const kind = groupKey ? containerKindOf(groupKey) : null;
+  const name = kind ? containerName(groupKey!) : '';
   const glyph =
-    projects.find((p) => p.name === label)?.emoji ||
-    habitGroups.find((g) => g.name.toLowerCase() === lower)?.emoji ||
-    undefined;
+    kind === 'project'
+      ? projects.find((p) => sameContainerName('project', p.name, name))?.emoji
+      : kind === 'group'
+        ? habitGroups.find((g) => sameContainerName('group', g.name, name))?.emoji
+        : undefined;
 
   return (
     <div className={className}>

@@ -8,8 +8,10 @@ import {
   containerKindOf,
   containerName,
   containerRef,
+  foldContainerName,
   foldRef,
   getContainerKindConfig,
+  sameContainerName,
   namesOfKind,
   sameContainerRef,
   unsetContainerRef,
@@ -176,6 +178,19 @@ describe('the case policy', () => {
     expect(foldRef('Work')).toBe('Work');
     expect(foldRef(unsetContainerRef('project'))).toBe(unsetContainerRef('project'));
     expect(foldRef(NO_CONTAINER)).toBe(NO_CONTAINER);
+  });
+
+  it('answers the same question for a bare name as for a ref', () => {
+    // The store holds bare names — `items.group` is 'personal',
+    // `habitGroups[i].name` is 'Personal' — so the name-level API is what every
+    // identity lookup in planner-store.ts calls. It must not be a second policy.
+    for (const kind of CLASSIFY_KINDS) {
+      expect(sameContainerName(kind, 'Mixed Case', 'mixed case')).toBe(
+        sameContainerRef(containerRef(kind, 'Mixed Case'), containerRef(kind, 'mixed case'))
+      );
+    }
+    expect(foldContainerName('group', 'Personal')).toBe('personal');
+    expect(foldContainerName('project', 'Work')).toBe('Work');
   });
 
   it('does not fold a ref whose prefix is merely case-similar to a kind', () => {
