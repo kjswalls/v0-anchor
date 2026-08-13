@@ -312,6 +312,35 @@ export type LayoutOptions = {
   root?: { leftPct: number; rightPct: number };
 };
 
+/**
+ * A layout stripped to its x half — the band, the pane margins and the rail —
+ * with everything derived from the block's EXTENTS cleared.
+ *
+ * For a block being resized. `preview` moves a start and a duration, so the
+ * pockets, branch ticks, chosen content band and flush-edge handles all go
+ * stale the instant the gesture begins; the lane it sits in does not. Dropping
+ * the whole layout takes the band with it, which since lanes landed means the
+ * block jumps to the field's left edge and spans every lane until pointer-up.
+ *
+ * Returns undefined for undefined, so an un-laid-out block on an ungrouped grid
+ * still resizes against `left-0 right-1` exactly as it always has.
+ */
+export function bandOnly(layout: BlockLayout | undefined): BlockLayout | undefined {
+  if (!layout) return undefined;
+  return {
+    ...layout,
+    // A conflict unit's tiling is an extent question — its mate's pane is about
+    // to be the wrong shape — but the LANE is not, so paneLeft/paneRight stay.
+    pockets: [],
+    branchTicks: [],
+    contentTop: null,
+    contentHeight: null,
+    handleTopLane: false,
+    handleBottomLane: false,
+    wash: 'full',
+  };
+}
+
 /** The band-only layout an un-overlapped block gets inside a lane. */
 function soloLayout(leftPct: number, rightPct: number): BlockLayout {
   return {

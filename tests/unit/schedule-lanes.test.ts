@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planLanes, resolveFocus, isReceded, laneBudget, NO_LANES } from '@/lib/schedule-lanes';
-import { layoutOverlaps } from '@/lib/schedule-overlap';
+import { bandOnly, layoutOverlaps } from '@/lib/schedule-overlap';
 import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
 import type { GroupableRow } from '@/lib/grouping';
 import type { Habit, Task } from '@/lib/planner-types';
@@ -80,6 +80,30 @@ describe('planLanes — which answer the grid gets', () => {
     expect(plan.mode).toBe('focus');
     expect(plan.lanes.map((l) => l.label)).toEqual(['Work', 'Home', 'Admin']);
     expect(plan.lanes.every((l) => l.leftPct === 0 && l.rightPct === 0)).toBe(true);
+  });
+
+  it('gives TIME BUCKET no lanes and no focus — the grid declines it outright', () => {
+    // y already IS the bucket, and autoCorrectBucket forces a timed item's
+    // bucket to match its startTime, so the lanes would be mutually exclusive on
+    // y BY CONSTRUCTION: a literal staircase with two thirds of the field dead
+    // at every height, carrying nothing y did not already carry.
+    //
+    // Distinct buckets on purpose. Every other fixture in this file is
+    // `timeBucket: 'morning'`, and a bucket case built from those collapses to
+    // ONE group — which is refused for a different reason and would pass while
+    // the guard was missing. It was missing: this shipped dividing for a commit,
+    // with the rule forbidding it written in view-options.ts and nowhere else.
+    const spread = [
+      t('m', { timeBucket: 'morning', startTime: '09:00' }),
+      t('a', { timeBucket: 'afternoon', startTime: '14:00' }),
+      t('e', { timeBucket: 'evening', startTime: '19:00' }),
+    ];
+
+    for (const variant of ['day', 'week'] as const) {
+      const plan = planLanes(spread, 'bucket', { variant, fieldWidth: WIDE });
+      expect(plan.mode).toBe('none');
+      expect(plan.lanes).toEqual([]);
+    }
   });
 
   it('never divides by ROUTINE, on any variant or width', () => {
@@ -211,6 +235,34 @@ describe('the overlap pass, given a lane band', () => {
 
     for (const id of ['a', 'b']) expect(out.get(id)!.widthFraction).toBeCloseTo(0.25, 9);
     expect(out.get('a')!.left).toBe('calc(50% + 0px)');
+  });
+
+  it('keeps the band through a resize, and drops only what the new extents stale', () => {
+    // `preview` moves a start and a duration; it cannot move a block into
+    // another lane. Dropping the whole layout mid-gesture took the band with it,
+    // so pressing a resize handle threw the block to the field's left edge
+    // spanning every lane until pointer-up.
+    const full = layoutOverlaps([at('a', 540, 180), at('b', 600, 60)], {
+      ...base,
+      root: { leftPct: 50, rightPct: 0 },
+    }).get('a')!;
+    expect(full.pockets.length).toBeGreaterThan(0);
+
+    const held = bandOnly(full)!;
+
+    // The x half survives.
+    expect(held.left).toBe(full.left);
+    expect(held.right).toBe(full.right);
+    expect(held.paneLeft).toBe(full.paneLeft);
+    expect(held.railX).toBe(full.railX);
+    // Everything derived from the extents does not.
+    expect(held.pockets).toEqual([]);
+    expect(held.branchTicks).toEqual([]);
+    expect(held.contentTop).toBeNull();
+    expect(held.handleTopLane).toBe(false);
+    // And an un-laid-out block on an ungrouped grid still resizes against the
+    // renderer's own `left-0 right-1` fallback.
+    expect(bandOnly(undefined)).toBeUndefined();
   });
 
   it('gives each lane the whole lane when the same time falls in two of them', () => {

@@ -44,6 +44,15 @@ beforeAll(() => {
     },
   });
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+  // jsdom has no Pointer Capture. Without these the resize handler throws on its
+  // FIRST line, `preview` is never set, and the case below asserts that a block
+  // which was never previewed kept its band — which it would under any
+  // implementation.
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+    Element.prototype.releasePointerCapture = () => {};
+    Element.prototype.hasPointerCapture = () => false;
+  }
 });
 
 vi.mock('@/lib/db', () => ({
@@ -167,6 +176,54 @@ describe('Day × Schedule — the cap row', () => {
   });
 });
 
+describe('the lanes reach the BLOCKS, not just the cap row', () => {
+  /** A block's wrapper carries the band; the pane inside is its child. */
+  const wrapperOf = (id: string) =>
+    document.querySelector(`[data-block-id="${id}"]`)!.parentElement as HTMLElement;
+
+  it('gives each lane a distinct band', () => {
+    // The gap the Phase 5b review found: every mounted assertion was about the
+    // cap row, the labels or the recession, so forcing the whole-field call at
+    // day-schedule.tsx:1442 left the entire suite green — cap row and rails
+    // announcing a partition the blocks did not honour.
+    stubbedFieldWidth = MIN_CHANNEL_PX * 6;
+    seed('project');
+    mount(<DaySchedule activeId={null} />);
+
+    const lefts = ['w', 'h', 'a'].map((id) => wrapperOf(id).style.left);
+    expect(new Set(lefts).size).toBe(3);
+    expect(lefts[0]).toBe('0px');
+    expect(lefts[1]).toContain('33.333%');
+    expect(lefts[2]).toContain('66.667%');
+  });
+
+  it('gives every block the whole field when nothing is grouped', () => {
+    stubbedFieldWidth = MIN_CHANNEL_PX * 6;
+    mount(<DaySchedule activeId={null} />);
+
+    // No layout at all, so the renderer's own `left-0 right-1` applies — the
+    // property the overlap pass's "an uncrowded day pays nothing" rule rests on.
+    for (const id of ['w', 'h', 'a']) expect(wrapperOf(id).style.left).toBe('');
+  });
+
+  it('keeps a block in its lane while it is being resized', () => {
+    // `preview` is set on POINTER-DOWN, before any movement, and it used to drop
+    // the whole layout — so pressing a handle threw the block to the field's
+    // left edge across every lane until pointer-up.
+    stubbedFieldWidth = MIN_CHANNEL_PX * 6;
+    seed('project');
+    mount(<DaySchedule activeId={null} />);
+
+    const before = wrapperOf('a').style.left;
+    expect(before).toContain('66.667%');
+
+    const grip = wrapperOf('a').querySelector('[aria-label="Resize duration"]')!;
+    fireEvent.pointerDown(grip, { clientY: 100 });
+
+    expect(wrapperOf('a').style.left).toBe(before);
+  });
+});
+
 describe('focus recedes the other lanes', () => {
   it('starts with nothing receded', () => {
     stubbedFieldWidth = MIN_CHANNEL_PX * 6;
@@ -189,6 +246,25 @@ describe('focus recedes the other lanes', () => {
       'aria-pressed',
       'true'
     );
+  });
+
+  it('actually swaps the plate and the edge, rather than emitting a dead class', () => {
+    // `shadow-[0_0_0_1px_var(--grp-off-edge)]` and `shadow-[var(--sched-shadow)]`
+    // land in DIFFERENT tailwind-merge groups, so cn() emitted both and
+    // Tailwind's own alphabetical utility order handed it to the base — the
+    // hairline never painted, in either theme, while the token had exactly one
+    // consumer and looked wired. Var-shaped, they collide in one group and the
+    // later one wins.
+    stubbedFieldWidth = MIN_CHANNEL_PX * 6;
+    seed('project');
+    mount(<DaySchedule activeId={null} />);
+    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:Work')!);
+
+    const off = blockPanes().find((el) => el.dataset.receded === 'true')!;
+    expect(off.className).toContain('bg-[var(--grp-off-pane)]');
+    expect(off.className).toContain('shadow-[var(--sched-shadow-off)]');
+    // The base has to be GONE, not merely overridden further down the sheet.
+    expect(off.className).not.toContain('shadow-[var(--sched-shadow)]');
   });
 
   it('clears on a second pick — the cap is a toggle', () => {
@@ -238,6 +314,39 @@ describe('Week × Schedule — focus, never lanes', () => {
 
     expect(capRow()).toHaveAttribute('data-lane-mode', 'focus');
     expect(capLabels()).toEqual(['Work', 'Home', 'Admin']);
+  });
+
+  it('shares ONE canvas-container with the grid, so the caps have travel to stick over', () => {
+    // A STRUCTURAL PROXY, and it is worth saying so: jsdom lays nothing out, so
+    // nothing here can measure stickiness. What it can check is the cause. A
+    // sticky box is constrained to its containing block, and the cap row spent a
+    // commit in an 18px wrapper of its own — zero travel, on the one variant
+    // where the caps are the only way to clear a focus. Measured in Chromium at
+    // the time: off-screen by ~43px of scroll.
+    stubbedFieldWidth = MIN_CHANNEL_PX * 12;
+    seed('project');
+    const { container } = mount(<WeekSchedule activeId={null} />);
+
+    const cap = capRow()!;
+    const columns = container.querySelector('[data-testid="week-column"]')!;
+    const capContainer = cap.closest('.canvas-container');
+
+    expect(capContainer).not.toBeNull();
+    expect(capContainer!.contains(columns)).toBe(true);
+    // And exactly one canvas-container in the subtree: two would have to flip
+    // `data-wide` together (CLAUDE.md), which is the trap the split created.
+    expect(container.querySelectorAll('.canvas-container')).toHaveLength(1);
+  });
+
+  it('adds no vertical offset when nothing is grouped', () => {
+    // The wrapper used to pad unconditionally while LaneCapRow returned null, so
+    // an UNGROUPED week sat 24px lower than before the lanes commit — against a
+    // comment claiming it rendered nothing at all.
+    stubbedFieldWidth = MIN_CHANNEL_PX * 12;
+    const { container } = mount(<WeekSchedule activeId={null} />);
+
+    expect(capRow()).toBeNull();
+    expect(container.querySelector('.canvas-container')!.className).not.toContain('pt-6');
   });
 
   it('recedes across every column at once, because focus is a question about the week', () => {

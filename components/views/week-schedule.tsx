@@ -23,7 +23,7 @@ import {
   type TimedEntry,
 } from '@/components/views/day-schedule';
 import { layoutOverlaps } from '@/lib/schedule-overlap';
-import { MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
+import { LANE_CAP_Z, MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
 import { CANVAS_PAD_PX } from '@/lib/week-columns';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useWeekColumns } from '@/lib/use-week-columns';
@@ -440,14 +440,19 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   return (
     <ScrollArea className="h-full flex-1">
-      {/* Focus's only caption, above the grid. `data-wide` matches the row below
-          it: every canvas-container on the page has to flip together or they
-          lose the shared left edge the utility exists to guarantee.
-          Renders nothing at all when nothing is grouped. */}
-      <div data-wide="true" className="canvas-container pt-6">
-        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
-      </div>
-      <div ref={weekColsRef} data-wide="true" className="canvas-container flex gap-2 py-6 pb-20">
+      {/* ONE canvas-container around the caption AND the grid.
+          The caption was in its own container for one commit, and a sticky box
+          is constrained to its CONTAINING BLOCK: an 18px box holding an 18px
+          element has no travel at all, so the caps scrolled away at ~43px on the
+          one variant where they are the ONLY focus control. Sharing the grid's
+          container is what gives them something to stick against — the same rule
+          the pinned hour gutter below spells out in full.
+          Its own `pt-6` went with it: LaneCapRow returns null when nothing is
+          grouped, and a wrapper that pads regardless moved the whole ungrouped
+          week 24px down. */}
+      <div data-wide="true" className="canvas-container py-6 pb-20">
+        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} z={LANE_CAP_Z} />
+        <div ref={weekColsRef} className="flex gap-2">
         {/* Hour gutter — same top offsets as the columns so labels line up, and
             the same bare left-aligned mono marks the day view uses. Week has no
             Anytime rows of its own beside the gutter to answer to (its strips
@@ -569,6 +574,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               lanePlan={lanePlan}
             />
           ))}
+          </div>
         </div>
       </div>
       <ScrollBar orientation="horizontal" />

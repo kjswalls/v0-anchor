@@ -21,7 +21,13 @@ import {
   PANE_TRIM,
   PANE_WRAP_PX,
 } from '@/lib/schedule-constants';
-import { layoutOverlaps, type BlockLayout, type OverlapEntry, type OverlapLayout } from '@/lib/schedule-overlap';
+import {
+  bandOnly,
+  layoutOverlaps,
+  type BlockLayout,
+  type OverlapEntry,
+  type OverlapLayout,
+} from '@/lib/schedule-overlap';
 import { planLanes, isReceded } from '@/lib/schedule-lanes';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
 import { LaneCapRow } from '@/components/primitives/lane-cap';
@@ -778,10 +784,17 @@ export function ScheduleBlock({
    * resize starts it is stale — `preview` is local state, `entry` never changes,
    * and the pass would keep describing a block that is no longer that shape for
    * the whole gesture. Dropping it mid-resize means you drag against honest
-   * full-width geometry and the pockets/columns re-form on release, which is the
-   * same reasoning that already suppresses `canExpand` below.
+   * geometry and the pockets/columns re-form on release, which is the same
+   * reasoning that already suppresses `canExpand` below.
+   *
+   * But only the TIME-DERIVED half is stale. `preview` moves a block's start and
+   * duration; it cannot move it into another lane. Dropping the whole layout used
+   * to mean dropping the band with it, and since lanes landed every block carries
+   * one — so pressing a resize handle threw the block to the field's left edge,
+   * spanning every lane, until pointer-up. `bandOnly` keeps the x half and clears
+   * everything the new extents invalidate.
    */
-  const L = preview ? undefined : layout;
+  const L = preview ? bandOnly(layout) : layout;
 
   // Content sits in its free band when something covers this pane, and in the
   // whole pane otherwise. Everything downstream measures the BAND, not the pane:
@@ -1130,7 +1143,12 @@ export function ScheduleBlock({
           // can read, click and drag; recession says "not what you asked about",
           // not "unavailable". Ordered after `done` so a finished off-group block
           // stays finished-looking, which is the more specific fact.
-          receded && !done && 'bg-[var(--grp-off-pane)] shadow-[0_0_0_1px_var(--grp-off-edge)]',
+          // shadow-[var(--sched-shadow-off)], never the literal ring: see the
+          // token's own note in globals.css. A raw `shadow-[0_0_0_1px_…]` lands
+          // in a different tailwind-merge group from the base shadow, so both
+          // survive cn() and Tailwind's alphabetical utility order hands it to
+          // the base — the hairline never paints, in either theme.
+          receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
           // Selected brightens the pane — lit brighter than hover, its own
           // latched state (the list rows latch a wash; a grid block latches the
           // lamp). Kept off `done` blocks, whose lamp is deliberately out.

@@ -96,10 +96,17 @@ export function LaneCapRow({
   plan,
   /** Left inset of the events field, so the caps sit over their own bands. */
   fieldLeft,
+  /**
+   * Stacking level. Day has nothing to compete with; Week's pinned hour gutter
+   * sits at WEEK_GUTTER_Z and would otherwise slide its opaque background over
+   * the caps on the first vertical scroll — see LANE_CAP_Z.
+   */
+  z = 8,
   className,
 }: {
   plan: LanePlan;
   fieldLeft: number;
+  z?: number;
   className?: string;
 }) {
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
@@ -112,9 +119,14 @@ export function LaneCapRow({
       data-testid="lane-cap-row"
       data-lane-mode={plan.mode}
       // Sticky so the partition stays legible while the grid scrolls — the caps
-      // are the only thing naming what the x axis (or the recession) means.
-      className={cn('sticky top-0 z-[8] bg-[var(--canvas)]', className)}
-      style={{ height: CAP_H, paddingLeft: fieldLeft }}
+      // are the only thing naming what the x axis (or the recession) means, and
+      // in focus mode they are the only way to clear a focus.
+      //
+      // A sticky box is constrained to its CONTAINING BLOCK, so this only works
+      // if the caller puts it in one that spans the grid. Week had it in an 18px
+      // wrapper of its own for a commit, which is zero travel.
+      className={cn('sticky top-0 bg-[var(--canvas)]', className)}
+      style={{ height: CAP_H, paddingLeft: fieldLeft, zIndex: z }}
     >
       {/* Focus mode has no bands to sit over, so the caps queue from the left and
           scroll when a day has more groups than the row can hold. */}

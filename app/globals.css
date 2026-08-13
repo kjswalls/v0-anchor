@@ -684,8 +684,15 @@
   --grp-off-pane: color-mix(in oklab, var(--surface-2) 42%, transparent);
   /* The hairline that replaces the plate's shadow when it recedes. A receded
      block keeps its edge — losing it entirely turns the grid into a field of
-     floating titles. */
+     floating titles.
+     Wrapped in its own shadow token, and that is load-bearing rather than tidy:
+     `shadow-[0_0_0_1px_var(--grp-off-edge)]` and `shadow-[var(--sched-shadow)]`
+     land in DIFFERENT tailwind-merge groups, so cn() emits both and Tailwind's
+     own utility order decides — which it settles alphabetically, '0' before 'v',
+     handing it to the base. Var-shaped, they collide in one group and the later
+     one wins, which is what every other pane state here relies on. */
   --grp-off-edge: color-mix(in oklab, var(--border) 70%, transparent);
+  --sched-shadow-off: 0 0 0 1px var(--grp-off-edge);
   /* Accent marks on a receded block. NOT an opacity on the block: three lime
      things live inside one (the done checkbox, the selection mark, and the whole
      accent of a project-less task), and lime is the one colour that never fades.
@@ -896,6 +903,7 @@
      the light block. */
   --grp-off-pane: color-mix(in oklab, var(--surface-2) 55%, transparent);
   --grp-off-edge: oklch(1 0 0 / 9%);
+  --sched-shadow-off: 0 0 0 1px var(--grp-off-edge);
   --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
   --sched-wash: 0.55;

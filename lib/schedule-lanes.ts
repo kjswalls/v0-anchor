@@ -22,6 +22,9 @@ import type { GroupBy, Routine } from './planner-types';
  *     recedes the others. Costs zero pixels, which is why it is the answer
  *     wherever lanes cannot be afforded or cannot be honest.
  *
+ * TIME BUCKET gets neither. The grid declines it and the Anytime strip answers
+ * alone — see the guard in `planLanes`.
+ *
  * Three things force focus, all for different reasons:
  *
  *   WEEK, always. At every derived default on every common monitor a week column
@@ -84,6 +87,19 @@ export function planLanes(
   { variant, fieldWidth, routines }: LaneOptions
 ): LanePlan {
   if (groupBy === 'none' || rows.length === 0) return NO_LANES;
+  /**
+   * Time of day does not become lanes, and does not become focus either — the
+   * grid declines the question outright and only the Anytime strip answers it.
+   * That is what `groupBySupport` promises with "Anytime only".
+   *
+   * y already IS the bucket, and `autoCorrectBucket` (planner-store.ts:596-602)
+   * forces a timed item's bucket to match its startTime — so the lanes are
+   * mutually exclusive on y BY CONSTRUCTION. Three lanes would be a literal
+   * staircase carrying no information y did not already carry, with two thirds
+   * of the field dead at every height. Shipped that way for one commit; the
+   * comment forbidding it was in view-options.ts while nothing implemented it.
+   */
+  if (groupBy === 'bucket') return NO_LANES;
 
   const groups = groupRows(rows, groupBy, { routines });
   if (groups.length === 0) return NO_LANES;

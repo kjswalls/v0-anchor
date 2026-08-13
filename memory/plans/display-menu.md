@@ -245,6 +245,31 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   when the timed rows were handed to the grouping pass, because that renders them inside
   the groups AND leaves the spine below intact. Assert the whole sequence: six rows, this
   order, once each.
+- **Time bucket gets NO answer on Schedule — not lanes, not focus.** y already is the
+  bucket, and `autoCorrectBucket` (`planner-store.ts:596-602`) forces a timed item's bucket
+  to match its `startTime`, so bucket lanes are mutually exclusive on y *by construction*:
+  a literal staircase with two thirds of the field dead at every height. 5b shipped
+  dividing by it for one commit — the rule was written in `view-options.ts` and implemented
+  nowhere, and `planLanes` never saw the value. A rule stated in a comment is not a rule.
+- **A raw arbitrary shadow and a var-shaped one land in DIFFERENT tailwind-merge groups.**
+  `cn('shadow-[var(--sched-shadow)]', 'shadow-[0_0_0_1px_var(--x)]')` emits BOTH — verified
+  by calling `twMerge` directly — and Tailwind then orders same-utility candidates by string
+  compare, so `'0'` sorts before `'v'` and the base wins. The receded hairline never
+  painted, in either theme, while the token had exactly one consumer and looked wired. Wrap
+  every composite shadow in its own `--sched-shadow-*` token so the two collide in one
+  group. `--sched-shadow-done` worked only because it was already var-shaped.
+- **A sticky box is constrained to its CONTAINING BLOCK — including the cap row.** The
+  week's cap row spent a commit in an 18px wrapper of its own: zero travel, on the one
+  variant that is *always* focus and where the caps are the only way to clear one. It is
+  the same rule `week-schedule.tsx` spells out for the pinned hour gutter. It also needs
+  `LANE_CAP_Z` (22) — above `WEEK_GUTTER_Z`, or the gutter's opaque background slides over
+  the captions on the first scroll.
+- **A wrapper that pads unconditionally around a component that renders `null`** moves the
+  whole view. `LaneCapRow` returns null when nothing is grouped; its `pt-6` did not.
+- **`preview` invalidates a block's EXTENTS, not its lane.** `const L = preview ? undefined
+  : layout` predates lanes and was right then. Once every block carries a band, dropping
+  the layout on pointer-down threw the block to the field's left edge across every lane
+  until pointer-up. `bandOnly()` keeps the x half and clears what the new extents stale.
 - **Lanes are one `layoutOverlaps` call PER LANE, not one call with lanes in it.** That is
   semantics, not tuning: two blocks in different lanes may share a time but never a column,
   so they must not cluster, column-pack or occlude each other. `LayoutOptions.root` supplies
