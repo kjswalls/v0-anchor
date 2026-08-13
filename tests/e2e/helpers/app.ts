@@ -61,6 +61,26 @@ export async function waitForAppReady(page: Page): Promise<void> {
   ).toBeVisible({ timeout: 20_000 });
 
   /**
+   * …and the planner store's INITIAL FETCH has landed.
+   *
+   * Hydration is not enough, and the difference is destructive rather than
+   * merely slow. `initializeStore` replaces `projects`, `habitGroups` and
+   * `items` wholesale when it resolves, so anything written in the window
+   * between mount and that resolve is silently discarded. A test that acted on
+   * "the page is interactive" could create a project, watch the row and its
+   * detail pane appear, and then find the list back at "No projects yet." — the
+   * failure reads as a broken create, not as a race, and it lands on whichever
+   * spec happens to interact soonest after a reload.
+   *
+   * That is exactly how organize.spec.ts failed on its first ever run: the one
+   * test in the file that did not do a second reload first.
+   */
+  await expect(
+    page.getByTestId('view-root').first(),
+    'planner data never arrived — the store never finished its initial fetch'
+  ).toHaveAttribute('data-loaded', 'true', { timeout: 20_000 });
+
+  /**
    * …and no full-screen scrim is still eating clicks.
    *
    * components/onboarding/onboarding-tour.tsx renders a `fixed inset-0 z-[100]`

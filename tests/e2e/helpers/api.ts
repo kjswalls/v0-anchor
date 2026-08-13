@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
-
-const BASE_URL = 'http://localhost:3000';
+import { BASE_URL, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
 
 /**
  * Fixtures created through the agent API.

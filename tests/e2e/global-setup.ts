@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './helpers/env';
+import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX, BASE_URL } from './helpers/env';
 import { passwordGrant, sessionCookies, seededViewState } from './helpers/session';
 
 /**
@@ -127,7 +127,11 @@ export default async function globalSetup() {
     cookies: sessionCookies(env.supabaseUrl, session),
     origins: [
       {
-        origin: 'http://localhost:3000',
+        // MUST match use.baseURL. A storageState origin that does not match is
+        // not an error — the localStorage seed is simply never applied, so every
+        // test starts on default view prefs instead of the seeded ones and the
+        // failures read as view bugs.
+        origin: BASE_URL,
         localStorage: [seededViewState()],
       },
     ],

@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.test', override: false, quiet: true });
 
 // eslint-disable-next-line import/first -- must follow dotenv.config()
-import { TEST_TZ, STORAGE_STATE } from './tests/e2e/helpers/env';
+import { TEST_TZ, STORAGE_STATE, BASE_URL, E2E_PORT } from './tests/e2e/helpers/env';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -50,7 +50,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     // retries is 0 locally, so `on-first-retry` would never capture a local
     // trace — precisely the runs where selector drift needs diagnosing.
     trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
@@ -93,8 +93,14 @@ export default defineConfig({
     // what real users hit). Locally, keep the dev server for fast iteration.
     // pnpm, not npm: this is a pnpm workspace and `@anchor-app/types` is a
     // `workspace:*` dependency that npm cannot resolve.
-    command: process.env.CI ? 'pnpm build && pnpm start' : 'pnpm dev',
-    url: 'http://localhost:3000',
+    // The port comes from BASE_URL so the server started and the server tested
+    // cannot drift — see tests/e2e/helpers/env.ts on why that matters in a
+    // multi-worktree checkout, where `reuseExistingServer` will otherwise adopt
+    // whichever branch's dev server owns the port.
+    command: process.env.CI
+      ? `pnpm build && pnpm start --port ${E2E_PORT}`
+      : `pnpm dev --port ${E2E_PORT}`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: (process.env.CI ? 300 : 120) * 1000,
     // Env vars (NEXT_PUBLIC_SUPABASE_URL, TEST_USER_EMAIL, etc.) come from

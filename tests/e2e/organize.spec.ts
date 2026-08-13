@@ -231,6 +231,14 @@ test.describe('organize — projects, types and groups', () => {
     try {
       await reloadApp(page);
       await openConsole(page, 'Habit groups');
+      // A DESTINATION HAS TO EXIST, and on this account none does. removeHabitGroup
+      // sends members to `habitGroups.find(g => g.id !== deleted)?.name ?? 'Personal'`,
+      // and the dedicated e2e user owns zero habit groups — so the fallback fires
+      // and names a group with no row, which is a real behaviour (covered in
+      // tests/unit/container-ids.test.ts) but not the one this test is about.
+      // Creating a sibling first makes the reassignment observable instead of
+      // depending on whatever the shared account happens to hold.
+      await createLabel(page, 'group', scope.title('Haven'));
       await createLabel(page, 'group', doomed);
 
       await page.getByTestId('group-delete').click();
@@ -254,6 +262,11 @@ test.describe('organize — projects, types and groups', () => {
         .locator('[data-testid="group-row"]')
         .filter({ hasText: destination! })
         .first();
+      // Asserted before reading, so a missing destination fails in 10s naming
+      // the row it wanted, rather than hanging the whole test to its 120s
+      // timeout inside textContent().
+      await expect(destRow, `no row for the destination the copy named: ${destination}`)
+        .toBeVisible();
       const before = Number(/(\d+)\s*$/.exec((await destRow.textContent())!)![1]);
 
       await page.getByTestId('category-delete-confirm').click();
