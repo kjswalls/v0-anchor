@@ -190,7 +190,11 @@ function eventLabel(e: ItemEvent): string {
   if (e.action === 'create') return 'Created';
   if (e.action === 'delete') return 'Deleted';
   const payload = e.payload ?? {};
-  const keys = Object.keys(payload);
+  // The container ids ride along with every re-file (migration 027) and are an
+  // internal mirror of the name beside them — listing both turns "Updated
+  // project" into "Updated project, projectId", which names a column the user
+  // has never seen. Dropped from the LABEL only; the payload keeps them.
+  const keys = Object.keys(payload).filter((k) => k !== 'projectId' && k !== 'groupId');
   if ('assignee' in payload) {
     return payload.assignee ? `Assigned to ${payload.assignee}` : 'Unassigned';
   }

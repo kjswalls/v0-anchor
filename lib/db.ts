@@ -472,9 +472,79 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
   return (data as ItemRow[]).map(itemFromRow);
 }
 
+/**
+ * Resolve a container NAME to its id, server-side (migration 027).
+ *
+ * THE AGENT PATH HAS NO STORE. Every client write goes through planner-store's
+ * projectIdFor/groupIdFor, which read containers already in memory — but
+ * /api/agent/tasks and /api/agent/habits never touch Zustand, and the create and
+ * update schemas deliberately refuse an agent-supplied id (an agent holds no
+ * id↔name map, so a body carrying both could only disagree with itself). Without
+ * this, an agent naming a project got a row with the name and a NULL id, which
+ * is invisible to the id-keyed rename fan-out — the exact orphaning Phase 0
+ * exists to remove.
+ *
+ * Returning null for an unmatched name is a RESULT, not a failure, and callers
+ * must write it: an agent moving an item to a container that has no row has to
+ * clear the old id, or the fan-out will later drag the item back into the
+ * container it was moved out of.
+ *
+ * A missing table (pre-027 clone, rolled-back migration) yields undefined, which
+ * callers translate into "write no id column at all" — the PGRST204 guard.
+ */
+async function lookupContainerId(
+  supabase: DbClient,
+  table: 'projects' | 'habit_groups',
+  name: string,
+  userId?: string,
+): Promise<string | null | undefined> {
+  // Filters BEFORE .limit(): supabase-js returns a PostgrestTransformBuilder
+  // from limit(), and that has no .eq() — chaining the other way round throws
+  // at runtime, and DbClient is `any`, so nothing would have flagged it.
+  //
+  // Not filtered on deleted_at, matching 027's backfill: (user_id, name) is
+  // unique across deleted rows too, so there is at most one candidate, and
+  // keeping the link is what lets a Trash restore reconnect its members.
+  try {
+    let query = supabase.from(table).select('id').eq('name', name);
+    if (userId) query = query.eq('user_id', userId);
+    const { data, error } = await query.limit(1);
+    // Distinguish "no such container" (null — clear the id) from "cannot ask"
+    // (undefined — leave the column out of the write entirely).
+    if (error) return undefined;
+    return data?.[0]?.id ?? null;
+  } catch {
+    // Creating an item must never fail because a container lookup did. The
+    // worst case here is the pre-027 behaviour — a row with a name and no id —
+    // which is recoverable by re-running the migration's backfill. A thrown
+    // lookup would instead lose the item the user just typed.
+    return undefined;
+  }
+}
+
+/**
+ * Fill in the container id for a create, when a name is present and no id is.
+ * The store already resolves its own, so this only ever fires for agent writes.
+ */
+async function withResolvedContainer(
+  supabase: DbClient,
+  userId: string,
+  item: Item,
+): Promise<Item> {
+  if (item.type === 'habit') {
+    if (!item.group || item.groupId !== undefined) return item;
+    const id = await lookupContainerId(supabase, 'habit_groups', item.group, userId);
+    return id === undefined ? item : { ...item, groupId: id ?? undefined };
+  }
+  if (!item.project || item.projectId !== undefined) return item;
+  const id = await lookupContainerId(supabase, 'projects', item.project, userId);
+  return id === undefined ? item : { ...item, projectId: id ?? undefined };
+}
+
 export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('items').insert(itemToRow(userId, item));
+  const linked = await withResolvedContainer(supabase, userId, item);
+  const { error } = await supabase.from('items').insert(itemToRow(userId, linked));
   if (error) throw error;
   const dbType = itemDbType(item);
   notifyItemChange(userId, dbType, {
@@ -494,6 +564,22 @@ export async function updateItem(
   const row = updatesToRow(type, updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
+  // A NAME write with no id alongside it is an agent re-file — see
+  // lookupContainerId. Leaving the old id in place here is worse than the
+  // pre-027 behaviour it replaces: the fan-out treats the id as truth, so the
+  // next rename of the PREVIOUS container would rewrite this item's name and
+  // pull it back into a project it was explicitly moved out of. The store
+  // always sends both halves, so this never fires for a client write.
+  const nameKey = type === 'habit' ? 'group' : 'project';
+  const idKey = type === 'habit' ? 'group_id' : 'project_id';
+  if (nameKey in row && !(idKey in row)) {
+    const name = row[nameKey];
+    const resolved =
+      typeof name === 'string' && name
+        ? await lookupContainerId(supabase, type === 'habit' ? 'habit_groups' : 'projects', name, userId)
+        : null;
+    if (resolved !== undefined) row[idKey] = resolved;
+  }
   const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
   if (error) throw error;
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });

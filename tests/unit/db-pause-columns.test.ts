@@ -10,6 +10,15 @@ vi.mock('@/lib/supabase', () => ({
         inserts.push({ table, payload });
         return Promise.resolve({ error: null });
       },
+      // createItem resolves a container name to its id before inserting
+      // (migration 027) and the habit fixture below names a group, so this path
+      // is reached. Answering "no such row" keeps these assertions about the
+      // PAUSE columns and nothing else — db-container-resolve.test.ts owns the
+      // resolution itself.
+      select: () => {
+        const chain = { eq: () => chain, limit: () => Promise.resolve({ data: [], error: null }) };
+        return chain;
+      },
     }),
   }),
 }));

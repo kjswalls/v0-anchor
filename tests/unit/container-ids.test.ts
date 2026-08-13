@@ -103,6 +103,7 @@ const items = (): Item[] => [
 const find = (id: string) => store().items.find((i) => i.id === id)!;
 
 type AddTaskArg = Parameters<ReturnType<typeof usePlannerStore.getState>['addTask']>[0];
+type AddHabitArg = Parameters<ReturnType<typeof usePlannerStore.getState>['addHabit']>[0];
 
 beforeEach(async () => {
   store().clearStore();
@@ -187,9 +188,21 @@ describe('a name write resolves the id', () => {
     expect((find('task-member') as { projectId?: string }).projectId).toBeUndefined();
   });
 
+  it('files a habit by name and stores the id alongside', () => {
+    store().addHabit({ title: 'New habit', group: 'Wellness', repeatFrequency: 'daily' } as AddHabitArg);
+    const added = store().items.find((i) => i.title === 'New habit') as { groupId?: string };
+    expect(added.groupId).toBe('gr-well');
+  });
+
   it('resolves a habit group case-insensitively, as the group surfaces do', () => {
-    store().updateHabit('habit-member', { group: 'wellness' });
-    expect((find('habit-member') as { groupId?: string }).groupId).toBe('gr-well');
+    // The habit starts on gr-well, so the assertion is that the id MOVED. An
+    // earlier version of this test asserted it was still 'gr-well' — the value
+    // the fixture already held — and stayed green with the whole resolution
+    // deleted.
+    store().addHabitGroup('Focus', '🎯');
+    const focus = store().habitGroups.find((g) => g.name === 'Focus')!;
+    store().updateHabit('habit-member', { group: 'focus' });
+    expect((find('habit-member') as { groupId?: string }).groupId).toBe(focus.id);
   });
 });
 

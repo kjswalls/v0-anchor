@@ -378,9 +378,12 @@ export const TaskCreateSchema = z
     // surface speaks in NAMES — that is the entire point of the legacy projection
     // — and an agent holds no id↔name map, so a body carrying both could only
     // disagree with itself. Accepting one would mean choosing which half wins on
-    // every drifted POST. `project` stays the agent's field; lib/db.ts resolves
-    // the id from it server-side, so an agent-created item is linked correctly
-    // without ever naming an id.
+    // every drifted POST. `project` stays the agent's field; `lookupContainerId`
+    // in lib/db.ts resolves the id from it on the create AND update paths, so an
+    // agent-filed item is linked correctly without ever naming an id. That
+    // resolver is what makes this omission safe rather than lossy — omitting the
+    // field without it silently strips every agent write out of the rename
+    // fan-out, which is the bug Phase 0 exists to remove.
     .omit({ pausedAt: true, pausedUntil: true, projectId: true })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
