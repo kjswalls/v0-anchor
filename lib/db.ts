@@ -62,6 +62,10 @@ interface ItemRow {
   // pausing (migration 024) — shared by every type
   paused_at?: string | null;
   paused_until?: string | null;
+  // container id (Phase B) — shared by every type, because Project and Habit
+  // Group are one axis; which table the id points into is decided by the item's
+  // type, exactly as `project` vs `group` already is.
+  container_id?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -76,6 +80,7 @@ function itemFromRow(row: ItemRow): Item {
       title: row.title,
       priority: (row.priority ?? undefined) as Task['priority'],
       project: row.project ?? undefined,
+      containerId: row.container_id ?? undefined,
       startDate: row.start_date ?? undefined,
       status: row.status as Task['status'],
       timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
@@ -106,6 +111,7 @@ function itemFromRow(row: ItemRow): Item {
       id: row.id,
       title: row.title,
       group: row.group ?? '',
+      containerId: row.container_id ?? undefined,
       streak: row.streak ?? 0,
       status: row.status as Habit['status'],
       completedDates: row.completed_dates ?? [],
@@ -130,6 +136,7 @@ function itemFromRow(row: ItemRow): Item {
     title: row.title,
     priority: (row.priority ?? undefined) as Task['priority'],
     project: row.project ?? undefined,
+    containerId: row.container_id ?? undefined,
     startDate: row.start_date ?? undefined,
     status: row.status as Task['status'],
     timeBucket: (row.time_bucket ?? undefined) as Task['timeBucket'],
@@ -185,6 +192,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       type: 'habit',
       title: item.title,
       group: item.group,
+      container_id: item.containerId ?? null,
       streak: item.streak,
       status: item.status,
       completed_dates: item.completedDates,
@@ -211,6 +219,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     title: item.title,
     priority: item.priority ?? null,
     project: item.project ?? null,
+    container_id: item.containerId ?? null,
     start_date: item.startDate ?? null,
     status: item.status,
     time_bucket: item.timeBucket ?? null,
@@ -255,6 +264,11 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('title' in updates) row.title = updates.title;
   if ('priority' in updates) row.priority = updates.priority ?? null;
   if ('project' in updates) row.project = updates.project ?? null;
+  // The stable half of the same reference (Phase B). Written independently of
+  // `project` rather than derived from it here: this function is pure and has no
+  // container list to resolve a name against, and a partial patch that carries
+  // one without the other is legitimate — undo sends whichever fields differ.
+  if ('containerId' in updates) row.container_id = updates.containerId ?? null;
   if ('startDate' in updates) row.start_date = updates.startDate ?? null;
   if ('status' in updates) row.status = updates.status;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
@@ -290,6 +304,10 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
   if ('group' in updates && updates.group != null) row.group = updates.group;
+  // See the task list. Nullable here even though `group` is not: the name is
+  // NOT NULL by the legacy table's semantics, but the id is genuinely absent
+  // until the backfill runs and for any group row that no longer exists.
+  if ('containerId' in updates) row.container_id = updates.containerId ?? null;
   if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
   if ('completedDates' in updates && updates.completedDates != null) row.completed_dates = updates.completedDates;

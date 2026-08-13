@@ -43,10 +43,10 @@ import type { ItemTypeConfig } from './item-registry';
  * exist; `CONTAINER_KINDS` is a closed record so adding a fifth is a type error
  * at every exhaustive switch rather than a silent fallthrough.
  *
- * The table names and `container_id` are not here either. They belong to the
- * phase that adds the column (see memory/plans/display-menu.md, Phase B, which
- * is the SAME migration as organize-console.md's Phase 0) — a field no code
- * reads is a field that drifts.
+ * The TABLE NAMES are not here either. Phase B added `findContainer` — the
+ * name→row join `container_id` rests on — but the tables themselves stay out:
+ * nothing in this module opens a connection, and a config field no code reads
+ * is a field that drifts.
  */
 
 /** Kinds an item answers with. One per item; the filter/group axis. */
@@ -268,3 +268,34 @@ export const sameContainerRef = (a: string, b: string): boolean => foldRef(a) ==
 /** The bare names of one kind's half of a mixed selection. */
 export const namesOfKind = (refs: readonly string[], kind: ClassifyKind): string[] =>
   refs.filter((ref) => containerKindOf(ref) === kind).map(containerName);
+
+/* ── name → row (Phase B) ───────────────────────────────────────────────────*/
+
+/** Everything this module needs of a container row. Projects and habit groups both satisfy it. */
+export interface ContainerRowLike {
+  id: string;
+  name: string;
+}
+
+/**
+ * The container row a NAME refers to, or undefined.
+ *
+ * The join Phase B rests on: `items.project` / `items."group"` hold names, and
+ * `container_id` holds the row id, so every write of one has to resolve the
+ * other. It folds per the kind's policy, which is the whole reason this is not
+ * an inline `find` at each call site — a habit stored 'personal' must resolve
+ * the group row named 'Personal', or the backfill and the dual-write disagree
+ * about the same habit.
+ *
+ * Takes the rows rather than reaching for them: this module is pure and
+ * store-free, like lib/filters.ts and lib/day-items.ts. Which STORE SLICE holds
+ * a kind's rows is deliberately not knowledge the registry carries.
+ */
+export function findContainer<T extends ContainerRowLike>(
+  kind: ClassifyKind,
+  name: string | null | undefined,
+  rows: readonly T[]
+): T | undefined {
+  if (!name) return undefined;
+  return rows.find((row) => sameContainerName(kind, row.name, name));
+}
