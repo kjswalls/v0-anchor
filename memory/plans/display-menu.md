@@ -127,7 +127,16 @@ gives way to the group headings rather than sitting above them, so grouping by T
 no longer renders "Anytime › Anytime".
 | **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | **shipped** `dbe2960` |
 | **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | **shipped** `2fe86a0` |
-| **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | |
+| **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | **app side shipped** `00be1ce` + `611c6c4`; **migration 025 authored, NOT applied** |
+
+**B's migration has not run.** `supabase/migrations/025_container_id.sql` is written
+and idempotent but was never applied — the Supabase MCP server is unauthorized and
+`.mcp.json`'s project-scoped entry is pending approval. **Apply it before deploying
+the app**: the order is asymmetric. Pre-app is safe (the column reads as `undefined`);
+post-app is not, because the app already dual-writes and PostgREST rejects a whole row
+on an unknown column. Nothing is verified against a real database yet — the backfill's
+two predicates in particular (`p.name = i.project`, `lower(g.name) = lower(i."group")`)
+have only been reasoned about.
 
 **A shipped four kinds, not five.** `role: 'classify' \| 'gate'` over projects +
 habit groups (classify) and routines + programs (gate); `item_types` stays out per
@@ -378,6 +387,32 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   `app-shell.tsx:321` all compare `t.project === project.name`. Projects do not fold, so
   routing them through the registry is churn with no behaviour delta — but if
   `project.caseFold` ever flips, these five are the sites that will NOT follow.
+- **A fixture has to REACH the branch it names.** Two of these now. A′'s orphan sweep
+  folds on both sides and the fixture differed on one. B's "does not sweep up another
+  container's items when renaming ONTO its name" seeded that item WITH a `containerId`,
+  so it took the id branch and never reached the name comparison the test is about —
+  green under the exact mutation it is named for. Both were caught by mutation runs,
+  neither by review. When a predicate has two branches, the fixture must say which one
+  it is exercising.
+- **`db-allowlists.test.ts` proves a field is not DROPPED, not where it LANDS.** Adding
+  `containerId` to the shapes turned it red before `lib/db.ts` was touched — it did its
+  job. But it probes with a truthy value and only counts keys, so a guard copied from
+  `group` (`&& updates.containerId != null`) passes it while making "remove this item
+  from its project" a no-op that reverts on reload. Any nullable field needs its own
+  clearing case.
+- **`containerId` is not agent-writable, and that is a security call as much as a
+  consistency one.** `.omit()`ed from both create schemas, absent from both update
+  schemas. During dual-write the id and the name are two spellings of one fact so a body
+  carrying both can contradict itself — but also, an id is guessable where a name is
+  not, and RLS covers `items`, not the value in that column. Agents send the name; the
+  route resolves the id.
+- **`items.container_id` has no FK, on purpose.** The referent is one of two tables
+  chosen by `items.type`, which one foreign key cannot express. A CHECK-plus-two-columns
+  design loses the one-axis property; a per-row validation trigger costs a lookup on
+  every insert to enforce what the app resolves from its loaded container list anyway.
+  The cost is a danglable id — which is exactly the state the NAME column has always
+  been in, so it adds no new class of inconsistency. Migration 025 carries the repair
+  query.
 - **`containerId` must enter `taskShape` AND `habitShape`** in `packages/types` before Phase
   B, or undo silently reverts a container change. `diffItem` (`planner-store.ts:576-584`)
   iterates `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside
