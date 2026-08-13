@@ -6,8 +6,9 @@ copies of the habits-vanish bug underneath them; expose grouping (which exists i
 but has no UI) and ordering (which does not exist at all) on every surface that can honour
 them.
 
-**Status (2026-08-12):** Phases 0–5a shipped on `feat/display-menu-impl`, each followed by
-an adversarial review. 5b (Schedule lanes + Week focus/recede) is next.
+**Status (2026-08-12):** Phases 0–5b and Step 6's A + A′ shipped on
+`feat/display-menu-impl`, each followed by an adversarial review. Phase B (`container_id`)
+is what remains, and it is the one phase that needs the database.
 
 Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
@@ -124,9 +125,22 @@ exist. Verified against `a1c03c2`:
 **Carried into 5b from the 5a review and done:** the strip's own "Anytime" heading now
 gives way to the group headings rather than sitting above them, so grouping by Time bucket
 no longer renders "Anytime › Anytime".
-| **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
-| **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | |
+| **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | **shipped** `dbe2960` |
+| **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | **shipped** `2fe86a0` |
 | **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | |
+
+**A shipped four kinds, not five.** `role: 'classify' \| 'gate'` over projects +
+habit groups (classify) and routines + programs (gate); `item_types` stays out per
+decision 9. The seam is types, not convention: `ClassifyKind` is what a ref can name
+and what `containerRefOf` returns, `GateKind` is what `ScopeKind` now *is* (aliased,
+not re-declared).
+
+**A′ turned out to be mostly a STORE phase, not a data phase.** Normalizing stored
+data is a migration and belongs to B. What A′ fixed was the app-side inconsistency:
+three lookups folded by hand while the two verbs that *repair* references compared
+exactly, so `removeHabitGroup` left a habit stored as `personal` pointing at a
+deleted `Personal`. It also took `GroupSection`'s glyph off the label — see the
+gotcha below.
 
 Phases 0–2 are pure correctness and are worth landing even if the redesign stops.
 
@@ -339,6 +353,31 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   version and silently discarded the work. Copy to the scratchpad first, or stage before
   mutating.
 
+- **A label is not an identity, and `GroupSection` treated it as one.** It matched the
+  heading TEXT against projects first and habit groups second, so a project named
+  "Morning" put its icon on the Time bucket › Morning heading, and (once the braindump
+  carries habits) a habit group would borrow a same-named project's icon — the seeds
+  disagree on two of three: 🧘/💚 Wellness, 🏠/⭐ Personal. It takes `groupKey`
+  (`RowGroup.key`, which carries the namespace) now. **Why it went unnoticed:** a stored
+  EMOJI is not an icon token, so `resolveCategoryIcon` falls through to the name-derived
+  icon either way — only a *picked* `icon:Anchor` ever reached the wrong heading. Any
+  test of this has to pick an icon explicitly or it asserts nothing.
+- **A fold applied on BOTH sides needs a fixture that differs on both.**
+  `cleanupOrphanedReferences` folds building its set of live names and folds again
+  asking about the item. A habit stored `personal` against a group stored `Personal`
+  catches an unfolded SET and leaves an unfolded LOOKUP green — `'personal'` already
+  equals its own folded form. Both spellings, always. Caught by its own mutation run,
+  not by review; this is the sixth distinct shape of tautological test in this project.
+- **`sameContainerName(kind, …)` is the store's API; `foldRef` is the ref path's.** They
+  are the same policy (`foldRef` is built from `foldContainerName`) because the store
+  holds BARE NAMES — `items.group` is `'personal'`, `habitGroups[i].name` is
+  `'Personal'` — and nine identity lookups in `planner-store.ts` compare those directly.
+  A ref-only API would have left every one of them spelling its own comparison.
+- **View-layer project filters were deliberately left exact.** `week-buckets.tsx:120`,
+  `project-block.tsx:143`, `day-schedule.tsx:232`, `day-buckets.tsx:221` and
+  `app-shell.tsx:321` all compare `t.project === project.name`. Projects do not fold, so
+  routing them through the registry is churn with no behaviour delta — but if
+  `project.caseFold` ever flips, these five are the sites that will NOT follow.
 - **`containerId` must enter `taskShape` AND `habitShape`** in `packages/types` before Phase
   B, or undo silently reverts a container change. `diffItem` (`planner-store.ts:576-584`)
   iterates `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside
