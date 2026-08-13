@@ -387,6 +387,16 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   `app-shell.tsx:321` all compare `t.project === project.name`. Projects do not fold, so
   routing them through the registry is churn with no behaviour delta — but if
   `project.caseFold` ever flips, these five are the sites that will NOT follow.
+- **A mutation run with a FILE FILTER does not measure the suite, and must not be
+  reported as if it did.** A′'s commit claims flipping `project.caseFold` "turns five
+  tests red across two files". It turns **16 red across 7** — the two extra files at
+  that commit were `grouping.test.ts` and `filters-pass-through.test.ts`, and Phase B's
+  schedule-lane render tests joined later, because folding project keys MERGES two lanes
+  and the lane assertions notice. The number was wrong because the run was
+  `vitest run <the two files I was editing>`. The code was better pinned than claimed,
+  which is the benign direction — but the same habit reported in the other direction is
+  a phase that looks verified and is not. **Mutation runs go through the whole suite.**
+  Found by the Step 6 review; it was the only one of 23 findings to survive.
 - **A fixture has to REACH the branch it names.** Two of these now. A′'s orphan sweep
   folds on both sides and the fixture differed on one. B's "does not sweep up another
   container's items when renaming ONTO its name" seeded that item WITH a `containerId`,

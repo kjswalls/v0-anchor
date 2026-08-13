@@ -95,10 +95,17 @@ export interface ContainerKindConfig {
    * the user and compared exactly everywhere else, so folding it would make it
    * the odd one out.
    *
-   * This flag is the WHOLE policy — `foldRef` is the only expression of it, and
-   * every comparison and every group key goes through that. Phase A′ (which
-   * normalizes the stored data, and so changes which colour resolves for an
-   * account holding both `Work` and `work`) has exactly one place to change.
+   * This flag is the WHOLE policy: it is read at exactly one site,
+   * `foldContainerName`, which `foldRef` and `sameContainerName` are both built
+   * from — so every comparison, every group key and every store lookup answers
+   * through it.
+   *
+   * What that buys is a one-line change if the policy ever moves. It is NOT the
+   * same as the stored data being normalized: an account holding both `Work` and
+   * `work` as habit groups still holds two rows, and folding only decides which
+   * one a name resolves to. Merging them is a data decision with a visible
+   * consequence (which colour and which icon survive) and belongs to whoever
+   * runs the migration, not here.
    */
   caseFold: boolean;
 }
