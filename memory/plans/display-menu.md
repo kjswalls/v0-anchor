@@ -6,10 +6,31 @@ copies of the habits-vanish bug underneath them; expose grouping (which exists i
 but has no UI) and ordering (which does not exist at all) on every surface that can honour
 them.
 
-**Status (2026-08-12):** Phases 0–5b and Step 6's A + A′ shipped on
-`feat/display-menu-impl`, each followed by an adversarial review. **The plan is complete
+**Status (2026-08-15): LANDED ON `main`.** Phases 0–5b and Step 6's A + A′ shipped on
+`feat/display-menu-impl`, each followed by an adversarial review, and the branch
+fast-forwarded `main` from `a1c03c2` to `f68a3d1` — 27 commits. **The plan is complete
 here** — Phase B belongs to `feat/organize-console`, which shipped it as migration 027
 plus its app half. See the ledger for what that means and what NOT to rebuild.
+
+**Merge gate, for whoever lands the next branch off this base.** The branch had never
+been pushed, so that was the first CI run over all 27 commits. What was checked: 944
+unit tests over 56 files, lint clean, `packages/types` dist rebuilt with no drift (the
+one thing CI actually gates besides vitest), and `next build` green. What was NOT
+checked, because nothing in this repo checks it: **types.** `next.config.mjs` sets
+`typescript: { ignoreBuildErrors: true }` and the workflow runs only the dist check and
+vitest, so `tsc --noEmit` reports 30 errors that have been accumulating unobserved. All
+30 predate this branch — verified file-by-file against the touched list, and for
+`lib/planner-types.ts` (the one overlap) the erroring declarations are byte-identical to
+`main`, just shifted 27 lines. Two are live: `edit-project-dialog.tsx:147,303` compares
+`repeatFrequency` against `'weekly'`, which is not in the union, so those branches are
+dead code.
+
+**`DEFAULT_PROJECTS` / `DEFAULT_HABIT_GROUPS` do not satisfy their own declared types** —
+both are missing `id` (`planner-types.ts:114-124`). That is the same defect
+organize-console's Phase 0 met from the data side: 223 of its 228 unlinked group
+references belong to one account with **zero `habit_groups` rows**, because those groups
+have only ever existed as a client-side constant. The type error and the backfill miss
+are one bug seen from two ends; Phase 6 of that plan is where it resolves.
 
 Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
