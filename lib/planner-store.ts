@@ -54,6 +54,8 @@ import {
   updateProgram as dbUpdateProgram,
   deleteProgram as dbDeleteProgram,
   restoreProgram as dbRestoreProgram,
+  itemDbType,
+  type TrashEntry,
 } from './db';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -321,6 +323,20 @@ interface PlannerStore {
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
   removeHabitGroup: (id: string) => void;
+
+  /**
+   * Put one row of the Trash back (Organize console, Phase 4).
+   *
+   * One action for all five kinds rather than five, because the hard parts are
+   * identical and are all about HISTORY: decision 3 says a restore is a normal
+   * entry and ⌘Z re-deletes it, and that only holds if the label is armed
+   * before the single set() that carries every slice being touched. See the
+   * implementation for the two traps.
+   *
+   * Takes the whole TrashEntry, not an id: the bin lives in a local hook and
+   * never enters the store, so this is the only way the entity reaches it.
+   */
+  restoreFromTrash: (entry: TrashEntry) => void;
   getHabitGroupEmoji: (name: string) => string;
   getHabitGroupColor: (name: string) => string;
 
@@ -556,6 +572,21 @@ let isUndoRedoAction = false;
 let actionLog: ActionLogEntry[] = [];
 let pendingActionLabel: string | null = null;
 let pendingActionReceipt: string | undefined;
+
+/**
+ * What a restored row is CALLED in its history entry.
+ *
+ * The bin is the one list in the app that mixes kinds, so "Restore: Morning" is
+ * ambiguous in a way no other label is — and this string is what the user reads
+ * in the history popover when deciding what ⌘Z is about to take back.
+ */
+const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
+  item: 'item',
+  project: 'project',
+  group: 'habit group',
+  routine: 'routine',
+  program: 'program',
+};
 
 // Set the label for the next action that will be saved to history
 export const setNextActionLabel = (label: string, receipt?: string) => {
@@ -2393,6 +2424,130 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) dbDeleteHabitGroup(userId, id).catch(console.error);
+      },
+
+      restoreFromTrash: (entry) => {
+        const userId = get().userId;
+        const state = get();
+
+        /**
+         * The next state, computed BEFORE anything is labelled.
+         *
+         * TRAP A — an armed label with no state change. setNextActionLabel
+         * writes a module-level variable that only saveToHistory consumes, and
+         * saveToHistory only runs when the subscriber sees the snapshot JSON
+         * actually move. So labelling a restore that turns out to be a no-op
+         * (the row is already back — a double-click, a stale bin) leaves
+         * "Restore project: Work" armed, and the user's next unrelated edit is
+         * logged, undone and receipted under that name. Returning early here,
+         * before the label, is what makes that unreachable.
+         */
+        const next = (() => {
+          switch (entry.kind) {
+            case 'item': {
+              const item = entry.entity as Item;
+              if (state.items.some((i) => i.id === item.id)) return null;
+              // The co-deleted subtasks land in the SAME projection rebuild —
+              // db.restoreItem's cascade puts them back in the database, and a
+              // parent that reappeared with an empty checklist until the next
+              // reload would read as the subtasks having been lost.
+              const back = [item, ...(entry.children ?? [])].filter(
+                (i) => !state.items.some((existing) => existing.id === i.id)
+              );
+              if (back.length === 0) return null;
+              return projectItems([...state.items, ...back]);
+            }
+            case 'project': {
+              const project = entry.entity as Project;
+              if (state.projects.some((p) => p.id === project.id)) return null;
+              // Members re-file in the same set(). The link never left the
+              // database — removeProject clears the store's copy and writes
+              // nothing to items — so this is the store catching up with what a
+              // reload would have shown anyway, not a new claim about the data.
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                projects: [...state.projects, project],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type !== 'habit'
+                          ? { ...i, project: project.name, projectId: project.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'group': {
+              const group = entry.entity as HabitGroupType;
+              if (state.habitGroups.some((g) => g.id === group.id)) return null;
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                habitGroups: [...state.habitGroups, group],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type === 'habit'
+                          ? { ...i, group: group.name, groupId: group.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'routine': {
+              const routine = entry.entity as Routine;
+              if (state.routines.some((r) => r.id === routine.id)) return null;
+              // itemIds arrive already hydrated from the join tables — see
+              // listDeleted on why an empty array here would hard-delete the
+              // very membership the soft delete preserved.
+              return { routines: [...state.routines, routine] };
+            }
+            case 'program': {
+              const program = entry.entity as Program;
+              if (state.programs.some((p) => p.id === program.id)) return null;
+              return { programs: [...state.programs, program] };
+            }
+          }
+        })();
+        if (!next) return;
+
+        setNextActionLabel(`Restore ${TRASH_NOUNS[entry.kind]}: ${entry.name}`);
+
+        /**
+         * TRAP B — exactly ONE set(). A second one produces a second history
+         * entry that the label has already been spent on, so it logs as
+         * "Unknown action" and ⌘Z undoes only half the restore: the container
+         * comes back trashed while its members stay re-filed. Every slice this
+         * touches is in the object above for that reason.
+         *
+         * A restored container releases its members' suppression, so this rides
+         * withReleaseGrace exactly as removeRoutine and updateRoutine do.
+         */
+        if (entry.kind === 'routine' || entry.kind === 'program') {
+          withReleaseGrace(() => set(next));
+        } else {
+          set(next);
+        }
+
+        if (!userId) return;
+        switch (entry.kind) {
+          case 'item':
+            dbRestoreItem(entry.id, itemDbType(entry.entity as Item)).catch(console.error);
+            break;
+          case 'project':
+            dbRestoreProject(userId, entry.id).catch(console.error);
+            break;
+          case 'group':
+            dbRestoreHabitGroup(userId, entry.id).catch(console.error);
+            break;
+          case 'routine':
+            dbRestoreRoutine(userId, entry.id).catch(console.error);
+            break;
+          case 'program':
+            dbRestoreProgram(userId, entry.id).catch(console.error);
+            break;
+        }
       },
 
       getHabitGroupEmoji: (name) => {

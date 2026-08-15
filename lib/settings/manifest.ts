@@ -674,6 +674,18 @@ export const DESTINATIONS: DestinationRecord[] = [
     section: 'programs',
   },
   {
+    id: 'dest.trash',
+    label: 'Recently deleted',
+    where: 'Organize',
+    // Labelled by what someone in trouble would type, which is rarely "trash".
+    // The other five records name a thing you are looking for; this one is
+    // searched from a different emotional place and needs the vocabulary of
+    // that moment — "restore", "undelete", "recover", "gone".
+    keywords: ['trash', 'deleted', 'restore', 'undelete', 'recover', 'bin', 'gone', 'lost'],
+    action: 'organize',
+    section: 'trash',
+  },
+  {
     id: 'dest.openclaw',
     label: 'Connect OpenClaw',
     where: '/connect',

@@ -15,6 +15,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const clearStore = usePlannerStore((s) => s.clearStore);
   const { setTheme } = useTheme();
   const hydratedUserId = useRef<string | null>(null);
+  /** Its sibling for the planner load itself — see loadPlanner. */
+  const loadedUserId = useRef<string | null>(null);
 
   // Apply animations setting to <html> element
   const animationsEnabled = usePlannerStore((s) => s.animationsEnabled);
@@ -106,20 +108,59 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    /**
+     * Load the planner ONCE per account, for the same reason hydrateSettings
+     * above dedupes — and with more at stake.
+     *
+     * Supabase re-emits SIGNED_IN on every hidden→visible transition
+     * (GoTrueClient's `_recoverAndRefresh` runs on a visibility change and
+     * announces any session still inside its expiry margin), and broadcasts it
+     * across tabs on top of that. So a plain tab switch used to re-enter
+     * initializeStore, which opens by clearing `historyStack`, `actionLog` and
+     * `historyIndex` and lands `canUndo: false`.
+     *
+     * The whole in-session undo stack, gone on a tab switch. That matters here
+     * more than anywhere: ⌘Z is the entire safety net the Organize console's
+     * delete confirms promise ("⌘Z brings it back now"), and Phase 4's Trash
+     * leans on it again for restore. It also reopens the load window — the
+     * refetch replaces `items`/`projects`/`routines` wholesale, so a rename
+     * committed while it is in flight is silently reverted to pre-fetch data.
+     *
+     * Same escape hatch as hydrateSettings: a DIFFERENT user still loads, so an
+     * account switch with no intervening SIGNED_OUT is not stranded on the
+     * previous account's data.
+     */
+    const loadPlanner = (userId: string) => {
+      if (loadedUserId.current === userId) return;
+      loadedUserId.current = userId;
+      // UNLATCHED ON FAILURE, and this half matters as much as the guard. A
+      // failed load is a designed outcome, not a freak one: fetchRoutines
+      // rethrows deliberately so a blip fails the WHOLE load rather than
+      // arriving with an empty routines array (which would make every member of
+      // a paused routine resolve as live and hand the auto-age sweep a pile of
+      // suddenly-unprotected items). Before this guard existed, the next
+      // SIGNED_IN retried. Latching unconditionally would have turned one
+      // transient failure into an app that never loads again until reload.
+      initializeStore(userId).catch(() => {
+        if (loadedUserId.current === userId) loadedUserId.current = null;
+      });
+    };
+
     // Check current session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        initializeStore(session.user.id);
+        loadPlanner(session.user.id);
         hydrateSettings(session.user.id);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        initializeStore(session.user.id);
+        loadPlanner(session.user.id);
         hydrateSettings(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
+        loadedUserId.current = null;
         clearStore();
         // clearStore only resets the planner. The morning store holds
         // account-owned settings too — including the auto-age switch, which

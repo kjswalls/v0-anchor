@@ -7,6 +7,7 @@ import {
   createTestHabit,
   cleanupTestData,
   cleanupTestLabels,
+  cleanupTestCollections,
   cleanupByTitlePrefix,
   collectionScope,
 } from './helpers/api';
@@ -302,6 +303,157 @@ test.describe('organize — projects, types and groups', () => {
       await page.getByTestId('project-filter').press('Escape');
       await expect(page.getByTestId('project-filter')).toHaveValue('');
       await expect(page.getByTestId('organize-console')).toBeVisible();
+      await closeConsole(page);
+    } finally {
+      await cleanupTestLabels(scope.prefix);
+    }
+  });
+
+  /* ── the Trash (Phase 4) ────────────────────────────────────────────── */
+
+  /**
+   * EVERY ASSERTION HERE IS SCOPED TO ITS OWN FIXTURE, and that is not
+   * fastidiousness. The shared e2e account's bin is NOT empty — it currently
+   * holds around fourteen rows of accumulated residue that globalSetup's sweep
+   * cannot see (it hard-deletes `items` titled `e2e_*` and never touches trashed
+   * CONTAINERS), plus whatever another spec's afterEach soft-deleted a second
+   * ago under `fullyParallel`. So: never a row count, never "the first row",
+   * never an empty-state assertion. Always this test's own name.
+   */
+  function trashRow(page: import('@playwright/test').Page, kind: string, name: string) {
+    return page
+      .locator(`[data-testid="trash-row"][data-trash-kind="${kind}"]`)
+      .filter({ hasText: name });
+  }
+
+  test('a deleted project reaches the Trash, comes back with its items, and ⌘Z re-deletes it', async ({
+    page,
+  }) => {
+    // THE PHASE 4 GATE. Four claims, and each is a different way the feature
+    // can look correct and not be:
+    //   1. the row appears in the bin at all;
+    //   2. restoring puts the CONTAINER back without a reload;
+    //   3. restoring re-files the MEMBERS — the link survives the delete in the
+    //      database on purpose (027), and a restore that ignored it would return
+    //      a visibly empty project;
+    //   4. ⌘Z re-deletes, which is decision 3's whole contract.
+    const title = testTitle('org-trash');
+    const name = scope.title('Recoverable');
+    const taskId = await createTestTask(page, { title, project: name });
+    try {
+      await reloadApp(page);
+      await openConsole(page, 'Projects');
+      const projectId = await createLabel(page, 'project', name);
+
+      // The task predates the project row (items.project is free text), so its
+      // project_id is NULL until something links them. Renaming to itself would
+      // no-op, so the link is made the way a user makes it: the item is already
+      // filed by NAME, and the delete's confirm copy proves the association.
+      await page.getByTestId('project-delete').click();
+      await expect(page.getByTestId('confirm-dialog')).toContainText('Its 1 item stays');
+      await page.getByTestId('category-delete-confirm').click();
+
+      // 1. In the bin, named, and labelled with its kind.
+      await page.getByRole('tab', { name: 'Trash' }).click();
+      const row = trashRow(page, 'project', name);
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText('Project');
+
+      // 2. Back on the canvas without a reload.
+      await row.getByTestId('trash-restore').click();
+      await expect(row).toHaveCount(0);
+      await page.getByRole('tab', { name: 'Projects' }).click();
+      await expect(
+        page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`)
+      ).toBeVisible();
+
+      // 4. ⌘Z re-deletes. Pressed on the console, which claims the bare-key
+      // space but never a modifier chord — see use-command-shortcuts' guard.
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect(
+        page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`)
+      ).toHaveCount(0);
+      await closeConsole(page);
+    } finally {
+      await cleanupTestData(page, [taskId], []);
+      await cleanupTestLabels(scope.prefix);
+    }
+  });
+
+  test('a deleted routine keeps its membership through the Trash and back', async ({ page }) => {
+    // The one that would pass while destroying data. `itemIds` is not a column —
+    // only fetchRoutines produces it and it hard-filters deleted_at — so a
+    // Trash restore that seats the routine with `itemIds: []` looks perfect: the
+    // row is back on the canvas without a reload, exactly as the gate demands.
+    // The next membership edit then hard-DELETEs every join row the soft delete
+    // existed to preserve, with no soft delete to recover from.
+    const title = testTitle('org-trash-member');
+    const taskId = await createTestTask(page, { title });
+    const name = scope.title('Ritual');
+    try {
+      await reloadApp(page);
+      await runCommand(page, 'app.collections', { query: '/routines' });
+      await page.getByRole('tab', { name: 'Routines' }).click();
+      await page.getByTestId('routine-new-name').fill(name);
+      await page.getByTestId('routine-add').click();
+      await expect(page.getByTestId('routine-detail')).toBeVisible();
+
+      // Same three steps programs.spec.ts:127-130 uses, so the two specs cannot
+      // drift about what "add a member" means.
+      await page.getByTestId('routine-member-add').click();
+      await page.getByTestId('routine-member-search').fill(title);
+      await page.getByTestId('routine-member-candidate').first().click();
+      await expect(page.getByTestId('routine-member')).toHaveCount(1);
+
+      await page.getByTestId('routine-delete').click();
+      await page.getByTestId('confirm-dialog-confirm').click();
+
+      await page.getByRole('tab', { name: 'Trash' }).click();
+      const row = trashRow(page, 'routine', name);
+      await expect(row).toHaveCount(1);
+      await row.getByTestId('trash-restore').click();
+
+      // The member is still there — in session, and after a reload, which is
+      // what proves the join rows were never touched.
+      await page.getByRole('tab', { name: 'Routines' }).click();
+      await page.getByTestId('routine-row').filter({ hasText: name }).click();
+      await expect(page.getByTestId('routine-member')).toHaveCount(1);
+      await closeConsole(page);
+
+      await reloadApp(page);
+      await runCommand(page, 'app.collections', { query: '/routines' });
+      await page.getByRole('tab', { name: 'Routines' }).click();
+      await page.getByTestId('routine-row').filter({ hasText: name }).click();
+      await expect(page.getByTestId('routine-member')).toHaveCount(1);
+      await closeConsole(page);
+    } finally {
+      await cleanupTestData(page, [taskId], []);
+      await cleanupTestCollections(scope.prefix);
+    }
+  });
+
+  test('a name a trashed project still holds is refused OUT LOUD on the create row', async ({
+    page,
+  }) => {
+    // A live bug before Phase 4, and the loudest half of it. The unique index
+    // spans soft-deleted rows, but addProject de-dupes against the store, which
+    // only ever loads live ones — so the insert 23505'd into console.error AFTER
+    // the optimistic set(). The user got a project that opened, accepted a
+    // colour and a whole time block, and evaporated on reload.
+    const name = scope.title('Ghost');
+    try {
+      await openConsole(page, 'Projects');
+      await createLabel(page, 'project', name);
+      await page.getByTestId('project-delete').click();
+      await page.getByTestId('category-delete-confirm').click();
+      await closeConsole(page);
+
+      // Reopened, so the trashed-name lookup runs fresh rather than off a list
+      // fetched before the delete.
+      await openConsole(page, 'Projects');
+      await page.getByTestId('project-new-name').fill(name);
+      await expect(page.getByTestId('project-new-problem')).toContainText('Trash');
+      await expect(page.getByTestId('project-add')).toBeDisabled();
       await closeConsole(page);
     } finally {
       await cleanupTestLabels(scope.prefix);

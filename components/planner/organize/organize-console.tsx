@@ -19,10 +19,10 @@ import {
 } from './console-rail';
 import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
-import { DetailColumn, ListColumn, TeachingLine } from './detail-parts';
 import { RoutinesSection } from './sections/routines';
 import { ProgramsSection } from './sections/programs';
 import { GroupsSection, ProjectsSection, TypesSection } from './sections/labels';
+import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
 /**
@@ -292,24 +292,9 @@ function SectionBody({
     return <GroupsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
   }
 
-  // Trash lands in Phase 4 — it needs `listDeleted` and a restore action per
-  // table, neither of which exists. Rendered through the same two columns so
-  // the frame is exercised at its real geometry meanwhile.
-  const meta = sectionMeta(section);
-  return (
-    <>
-      <ListColumn eyebrow={meta.eyebrow} count={0} hasSelection={false}>
-        <p className="text-muted-foreground px-[7px] pt-2 text-xs">Not built yet.</p>
-      </ListColumn>
-      <DetailColumn hasSelection={false}>
-        {/* The entity definition, and its PERMANENT home. Today these sentences
-            live only in an empty state and vanish the moment one object exists,
-            taking the only in-app explanation of what the thing IS with them.
-            Every built section owns its own copy. */}
-        <TeachingLine>Anything you delete waits here for 30 days, then goes for good.</TeachingLine>
-      </DetailColumn>
-    </>
-  );
+  // Trash takes no selection props: it is the one section with nothing to
+  // select into, so its rows carry their single verb inline. See trash.tsx.
+  return <TrashSection />;
 }
 
 /**

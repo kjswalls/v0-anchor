@@ -691,14 +691,50 @@ export async function validateParentItemId(
 
 // No plugin notify, matching the legacy restoreTask/restoreHabit exactly — a
 // 'restore' webhook action would widen the pinned event contract (Phase 5).
+//
+// RESTORES THE SUBTASKS THAT WENT DOWN WITH IT, which deleteItem's cascade
+// above made necessary and nothing supplied until Phase 4. Clearing one row is
+// not the inverse of stamping N+1: a parent restored alone comes back with its
+// checklist silently missing, and no surface anywhere would say so.
+//
+// Matched on the PARENT'S OWN TIMESTAMP rather than "every deleted child",
+// because the cascade stamps co-deleted children with the parent's exact
+// instant (`deletedAt` is computed once and reused). So a subtask the user
+// deleted BEFORE deleting the parent carries a different value and correctly
+// stays in the bin — restoring the parent must not resurrect a child that was
+// already thrown away on purpose. The delete already encoded which children
+// belong to which gesture; this just reads it back.
 export async function restoreItem(id: string, type: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
+  // Read before clearing: the timestamp is the join key, and the update wipes
+  // it. maybeSingle so a missing row is null rather than an error — a restore
+  // of something already gone should no-op, not throw.
+  const { data: row } = await supabase
+    .from('items')
+    .select('deleted_at')
+    .eq('id', id)
+    .eq('type', type)
+    .maybeSingle();
+  const stamp = (row as { deleted_at?: string | null } | null)?.deleted_at ?? null;
+
   const { error } = await supabase
     .from('items')
     .update({ deleted_at: null })
     .eq('id', id)
     .eq('type', type);
   if (error) throw error;
+
+  if (type !== 'habit' && stamp) {
+    const { error: childError } = await supabase
+      .from('items')
+      .update({ deleted_at: null })
+      .eq('parent_item_id', id)
+      .eq('deleted_at', stamp);
+    // Logged, never thrown: the parent is already back, and failing the whole
+    // restore here would leave the user with no way to retry the half that
+    // worked. Mirrors deleteItem's cascade exactly.
+    if (childError) console.error('subtask restore cascade failed', childError);
+  }
 }
 
 export async function toggleItemCompletedDate(id: string, type: string, dateStr: string, client?: DbClient): Promise<void> {
@@ -1448,8 +1484,17 @@ export async function deleteProject(userId: string, id: string, client?: DbClien
 
 // Restore by id, not name — names are mutable (rename) so a name-keyed
 // restore silently no-ops against a renamed row.
-export async function restoreProject(userId: string, id: string): Promise<void> {
-  const supabase = createClient();
+//
+// `client?` matches every other restore* and, more to the point, matches
+// deleteProject directly above — which app/api/agent/projects/[id]/route.ts
+// already calls with a serviceClient. Without the parameter, the obvious way to
+// write a restore endpoint (copy the DELETE handler) passes a third argument
+// that tsc rejects and `ignoreBuildErrors` waves through; the transpiled call
+// then drops it, the anon client has no session, RLS matches zero rows, and
+// PostgREST returns 204 with no error. The restore reports success and the row
+// stays in the bin.
+export async function restoreProject(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase
     .from('projects')
     .update({ deleted_at: null })
@@ -1528,12 +1573,325 @@ export async function deleteHabitGroup(userId: string, id: string, client?: DbCl
   notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', id });
 }
 
-export async function restoreHabitGroup(userId: string, id: string): Promise<void> {
-  const supabase = createClient();
+/** See restoreProject on why `client?` is not optional-in-spirit. */
+export async function restoreHabitGroup(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
   const { error } = await supabase
     .from('habit_groups')
     .update({ deleted_at: null })
     .eq('user_id', userId)
     .eq('id', id);
   if (error) throw error;
+}
+
+// ============================================================
+// The Trash (Organize console, Phase 4)
+// ============================================================
+
+export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program';
+
+/**
+ * One row of the bin: what it is, what it was called, when it went, and the
+ * whole entity ready to put back.
+ *
+ * DELIBERATELY NOT A SHARED SCHEMA. The plan said `packages/types` gains
+ * `deletedAt?: string`; it should not, and the reasons compound:
+ *
+ *  - `TASK_FIELDS` is `Object.keys(taskShape)`, and that list drives BOTH
+ *    `diffItem` and `tests/unit/db-allowlists.test.ts`. Adding the field turns
+ *    the suite red ("TASK_FIELDS includes 'deletedAt' but taskUpdatesToRow
+ *    drops it"), and the natural way to make it green — teaching
+ *    `taskUpdatesToRow` the column — hands undo the ability to write
+ *    `deleted_at`. A snapshot holding a stale stamp would then soft-delete a
+ *    LIVE item on some later unrelated undo, invisibly, with the 30-day purge
+ *    clock already part-spent.
+ *  - Nothing would ever read it. `fetchItems` filters `.is('deleted_at', null)`
+ *    and is the only producer of `Item[]` and of the frozen `tasks[]`/`habits[]`
+ *    legacy projections, so the field would be permanently undefined in every
+ *    Task the app or the OpenClaw plugin has ever seen.
+ *  - `Program.updatedAt` is the in-repo precedent for exactly this trap, and it
+ *    is kept OUT of `updateProgram`'s allowlist for exactly this reason.
+ *
+ * So the timestamp lives here, in the one file that has to own this anyway:
+ * every row mapper it needs (`itemFromRow`, `projectFromRow`,
+ * `habitGroupFromRow`, and the private `RoutineRow`/`ProgramRow`) is
+ * module-private. `entity` is a clean, live-shaped object — it never carries a
+ * deletion stamp, so nothing a restore hands the store can enter a snapshot and
+ * come back as a write.
+ */
+export interface TrashEntry {
+  kind: TrashKind;
+  id: string;
+  /** The item's title, or the container's name. */
+  name: string;
+  deletedAt: string;
+  /** Containers store a glyph token; items do not. */
+  icon?: string;
+  color?: string;
+  /**
+   * Subtasks that went into the bin as part of THIS delete and come back with
+   * it. Carried whole rather than counted, because the store has to seat them
+   * in the same set() the parent lands in — the DB cascade puts them back, and
+   * an in-session restore that showed a parent with an empty checklist until
+   * the next reload would read as the subtasks having been lost.
+   */
+  children?: Item[];
+  /**
+   * For a project or a habit group: the LIVE items still pointing at it by id.
+   *
+   * `removeProject`/`removeHabitGroup` clear the member's half in the store and
+   * write nothing to `items`, so the DB link survives the delete on purpose
+   * (027: "pointing a member at its soft-deleted container is what lets a Trash
+   * restore reconnect the members it had"). The store has no record of them by
+   * then, so the reconnection has to be read back out of the database here.
+   */
+  memberIds?: string[];
+  entity: Item | Project | HabitGroupType | Routine | Program;
+}
+
+/** A row shape plus the stamp `select('*')` returns but the interface omits. */
+type Trashed<T> = T & { deleted_at: string };
+
+/**
+ * Everything in the bin, newest first.
+ *
+ * A union across five tables rather than one view, because each needs its own
+ * mapper and two of them need their membership joined — and that second part is
+ * the load-bearing one.
+ *
+ * MEMBERSHIP IS NOT OPTIONAL HERE. `itemIds`/`routineIds` are not columns;
+ * `fetchRoutines` assembles them from `routine_items`, and it hard-filters
+ * `deleted_at`, so a trashed routine has no other source for them anywhere in
+ * the codebase. Hand the store `{...routine, itemIds: []}` and the console's
+ * member list treats that empty array as truth: `reconcileMembership` writes
+ * membership ABSOLUTELY (`removed = current \ desired`), so the first member
+ * added back — or a plain redo, which replays the full shape — issues a hard
+ * DELETE of every join row. Those rows are the entire reason `deleteRoutine` is
+ * a soft delete: "membership rows deliberately survive so a restore within the
+ * 30-day window brings the routine back intact." A restore that hydrates them
+ * empty would destroy the guarantee it exists to honour, permanently, with no
+ * soft delete to recover from.
+ *
+ * SUBTASKS DO NOT GET THEIR OWN ROW when their parent is in the bin too. One
+ * delete would otherwise deposit N+1 near-identical lines, and restoring the
+ * child alone puts it nowhere a user can see — subtasks are excluded from the
+ * `tasks` projection every canvas surface reads, and its parent is still
+ * trashed. Every row here is one restorable unit that lands somewhere visible.
+ * A subtask deleted on its own, under a live parent, keeps its row.
+ */
+export async function listDeleted(
+  userId: string,
+  limit = 100,
+  client?: DbClient,
+): Promise<TrashEntry[]> {
+  const supabase = client ?? createClient();
+  const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
+
+  const [items, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
+    await Promise.all([
+      deleted(supabase.from('items').select('*')).order('deleted_at', { ascending: false }),
+      deleted(supabase.from('projects').select('*')).order('deleted_at', { ascending: false }),
+      deleted(supabase.from('habit_groups').select('*')).order('deleted_at', { ascending: false }),
+      deleted(supabase.from('routines').select('*')).order('deleted_at', { ascending: false }),
+      supabase.from('routine_items').select('routine_id, item_id, sort_order')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('item_id', { ascending: true }),
+      deleted(supabase.from('programs').select('*')).order('deleted_at', { ascending: false }),
+      supabase.from('program_items').select('program_id, item_id')
+        .eq('user_id', userId).order('item_id', { ascending: true }),
+      supabase.from('program_routines').select('program_id, routine_id')
+        .eq('user_id', userId).order('routine_id', { ascending: true }),
+    ]);
+
+  // One failure fails the lot. A partial bin is worse than an error: a user
+  // hunting for a deleted routine would find a Trash that renders happily
+  // without it and conclude it is gone for good.
+  const failure =
+    items.error ?? projects.error ?? groups.error ?? routines.error ??
+    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error;
+  if (failure) throw failure;
+
+  const itemRows = (items.data ?? []) as Trashed<ItemRow>[];
+  const trashedIds = new Set(itemRows.map((r) => r.id));
+
+  const groupIds = (rows: Record<string, string>[], owner: string, member: string) => {
+    const map = new Map<string, string[]>();
+    for (const row of rows) {
+      const list = map.get(row[owner]);
+      if (list) list.push(row[member]);
+      else map.set(row[owner], [row[member]]);
+    }
+    return map;
+  };
+  const itemsByRoutine = groupIds((routineMembers.data ?? []) as Record<string, string>[], 'routine_id', 'item_id');
+  const itemsByProgram = groupIds((programItems.data ?? []) as Record<string, string>[], 'program_id', 'item_id');
+  const routinesByProgram = groupIds((programRoutines.data ?? []) as Record<string, string>[], 'program_id', 'routine_id');
+
+  const entries: TrashEntry[] = [];
+
+  for (const row of itemRows) {
+    // A child whose parent is also in the bin travels with the parent.
+    if (row.parent_item_id && trashedIds.has(row.parent_item_id)) continue;
+    const children = itemRows.filter(
+      // Same instant = same gesture. deleteItem computes the stamp once and
+      // reuses it for the cascade, and restoreItem reads it back the same way.
+      (c) => c.parent_item_id === row.id && c.deleted_at === row.deleted_at
+    );
+    entries.push({
+      kind: 'item',
+      id: row.id,
+      name: row.title,
+      deletedAt: row.deleted_at,
+      ...(children.length > 0 && { children: children.map(itemFromRow) }),
+      entity: itemFromRow(row),
+    });
+  }
+
+  const projectRows = (projects.data ?? []) as Trashed<ProjectRow>[];
+  const groupRows = (groups.data ?? []) as Trashed<HabitGroupRow>[];
+
+  // A second round trip rather than a column on the first: scoped by `in` to
+  // the handful of trashed container ids, so it reads a few rows rather than
+  // every live item the account owns.
+  const membersOf = async (column: 'project_id' | 'group_id', ids: string[]) => {
+    const map = new Map<string, string[]>();
+    if (ids.length === 0) return map;
+    const { data, error } = await supabase
+      .from('items')
+      .select(`id, ${column}`)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .in(column, ids);
+    // Empty on failure, not a throw: losing the reconnection degrades a restore
+    // to today's behaviour (the members come back on the next reload, because
+    // the DB link is untouched either way). Losing the whole Trash does not.
+    if (error) return map;
+    for (const row of (data ?? []) as Record<string, string>[]) {
+      const owner = row[column];
+      const list = map.get(owner);
+      if (list) list.push(row.id);
+      else map.set(owner, [row.id]);
+    }
+    return map;
+  };
+  const [projectMembers, groupMembers] = await Promise.all([
+    membersOf('project_id', projectRows.map((r) => r.id)),
+    membersOf('group_id', groupRows.map((r) => r.id)),
+  ]);
+
+  for (const row of projectRows) {
+    entries.push({
+      kind: 'project', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.emoji, color: row.color ?? undefined,
+      memberIds: projectMembers.get(row.id) ?? [],
+      entity: projectFromRow(row),
+    });
+  }
+
+  for (const row of groupRows) {
+    entries.push({
+      kind: 'group', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.emoji, color: row.color ?? undefined,
+      memberIds: groupMembers.get(row.id) ?? [],
+      entity: habitGroupFromRow(row),
+    });
+  }
+
+  for (const row of (routines.data ?? []) as Trashed<RoutineRow>[]) {
+    entries.push({
+      kind: 'routine', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.icon ?? undefined, color: row.color ?? undefined,
+      entity: {
+        id: row.id,
+        name: row.name,
+        icon: row.icon ?? undefined,
+        color: row.color ?? undefined,
+        pausedAt: row.paused_at ?? undefined,
+        pausedUntil: row.paused_until ?? undefined,
+        sortOrder: row.sort_order ?? undefined,
+        itemIds: itemsByRoutine.get(row.id) ?? [],
+      },
+    });
+  }
+
+  for (const row of (programs.data ?? []) as Trashed<ProgramRow>[]) {
+    entries.push({
+      kind: 'program', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.icon ?? undefined, color: row.color ?? undefined,
+      entity: {
+        id: row.id,
+        name: row.name,
+        icon: row.icon ?? undefined,
+        color: row.color ?? undefined,
+        state: row.state as Program['state'],
+        startsOn: row.starts_on ?? undefined,
+        endsOn: row.ends_on ?? undefined,
+        sortOrder: row.sort_order ?? undefined,
+        itemIds: itemsByProgram.get(row.id) ?? [],
+        routineIds: routinesByProgram.get(row.id) ?? [],
+        updatedAt: row.updated_at ?? undefined,
+      },
+    });
+  }
+
+  // Sorted across the five tables, then capped — the per-table `order` above
+  // only makes each slice internally newest-first. Capping BEFORE the merge
+  // would silently hide a routine deleted a minute ago behind a hundred older
+  // items.
+  entries.sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : a.deletedAt > b.deletedAt ? -1 : 0));
+  return entries.slice(0, limit);
+}
+
+/**
+ * The names a container cannot take, because a trashed row is still holding
+ * them.
+ *
+ * `projects_user_id_name_key` and `habit_groups_user_id_name_key` are PLAIN
+ * unique indexes — no `WHERE deleted_at IS NULL` — so a deleted container
+ * reserves its name for the full 30 days while being invisible to the store,
+ * whose `projects`/`habitGroups` arrays come from `deleted_at`-filtered
+ * fetches. That gap is a live bug on both the rename and the create path, and
+ * the create half is the louder one: `addProject` de-dupes against live rows,
+ * passes, `set()`s optimistically, and only THEN does the insert 23505 into a
+ * `.catch(console.error)`. The user gets a project that opens, accepts a
+ * colour, a glyph and a time block — all `.eq('id', …)` updates matching zero
+ * rows — and every item filed into it fails its own write on
+ * `items_project_id_fkey`. The whole thing evaporates on reload with nothing
+ * shown anywhere.
+ *
+ * Rows rather than a Set of strings, because the console can then do more than
+ * refuse: it names the holder, and the Trash is one rail row away.
+ *
+ * The NAMES ARE RETURNED AS STORED, deliberately. The index is case-SENSITIVE
+ * (plain `text`, no `citext`, no lower() expression), so only an exact repeat
+ * actually collides — a fold-only guard would refuse "work" against a trashed
+ * "Work", a name Postgres would have accepted. The caller decides which
+ * comparison each path needs; this just reports what is in the bin.
+ */
+export async function fetchTrashedNames(
+  userId: string,
+  client?: DbClient,
+): Promise<{ projects: TrashedName[]; groups: TrashedName[] }> {
+  const supabase = client ?? createClient();
+  const read = async (table: 'projects' | 'habit_groups') => {
+    const { data, error } = await supabase
+      .from(table)
+      .select('id, name')
+      .eq('user_id', userId)
+      .not('deleted_at', 'is', null);
+    // Empty on failure, never a throw: this guard exists to IMPROVE a create,
+    // and a lookup outage must not become the thing that prevents one. Failing
+    // open lands back on today's behaviour, which is the bug — but a bug that
+    // only reappears when the network does, rather than a dead create row.
+    if (error) return [];
+    return (data ?? []) as TrashedName[];
+  };
+  const [projects, groups] = await Promise.all([read('projects'), read('habit_groups')]);
+  return { projects, groups };
+}
+
+export interface TrashedName {
+  id: string;
+  name: string;
 }

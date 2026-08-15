@@ -7,6 +7,8 @@ import { useUIStore } from '@/lib/ui-store';
 import { byName, matching } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { ObjectRow, SettingRow } from '../primitives';
+import { heldByTrash, useTrashedNames } from '../use-trashed-names';
+import type { TrashedName } from '@/lib/db';
 import {
   BackRow,
   BufferedInput,
@@ -64,6 +66,7 @@ export function ProjectsSection({
   const projects = usePlannerStore((s) => s.projects);
   const items = usePlannerStore((s) => s.items);
   const addProject = usePlannerStore((s) => s.addProject);
+  const trashed = useTrashedNames();
   const [query, setQuery] = useState('');
 
   const selected = projects.find((p) => p.id === selectedId) ?? null;
@@ -88,6 +91,11 @@ export function ProjectsSection({
             addLabel="Add project"
             testPrefix="project"
             autoFocus={focusNew}
+            // The create path had NO validate at all, and the store's own
+            // de-dupe cannot see the bin — so typing the name of a project you
+            // deleted yesterday produced a row that opened, accepted edits, and
+            // never existed. See useTrashedNames.
+            validate={(name) => heldByTrash(trashed.projects, name, 'project')}
             onAdd={(name, icon) => {
               addProject(name, icon ?? makeIconToken('Briefcase'));
               onSelect(created(usePlannerStore.getState().projects, name));
@@ -117,7 +125,9 @@ export function ProjectsSection({
 
       <DetailColumn hasSelection={!!selected}>
         {selected ? (
-          <ProjectDetail project={selected} onBack={() => onSelect(null)} />
+          // Threaded rather than re-hooked: the detail remounts on every
+          // selection change, and a hook there would refetch the bin each time.
+          <ProjectDetail project={selected} trashed={trashed.projects} onBack={() => onSelect(null)} />
         ) : (
           <TeachingLine>
             Projects file your tasks, and can carry a repeating block on the grid.
@@ -128,7 +138,15 @@ export function ProjectsSection({
   );
 }
 
-function ProjectDetail({ project, onBack }: { project: Project; onBack: () => void }) {
+function ProjectDetail({
+  project,
+  trashed,
+  onBack,
+}: {
+  project: Project;
+  trashed: TrashedName[];
+  onBack: () => void;
+}) {
   const items = usePlannerStore((s) => s.items);
   // Siblings, for the rename collision check — see takenBy.
   const projects = usePlannerStore((s) => s.projects);
@@ -163,7 +181,15 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
         testPrefix="project"
         // Unparked by migration 027: items point at this project by ID now, and
         // updateProject fans the new name out to every member in the same set().
-        validate={(next) => takenBy(projects, project.id, next, 'project')}
+        //
+        // The TRASH half was the deferred piece and it needed the Trash's data:
+        // the unique index spans soft-deleted rows, so renaming onto a name a
+        // deleted project still holds passed `takenBy` and produced exactly the
+        // split write it exists to prevent.
+        validate={(next) =>
+          takenBy(projects, project.id, next, 'project') ??
+          heldByTrash(trashed, next, 'project')
+        }
         meta={
           <>
             Project · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'}
@@ -425,6 +451,7 @@ export function GroupsSection({
   const habitGroups = usePlannerStore((s) => s.habitGroups);
   const items = usePlannerStore((s) => s.items);
   const addHabitGroup = usePlannerStore((s) => s.addHabitGroup);
+  const trashed = useTrashedNames();
 
   const [query, setQuery] = useState('');
 
@@ -449,6 +476,8 @@ export function GroupsSection({
             addLabel="Add habit group"
             testPrefix="group"
             autoFocus={focusNew}
+            // See the projects create row — same index, same silent phantom.
+            validate={(name) => heldByTrash(trashed.groups, name, 'habit group')}
             onAdd={(name, icon) => {
               addHabitGroup(name, icon ?? makeIconToken('Star'));
               onSelect(created(usePlannerStore.getState().habitGroups, name));
@@ -478,7 +507,7 @@ export function GroupsSection({
 
       <DetailColumn hasSelection={!!selected}>
         {selected ? (
-          <GroupDetail group={selected} onBack={() => onSelect(null)} />
+          <GroupDetail group={selected} trashed={trashed.groups} onBack={() => onSelect(null)} />
         ) : (
           <TeachingLine>Habit groups decide how your habits are stacked in the sidebar.</TeachingLine>
         )}
@@ -487,7 +516,15 @@ export function GroupsSection({
   );
 }
 
-function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => void }) {
+function GroupDetail({
+  group,
+  trashed,
+  onBack,
+}: {
+  group: HabitGroupType;
+  trashed: TrashedName[];
+  onBack: () => void;
+}) {
   const items = usePlannerStore((s) => s.items);
   const habitGroups = usePlannerStore((s) => s.habitGroups);
   const updateHabitGroup = usePlannerStore((s) => s.updateHabitGroup);
@@ -518,8 +555,11 @@ function GroupDetail({ group, onBack }: { group: HabitGroupType; onBack: () => v
         color={group.color}
         label="Habit group"
         testPrefix="group"
-        // Unparked by migration 027 — see ProjectDetail.
-        validate={(next) => takenBy(habitGroups, group.id, next, 'habit group')}
+        // Unparked by migration 027, and trash-aware since Phase 4 — see ProjectDetail.
+        validate={(next) =>
+          takenBy(habitGroups, group.id, next, 'habit group') ??
+          heldByTrash(trashed, next, 'habit group')
+        }
         meta={
           <>
             Habit group · <span className="font-num">{n}</span> {n === 1 ? 'habit' : 'habits'}

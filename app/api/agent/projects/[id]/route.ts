@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateProject, deleteProject } from '@/lib/db'
+import { updateProject, deleteProject, renameContainerMembers } from '@/lib/db'
 import type { Project } from '@/lib/planner-types'
 
 /**
@@ -43,6 +43,22 @@ export async function PATCH(
   try {
     const updates: Partial<Project> = await req.json()
     await updateProject(userId, id, updates, serviceClient)
+    // A rename has to reach the members' name column too (migration 027).
+    // Without this the endpoint renames the container and leaves every item
+    // holding the old string — the exact orphaning Phase 0 removed from the UI
+    // path, still live here because the fan-out was written into the store
+    // action rather than into the write.
+    //
+    // AWAITED AFTER the container update, never in parallel: both tables are
+    // UNIQUE (user_id, name) and the two writes do not fail together. A
+    // rejected rename that had already rewritten its members reads as the items
+    // having moved into a different project, and nothing downstream can detect
+    // it. Chaining is what makes the failure atomic in the direction that
+    // matters. (The store's own copy of this carries an extra re-check because
+    // it races undo; there is no undo here.)
+    if (typeof updates.name === 'string' && updates.name) {
+      await renameContainerMembers(userId, 'project_id', id, updates.name, serviceClient)
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'

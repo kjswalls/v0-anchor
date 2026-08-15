@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Settings, LogOut, Undo2, Redo2, ChevronDown, Flame } from 'lucide-react';
+import { User, Settings, LogOut, Undo2, Redo2, ChevronDown, Flame, Trash2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import { RELAY } from '@/lib/relay-config';
 import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
@@ -43,6 +44,7 @@ function getInitials(email: string, name?: string | null): string {
 export function UserCard() {
   const router = useRouter();
   const { habits, actionLog, historyIndex, undo, redo, canUndo, canRedo } = usePlannerStore();
+  const openDialog = useUIStore((s) => s.openDialog);
 
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -194,6 +196,32 @@ export function UserCard() {
               <div className="px-1.5 pt-1 font-mono text-2xs text-muted-foreground/50">
                 — Session start —
               </div>
+            </div>
+
+            {/*
+              THE TRASH'S DOOR, and its placement is the whole point.
+
+              Every other way into the Organize console is a door you open on
+              purpose. This one is for the moment you have lost something — and
+              the place a user already goes in that moment is here, where the
+              in-session undo lives. A recovery feature reachable only from a
+              rail nobody has opened is not a recovery feature.
+
+              Outside the scroller above, so it does not scroll away behind ten
+              actions, and behind a rule so it reads as a different kind of
+              thing from the log it sits under: the log is this session, this is
+              the last thirty days.
+            */}
+            <div className="mt-2 border-t border-border pt-1.5">
+              <button
+                type="button"
+                onClick={() => openDialog({ type: 'organize', section: 'trash' })}
+                data-testid="history-trash-door"
+                className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Trash2 className="h-3 w-3 shrink-0" />
+                Recently deleted
+              </button>
             </div>
           </PopoverContent>
         </Popover>

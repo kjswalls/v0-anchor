@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateHabitGroup, deleteHabitGroup } from '@/lib/db'
+import { updateHabitGroup, deleteHabitGroup, renameContainerMembers } from '@/lib/db'
 import type { HabitGroupType } from '@/lib/planner-types'
 
 /**
@@ -43,6 +43,12 @@ export async function PATCH(
   try {
     const updates: Partial<HabitGroupType> = await req.json()
     await updateHabitGroup(userId, id, updates, serviceClient)
+    // Chained, for the reason spelled out in the projects route: the container
+    // write and the member fan-out do not fail together, and the half-applied
+    // outcome is undetectable downstream.
+    if (typeof updates.name === 'string' && updates.name) {
+      await renameContainerMembers(userId, 'group_id', id, updates.name, serviceClient)
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'
