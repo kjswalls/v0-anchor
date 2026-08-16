@@ -581,6 +581,7 @@ phase happened to sweep the same code:
 | `2b65db4` | Phase 4's review | a rollback that could soft-delete the whole account on one ⌘Z |
 | `ced2230` | `2b65db4`'s review | a name the app then refused to let the user retry, all session |
 | `198a259` | *(Phase 5 itself)* | a delete confirm promising the return of items that never left |
+| `4dff3c3` | *(Phase 6 itself)* | a seed that could commit one account's plan into another account's store |
 
 **`2b65db4` is the one to remember, because the defect was in the SAFETY NET.** It
 healed a phantom container the database had refused — a real data-loss bug — and to do
@@ -675,6 +676,19 @@ test compared two rendered icons and passed with the entire registry half delete
 `CategoryIcon`'s name-hash fallback already distinguishes "Task" from "Habit" — *it tested the
 fallback and was named after the feature*; and "stays open after an add" never typed, so its
 `toHaveValue('')` was true before the add as well as after.
+
+**Phase 6's review found five more — fifteen across the branch — and one of them let a HIGH
+through.** The account-switch test gave its `snapshot` dep a CONSTANT thunk, so nothing ever
+changed under any await: it proved the guard existed and never that it fires, and the defect
+walked straight past it. ***A test for a race whose fixture cannot race is a test for the
+absence of a race.*** Two more were a hand-rolled fake Supabase client that could not produce
+an error, which made both "this THROWS" claims in `lib/db.ts` untestable — replacing either
+`throw` with `void error` left the whole file green. **A fake that can only succeed tests the
+happy path while reading as if it covered the contract**; the fix was a `writeFails` flag, not
+a new assertion. The fourth named itself after a PostgREST guarantee no fake can demonstrate
+("so it cannot clobber settings") and was renamed to what it actually checks. The fifth was a
+plain gap: the trim was untested, which is exactly why its divergence from the database
+survived to be found by someone else.
 
 **The chained fan-out outran undo.** Chaining fixed the split write but moved the dispatch
 AFTER undo's per-item writes, so a ⌘Z inside the container write's round trip was
@@ -1333,6 +1347,63 @@ plus the focus-return case (open a row's delete confirm, Escape, assert the row 
 the cursor) — the most commonly broken thing in web consoles and the most felt.
 
 ### Phase 6 — Seed defaults on first run *(decision 2)*
+
+**Status 2026-08-16 — BUILT (`4dff3c3`), REVIEWED, FIXED (`62b9d92`).** 1080 unit tests,
+lint 0 errors, build green. **Migration `028_containers_seeded.sql` is authored and NOT
+applied** — the app is safe unapplied because the latch read fails closed on the missing
+column, at the cost of one 400 in the network log per load.
+
+***The live data changed the rule before a line was written, and reading it first is the
+whole lesson of this phase.*** The plan said "seed when the sections are empty". The
+database says the main account carries **763 items, ZERO container rows, and 119 habits
+whose `group` text reads "Personal" with nothing behind it**. That rule would have written
+three projects into an account that has visibly never used projects — inventing containers
+to fix a problem about one. So there are three outcomes, not one: `new-account` (the full
+starter set), `adopt` (only the containers existing items already name, glyphless so
+nothing on screen changes), and `none`. 027 predicted the adopt half in its own comments
+and left its backfill re-runnable for it; a migration cannot do it, because the rows appear
+at an arbitrary later moment.
+
+**The latch is a column, not an inference.** "No containers, so seed" makes the seeds
+*undeletable* — delete them, reload, they return. Decision 2's "fully deletable" is a claim
+about the NEXT load. localStorage fails the same way one device over.
+
+**Numbered 028, not 025.** The remote ledger already carried 025 (`theme_palette`) and 026
+(`user_extensions`) from branches whose files are not in this worktree. Numbering from the
+local directory would have collided with two live migrations. *Ledger first, directory
+second* — and this is the second time that check has paid.
+
+***The review's two HIGHs were both mine, and the second explains the first.*** The
+orchestrator re-checked the account and then did two more awaits with nothing re-checking
+after, so a bare SIGNED_IN for a different user — which the provider already handles in two
+other places — could carry one account's plan into another's store; with adoption in the
+mix, account B receives a container named after account A's data. And `commit` returned
+void, so every guard inside it was a silent refusal the caller could not see *after it had
+already latched*: the account ended with zero containers and **no path that could ever
+retry**.
+
+That second one forced me to invert my own ordering argument. I had written a paragraph
+defending latch-before-commit; the durable idempotence guard was never the latch, it is
+`projects.length > 0` read back from the database, so rows landing without the latch
+self-heal on the next load. **A long defence of an ordering is not evidence the ordering is
+right.**
+
+**The seed stopped touching history, and that fix had a bug of its own.** One entry meant a
+brand-new account arrived with `canUndo: true` and one action its owner never performed —
+and ⌘Z, the first thing many people try, soft-deleted all six rows into a Trash they have
+never opened and reserved all six names for thirty days. Suppressing the entry then left
+`historyStack[historyIndex]` holding the PRE-seed snapshot, so the first real edit plus one
+⌘Z erased the starter set anyway. Caught by writing the test for the change; the
+'Session start' snapshot is now rewritten in place.
+
+*Also from the review:* a refused seed insert is rolled back like a hand-made one
+(reachable with no fault at all — two tabs both read the latch as false and the second
+insert meets the unique index); an account whose BIN holds containers is not brand new
+(the e2e account has five trashed projects and zero live); and `planSeed` no longer trims,
+because the adopting UPDATE filters on the name it is given and trimming made the store
+link `" Personal"` while the database matched nothing.
+
+*Original plan text, for reference:*
 
 `DEFAULT_PROJECTS` and `DEFAULT_HABIT_GROUPS` are declared at `lib/planner-types.ts:87-97`
 and **imported nowhere**, so a brand-new user opens a six-section console containing
