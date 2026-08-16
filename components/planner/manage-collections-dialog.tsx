@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
   ChevronLeft,
@@ -43,7 +43,18 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { accentColorForName } from '@/lib/accent-colors';
 import { isPausedOn, isProgramActiveOn, inactiveItemIdsOn } from '@/lib/active';
 import { isCollectible } from '@/lib/item-registry';
-import { toDateStr } from '@/lib/recurrence';
+import {
+  countLive,
+  formatShort,
+  parseDay,
+  programPillLabel,
+  routinePillLabel,
+  swapMembers,
+  useLiveItemIds,
+  useLiveRoutineIds,
+  useNameDraft,
+  useToday,
+} from '@/lib/collections';
 import { cn } from '@/lib/utils';
 import type { Item, Routine, Program } from '@/lib/planner-types';
 
@@ -414,32 +425,6 @@ function Unavailable() {
   );
 }
 
-/** Today, in the user's zone. Activation is dateless — never the selected date. */
-function useToday(): { todayStr: string; tz: string } {
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return { todayStr: toDateStr(new Date(), tz), tz };
-}
-
-/**
- * Member ids may name trashed items — join rows outlive an item's soft delete by
- * design, so the arrays are pruned only by the purge CASCADE. Every consumer
- * filters against this live index rather than eagerly cleaning.
- */
-function useLiveItemIds(): Set<string> {
-  const items = usePlannerStore((s) => s.items);
-  return useMemo(() => new Set(items.map((i) => i.id)), [items]);
-}
-
-/** The same rule one layer up: `program.routineIds` may name a trashed routine. */
-function useLiveRoutineIds(): Set<string> {
-  const routines = usePlannerStore((s) => s.routines);
-  return useMemo(() => new Set(routines.map((r) => r.id)), [routines]);
-}
-
-const countLive = (ids: readonly string[], live: Set<string>) =>
-  ids.reduce((n, id) => n + (live.has(id) ? 1 : 0), 0);
-
 function RoutineList({
   routines,
   selectedId,
@@ -463,7 +448,10 @@ function RoutineList({
   return (
     <div className="max-h-64 space-y-px overflow-y-auto">
       {routines.map((routine) => {
-        const paused = isPausedOn(routine, todayStr, tz);
+        // Non-null exactly when the routine is not carrying its members, so it
+        // drives BOTH the pill and the dimming — one predicate, the shape
+        // ProgramList below already uses.
+        const pill = routinePillLabel(routine, todayStr, tz);
         return (
           <ContainerRow
             key={routine.id}
@@ -472,8 +460,8 @@ function RoutineList({
             icon={routine.icon}
             name={routine.name}
             selected={selectedId === routine.id}
-            dimmed={paused}
-            pill={paused ? <StatePill label={routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused'} testId="routine-paused-pill" /> : null}
+            dimmed={!!pill}
+            pill={pill ? <StatePill label={pill} testId="routine-paused-pill" /> : null}
             count={countLive(routine.itemIds, liveIds)}
             onSelect={() => onSelect(routine.id)}
           />
@@ -538,17 +526,6 @@ function ProgramList({
   );
 }
 
-/**
- * The one-line reason a program is not currently carrying its members, or null
- * when it is. A live program wears no marker — only the exception is labelled.
- */
-function programPillLabel(program: Program, todayStr: string): string | null {
-  if (isProgramActiveOn(program, todayStr)) return null;
-  if (program.state === 'paused') return 'Paused';
-  if (program.startsOn && todayStr < program.startsOn) return `From ${formatShort(program.startsOn)}`;
-  return 'Ended';
-}
-
 function ContainerRow({
   testId,
   idAttr,
@@ -605,41 +582,6 @@ function StatePill({ label, testId }: { label: string; testId: string }) {
       {label}
     </span>
   );
-}
-
-function formatShort(dateStr: string): string {
-  // Parsed as local noon rather than through Date(yyyy-mm-dd) — that overload
-  // is UTC midnight, which formats as the PREVIOUS day west of Greenwich.
-  const d = parseDay(dateStr);
-  if (!d) return dateStr;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-/** `yyyy-MM-dd` → a local-noon Date, or undefined. Same anti-UTC reasoning. */
-function parseDay(dateStr: string | undefined): Date | undefined {
-  if (!dateStr) return undefined;
-  const [y, m, d] = dateStr.split('-').map(Number);
-  if (!y || !m || !d) return undefined;
-  return new Date(y, m - 1, d, 12);
-}
-
-/** Buffered rename — see the long note in ContainerNameRow's caller. */
-function useNameDraft(id: string, name: string, commit: (next: string) => void) {
-  const [draft, setDraft] = useState(name);
-  useEffect(() => setDraft(name), [id, name]);
-  return {
-    draft,
-    setDraft,
-    reset: () => setDraft(name),
-    commit: () => {
-      const next = draft.trim();
-      if (!next || next === name) {
-        setDraft(name);
-        return;
-      }
-      commit(next);
-    },
-  };
 }
 
 /**
@@ -795,6 +737,7 @@ function RoutineDetail({
       )}
 
       <ItemMemberList
+        ownerId={routine.id}
         ownerName={routine.name}
         memberIds={routine.itemIds}
         members={members}
@@ -952,6 +895,7 @@ function ProgramDetail({
       <RoutineMemberList program={program} live={live} />
 
       <ItemMemberList
+        ownerId={program.id}
         ownerName={program.name}
         memberIds={program.itemIds}
         members={members}
@@ -1107,6 +1051,43 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
     null
   );
 
+  // Disarmed when the SELECTION changes, not just on unmount. Above `md` this
+  // component is never remounted — the two-pane layout keeps it mounted and
+  // swaps its `program` prop — so an open candidate list survived a click on a
+  // different program and stayed pointed at the one you had left.
+  useEffect(() => {
+    setAdding(false);
+    setPendingAttach(null);
+  }, [program.id]);
+
+  /**
+   * Escape closes the candidate list before it closes the dialog.
+   *
+   * CAPTURE phase on the document, not an onKeyDown on the list: Radix's
+   * DismissableLayer binds its own `keydown` on the ownerDocument in the BUBBLE
+   * phase, and this content is portaled outside the React root container, so a
+   * synthetic handler cannot reliably get in front of it. A capture-phase
+   * listener runs first by construction, and stopPropagation there keeps the
+   * press from also collapsing the whole dialog.
+   *
+   * This is rung 1 of the Escape ladder the Organize console will formalize
+   * (memory/plans/organize-console.md): one rung per press, and rungs that do
+   * not apply are skipped — which is why this only binds while `adding` is true.
+   * The e2e closeManager helpers spend at most four presses waiting for the
+   * overlay to reach 0, so a rung that consumed a press unconditionally would
+   * exhaust them.
+   */
+  useEffect(() => {
+    if (!adding) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setAdding(false);
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [adding]);
+
   const members = program.routineIds
     .map((id) => routines.find((r) => r.id === id))
     .filter((r): r is Routine => !!r);
@@ -1213,6 +1194,21 @@ function RoutineMemberList({ program, live }: { program: Program; live: boolean 
                 <span className="truncate">{routine.name}</span>
               </button>
             ))}
+            {/* The way out. `setAdding(false)` used to run ONLY inside
+                requestAttach, so once this list was open the only two exits
+                were attaching a routine you may not have wanted or closing the
+                whole dialog — and attaching is the one membership write in the
+                app with a non-obvious consequence. Escape reaches it too now,
+                via the capture-phase handler above; the item member list has
+                always had one on its input and this list had nothing at all. */}
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="text-muted-foreground hover:text-foreground flex h-8 items-center rounded-lg px-2.5 text-left text-sm"
+              data-testid="program-routine-add-cancel"
+            >
+              Cancel
+            </button>
           </div>
         ) : (
           <button
@@ -1302,22 +1298,8 @@ function AttachRoutineConfirm({
   );
 }
 
-/**
- * Swap two members by id, leaving every other position — including any id that
- * names a trashed item — exactly where it was. Returns the same array when
- * either id is absent, so a stale click writes nothing.
- */
-export function swapMembers(ids: string[], a: string, b: string): string[] {
-  const i = ids.indexOf(a);
-  const j = ids.indexOf(b);
-  if (i < 0 || j < 0 || i === j) return ids;
-  const next = [...ids];
-  next[i] = b;
-  next[j] = a;
-  return next;
-}
-
 function ItemMemberList({
+  ownerId,
   ownerName,
   memberIds,
   members,
@@ -1326,6 +1308,8 @@ function ItemMemberList({
   orderable = false,
   onChange,
 }: {
+  /** Only used to disarm the search on a selection change — see the effect. */
+  ownerId: string;
   ownerName: string;
   memberIds: string[];
   members: Item[];
@@ -1344,6 +1328,18 @@ function ItemMemberList({
   const items = usePlannerStore((s) => s.items);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
+
+  // Disarmed when the SELECTION changes, not just on unmount.
+  //
+  // Above `md` the two-pane layout never remounts this component — it swaps the
+  // `memberIds`/`onChange` props under it — so an open search box AND its typed
+  // query survived a click on a different container. Enter then added the top
+  // match to whichever container was selected NOW, which is not the one you were
+  // looking at when you typed. A silent write to the wrong owner.
+  useEffect(() => {
+    setAdding(false);
+    setQuery('');
+  }, [ownerId]);
 
   const add = (id: string) => {
     onChange([...memberIds, id]);

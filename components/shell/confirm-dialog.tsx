@@ -32,7 +32,7 @@ export function ConfirmDialog() {
             // The confirm LABEL is caller-supplied ('Delete', 'Reset Streak',
             // 'Confirm'), and 'Delete' collides with three other buttons in the
             // app. This id says which dialog, not which verb.
-            data-testid="confirm-dialog-confirm"
+            data-testid={confirmRequest?.testId ?? 'confirm-dialog-confirm'}
             className={
               confirmRequest?.destructive
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
