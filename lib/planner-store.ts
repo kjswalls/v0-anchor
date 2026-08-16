@@ -2464,6 +2464,20 @@ export const usePlannerStore = create<PlannerStore>()(
               // database — removeProject clears the store's copy and writes
               // nothing to items — so this is the store catching up with what a
               // reload would have shown anyway, not a new claim about the data.
+              //
+              // KNOWN LIMIT, and it is the price of doing this at all: ⌘Z after
+              // a restore goes through applyHistoryState, whose per-item diff
+              // sees {project: undefined, projectId: undefined} against the
+              // pre-restore snapshot and writes both as NULL. So undoing a
+              // restore does not merely re-bin the container — it also severs
+              // the DB link the NEXT restore would have reconnected, and a
+              // second trip through the Trash returns an empty container. The
+              // gesture is rare (you have just deliberately restored the thing)
+              // and the outcome still matches what the delete confirm promised
+              // — "they just stop being filed under Work" — so it is accepted
+              // rather than papered over. Fixing it properly means teaching the
+              // history diff that a container's membership is the container's
+              // to own, which is a change to undo, not to this action.
               const members = new Set(entry.memberIds ?? []);
               return {
                 projects: [...state.projects, project],

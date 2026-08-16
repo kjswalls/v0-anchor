@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 /**
  * The Trash SECTION — the console's one heterogeneous list, and its one
@@ -132,6 +132,47 @@ describe('the Trash section', () => {
     expect(screen.queryByTestId('trash-empty')).toBeNull();
   });
 
+  it('keeps saying the fetch failed once the user types in the filter', async () => {
+    // ListColumn's centralised no-match branch replaces CHILDREN, not just an
+    // empty row list — so one keystroke used to swap "Couldn't load the trash"
+    // for "Nothing matches 'x'", turning an outage into a confident claim that
+    // the thing you are hunting for is not in the bin.
+    listDeleted.mockRejectedValue(new Error('network'));
+    openTrash();
+    await screen.findByTestId('trash-failed');
+
+    fireEvent.change(screen.getByTestId('trash-filter'), { target: { value: 'x' } });
+
+    expect(screen.getByTestId('trash-failed')).toBeTruthy();
+  });
+
+  it('still says "nothing matches" when a LOADED bin has no match', async () => {
+    // The suppression must be scoped to "we have no answer", not to the whole
+    // section — otherwise filtering a real bin silently shows an empty list.
+    listDeleted.mockResolvedValue([entry({ name: 'Groceries' })]);
+    openTrash();
+    await screen.findByTestId('trash-row');
+
+    fireEvent.change(screen.getByTestId('trash-filter'), { target: { value: 'zzz' } });
+
+    expect(screen.queryByTestId('trash-row')).toBeNull();
+    expect(screen.getByTestId('organize-list').textContent).toContain('Nothing matches');
+  });
+
+  it('puts the kind in the Restore button’s accessible name', async () => {
+    listDeleted.mockResolvedValue([
+      entry({ kind: 'item', id: 'i1', name: 'Reading' }),
+      entry({ kind: 'project', id: 'p1', name: 'Reading', entity: { id: 'p1', name: 'Reading', emoji: 'x' } }),
+    ]);
+    openTrash();
+    await screen.findAllByTestId('trash-row');
+
+    // Two rows, two DISTINCT accessible names — otherwise a screen-reader user
+    // is choosing between them blind.
+    expect(screen.getByLabelText('Restore item Reading')).toBeTruthy();
+    expect(screen.getByLabelText('Restore project Reading')).toBeTruthy();
+  });
+
   it('distinguishes an empty bin from one that never loaded', async () => {
     listDeleted.mockResolvedValue([]);
     openTrash();
@@ -169,8 +210,10 @@ describe('whenGone', () => {
   const at = (iso: string) => new Date(iso).getTime();
 
   it('rounds DOWN, so the count never runs ahead of the purge', () => {
-    // 25 hours is one day gone, not two.
-    expect(whenGone('2026-08-12T10:00:00.000Z', at('2026-08-13T11:00:00.000Z'))).toBe('1d ago');
+    // 36 HOURS, not 25. The first version of this test used 25h — where floor
+    // and round agree (both 1) — so it could not tell the two apart and stayed
+    // green against Math.round. 36h is 1.5 days: floor says 1, round says 2.
+    expect(whenGone('2026-08-12T10:00:00.000Z', at('2026-08-13T22:00:00.000Z'))).toBe('1d ago');
   });
 
   it('reads in hours inside the first day', () => {
@@ -182,7 +225,15 @@ describe('whenGone', () => {
   });
 
   it('does not render a negative age from a clock skew', () => {
-    expect(whenGone('2026-08-12T10:00:00.000Z', at('2026-08-12T09:00:00.000Z'))).toBe('just now');
+    // A DAY behind, not an hour. At one hour the `hours < 1` branch already
+    // returns "just now", so the negative guard was doing nothing the test
+    // could see; at 25 hours behind, without it, Math.floor(-25/24) prints
+    // "-2d ago".
+    expect(whenGone('2026-08-12T10:00:00.000Z', at('2026-08-11T09:00:00.000Z'))).toBe('just now');
+  });
+
+  it('survives a malformed timestamp rather than printing NaN', () => {
+    expect(whenGone('not-a-date', at('2026-08-12T10:00:00.000Z'))).toBe('just now');
   });
 });
 
@@ -202,5 +253,61 @@ describe('heldByTrash', () => {
 
   it('says nothing about a free name', () => {
     expect(heldByTrash(trashed, 'Home', 'project')).toBeNull();
+  });
+
+  it('names the noun it was given, so the group copy is not about projects', () => {
+    expect(heldByTrash(trashed, 'Work', 'habit group')).toContain('habit group');
+  });
+});
+
+describe('the trashed-name guard does not go stale mid-session', () => {
+  /**
+   * The hole the review found and the first version's comment denied.
+   *
+   * `removeProject` FILTERS the row out of state.projects, so after deleting a
+   * project without leaving the section there is no live sibling for takenBy to
+   * match — and the server bin was fetched before the delete. Two clicks apart,
+   * the create row would accept the name, the store would seat a phantom the
+   * database refused with 23505, and every item filed into it would fail on the
+   * FK. No refetch here: the union is fed by a store subscription, because
+   * removeProject does not await its DB write and a refetch would race it.
+   */
+  it('refuses a name deleted moments ago in the same section, with no refetch', async () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'p1', name: 'Work', emoji: 'icon:Briefcase' }],
+    } as never);
+
+    render(<OrganizeConsole open onOpenChange={() => {}} section="projects" />);
+    await screen.findByTestId('project-row');
+
+    // Delete it the way the detail pane does.
+    act(() => {
+      usePlannerStore.setState({ projects: [] } as never);
+    });
+
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
+
+    expect(screen.getByTestId('project-new-problem').textContent).toContain('Trash');
+    expect(screen.getByTestId('project-add')).toBeDisabled();
+  });
+
+  it('lets the name go again once the container is restored', async () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'p1', name: 'Work', emoji: 'icon:Briefcase' }],
+    } as never);
+    render(<OrganizeConsole open onOpenChange={() => {}} section="projects" />);
+    await screen.findByTestId('project-row');
+
+    act(() => usePlannerStore.setState({ projects: [] } as never));
+    // ⌘Z, or a restore out of the Trash — either way it is live again, so the
+    // name is no longer held by anything and the guard must stand down.
+    act(() =>
+      usePlannerStore.setState({
+        projects: [{ id: 'p1', name: 'Work', emoji: 'icon:Briefcase' }],
+      } as never)
+    );
+
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
+    expect(screen.queryByTestId('project-new-problem')).toBeNull();
   });
 });

@@ -116,6 +116,10 @@ export function TrashSection() {
           placeholder: 'Filter trash…',
           testId: 'trash-filter',
         }}
+        // A failure and a still-loading bin both render zero rows, and neither
+        // means "nothing matches your search". Only a LOADED bin may answer the
+        // filter's question.
+        suppressNoMatch={entries === null}
       >
         {failed ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="trash-failed">
@@ -152,9 +156,14 @@ export function TrashSection() {
         {/* The one thing a bin has to say that its rows cannot: what ⌘Z will do
             after you press Restore. Decision 3 made restore a normal history
             entry precisely so the answer is the ordinary one. */}
+        {/* "Members and all" was an overclaim and the review caught it: a
+            restored project reconnects the items still pointing at it by ID,
+            which is every item filed since migration 027 but NOT the older
+            name-only references, and those come back on the next reload rather
+            than in session. So the sentence promises what the row can show. */}
         <p className="text-muted-foreground mt-3 max-w-[46ch] text-xs">
-          Restoring puts something back where it was, members and all. ⌘Z after a restore
-          sends it back here.
+          Restoring puts something back where it was, along with whatever the row says comes
+          with it. ⌘Z after a restore sends it back here.
         </p>
       </DetailColumn>
     </>
@@ -243,7 +252,13 @@ function TrashRow({
         // the only thing a trash row can do.
         data-organize-row=""
         data-testid="trash-restore"
-        aria-label={`Restore ${entry.name}`}
+        // The KIND is in the accessible name too, for the same reason it is on
+        // the row: this is the one list that mixes kinds, so a trashed task and
+        // a trashed project both called "Reading" would otherwise present two
+        // buttons reading "Restore Reading" — and a screen-reader user would be
+        // choosing between them blind, on the one surface where picking the
+        // wrong one cannot be taken back by looking.
+        aria-label={`Restore ${KIND_LABEL[entry.kind].toLowerCase()} ${entry.name}`}
         className="border-border text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-ring flex h-[22px] shrink-0 items-center gap-1 rounded-[5px] border px-2 text-xs disabled:opacity-40 focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
       >
         <RotateCcw className="h-3 w-3" />

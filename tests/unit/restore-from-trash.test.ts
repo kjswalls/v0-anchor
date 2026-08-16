@@ -202,6 +202,40 @@ describe('restoreFromTrash — what comes back with it', () => {
     expect(restored.projectId).toBe('pr-1');
   });
 
+  it('re-files a habit group’s members too, and the type guard is load-bearing', async () => {
+    // The group-side twin, and NOT a copy for symmetry's sake: removeHabitGroup
+    // is different from removeProject — it REASSIGNS its habits to a fallback
+    // group in the store while `dbDeleteHabitGroup` only stamps deleted_at, so
+    // the group_id link survives and the store's copy is a lie until reload.
+    // Without the re-file the restored group comes back empty and its habits
+    // stay filed under "Personal".
+    const habit = {
+      type: 'habit', id: 'h-1', title: 'Stretch', group: 'Personal', groupId: 'g-old',
+      status: 'pending', streak: 0, completedDates: [], skippedDates: [],
+      dailyCounts: {}, repeatFrequency: 'daily',
+    } as unknown as Item;
+    // A task carrying the SAME id in memberIds would be re-filed too if the
+    // `type === 'habit'` guard were dropped — which would write `group` onto a
+    // task, a column no task surface reads and every habit surface does.
+    vi.mocked(db.fetchItems).mockResolvedValue([habit, task({ id: 'task-1' })]);
+    await store().initializeStore(USER);
+
+    store().restoreFromTrash(
+      entry({
+        kind: 'group', id: 'g-1', name: 'Wellness',
+        entity: { id: 'g-1', name: 'Wellness', emoji: 'icon:Heart' },
+        memberIds: ['h-1', 'task-1'],
+      })
+    );
+
+    const back = store().items.find((i) => i.id === 'h-1')!;
+    expect(back.type === 'habit' && back.group).toBe('Wellness');
+    expect(back.type === 'habit' && back.groupId).toBe('g-1');
+    // The task named in memberIds is NOT touched — habits only.
+    expect(filed('task-1').project).toBeUndefined();
+    expect('group' in filed('task-1')).toBe(false);
+  });
+
   it('leaves items that were never members alone', async () => {
     vi.mocked(db.fetchItems).mockResolvedValue([task({ id: 'task-1' }), task({ id: 'task-2' })]);
     await store().initializeStore(USER);

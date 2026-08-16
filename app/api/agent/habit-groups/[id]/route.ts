@@ -51,6 +51,18 @@ export async function PATCH(
     }
     return NextResponse.json({ success: true })
   } catch (err) {
+    // See the projects route: 23505 here means the name is held by another
+    // group, possibly one in the trash that no endpoint can show the caller.
+    const code = (err as { code?: string } | null)?.code
+    if (code === '23505' || (err instanceof Error && err.message.includes('duplicate key value'))) {
+      return NextResponse.json(
+        {
+          error:
+            'That name is already taken by another habit group — possibly one in the trash, which keeps its name for 30 days.',
+        },
+        { status: 409 }
+      )
+    }
     const msg = err instanceof Error ? err.message : 'Internal server error'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

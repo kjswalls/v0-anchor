@@ -651,7 +651,10 @@ export async function deleteItem(id: string, type: string, userId?: string, clie
   // children it has fetched. The FK's ON DELETE SET NULL covers only the hard
   // purge — without this, a soft-deleted parent leaves live-but-unreachable
   // children that resurrect as free-floating tasks when the purge runs.
-  // Idempotent alongside the store's own per-child deletes.
+  // Idempotent alongside the store's own per-child deletes: those re-stamp the
+  // child with their own instant, which is harmless because NOTHING keys on the
+  // two stamps agreeing. Phase 4's restore cascade tried to and had to stop —
+  // see restoreItem.
   if (type !== 'habit') {
     const { error: childError } = await supabase
       .from('items')
@@ -692,31 +695,35 @@ export async function validateParentItemId(
 // No plugin notify, matching the legacy restoreTask/restoreHabit exactly — a
 // 'restore' webhook action would widen the pinned event contract (Phase 5).
 //
-// RESTORES THE SUBTASKS THAT WENT DOWN WITH IT, which deleteItem's cascade
-// above made necessary and nothing supplied until Phase 4. Clearing one row is
-// not the inverse of stamping N+1: a parent restored alone comes back with its
+// RESTORES THE SUBTASKS IN THE BIN UNDER IT, which deleteItem's cascade above
+// made necessary and nothing supplied until Phase 4. Clearing one row is not
+// the inverse of stamping N+1: a parent restored alone comes back with its
 // checklist silently missing, and no surface anywhere would say so.
 //
-// Matched on the PARENT'S OWN TIMESTAMP rather than "every deleted child",
-// because the cascade stamps co-deleted children with the parent's exact
-// instant (`deletedAt` is computed once and reused). So a subtask the user
-// deleted BEFORE deleting the parent carries a different value and correctly
-// stays in the bin — restoring the parent must not resurrect a child that was
-// already thrown away on purpose. The delete already encoded which children
-// belong to which gesture; this just reads it back.
+// EVERY trashed child, NOT the ones sharing the parent's deleted_at. The first
+// version of this matched on the timestamp, reasoning that the cascade stamps
+// co-deleted children with the parent's exact instant so a subtask thrown away
+// EARLIER would correctly stay behind. Review killed it twice over:
+//
+//  1. The stamps are not reliably equal. planner-store's deleteTask fires its
+//     own dbDeleteItem per child AFTER the parent's, each computing a fresh
+//     `new Date().toISOString()`, and that per-child write is unguarded while
+//     the parent's cascade is `.is('deleted_at', null)` — so the child's own
+//     stamp always wins. Measured over 20k simulated gestures they diverge in
+//     0.3–2% of deletes. An invariant held together by two clocks landing in
+//     the same millisecond is not an invariant.
+//  2. It produced a state with no way out. listDeleted skipped a child whenever
+//     its parent was trashed, but rolled it up only when the stamps matched —
+//     two predicates that are not complements. A subtask binned on Monday whose
+//     parent followed on Tuesday appeared in NO row: not its own, not under the
+//     parent, and the stamp-matched cascade would not restore it either.
+//
+// So the rule is now the same one in all three places — the bin, the roll-up
+// and this cascade all ask only "is the parent in the bin too". The cost is
+// that a subtask deleted deliberately before its parent comes back with the
+// parent; the alternative was that it never came back at all.
 export async function restoreItem(id: string, type: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  // Read before clearing: the timestamp is the join key, and the update wipes
-  // it. maybeSingle so a missing row is null rather than an error — a restore
-  // of something already gone should no-op, not throw.
-  const { data: row } = await supabase
-    .from('items')
-    .select('deleted_at')
-    .eq('id', id)
-    .eq('type', type)
-    .maybeSingle();
-  const stamp = (row as { deleted_at?: string | null } | null)?.deleted_at ?? null;
-
   const { error } = await supabase
     .from('items')
     .update({ deleted_at: null })
@@ -724,12 +731,12 @@ export async function restoreItem(id: string, type: string, client?: DbClient): 
     .eq('type', type);
   if (error) throw error;
 
-  if (type !== 'habit' && stamp) {
+  if (type !== 'habit') {
     const { error: childError } = await supabase
       .from('items')
       .update({ deleted_at: null })
       .eq('parent_item_id', id)
-      .eq('deleted_at', stamp);
+      .not('deleted_at', 'is', null);
     // Logged, never thrown: the parent is already back, and failing the whole
     // restore here would leave the user with no way to retry the half that
     // worked. Mirrors deleteItem's cascade exactly.
@@ -1629,11 +1636,12 @@ export interface TrashEntry {
   icon?: string;
   color?: string;
   /**
-   * Subtasks that went into the bin as part of THIS delete and come back with
-   * it. Carried whole rather than counted, because the store has to seat them
-   * in the same set() the parent lands in — the DB cascade puts them back, and
-   * an in-session restore that showed a parent with an empty checklist until
-   * the next reload would read as the subtasks having been lost.
+   * The subtasks in the bin under this parent, which come back with it.
+   *
+   * Carried whole rather than counted, because the store has to seat them in
+   * the same set() the parent lands in — the DB cascade puts them back, and an
+   * in-session restore showing a parent with an empty checklist until the next
+   * reload would read as the subtasks having been lost.
    */
   children?: Item[];
   /**
@@ -1678,10 +1686,23 @@ type Trashed<T> = T & { deleted_at: string };
  * `tasks` projection every canvas surface reads, and its parent is still
  * trashed. Every row here is one restorable unit that lands somewhere visible.
  * A subtask deleted on its own, under a live parent, keeps its row.
+ *
+ * The skip and the roll-up ask ONE question between them ("is the parent in the
+ * bin"), so every trashed item appears in exactly one row. Keying either of
+ * them on `deleted_at` equality is what produced a bin with an invisible
+ * corner — see restoreItem.
  */
 export async function listDeleted(
   userId: string,
-  limit = 100,
+  // 500 rather than 100, and the number is picked against the FILTER rather
+  // than the list. The bin's search runs client-side over what this returned,
+  // so anything past the cap is not merely below the fold — it is unfindable,
+  // and a recovery surface that cannot find a thing is telling you it is gone.
+  // The largest live account holds 63 trashed items; 500 puts the cap out of
+  // reach of a personal planner's 30-day window while still bounding the query.
+  // If it is ever hit for real, the answer is a date-ranged fetch, not a bigger
+  // number — a paginated bin is a bin you have to hunt through twice.
+  limit = 500,
   client?: DbClient,
 ): Promise<TrashEntry[]> {
   const supabase = client ?? createClient();
@@ -1733,11 +1754,13 @@ export async function listDeleted(
   for (const row of itemRows) {
     // A child whose parent is also in the bin travels with the parent.
     if (row.parent_item_id && trashedIds.has(row.parent_item_id)) continue;
-    const children = itemRows.filter(
-      // Same instant = same gesture. deleteItem computes the stamp once and
-      // reuses it for the cascade, and restoreItem reads it back the same way.
-      (c) => c.parent_item_id === row.id && c.deleted_at === row.deleted_at
-    );
+    // THE SAME PREDICATE, negated — and that is the point. These two lines used
+    // to disagree: the skip asked "is the parent trashed" while the roll-up
+    // asked "was it trashed at the same instant", so a subtask binned before its
+    // parent satisfied the first and failed the second and rendered in NO row
+    // at all. Complementary by construction now, so no item in the bin can be
+    // invisible in it. See restoreItem for why the timestamp went.
+    const children = itemRows.filter((c) => c.parent_item_id === row.id);
     entries.push({
       kind: 'item',
       id: row.id,

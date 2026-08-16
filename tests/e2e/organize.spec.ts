@@ -333,23 +333,34 @@ test.describe('organize — projects, types and groups', () => {
     // can look correct and not be:
     //   1. the row appears in the bin at all;
     //   2. restoring puts the CONTAINER back without a reload;
-    //   3. restoring re-files the MEMBERS — the link survives the delete in the
-    //      database on purpose (027), and a restore that ignored it would return
-    //      a visibly empty project;
+    //   3. restoring RE-FILES THE MEMBERS — the link survives the delete in the
+    //      database on purpose (027), and a restore that ignored it returns a
+    //      visibly empty project;
     //   4. ⌘Z re-deletes, which is decision 3's whole contract.
+    //
+    // THE ORDER OF THE FIXTURE IS THE TEST. The first version created the task
+    // first, so `items.project` held the name while `project_id` stayed NULL —
+    // the parked name-reference case — and claim 3 was not merely unasserted
+    // but UNREACHABLE: with no id link there is nothing for the re-file to
+    // reconnect. Creating the project first makes the agent-side create resolve
+    // the name to a real id (lookupContainerId), which is the only way this
+    // exercises the path it is named for.
     const title = testTitle('org-trash');
     const name = scope.title('Recoverable');
-    const taskId = await createTestTask(page, { title, project: name });
+    let taskId = '';
     try {
-      await reloadApp(page);
       await openConsole(page, 'Projects');
       const projectId = await createLabel(page, 'project', name);
+      await closeConsole(page);
 
-      // The task predates the project row (items.project is free text), so its
-      // project_id is NULL until something links them. Renaming to itself would
-      // no-op, so the link is made the way a user makes it: the item is already
-      // filed by NAME, and the delete's confirm copy proves the association.
+      taskId = await createTestTask(page, { title, project: name });
+      await reloadApp(page);
+      await openConsole(page, 'Projects');
+      await page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`).click();
+
       await page.getByTestId('project-delete').click();
+      // The count proves the association before anything is deleted — it fails
+      // loudly if the fixture ever stops linking.
       await expect(page.getByTestId('confirm-dialog')).toContainText('Its 1 item stays');
       await page.getByTestId('category-delete-confirm').click();
 
@@ -358,24 +369,31 @@ test.describe('organize — projects, types and groups', () => {
       const row = trashRow(page, 'project', name);
       await expect(row).toHaveCount(1);
       await expect(row).toContainText('Project');
+      // The row says what comes back with it, before the click.
+      await expect(row).toContainText('1 item refile');
 
       // 2. Back on the canvas without a reload.
       await row.getByTestId('trash-restore').click();
       await expect(row).toHaveCount(0);
       await page.getByRole('tab', { name: 'Projects' }).click();
-      await expect(
-        page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`)
-      ).toBeVisible();
+      const projectRow = page.locator(
+        `[data-testid="project-row"][data-project-id="${projectId}"]`
+      );
+      await expect(projectRow).toBeVisible();
+
+      // 3. And it is not an empty shell. The row's count is computed live off
+      // the store (`i.project === name`), so a 1 here is the member having been
+      // re-filed in the same set() the container came back in — the delete had
+      // cleared both halves.
+      await expect(projectRow).toContainText('1');
 
       // 4. ⌘Z re-deletes. Pressed on the console, which claims the bare-key
       // space but never a modifier chord — see use-command-shortcuts' guard.
       await page.keyboard.press('ControlOrMeta+z');
-      await expect(
-        page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`)
-      ).toHaveCount(0);
+      await expect(projectRow).toHaveCount(0);
       await closeConsole(page);
     } finally {
-      await cleanupTestData(page, [taskId], []);
+      await cleanupTestData(page, taskId ? [taskId] : [], []);
       await cleanupTestLabels(scope.prefix);
     }
   });

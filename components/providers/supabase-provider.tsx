@@ -139,11 +139,31 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // arriving with an empty routines array (which would make every member of
       // a paused routine resolve as live and hand the auto-age sweep a pile of
       // suddenly-unprotected items). Before this guard existed, the next
-      // SIGNED_IN retried. Latching unconditionally would have turned one
-      // transient failure into an app that never loads again until reload.
-      initializeStore(userId).catch(() => {
-        if (loadedUserId.current === userId) loadedUserId.current = null;
-      });
+      // SIGNED_IN retried; latching unconditionally turns one transient failure
+      // into an app that never loads again until the user reloads by hand.
+      //
+      // READ OFF `error`, NOT off a rejection. The first version of this hung
+      // the unlatch on `.catch()` and was dead code: initializeStore wraps its
+      // whole body in try/catch and RESOLVES on failure, recording the message
+      // in `error` instead of rethrowing. A safety net that cannot fire is
+      // worse than none, because it reads as covered.
+      //
+      // The `userId` re-check is for a raced account switch: a slow failure for
+      // the previous account must not unlatch the current one and trigger a
+      // second load of someone else's data.
+      initializeStore(userId).then(
+        () => {
+          const state = usePlannerStore.getState();
+          if (state.error && state.userId === userId && loadedUserId.current === userId) {
+            loadedUserId.current = null;
+          }
+        },
+        // Kept as belt and braces: if the store's catch is ever removed, this
+        // is what stops the latch becoming permanent again.
+        () => {
+          if (loadedUserId.current === userId) loadedUserId.current = null;
+        }
+      );
     };
 
     // Check current session on mount

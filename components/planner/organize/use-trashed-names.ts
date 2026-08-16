@@ -23,16 +23,35 @@ import { fetchTrashedNames, type TrashedName } from '@/lib/db';
  * fails its own write on `items_project_id_fkey`. Nothing on screen says a
  * word, and the lot evaporates on the next reload.
  *
- * Fetched once per section mount, not subscribed. The bin changes when the user
- * deletes something, and a delete already unmounts nothing — but it also cannot
- * make this list STALE in the dangerous direction: a name that entered the bin
- * during this visit is one the store still knows about live, so the ordinary
- * sibling check catches it. Staleness here can only cost a refusal that is no
- * longer needed, never a phantom.
+ * THE SERVER FETCH ALONE IS NOT ENOUGH, and the first version of this said the
+ * opposite in a comment that had the mechanism backwards. It claimed a name
+ * entering the bin mid-visit was still safe, "because the store still knows
+ * about it live, so the ordinary sibling check catches it". It does not:
+ * `removeProject` FILTERS the row out of `state.projects`. So after deleting a
+ * project without leaving the section — which is two clicks, and exactly what
+ * someone tidying up does — the live sibling check has nothing to match, the
+ * fetched bin predates the delete, and the phantom this hook exists to prevent
+ * is reachable. Verified by rendering the console and doing it.
+ *
+ * So the answer is a UNION: the server's bin, plus every container that left
+ * the live arrays during this session. Tracked through a store subscription
+ * rather than by refetching on a count change, because `removeProject` fires
+ * `dbDeleteProject(...)` WITHOUT awaiting it — a refetch triggered by the
+ * synchronous optimistic set() would race the write and could read the bin
+ * before `deleted_at` had landed. The union needs no round trip and so cannot
+ * lose that race.
+ *
+ * A container that comes BACK — undo, or a Trash restore — drops out of the
+ * union again, because it is live once more.
  */
 export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedName[] } {
   const userId = usePlannerStore((s) => s.userId);
   const [names, setNames] = useState<{ projects: TrashedName[]; groups: TrashedName[] }>({
+    projects: [],
+    groups: [],
+  });
+  /** Containers that vanished from the live arrays since this section mounted. */
+  const [gone, setGone] = useState<{ projects: TrashedName[]; groups: TrashedName[] }>({
     projects: [],
     groups: [],
   });
@@ -58,8 +77,40 @@ export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedNam
     };
   }, [userId]);
 
-  return names;
+  useEffect(() => {
+    // Optional-called: a unit test that mocks `@/lib/planner-store` with only
+    // the members it needs has no `subscribe`, and this runs on mount.
+    return usePlannerStore.subscribe?.((next, prev) => {
+      if (next.projects === prev.projects && next.habitGroups === prev.habitGroups) return;
+      setGone((current) => ({
+        projects: stillGone([...current.projects, ...vanished(prev.projects, next.projects)], next.projects),
+        groups: stillGone([...current.groups, ...vanished(prev.habitGroups, next.habitGroups)], next.habitGroups),
+      }));
+    });
+  }, []);
+
+  // Deduped by id: a later remount refetches, and a container deleted this
+  // session will by then be in the server's bin as well.
+  return {
+    projects: mergeById(names.projects, gone.projects),
+    groups: mergeById(names.groups, gone.groups),
+  };
 }
+
+const vanished = (before: TrashedName[], after: TrashedName[]): TrashedName[] =>
+  before
+    .filter((b) => !after.some((a) => a.id === b.id))
+    .map((b) => ({ id: b.id, name: b.name }));
+
+/** Drop anything that is live again — undo, or a restore out of the Trash. */
+const stillGone = (list: TrashedName[], live: { id: string }[]): TrashedName[] =>
+  list.filter((t) => !live.some((l) => l.id === t.id));
+
+const mergeById = (a: TrashedName[], b: TrashedName[]): TrashedName[] => {
+  const byId = new Map(a.map((r) => [r.id, r]));
+  for (const row of b) if (!byId.has(row.id)) byId.set(row.id, row);
+  return [...byId.values()];
+};
 
 /**
  * The sentence for a name a trashed container is holding, or null.

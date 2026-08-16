@@ -42,6 +42,7 @@ export function ListColumn({
   count,
   hasSelection,
   filter,
+  suppressNoMatch,
   children,
   footer,
 }: {
@@ -58,6 +59,17 @@ export function ListColumn({
     testId: string;
   };
   children: React.ReactNode;
+  /**
+   * Suppress the centralised "Nothing matches" branch and render `children`.
+   *
+   * For a section whose children are saying something the filter cannot know
+   * about. The Trash is the case: a FAILED fetch renders zero rows, so typing
+   * one character replaced "Couldn't load the trash" with "Nothing matches
+   * 'x'" — turning an outage into a confident statement that the thing you are
+   * hunting for is not in the bin. That is the one wrong answer a recovery
+   * surface can give.
+   */
+  suppressNoMatch?: boolean;
   /** The create row — pinned outside the scroller. */
   footer?: React.ReactNode;
 }) {
@@ -91,7 +103,7 @@ export function ListColumn({
         {/* Centralised so all five sections cannot word it five ways — and so a
             section that forgets the branch cannot show "No routines yet." to
             someone who has twelve and typed a typo. */}
-        {filter?.value && count === 0 ? (
+        {filter?.value && count === 0 && !suppressNoMatch ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs">
             Nothing matches &ldquo;{filter.value}&rdquo;.
           </p>

@@ -114,7 +114,15 @@ describe('listDeleted', () => {
     // alone "so a restore within the 30-day window brings the routine back
     // intact". If this arrives empty, the first membership edit — or a plain
     // redo, which replays the full shape — hard-deletes all three.
-    tables.routines = [{ id: 'r1', user_id: U, name: 'Morning', deleted_at: T2 }];
+    //
+    // The fixture uses NON-DEFAULT values in every column and the assertion is
+    // whole-object, because restoreFromTrash seats this entity verbatim and the
+    // history subscriber snapshots it. Asserting only itemIds let every other
+    // mapped field be dropped with the suite still green.
+    tables.routines = [{
+      id: 'r1', user_id: U, name: 'Morning', icon: 'icon:Sun', color: '#84cc16',
+      paused_at: T1, paused_until: '2026-09-01', sort_order: 3, deleted_at: T2,
+    }];
     tables.routine_items = [
       { routine_id: 'r1', item_id: 'a', user_id: U, sort_order: 0 },
       { routine_id: 'r1', item_id: 'b', user_id: U, sort_order: 1 },
@@ -123,18 +131,49 @@ describe('listDeleted', () => {
 
     const [entry] = await listDeleted(U);
     expect(entry.kind).toBe('routine');
-    expect((entry.entity as { itemIds: string[] }).itemIds).toEqual(['a', 'b']);
+    expect(entry.entity).toEqual({
+      id: 'r1', name: 'Morning', icon: 'icon:Sun', color: '#84cc16',
+      pausedAt: T1, pausedUntil: '2026-09-01', sortOrder: 3, itemIds: ['a', 'b'],
+    });
+    // And the entity NEVER carries the deletion stamp — a store row holding one
+    // could enter an undo snapshot and be written back as a soft delete.
+    expect('deletedAt' in (entry.entity as object)).toBe(false);
   });
 
   it('hydrates a trashed program from BOTH of its join tables', async () => {
-    tables.programs = [{ id: 'p1', user_id: U, name: 'Summer', state: 'active', deleted_at: T2 }];
+    // state: 'completed' rather than 'active', so a hard-coded default cannot
+    // pass this by accident.
+    tables.programs = [{
+      id: 'p1', user_id: U, name: 'Summer', icon: 'icon:Sun', color: '#f97316',
+      state: 'completed', starts_on: '2026-06-01', ends_on: '2026-08-31',
+      sort_order: 2, updated_at: T1, deleted_at: T2,
+    }];
     tables.program_items = [{ program_id: 'p1', item_id: 'a', user_id: U }];
     tables.program_routines = [{ program_id: 'p1', routine_id: 'r9', user_id: U }];
 
     const [entry] = await listDeleted(U);
-    const program = entry.entity as { itemIds: string[]; routineIds: string[] };
-    expect(program.itemIds).toEqual(['a']);
-    expect(program.routineIds).toEqual(['r9']);
+    expect(entry.entity).toEqual({
+      id: 'p1', name: 'Summer', icon: 'icon:Sun', color: '#f97316',
+      state: 'completed', startsOn: '2026-06-01', endsOn: '2026-08-31',
+      sortOrder: 2, updatedAt: T1, itemIds: ['a'], routineIds: ['r9'],
+    });
+  });
+
+  it('maps a trashed project through the same mapper the live fetch uses', async () => {
+    tables.projects = [{
+      id: 'pr1', user_id: U, name: 'Work', emoji: 'icon:Briefcase', color: '#84cc16',
+      repeat_frequency: 'weekdays', time_bucket: 'morning', start_time: '09:00',
+      duration: 45, deleted_at: T2,
+    }];
+
+    const [entry] = await listDeleted(U);
+    expect(entry.icon).toBe('icon:Briefcase');
+    expect(entry.color).toBe('#84cc16');
+    expect(entry.entity).toEqual({
+      id: 'pr1', name: 'Work', emoji: 'icon:Briefcase', color: '#84cc16',
+      repeatFrequency: 'weekdays', repeatDays: undefined, repeatMonthDay: undefined,
+      timeBucket: 'morning', startTime: '09:00', duration: 45,
+    });
   });
 
   it('rolls co-deleted subtasks up under their parent instead of listing them', async () => {
@@ -160,6 +199,39 @@ describe('listDeleted', () => {
     const rows = await listDeleted(U);
     expect(rows.map((r) => r.id)).toEqual(['kid1']);
     expect(rows[0].children).toBeUndefined();
+  });
+
+  it('shows a subtask binned BEFORE its parent — in exactly one row, never none', async () => {
+    // The bin's invisible corner, and the reason the deleted_at coupling went.
+    // The skip asked "is the parent trashed" while the roll-up asked "at the
+    // same instant"; a child binned on Monday whose parent followed on Tuesday
+    // passed the first and failed the second, so it rendered in NO row — not
+    // its own, not under the parent — and the stamp-matched restore cascade
+    // would not have brought it back either. Invisible until the 30-day purge.
+    tables.items = [
+      item({ id: 'parent', title: 'Plan trip', deleted_at: T2 }),
+      item({ id: 'kid', title: 'Book flight', parent_item_id: 'parent', deleted_at: T1 }),
+    ];
+
+    const rows = await listDeleted(U);
+    expect(rows.map((r) => r.id)).toEqual(['parent']);
+    expect(rows[0].children?.map((c) => c.id)).toEqual(['kid']);
+  });
+
+  it('leaves no trashed item out of the bin, whatever the stamps', async () => {
+    // The invariant, stated directly: the skip and the roll-up are complements,
+    // so every trashed row is reachable through exactly one bin entry. The
+    // store's own deleteTask gives each child its own millisecond, so mixed
+    // stamps under one parent are the NORMAL case, not an exotic one.
+    tables.items = [
+      item({ id: 'parent', deleted_at: '2026-08-12T10:00:00.001Z' }),
+      item({ id: 'kidA', parent_item_id: 'parent', deleted_at: '2026-08-12T10:00:00.002Z' }),
+      item({ id: 'kidB', parent_item_id: 'parent', deleted_at: '2026-08-12T10:00:00.003Z' }),
+    ];
+
+    const rows = await listDeleted(U);
+    const reachable = new Set(rows.flatMap((r) => [r.id, ...(r.children ?? []).map((c) => c.id)]));
+    expect(reachable).toEqual(new Set(['parent', 'kidA', 'kidB']));
   });
 
   it('reports the live members a trashed project still holds by id', async () => {
@@ -207,10 +279,14 @@ describe('restoreItem', () => {
     expect(tables.items.find((r) => r.id === 'kid')!.deleted_at).toBeNull();
   });
 
-  it('leaves a subtask that was thrown away EARLIER in the bin', async () => {
-    // Matched on the parent's own timestamp, not "every deleted child". The
-    // user deleted this one on purpose, before deleting the parent; restoring
-    // the parent must not resurrect it.
+  it('brings back a child with a DIFFERENT stamp, because the stamps diverge in practice', async () => {
+    // This is the assertion that reversed. It used to demand the opposite — a
+    // child binned earlier stayed behind — on the theory that equal stamps mean
+    // "same gesture". They do not: planner-store's deleteTask re-stamps every
+    // child with its own `new Date()` after the parent's, so a plain one-click
+    // delete already produces mixed stamps. Keying on them stranded subtasks in
+    // a bin row that did not exist. Every trashed child under this parent now
+    // comes back with it.
     tables.items = [
       item({ id: 'parent', deleted_at: T2 }),
       item({ id: 'kid', parent_item_id: 'parent', deleted_at: T1 }),
@@ -219,7 +295,23 @@ describe('restoreItem', () => {
     await restoreItem('parent', 'task');
 
     expect(tables.items.find((r) => r.id === 'parent')!.deleted_at).toBeNull();
-    expect(tables.items.find((r) => r.id === 'kid')!.deleted_at).toBe(T1);
+    expect(tables.items.find((r) => r.id === 'kid')!.deleted_at).toBeNull();
+  });
+
+  it('leaves a LIVE child alone', async () => {
+    // The `not deleted_at is null` filter earns its place here: a live subtask
+    // must not be written at all, or a restore would touch rows it has no
+    // business touching.
+    tables.items = [
+      item({ id: 'parent', deleted_at: T2 }),
+      item({ id: 'kid', parent_item_id: 'parent', deleted_at: null }),
+    ];
+
+    await restoreItem('parent', 'task');
+
+    const written = updates.filter((u) => u.table === 'items');
+    expect(written).toHaveLength(2);
+    expect(tables.items.find((r) => r.id === 'kid')!.deleted_at).toBeNull();
   });
 
   it('does not cascade for a habit', async () => {

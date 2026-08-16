@@ -61,9 +61,32 @@ export async function PATCH(
     }
     return NextResponse.json({ success: true })
   } catch (err) {
+    // A name collision is the caller's problem to solve, not a server fault —
+    // and the raw constraint string ("duplicate key value violates unique
+    // constraint projects_user_id_name_key") tells an agent nothing it can act
+    // on. Worse, the holder may be a SOFT-DELETED project: the unique index
+    // spans the bin, so the name can be taken by a row the agent cannot see
+    // through any endpoint. Say so, with the status that means "your request,
+    // fix it and retry".
+    if (isUniqueViolation(err)) {
+      return NextResponse.json(
+        {
+          error:
+            'That name is already taken by another project — possibly one in the trash, which keeps its name for 30 days.',
+        },
+        { status: 409 }
+      )
+    }
     const msg = err instanceof Error ? err.message : 'Internal server error'
     return NextResponse.json({ error: msg }, { status: 500 })
   }
+}
+
+/** PostgreSQL 23505, however the client happens to wrap it. */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  if (code === '23505') return true
+  return err instanceof Error && err.message.includes('duplicate key value')
 }
 
 /**
