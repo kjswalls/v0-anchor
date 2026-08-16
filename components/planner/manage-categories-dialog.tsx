@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Trash2, FolderKanban, Tag, Settings2, Shapes } from 'lucide-react';
 import { EditProjectDialog } from './edit-project-dialog';
-import type { Project } from '@/lib/planner-types';
+import type { Item, Project } from '@/lib/planner-types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,6 +38,87 @@ interface ManageCategoriesDialogProps {
   defaultTab?: string;
 }
 
+type DeleteTarget = { type: 'project' | 'group' | 'itemType'; name: string; id: string };
+
+/**
+ * What deleting actually does, said plainly — the ManageCollectionsDialog
+ * precedent, applied to the half of the app that never had it.
+ *
+ * The copy this replaces was wrong three separate ways, and each error pointed
+ * the same direction: it made a recoverable act sound final and a final one
+ * sound routine.
+ *
+ *   1. Projects and habit groups claimed "This action cannot be undone." Both
+ *      are in HistoryState (⌘Z works) AND soft-deleted with a 30-day window
+ *      before the nightly purge. The sentence was false twice over.
+ *   2. Deleting a habit group claimed to "unassign it from all habits". It does
+ *      not: removeHabitGroup REASSIGNS every habit to the first remaining group,
+ *      falling back to the literal 'Personal'. The habits land somewhere
+ *      specific and the user was never told where.
+ *   3. Deleting a custom item type — the one delete here that genuinely cannot
+ *      be undone, because itemTypes sit outside HistoryState — carried no
+ *      warning at all.
+ *
+ * Counts are computed live rather than passed in, so the number in the sentence
+ * is the number on the canvas.
+ */
+function DeleteConsequence({
+  target,
+  items,
+  habitGroups,
+  itemTypes,
+}: {
+  target: DeleteTarget;
+  items: Item[];
+  habitGroups: { id: string; name: string }[];
+  itemTypes: { id: string; name: string; label: string; labelPlural?: string }[];
+}) {
+  if (target.type === 'project') {
+    // `!== 'habit'`, matching removeProject: custom-typed items are task-shaped
+    // and get unfiled too. The noun is therefore "items", not "tasks" — three
+    // Goals under a project must not be reported as three tasks.
+    const n = items.filter((i) => i.type !== 'habit' && i.project === target.name).length;
+    return (
+      <>
+        {n === 0
+          ? 'Nothing is filed under it, so nothing moves.'
+          : `Its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ${n === 1 ? 'it is' : 'they are'} — ${n === 1 ? 'it' : 'they'} just stop being filed under ${target.name}.`}{' '}
+        ⌘Z brings it back now, and it stays in the Trash for 30 days.
+      </>
+    );
+  }
+
+  if (target.type === 'group') {
+    const n = items.filter((i) => i.type === 'habit' && i.group === target.name).length;
+    // The same expression removeHabitGroup uses, so the sentence names the group
+    // the habits will ACTUALLY land in rather than a plausible-sounding one.
+    const destination = habitGroups.find((g) => g.id !== target.id)?.name ?? 'Personal';
+    return (
+      <>
+        {n === 0
+          ? 'No habits are in it, so nothing moves.'
+          : `Its ${n} ${n === 1 ? 'habit moves' : 'habits move'} to “${destination}” — ${n === 1 ? 'it isn’t' : 'they aren’t'} deleted.`}{' '}
+        ⌘Z brings the group back now, and it stays in the Trash for 30 days.
+      </>
+    );
+  }
+
+  const type = itemTypes.find((t) => t.id === target.id);
+  const slug = type?.name;
+  const n = slug
+    ? items.filter((i) => i.type === 'custom' && i.customType === slug).length
+    : 0;
+  const plural = (type?.labelPlural ?? `${target.name}s`).toLowerCase();
+  return (
+    <>
+      {n === 0
+        ? 'Nothing uses it yet.'
+        : `Your ${n} existing ${n === 1 ? target.name.toLowerCase() : plural} are kept and keep working with a generic label.`}{' '}
+      This one isn’t undoable — custom types sit outside the undo history.
+    </>
+  );
+}
+
 /** 'Goal' → 'goal', 'Side Quest' → 'side-quest' (items.type slug). */
 const slugForLabel = (label: string) =>
   label.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
@@ -50,6 +131,7 @@ export function ManageCategoriesDialog({
   defaultTab,
 }: ManageCategoriesDialogProps) {
   const {
+    items,
     projects, habitGroups, addProject, removeProject, addHabitGroup, removeHabitGroup,
     itemTypes, itemTypesAvailable, addItemType, removeItemType,
     updateProject, updateHabitGroup, updateItemType, getHabitGroupColor,
@@ -324,17 +406,34 @@ export function ManageCategoriesDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {deleteConfirm?.type === 'project' ? 'Project' : deleteConfirm?.type === 'group' ? 'Group' : 'Item Type'}?
+              {deleteConfirm ? `Delete “${deleteConfirm.name}”?` : 'Delete?'}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteConfirm?.type === 'itemType'
-                ? `This removes the "${deleteConfirm?.name}" type. Existing items of this type are kept and keep working with a generic label.`
-                : `This will remove "${deleteConfirm?.name}" and unassign it from all ${deleteConfirm?.type === 'project' ? 'tasks' : 'habits'}. This action cannot be undone.`}
+              {deleteConfirm && (
+                <DeleteConsequence
+                  target={deleteConfirm}
+                  items={items}
+                  habitGroups={habitGroups}
+                  itemTypes={itemTypes}
+                />
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              data-testid="category-delete-confirm"
+              onClick={handleDeleteConfirm}
+              // The filled destructive button is spent on the ONE delete here
+              // that genuinely cannot be undone. Projects and habit groups are
+              // in the undo history and soft-deleted for 30 days; dressing all
+              // three the same way is what taught the user to read none of them.
+              className={
+                deleteConfirm?.type === 'itemType'
+                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                  : undefined
+              }
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
