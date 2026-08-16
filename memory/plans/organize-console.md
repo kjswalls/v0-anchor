@@ -577,9 +577,33 @@ phase happened to sweep the same code:
 |---|---|---|
 | `81c5c21` | Phase 0's review | undo NULLing every member's `project_id` |
 | `0a38733` | Phase 0b's review | the chained fan-out outrunning undo; the filter remap with no inverse |
+| `49705b0` | *(Phase 4 itself)* | a subtask-restore rule keyed on two clocks agreeing; an unlatch that could never fire |
 
 `0a38733` was the first fix commit to get a review of its own (`18dad7f`), and it found two
 HIGH defects immediately. **Review the fix, not just the build.**
+
+**Four for four now, and the shape repeats: the bug is always in the part that looked most
+carefully reasoned.** Every one of these was a deliberate mechanism with a paragraph of
+justification above it — the resolution moved to `updateItem` "because the store always
+sends both halves"; the fan-out chained "so the writes cannot split"; the cascade matched on
+a timestamp "because the delete already encoded which children belong to which gesture". The
+comment is what made each one survive a read. **A mechanism that needs a paragraph to defend
+is the first place to point a mutation probe**, and the paragraph should be treated as a
+claim to test rather than as evidence.
+
+### Vacuous tests are the other half of the same pattern
+
+Seven now, across the branch. Two were caught during Phase 4's own build (a stale label is
+only observable through a mutation that does not self-label; a second `set()` has nothing to
+change until the member exists), and four more by the review's mutation pass: `rounds DOWN`
+used 25 hours, where `floor` and `round` agree; the clock-skew guard used one hour, already
+covered by the `hours < 1` branch; nothing pinned any mapped entity field but `itemIds`; the
+group re-file had no end-to-end case.
+
+**The rule that catches them: write the test, then break the code and watch it go red.** Nine
+probes during the build, six more during the fix — every claim in Phase 4's suite has a
+recorded red behind it. A test whose failure you have never seen is a guess about what the
+code does.
 
 **The chained fan-out outran undo.** Chaining fixed the split write but moved the dispatch
 AFTER undo's per-item writes, so a ⌘Z inside the container write's round trip was
@@ -995,22 +1019,107 @@ the net is `⌘Z` plus the undo toast, which the buffered form never offered.
 
 ### Phase 4 — Trash
 
-`lib/db.ts` gains `listDeleted(userId)` — a union over `items`, `projects`, `habit_groups`,
-`routines`, `programs` where `deleted_at is not null`, ordered desc, capped. The `restore*`
-functions already exist and finally get a second consumer, but they only clear `deleted_at`
-in the DB, so each needs a **restore-and-reinsert store action stamping its own history
-label** (decision 3: restore is a normal history entry and `⌘Z` re-deletes it) — without
-that a restored routine is invisible until reload. Trash rows live in a **local hook, not
-`planner-store`**, so the bin never enters an undo snapshot.
+**Status 2026-08-15 — BUILT (`49705b0`), REVIEWED, FIXED (`1587e42`).** 959 unit tests,
+lint 0 errors, build green, `organize.spec.ts` 10/10. A blast-radius survey ran before a
+line was written (six lenses, 26 confirmed of 55) and six of its findings changed the
+design; the adversarial review after found 35 more, of which the biggest was mine.
 
-`packages/types` gains `deletedAt?: string` as **OPTIONAL**, then
-`pnpm --filter @anchor-app/types build` with the **`dist/` committed in the same commit** —
-CI fails on drift and the plugin `safeParse`s and throws.
+**`packages/types` was NOT touched, against this plan's own instruction — and that line
+was the single instruction generating every types-side hazard in the phase.** Adding
+`deletedAt` to `taskShape` turns `tests/unit/db-allowlists.test.ts` red, because
+`TASK_FIELDS` is `Object.keys(taskShape)` and that suite asserts every field survives
+`updatesToRow` (verified by running it: 907 passed, 1 failed). The natural way to make it
+green — teaching `taskUpdatesToRow` the column — hands undo the ability to write
+`deleted_at`, so a snapshot holding a stale stamp could silently soft-delete a LIVE item
+with the purge clock part-spent. `Program.updatedAt` is the in-repo precedent for exactly
+that trap and is deliberately kept OUT of `updateProgram`'s allowlist. And nothing would
+ever read it: `fetchItems` filters `deleted_at`, so the field would be permanently
+undefined in every Task the app or the plugin sees. The bin's row type is local to
+`lib/db.ts`, which it had to be anyway — `itemFromRow`, `projectFromRow`,
+`habitGroupFromRow` and the `RoutineRow`/`ProgramRow` interfaces are all module-private.
 
-Add the door: `Recently deleted` at the foot of the user-card history popover.
+**`listDeleted` JOINS MEMBERSHIP, and the plan's literal spec would have destroyed data.**
+`itemIds` is not a column — only `fetchRoutines` produces it, from `routine_items`, and it
+hard-filters `deleted_at` — so a trashed routine has no other source for its members
+anywhere in the codebase. A union over the five container tables alone seats it with
+`itemIds: []`, and `reconcileMembership` writes membership ABSOLUTELY (`removed = current \
+desired`): the first member added back, or a plain redo replaying the full shape, hard-
+DELETEs every join row `deleteRoutine`'s soft delete exists to preserve. No soft delete to
+recover from. **The stated gate passes either way** — the row is back on the canvas without
+a reload — which is what makes it worth writing down.
+
+**The subtask cascade, and the coupling that had to go.** `deleteItem` soft-deletes a parent
+AND its children; `restoreItem` cleared one row, so a restored parent came back childless.
+The first fix matched children on the parent's exact `deleted_at`, so a subtask thrown away
+earlier would stay behind. The review killed it twice over: (1) `planner-store`'s
+`deleteTask` fires its own `dbDeleteItem` per child AFTER the parent's, each computing a
+fresh timestamp, and that write is unguarded while the parent's cascade is
+`.is('deleted_at', null)` — so the child's own stamp always lands last, and the two diverge
+in 0.3–2% of ordinary deletes; (2) `listDeleted` skipped a child whenever its parent was
+trashed but rolled it up only when the stamps matched — **two predicates that are not
+complements**, so a subtask binned before its parent appeared in NO bin row and no restore
+could reach it. **The bin, the roll-up and the cascade now ask one question between them**
+("is the parent in the bin"), which makes an invisible row impossible by construction. Cost:
+a subtask deleted deliberately before its parent comes back with the parent.
+
+**A live bug fixed on the way, and Trash is what made it fixable.**
+`projects_user_id_name_key` and `habit_groups_user_id_name_key` are PLAIN unique btrees over
+`(user_id, name)` — no `WHERE deleted_at IS NULL` — so a deleted container reserves its name
+for 30 days while being invisible to the store. `addProject` de-dupes against live rows,
+passes, `set()`s optimistically, and only then does the insert 23505 into a
+`.catch(console.error)`. The user gets a project that opens, accepts a colour and a whole
+time block — every write an `.eq('id', …)` matching zero rows — while any item filed into it
+fails on `items_project_id_fkey`. Gone on reload, silently. Both create rows and both rename
+fields consult the bin now. **Exact match only:** the index is case-SENSITIVE, so folding
+would refuse names Postgres accepts.
+
+The guard is a UNION of the server's bin with every container that left the live arrays this
+session — not a fetch. The first version fetched once per section mount and justified it
+with a comment that had the mechanism backwards ("the store still knows about it live, so
+the sibling check catches it"): `removeProject` FILTERS the row out, so deleting a project
+and retyping its name without leaving the section reproduced the phantom two clicks apart.
+The union is fed by a store subscription rather than a refetch because `removeProject` does
+not await its DB write and a refetch would race it.
+
+**A tab switch was wiping the whole undo history, app-wide and pre-existing.** Supabase
+re-emits `SIGNED_IN` on every hidden→visible transition (`_recoverAndRefresh` on a
+visibility change, re-broadcast across tabs), and `initializeStore` clears `historyStack`,
+`actionLog` and `historyIndex` and lands `canUndo: false` — while `hydrateSettings` five
+lines above has guarded against exactly that event class all along. ⌘Z is the entire safety
+net this console's delete confirms promise. **The unlatch reads `error`, not a rejection:**
+the first version hung it on `.catch()` and was dead code, because `initializeStore` catches
+internally and RESOLVES on failure. A net that cannot fire is worse than none.
+
+Deferred items **(a)** and **(b)** close here: the rename guard can see the trash, and the
+agent API's rename fans out — chained after the container write, never in parallel, since
+the two do not fail together. Both agent routes now answer **409** with a sentence naming
+the trash instead of a raw 23505 string, because the holder may be a row no endpoint can
+show the caller.
+
+*Still open, deliberately:*
+- **`addProject`/`addHabitGroup` still seat a phantom for callers outside the console** —
+  `item-dialog`'s inline create and `lib/commands/registry.ts`. The console's guard is
+  proactive and explains; the root fix is a rollback inside the store action, which touches
+  undo plumbing (a labelless `set()` needs history suppression) and deserves its own review
+  pass rather than the tail of this one.
+- **⌘Z after a restore severs the members' DB link.** `applyHistoryState`'s per-item diff
+  yields `{project: undefined, projectId: undefined}` against the pre-restore snapshot and
+  writes both NULL, so a second trip through the Trash returns an empty container. Rare
+  (you have just deliberately restored the thing) and consistent with what the delete
+  confirm promised. Fixing it means teaching the history diff that membership is the
+  container's to own.
+- **The trash door is desktop-only.** `UserCard` mounts in the desktop shell alone; touch
+  reaches Trash through the `dest.trash` settings destination. A dedicated touch door is
+  unbuilt.
+- **`item_types` can never appear in Trash** — the table has no `deleted_at`. Their delete
+  already says so, and it is the only one wearing the filled destructive button.
 
 *Gate:* delete → find in Trash → restore → the row is back on the canvas without a reload,
-and `⌘Z` re-deletes it.
+and `⌘Z` re-deletes it. **Met, and the member half nearly was not tested.** The first
+version of the gate created the task BEFORE the project, so `items.project` held the name
+while `project_id` stayed NULL — the parked name-reference case — and the re-file had
+nothing to reconnect: the claim was not merely unasserted but unreachable. Creating the
+project first makes the agent-side create resolve a real id.
 
 ### Phase 5 — Routine correctness and reach
 
