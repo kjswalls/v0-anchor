@@ -352,6 +352,61 @@ describe('routines in the store', () => {
     expect(db.updateRoutine).not.toHaveBeenCalled();
   });
 
+  /**
+   * The third argument, which was accepted and then silently dropped.
+   *
+   * The idempotence guard above used to be the FIRST line of the action, so it
+   * also swallowed the one request that is not a no-op: a resume date on a pause
+   * that is already running. And a resume date can only be chosen while
+   * something is paused — so `pausedUntil` was unreachable from the UI
+   * altogether, and the Organize console shipped a picker that wrote nothing.
+   * The action now resolves through active.ts's resolvePauseWrite.
+   */
+  it('honours a resume date on a pause that is already running', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().setRoutinePaused(id, true);
+    const pausedAt = routineOf(id).pausedAt;
+
+    store().setRoutinePaused(id, true, '2026-09-01');
+    expect(routineOf(id).pausedUntil).toBe('2026-09-01');
+    // The lower bound must NOT move. Restamping it would drag the start of the
+    // interval forward and un-hide every day in between.
+    expect(routineOf(id).pausedAt).toBe(pausedAt);
+    expect(db.updateRoutine).toHaveBeenLastCalledWith('user-1', id, {
+      pausedUntil: '2026-09-01',
+    });
+  });
+
+  it('clears a resume date on null, and ignores undefined', () => {
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    store().setRoutinePaused(id, true, '2026-09-01');
+
+    // undefined is "I did not say" — what the bare toggles pass, and what keeps
+    // them idempotent. It must not be read as a clear.
+    vi.clearAllMocks();
+    store().setRoutinePaused(id, true);
+    expect(routineOf(id).pausedUntil).toBe('2026-09-01');
+    expect(db.updateRoutine).not.toHaveBeenCalled();
+
+    // null is the console's ✕.
+    store().setRoutinePaused(id, true, null);
+    expect(routineOf(id).pausedUntil).toBeUndefined();
+    // db.ts keys on `'pausedUntil' in updates`, so the key must be PRESENT for
+    // paused_until to reach the row as null.
+    const [, , patch] = vi.mocked(db.updateRoutine).mock.calls.at(-1)!;
+    expect('pausedUntil' in patch).toBe(true);
+  });
+
+  it('refuses a resume date that is already in the past', () => {
+    // resolvePauseWrite returns a reason rather than a patch: a pause that ends
+    // before it starts is indistinguishable from one that failed to apply.
+    const id = store().addRoutine({ name: 'Morning', itemIds: [] });
+    vi.clearAllMocks();
+    store().setRoutinePaused(id, true, '2020-01-01');
+    expect(routineOf(id).pausedAt).toBeUndefined();
+    expect(db.updateRoutine).not.toHaveBeenCalled();
+  });
+
   it('pausing a routine NEVER touches its members', () => {
     const id = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
     const before = JSON.stringify(itemById('habit-1'));
