@@ -24,6 +24,14 @@ export interface UserSettingsRow {
   morning_auto_age_days?: number;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
+  /**
+   * Active ground palette slug (lib/theme-palettes.ts). Deliberately absent
+   * from DEFAULT_SETTINGS: undefined means "never chosen on any device", and
+   * the provider only applies real values — so a device-local choice made
+   * before the first server write (or before migration 025) is not clobbered
+   * by a synthetic 'default'.
+   */
+  theme_palette?: string | null;
 }
 
 const DEFAULT_SETTINGS: UserSettingsRow = {
@@ -76,6 +84,8 @@ const STABLE_SETTINGS_COLUMNS = [
   'morning_check_dismissed_date',
   'eod_review_time',
   'eod_review_enabled',
+  // Promoted from pending once migration 025 was applied to prod (2026-08-12).
+  'theme_palette',
 ] as const;
 
 /**
@@ -88,7 +98,8 @@ const STABLE_SETTINGS_COLUMNS = [
  * round-trip on databases that predate it and nothing else; a column moved up
  * too early wipes everyone's settings, so err towards leaving it here.
  *
- * Currently: migration 022 (morning auto-age).
+ * Currently: migration 022 (morning auto-age). Migration 025 (theme_palette)
+ * graduated to stable on 2026-08-12 once it was applied to prod.
  */
 const PENDING_SCHEMA_COLUMNS = ['morning_auto_age_enabled', 'morning_auto_age_days'] as const;
 
@@ -217,9 +228,34 @@ export function flushSettings(): Promise<void> {
 
   return (async () => {
     const supabase = createClient();
-    const { error } = await supabase
+    let { error } = await supabase
       .from('user_settings')
       .upsert({ user_id: userId, ...patch }, { onConflict: 'user_id' });
+
+    // Mirror loadSettings' missing-column fallback on the WRITE path: patches
+    // merge across the debounce window, so one pending column (e.g.
+    // theme_palette pre-migration-025) must not take a co-batched stable write
+    // (e.g. theme) down with it. Retry once with the stable columns only; the
+    // pending values degrade to device-local, which is what their doc comments
+    // promise for the schema-behind window.
+    if (error && isMissingColumnError(error)) {
+      const stable: Record<string, unknown> = { ...patch };
+      for (const column of PENDING_SCHEMA_COLUMNS) delete stable[column];
+      console.warn(
+        `[settings] user_settings is missing a column this build writes (${error.message}). ` +
+          `Retrying without the not-yet-migrated columns — ` +
+          `${PENDING_SCHEMA_COLUMNS.join(', ')} were dropped from the patch. ` +
+          'Apply the pending migration in supabase/migrations to fix this.'
+      );
+      if (Object.keys(stable).length > 0) {
+        ({ error } = await supabase
+          .from('user_settings')
+          .upsert({ user_id: userId, ...stable }, { onConflict: 'user_id' }));
+      } else {
+        error = null;
+      }
+    }
+
     if (error) console.error('[settings] saveSettings error:', error.message);
   })();
 }

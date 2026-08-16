@@ -673,6 +673,55 @@ export async function deleteItemType(id: string, client?: DbClient): Promise<voi
   if (error) throw error;
 }
 
+// ---- Official extensions (per-user toggles, migration 026) ----
+
+/**
+ * Enabled/disabled rows for official extensions. A row exists only once the
+ * user has touched a toggle; absent slugs fall back to the manifest's
+ * defaultEnabled (lib/extension-registry.ts).
+ *
+ * Contract (the programs/routines discrimination, not fetchItemTypes' loose
+ * one): null means THE TABLE IS MISSING (migration 026 not applied) — the
+ * store latches the feature off and its settings rows explain the migration.
+ * Any other error (network blip, 5xx, auth hiccup) RETHROWS, because a
+ * transient failure latched as "needs a database update" is a lie the user
+ * cannot dispel for the whole session; the store catches and leaves itself
+ * retryable instead.
+ */
+export async function fetchUserExtensions(
+  userId: string,
+  client?: DbClient,
+): Promise<Record<string, boolean> | null> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('user_extensions')
+    .select('slug, enabled')
+    .eq('user_id', userId);
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') {
+      console.warn('fetchUserExtensions: migration 026 not applied yet — extensions latched off.');
+      return null;
+    }
+    throw error;
+  }
+  return Object.fromEntries(
+    (data as { slug: string; enabled: boolean }[]).map((row) => [row.slug, row.enabled]),
+  );
+}
+
+export async function setUserExtensionEnabled(
+  userId: string,
+  slug: string,
+  enabled: boolean,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('user_extensions')
+    .upsert({ user_id: userId, slug, enabled }, { onConflict: 'user_id,slug' });
+  if (error) throw error;
+}
+
 // ---- Programs & routines (migration 024) ----
 //
 // Two container kinds that gate VISIBILITY rather than describe an item, plus

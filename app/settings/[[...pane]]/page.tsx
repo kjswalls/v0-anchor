@@ -17,6 +17,8 @@ import { useMorningStore } from '@/lib/morning-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { usePaletteStore } from '@/lib/palette-store';
+import { useExtensionsStore } from '@/lib/extensions-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
 import { resetOnboardingComplete } from '@/lib/user-profile';
@@ -116,6 +118,12 @@ export default function SettingsPage() {
   const aiTick = useAISettingsStore((s) =>
     JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
   );
+  const paletteTick = usePaletteStore((s) => s.palette);
+  // JSON.stringify because `enabled` is an object; `available` rides along so
+  // the unavailable() reason appears without a reload once hydration settles.
+  const extensionsTick = useExtensionsStore(
+    (s) => `${s.available}|${JSON.stringify(s.enabled)}`
+  );
 
   const signOut = useCallback(async () => {
     // Anything still buffered has to land while the session is alive, or RLS
@@ -174,6 +182,8 @@ export default function SettingsPage() {
       morningTick,
       eodTick,
       aiTick,
+      paletteTick,
+      extensionsTick,
     ]
   );
 

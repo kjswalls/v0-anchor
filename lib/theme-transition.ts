@@ -37,7 +37,12 @@ export function applyThemeChange(apply: () => void): void {
   }
 
   const root = document.documentElement;
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Two vetoes, same as every other motion surface: the OS preference AND
+  // Anchor's own animations toggle (data-reduce-motion, stamped by
+  // supabase-provider). Both take the instant path.
+  const reduced =
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+    root.hasAttribute('data-reduce-motion');
   if (reduced) {
     apply();
     return;

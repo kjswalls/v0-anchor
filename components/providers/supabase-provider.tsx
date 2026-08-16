@@ -6,7 +6,10 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
-import { loadSettings } from '@/lib/settings-service';
+import { loadSettings, saveSettings } from '@/lib/settings-service';
+import { usePaletteStore } from '@/lib/palette-store';
+import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
+import { useExtensionsStore } from '@/lib/extensions-store';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -48,6 +51,36 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       html.setAttribute('data-reduce-motion', 'true');
     }
   }, [animationsEnabled]);
+
+  // The palette's single DOM writer (the data-reduce-motion pattern above):
+  // stamp <html data-theme>, mirror the raw localStorage key the layout.tsx
+  // pre-hydration script reads, and re-point the theme-color metas at the
+  // palette's ground so PWA chrome follows the swap. Mutating the EXISTING
+  // media-keyed metas (rather than appending one) keeps light/dark switching
+  // with the OS the way the static viewport export always has.
+  const palette = usePaletteStore((s) => s.palette);
+  useEffect(() => {
+    const html = document.documentElement;
+    if (palette === 'default') {
+      delete html.dataset.theme;
+    } else {
+      html.dataset.theme = palette;
+    }
+    try {
+      if (palette === 'default') {
+        window.localStorage.removeItem(PALETTE_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(PALETTE_STORAGE_KEY, palette);
+      }
+    } catch {
+      // Private mode — the stamp still applies for this session.
+    }
+    const colors = paletteDef(palette).themeColor;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+      const media = meta.getAttribute('media') ?? '';
+      meta.setAttribute('content', media.includes('dark') ? colors.dark : colors.light);
+    });
+  }, [palette]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -126,6 +159,29 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (settings.theme) {
         setThemeRef.current(settings.theme);
       }
+
+      // Palette hydration snaps (no eased wrapper) — same rule as the theme
+      // line above: only user-initiated changes get the cross-fade. A null /
+      // never-set column falls through and the device's localStorage choice
+      // stands; an explicit 'default' in the column IS applied.
+      //
+      // ?reset-theme consumed here, one-shot: the layout script already
+      // cleared localStorage before first paint, but the server row would
+      // re-apply the broken palette right now — so the reset skips that apply
+      // and persists 'default' (not null: null means "never chosen"), making
+      // the escape hatch durable across reloads and devices.
+      let paletteReset = false;
+      try {
+        paletteReset = sessionStorage.getItem('anchor-palette-reset') === '1';
+        if (paletteReset) sessionStorage.removeItem('anchor-palette-reset');
+      } catch {
+        // Private mode — no flag to consume.
+      }
+      if (paletteReset) {
+        saveSettings(userId, { theme_palette: 'default' });
+      } else if (isThemePalette(settings.theme_palette)) {
+        usePaletteStore.getState().setPalette(settings.theme_palette);
+      }
     };
 
     // Check current session on mount
@@ -133,6 +189,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) {
         initializeStore(session.user.id);
         hydrateSettings(session.user.id);
+        // Deliberately NOT part of planner-store's Promise.all: that batch
+        // gates the overdue sweep, and extensions must never be able to fail
+        // the data load.
+        useExtensionsStore.getState().hydrate(session.user.id);
       }
     });
 
@@ -140,9 +200,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_IN' && session?.user) {
         initializeStore(session.user.id);
         hydrateSettings(session.user.id);
+        useExtensionsStore.getState().hydrate(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         clearStore();
+        useExtensionsStore.getState().reset();
         // clearStore only resets the planner. The morning store holds
         // account-owned settings too — including the auto-age switch, which
         // drives an unattended mutation — and it persists them to a

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
 import { ArrowUp, Check, Plus, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -12,6 +12,8 @@ import {
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -235,6 +237,75 @@ function ActivitySection({ itemId }: { itemId: string }) {
   );
 }
 
+// ── Habit heatmap (extension: habit-heatmap) ────────────────────────────────
+
+const HEATMAP_WEEKS = 26;
+
+/**
+ * A six-month completion grid — the habit-heatmap extension's whole surface.
+ * Columns are calendar weeks (aligned to the user's week start), rows are
+ * days; the vocabulary is the dialog's streak strip scaled up: a done day is a
+ * solid bead in the -text role (bright in dark), a missed day is a faint
+ * day-off wash, the future is blank. Data is completedDates, already on the
+ * client — no fetch, and quiet-null when there's nothing to draw (the
+ * ActivitySection convention: a bonus surface, never an empty state).
+ */
+function HeatmapSection({ item }: { item: Item }) {
+  const weekStartDay = usePlannerStore((s) => s.weekStartDay);
+  const completedDates = (item as { completedDates?: string[] }).completedDates;
+
+  const grid = useMemo(() => {
+    if (!completedDates || completedDates.length === 0) return null;
+    const done = new Set(completedDates);
+    const today = startOfDay(new Date());
+    const weekStartsOn = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
+    const start = startOfWeek(subWeeks(today, HEATMAP_WEEKS - 1), { weekStartsOn });
+    let count = 0;
+    const weeks = Array.from({ length: HEATMAP_WEEKS }, (_, w) =>
+      Array.from({ length: 7 }, (_, d) => {
+        const date = addDays(start, w * 7 + d);
+        if (isAfter(date, today)) return 'future' as const;
+        if (done.has(format(date, 'yyyy-MM-dd'))) {
+          count += 1;
+          return 'done' as const;
+        }
+        return 'miss' as const;
+      })
+    );
+    return { weeks, count };
+  }, [completedDates, weekStartDay]);
+
+  if (!grid || grid.count === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="habit-heatmap">
+      <div className="flex items-baseline justify-between">
+        <SectionLabel>History</SectionLabel>
+        <span className="text-muted-foreground/70 font-mono text-[10px]">
+          {grid.count} in 6 months
+        </span>
+      </div>
+      <div className="flex gap-[3px]">
+        {grid.weeks.map((week, w) => (
+          <div key={w} className="flex flex-col gap-[3px]">
+            {week.map((day, d) => (
+              <span
+                key={d}
+                className={cn(
+                  'size-[5px] rounded-[1.5px]',
+                  day === 'done' && 'bg-warning-text',
+                  day === 'miss' && 'bg-day-off/25',
+                  day === 'future' && 'opacity-0'
+                )}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Per-item thread ──────────────────────────────────────────────────────────
 
 export function ItemThread({ item, className }: { item: Item; className?: string }) {
@@ -328,6 +399,9 @@ export function ItemThread({ item, className }: { item: Item; className?: string
  *  The thread is exported separately so the page can column it. */
 export function ItemDetailSections({ item, withThread }: { item: Item; withThread?: boolean }) {
   const config = getItemTypeConfig(itemTypeName(item));
+  // Extension gate + capability gate: the heatmap is opt-in (Settings →
+  // Extensions) and only meaningful where the registry says a streak exists.
+  const heatmapOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_HABIT_HEATMAP));
   return (
     // data-sub-input on the CONTAINER: the dialog's Enter-submit guard checks
     // closest('[data-sub-input]'), and everything in here — inputs AND buttons
@@ -336,6 +410,7 @@ export function ItemDetailSections({ item, withThread }: { item: Item; withThrea
     <div className="flex flex-col gap-4" data-sub-input>
       {config.subtasks && <SubtasksSection item={item} />}
       {config.agentAssignable && <AgentSection item={item} />}
+      {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       <ActivitySection itemId={item.id} />
       {withThread && <ItemThread item={item} />}
     </div>

@@ -5,6 +5,7 @@ import {
   Sparkles,
   Command,
   Anchor,
+  Blocks,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -14,6 +15,10 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP } from '@/lib/extension-registry';
+import { usePaletteStore } from '@/lib/palette-store';
+import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -44,7 +49,7 @@ import type { TimeBucket } from '@/lib/planner-types';
  * back once the feature behind them exists.
  */
 
-export type PaneId = 'day' | 'look' | 'rituals' | 'beacon' | 'keyboard' | 'anchor';
+export type PaneId = 'day' | 'look' | 'rituals' | 'beacon' | 'keyboard' | 'extensions' | 'anchor';
 
 export interface SettingsPane {
   id: PaneId;
@@ -83,6 +88,12 @@ export const PANES: SettingsPane[] = [
     name: 'Keyboard',
     icon: Command,
     blurb: 'Every binding, rebindable in place.',
+  },
+  {
+    id: 'extensions',
+    name: 'Extensions',
+    icon: Blocks,
+    blurb: 'Optional pieces of Anchor — on when you want them.',
   },
   {
     id: 'anchor',
@@ -171,6 +182,12 @@ const sidebar = () => useSidebarStore.getState();
 const morning = () => useMorningStore.getState();
 const eod = () => useEODStore.getState();
 const ai = () => useAISettingsStore.getState();
+const ext = () => useExtensionsStore.getState();
+const palette = () => usePaletteStore.getState();
+
+/** Shared by every extension toggle: rows stay visible, with the reason inline. */
+const extUnavailable = () =>
+  ext().available ? null : 'Needs a database update that has not landed here yet.';
 
 function labelFor(options: SettingOption[] | undefined, value: string | boolean): string {
   const hit = options?.find((o) => o.value === String(value));
@@ -269,6 +286,26 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) saveSettings(ctx.userId, { theme: String(v) });
     },
     defaultValue: 'system',
+  },
+  {
+    id: 'look.palette',
+    pane: 'look',
+    label: 'Palette',
+    description: 'The ground the app sits on. The lime accent stays.',
+    control: 'enum',
+    dbColumn: 'theme_palette',
+    options: THEME_PALETTES.map((p) => ({ value: p.value, label: p.label })),
+    keywords: ['color', 'colour', 'ground', 'background', 'tint', 'paper', 'slate', 'dune', 'iris'],
+    read: () => palette().palette,
+    // Palette pairs with theme, not the planner stores: the store setter is
+    // localStorage + DOM only (via supabase-provider's sync effect), so the
+    // Supabase write is paired here — same rule and same reason as look.theme.
+    write: (v, ctx) => {
+      if (!isThemePalette(v)) return;
+      palette().setPalette(v, { eased: true });
+      if (ctx.userId) saveSettings(ctx.userId, { theme_palette: v });
+    },
+    defaultValue: 'default',
   },
   {
     id: 'look.typeface',
@@ -602,15 +639,51 @@ export const SETTINGS: SettingRecord[] = [
     write: (_v, ctx) => ctx.actions?.signOut(),
     defaultValue: 'Sign out',
   },
+
+  /* ── Extensions ───────────────────────────────────────────────────────── */
+  // One switch per manifest entry in lib/extension-registry.ts. Persistence is
+  // the user_extensions table (migration 026), NOT a user_settings column —
+  // per-extension columns are the missing-column reset footgun. No dbColumn,
+  // so data-setting falls back to the record id.
+  {
+    id: 'extensions.habitHeatmap',
+    pane: 'extensions',
+    label: 'Habit heatmap',
+    description: 'A six-month completion grid in the item panel, for anything with a streak.',
+    control: 'switch',
+    keywords: ['heatmap', 'history', 'streak', 'grid', 'completion', 'habits'],
+    unavailable: extUnavailable,
+    read: () => ext().isEnabled(EXT_HABIT_HEATMAP),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_HABIT_HEATMAP, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.confetti',
+    pane: 'extensions',
+    label: 'Completion confetti',
+    description: 'A small burst when you complete something. Purely celebratory.',
+    control: 'switch',
+    keywords: ['celebrate', 'party', 'fun', 'burst', 'reward', 'dopamine'],
+    unavailable: extUnavailable,
+    read: () => ext().isEnabled(EXT_COMPLETION_CONFETTI),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_COMPLETION_CONFETTI, Boolean(v));
+    },
+    defaultValue: false,
+  },
 ];
 
 /**
  * Configuration that deliberately does NOT live in settings, indexed so search
  * can still answer for it.
  *
- * This is what keeps the rail at six panes. The next class of configuration
- * earns a destination record and a manager surface rather than a seventh pane
- * — the budget is a mechanism, not a promise someone has to keep defending.
+ * This is what keeps the rail small. The next class of configuration earns a
+ * destination record and a manager surface rather than a new pane — the budget
+ * is a mechanism, not a promise someone has to keep defending. (Extensions
+ * spent the budget once, deliberately: its rows are durable opt-in switches
+ * with no manager surface to point a destination at.)
  */
 export interface DestinationRecord {
   id: string;

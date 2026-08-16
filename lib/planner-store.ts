@@ -54,6 +54,7 @@ import {
   deleteProgram as dbDeleteProgram,
   restoreProgram as dbRestoreProgram,
 } from './db';
+import { celebrateCompletion } from './completion-confetti';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
@@ -1231,11 +1232,15 @@ export const usePlannerStore = create<PlannerStore>()(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
+          if (!alreadyDone) celebrateCompletion();
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
           setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task.title}`);
           updateItemAction(id, 'task', { status: newStatus });
+          // Transition-only, like the recurring/habit taps: an explicit
+          // status='completed' on an already-completed task must not celebrate.
+          if (newStatus === 'completed' && task.status !== 'completed') celebrateCompletion();
         }
       },
 
@@ -1963,6 +1968,7 @@ export const usePlannerStore = create<PlannerStore>()(
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
         const { completedDates: _cd, streak: _st, ...rest } = optimistic;
         dbUpdateItem(id, 'habit', rest).catch(console.error);
+        if (status === 'done' && !wasCompleted) celebrateCompletion();
       },
 
       scheduleHabit: (id, bucket, time) => {

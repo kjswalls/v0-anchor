@@ -389,6 +389,107 @@
   --sidebar-ring: var(--lime-solid);
 }
 
+/* ── Preset palettes ──────────────────────────────────────────────────────────
+   Ground-only re-tints, stamped as <html data-theme="slug"> by the palette
+   store (lib/palette-store.ts); the catalog lives in lib/theme-palettes.ts and
+   a unit test keeps the two in sync. `.dark` stays the physics switch — these
+   blocks never touch shadows, and every block is mode-scoped: the attribute
+   selector alone is (0,2,0), which would beat `.dark` (0,1,0) and leak light
+   values into dark, so light blocks carry :not(.dark) and dark blocks carry
+   .dark, both landing on (0,3,0).
+
+   A palette overrides the paper/ink ramps plus the standalone literals that
+   carry the ground's hue (border, input, accent wash, row-selected, scrim,
+   sidebar-border — light mode only: dark's are white-alpha and hue-free).
+   The lime/honey/coral triads, accent-1..8, and every domain literal stay
+   untouched: the accent contract (lime never dims) is inherited, not restated.
+   Surfaces, shadcn aliases, and the sched/bkt machinery derive via var()/
+   color-mix and re-tune automatically. */
+
+/* Slate — cool blue-gray ground; the teal-slate of the relay field's cousin. */
+:root[data-theme='slate']:not(.dark) {
+  --paper-0: oklch(0.977 0.004 235);
+  --paper-1: oklch(0.982 0.004 235);
+  --paper-2: oklch(0.992 0.002 235);
+  --paper-3: oklch(0.998 0.001 235);
+  --paper-well: oklch(0.936 0.007 235);
+  --ink-0: oklch(0.245 0.015 255);
+  --ink-1: oklch(0.5 0.025 250);
+  --ink-2: oklch(0.66 0.03 245);
+  --accent: oklch(0.24 0.02 250 / 4%);
+  --border: oklch(0.895 0.012 235);
+  --input: oklch(0.855 0.016 235);
+  --row-selected: oklch(0.24 0.02 250 / 9%);
+  --scrim: oklch(0.24 0.02 250 / 12%);
+  --sidebar-border: oklch(0.91 0.008 235);
+}
+:root[data-theme='slate'].dark {
+  --paper-0: oklch(0.168 0.014 240);
+  --paper-1: oklch(0.174 0.013 240);
+  --paper-2: oklch(0.205 0.012 245);
+  --paper-well: oklch(0.24 0.011 245);
+  --paper-3: oklch(0.273 0.011 245);
+  --ink-0: oklch(0.955 0.004 240);
+  --ink-1: oklch(0.8 0.008 240);
+  --ink-2: oklch(0.7 0.012 240);
+}
+
+/* Dune — warm sand ground; the paper leans into its own hue instead of near-neutral. */
+:root[data-theme='dune']:not(.dark) {
+  --paper-0: oklch(0.973 0.007 85);
+  --paper-1: oklch(0.979 0.006 85);
+  --paper-2: oklch(0.99 0.004 85);
+  --paper-3: oklch(0.998 0.002 85);
+  --paper-well: oklch(0.934 0.011 85);
+  --ink-0: oklch(0.25 0.012 60);
+  --ink-1: oklch(0.5 0.018 65);
+  --ink-2: oklch(0.65 0.022 70);
+  --accent: oklch(0.3 0.03 70 / 4%);
+  --border: oklch(0.89 0.014 85);
+  --input: oklch(0.85 0.018 85);
+  --row-selected: oklch(0.3 0.03 70 / 9%);
+  --scrim: oklch(0.3 0.03 70 / 12%);
+  --sidebar-border: oklch(0.905 0.012 85);
+}
+:root[data-theme='dune'].dark {
+  --paper-0: oklch(0.172 0.007 65);
+  --paper-1: oklch(0.178 0.007 65);
+  --paper-2: oklch(0.207 0.007 70);
+  --paper-well: oklch(0.242 0.007 70);
+  --paper-3: oklch(0.275 0.008 70);
+  --ink-0: oklch(0.955 0.004 85);
+  --ink-1: oklch(0.8 0.007 85);
+  --ink-2: oklch(0.7 0.01 85);
+}
+
+/* Iris — faint violet ground; the coolest pairing the lime accent tolerates. */
+:root[data-theme='iris']:not(.dark) {
+  --paper-0: oklch(0.977 0.005 305);
+  --paper-1: oklch(0.982 0.005 305);
+  --paper-2: oklch(0.992 0.003 305);
+  --paper-3: oklch(0.998 0.001 305);
+  --paper-well: oklch(0.936 0.008 305);
+  --ink-0: oklch(0.25 0.016 295);
+  --ink-1: oklch(0.5 0.025 295);
+  --ink-2: oklch(0.66 0.03 295);
+  --accent: oklch(0.26 0.025 295 / 4%);
+  --border: oklch(0.895 0.012 305);
+  --input: oklch(0.855 0.016 305);
+  --row-selected: oklch(0.26 0.025 295 / 9%);
+  --scrim: oklch(0.26 0.025 295 / 12%);
+  --sidebar-border: oklch(0.91 0.008 305);
+}
+:root[data-theme='iris'].dark {
+  --paper-0: oklch(0.168 0.012 300);
+  --paper-1: oklch(0.174 0.012 300);
+  --paper-2: oklch(0.205 0.011 300);
+  --paper-well: oklch(0.24 0.011 300);
+  --paper-3: oklch(0.273 0.011 300);
+  --ink-0: oklch(0.955 0.004 300);
+  --ink-1: oklch(0.8 0.008 300);
+  --ink-2: oklch(0.7 0.012 300);
+}
+
 @theme inline {
   /* Fonts — loaded via next/font in app/layout.tsx */
   --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
