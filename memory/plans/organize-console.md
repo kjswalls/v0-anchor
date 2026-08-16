@@ -580,6 +580,7 @@ phase happened to sweep the same code:
 | `49705b0` | *(Phase 4 itself)* | a subtask-restore rule keyed on two clocks agreeing; an unlatch that could never fire |
 | `2b65db4` | Phase 4's review | a rollback that could soft-delete the whole account on one ⌘Z |
 | `ced2230` | `2b65db4`'s review | a name the app then refused to let the user retry, all session |
+| `198a259` | *(Phase 5 itself)* | a delete confirm promising the return of items that never left |
 
 **`2b65db4` is the one to remember, because the defect was in the SAFETY NET.** It
 healed a phantom container the database had refused — a real data-loss bug — and to do
@@ -654,7 +655,26 @@ survived deletion entirely, because every path the *user* can move a cursor alon
 bounded at the point of the `setCursor`. Rather than delete it, the reachable trigger was
 identified — the candidate pool shrinking beneath an open picker, which the "stays open after
 an add" change made a much longer window — and pinned. **A guard nothing can break is either
-dead code or an untested case; deciding which is the point of the probe.**
+dead code or an untested case; deciding which is the point of the probe.** (The review then
+found the clamp had a hole on the *other* side, which that reasoning had walked straight past:
+the comment asserted the user could not move the cursor out of range, and ↓ on an empty list
+does exactly that. **The probe proves what it mutates and nothing else.**)
+
+**Phase 5's review added three more, ten across the branch, and one is a new species: a test
+that cannot fail because there is nothing to discriminate.** The `isConnected` branch in the
+confirm dialog was written with a paragraph explaining what it prevented; it prevents nothing,
+because on a trigger-less Radix dialog "preventDefault then focus a detached node" and Radix's
+own "preventDefault then `trigger?.focus()`" land focus in the same place. Measured both ways.
+**When a test for a guard cannot be made to fail, the next question is whether the guard does
+anything at all** — the honest outcomes are to delete it or to say plainly that it is
+contract, not effect. What is not honest is a comment claiming a behaviour and a green test
+implying it was checked.
+
+The other two were ordinary and both about fixtures too weak to reach the claim: the type-glyph
+test compared two rendered icons and passed with the entire registry half deleted, because
+`CategoryIcon`'s name-hash fallback already distinguishes "Task" from "Habit" — *it tested the
+fallback and was named after the feature*; and "stays open after an add" never typed, so its
+`toHaveValue('')` was true before the add as well as after.
 
 **The chained fan-out outran undo.** Chaining fixed the split write but moved the dispatch
 AFTER undo's per-item writes, so a ⌘Z inside the container write's round trip was
@@ -1261,6 +1281,44 @@ does not chase the control it just unmounted.
   ranking assertions now run both array orders and a three-item case. *Generalisation: any
   test of a comparator with fixture-order-dependent branches is suspect until it asserts the
   same answer from a reversed input.*
+
+**Status 2026-08-16 — REVIEWED, FIXED (`bea1b25`).** 1025 unit tests over five
+consecutive green full-suite runs, lint 0 errors, build green; e2e organize 10/10,
+scope-rail 5/5, programs 3/3.
+
+***The review's HIGH was mine, and it was the same shape as every other one on this
+branch: the false claim was inside the longest comment the phase added.***
+`routineStandingOn` answers *is this ROUTINE carrying anything*; the pane spent that
+answer as *is this ITEM on the user's day*. Those differ exactly when an item has a
+second live path — the situation the disjunctive rule exists to create. A habit in
+Morning **and** Evening, with Morning inside an out-of-season program, was greyed,
+described as hidden, and carried a delete confirm promising *"and they come back into
+view"*. It never left. The mirror is worse: an item reached both through the routine and
+directly by the same off program is dead either way, and the confirm promised its return
+too. **So the commit's headline was half true — it swapped one disagreement with the rail
+for another.**
+
+The right shape was in the repo twice already (`ScopeRow.flips`, `wouldHide`), which is
+the tell: *when a correct pattern exists and the new code does not use it, the question
+is why, not whether.* It is now `membersRevealedByRemoving` so there is no third copy.
+The held note also had to split into TWO SENTENCES with two subjects — "every program
+holding it is off" is true of the routine while "its items are hidden" is only true of
+some of them, and running them together is what made it lie.
+
+*Also found:* the picker cursor had no LOWER clamp (`Math.min(1, -1)` on an empty list
+parks it at −1, and it stays there when the list refills); a live program was reported
+as "carrying" a routine the user had paused, three lines under "hidden until you
+resume"; the picker lost its only touch-reachable exit when it started staying open
+across adds (no Escape key below `md`); the routines LIST column still answered
+local-only, so one section's two columns disagreed; and `TypeGlyph` hashed the LABEL
+while the accent ramp hashes the slug.
+
+**And the suite's 5s default was the real cause of the intermittent reds** — always by
+timeout, never by assertion, and in `eod-dismiss` as well as the new gate, so a per-file
+exemption would have patched whichever file happened to be measured. Raised globally to
+30s in `vitest.config.ts`: it costs nothing on a green run and only bites on a genuine
+hang. *A flaky gate is worse than a missing one — it teaches everyone to re-run a red
+suite rather than read it.*
 
 *Original plan text, for reference:*
 (a) **Pause-until** — wire `setRoutinePaused`'s third argument.
