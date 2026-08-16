@@ -12,6 +12,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
 import type { Task, Habit, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -87,8 +89,22 @@ interface DayBucketProps {
   variant: BucketStyle;
 }
 
+/**
+ * This card's no-grouping look inside the untimed section: HABITS then TASKS.
+ *
+ * Local for the same reason Day × List's is — it is what this view renders when
+ * nothing is grouped, not an answer to "group by what".
+ */
+function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
+  return [
+    { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
+    { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
+  ].filter((g) => g.rows.length > 0);
+}
+
 function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant }: DayBucketProps) {
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
   const dragging = !!activeId;
 
   // Whole-card droppable: highlight + fallback drop target (bare bucket id)
@@ -107,17 +123,27 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   const hasTimed = timedTasks.length > 0 || timedHabits.length > 0;
   const bucketProjects = recurringProjects.filter((p) => p.timeBucket === bucket);
 
-  // Untimed task groups: by type (default) or by project
-  const untimedTaskGroups: [string, Task[]][] =
-    canvasGroupBy === 'project'
-      ? [...untimedTasks.reduce((m, t) => {
-          const key = t.project || 'No project';
-          m.set(key, [...(m.get(key) ?? []), t]);
-          return m;
-        }, new Map<string, Task[]>())]
-      : untimedTasks.length
-        ? [['Tasks', untimedTasks]]
-        : [];
+  /**
+   * The UNTIMED rows only — the timed spine below is never partitioned.
+   *
+   * `inferDropTime` resolves `scheduled:{bucket}:before|after:{type}:{id}` as
+   * ±30 min from THAT row's own time (lib/dnd/CONTRACT.md), so "the gap above
+   * row X" only means "just before X" while the row above X is earlier in the
+   * day. Group the spine and a drop lands at a time that contradicts where the
+   * row visibly went. `groupBySupport` states the same rule to the menu, which
+   * puts "Untimed rows only" on the Grouping rail here.
+   *
+   * This used to honour 'project' and nothing else, so choosing Priority on
+   * Buckets rendered identically to None with the trigger still counting it.
+   */
+  const untimedRows: GroupableRow[] = [
+    ...untimedHabits.map((h) => ({ itemType: 'habit' as const, item: h })),
+    ...untimedTasks.map((t) => ({ itemType: 'task' as const, item: t })),
+  ];
+  const untimedGroups =
+    canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
+      ? groupRows(untimedRows, canvasGroupBy, { routines })
+      : defaultBucketGroups(untimedRows);
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
   const timedRows = [
@@ -158,17 +184,10 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
             // bucket" untrue by exactly that much.
             className="space-y-2"
           >
-            {untimedHabits.length > 0 && (
-              <GroupSection label="Habits" variant="canvas">
-                {untimedHabits.map((habit) => (
-                  <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} />
-                ))}
-              </GroupSection>
-            )}
-            {untimedTaskGroups.map(([label, groupTasks]) => (
-              <GroupSection key={label} label={label} variant="canvas">
-                {groupTasks.map((task) => (
-                  <TaskRow key={task.id} row={{ itemType: 'task', item: task }} />
+            {untimedGroups.map((g) => (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} />
                 ))}
               </GroupSection>
             ))}

@@ -2,28 +2,23 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, FolderOpen, ListFilter, X, Check, Moon, ChevronRight } from 'lucide-react';
+import { AlignLeft, FolderOpen, Moon, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
-import { CategoryIcon } from '@/lib/category-icons';
+import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
-import { useViewStore, type BraindumpGroupBy } from '@/lib/view-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  activeFilterCount,
-  containerRef,
-  passesFilters,
-  projectNamesFrom,
-} from '@/lib/filters';
+import { useViewStore } from '@/lib/view-store';
+import { passesFilters } from '@/lib/filters';
+import { groupRows, type RowGroup } from '@/lib/grouping';
+import { sortRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
-import type { Priority, Task, Habit } from '@/lib/planner-types';
+import type { Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,158 +27,6 @@ import { cn } from '@/lib/utils';
  * source/target for scheduling ('sidebar' droppable = unschedule, see
  * lib/dnd/CONTRACT.md).
  */
-
-const PRIORITIES: Priority[] = ['high', 'medium', 'low'];
-
-function FilterPopover() {
-  const { braindumpGroupBy, setBraindumpGroupBy, braindumpFilters, setBraindumpFilters } =
-    useViewStore();
-  const projects = usePlannerStore((s) => s.projects);
-
-  // Generic, so `priorities` keeps its Priority[] element type. Untyped, this
-  // widened to string[] — which is how the braindump and the canvas ended up
-  // declaring the same field with two different element types.
-  const toggle = <T extends string>(list: T[], value: T): T[] =>
-    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-
-  const selectedProjects = projectNamesFrom(braindumpFilters.containers);
-  const activeCount = activeFilterCount(braindumpFilters);
-  // The dot also signals an active grouping (group-by lives in this popover).
-  const isActive = activeCount > 0 || braindumpGroupBy !== 'none';
-
-  const groupOptions: { value: BraindumpGroupBy; label: string }[] = [
-    { value: 'none', label: 'None' },
-    { value: 'type', label: 'Type' },
-    { value: 'project', label: 'Project' },
-  ];
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn('relative h-6 w-6 text-muted-foreground hover:text-foreground', isActive && 'text-foreground')}
-          aria-label={isActive ? 'Filter and group (active)' : 'Filter and group'}
-        >
-          <ListFilter className="h-4 w-4" />
-          {isActive && (
-            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-52 p-2">
-        <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Group by</div>
-        <div className="flex gap-1 pb-2">
-          {groupOptions.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setBraindumpGroupBy(opt.value)}
-              className={cn(
-                'flex-1 rounded-md px-2 py-1 text-xs transition-colors',
-                braindumpGroupBy === opt.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Priority</div>
-        <div className="flex gap-1 pb-2">
-          {PRIORITIES.map((p) => (
-            <button
-              key={p}
-              onClick={() =>
-                setBraindumpFilters({
-                  ...braindumpFilters,
-                  priorities: toggle(braindumpFilters.priorities, p),
-                })
-              }
-              className={cn(
-                'flex-1 rounded-md px-2 py-1 text-xs capitalize transition-colors',
-                braindumpFilters.priorities.includes(p)
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary text-secondary-foreground hover:bg-accent'
-              )}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-
-        {projects.length > 0 && (
-          <>
-            <div className="px-1 pb-1 text-xs font-medium text-muted-foreground">Project</div>
-            <div className="max-h-40 space-y-0.5 overflow-y-auto pb-2">
-              {projects.map((project) => {
-                const active = selectedProjects.includes(project.name);
-                return (
-                  <button
-                    key={project.name}
-                    onClick={() =>
-                      setBraindumpFilters({
-                        ...braindumpFilters,
-                        containers: toggle(
-                          braindumpFilters.containers,
-                          containerRef('project', project.name)
-                        ),
-                      })
-                    }
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
-                  >
-                    <span
-                      className={cn(
-                        'flex h-3.5 w-3.5 items-center justify-center rounded border',
-                        active ? 'border-primary bg-primary' : 'border-muted-foreground/40'
-                      )}
-                    >
-                      {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-                    </span>
-                    <CategoryIcon glyph={project.emoji} name={project.name} />
-                    {project.name}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        <button
-          onClick={() =>
-            setBraindumpFilters({ ...braindumpFilters, hideFinished: !braindumpFilters.hideFinished })
-          }
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
-        >
-          <span
-            className={cn(
-              'flex h-3.5 w-3.5 items-center justify-center rounded border',
-              braindumpFilters.hideFinished ? 'border-primary bg-primary' : 'border-muted-foreground/40'
-            )}
-          >
-            {braindumpFilters.hideFinished && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-          </span>
-          Hide completed
-        </button>
-
-        {activeCount > 0 && (
-          <>
-            <div className="my-1 h-px bg-border" />
-            <button
-              className="flex w-full items-center rounded-md px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
-              onClick={() => setBraindumpFilters(EMPTY_VIEW_FILTERS)}
-            >
-              <X className="mr-1 h-3 w-3" />
-              Clear filters
-            </button>
-          </>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /**
  * Persistent capture card at the foot of the sidebar — a boxed-plus and a
@@ -370,7 +213,7 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
 export function Braindump() {
   const { tasks, habits, items, routines, programs, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
-  const { braindumpGroupBy, braindumpFilters } = useViewStore();
+  const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
@@ -426,6 +269,10 @@ export function Braindump() {
       return true;
     });
 
+    // Concatenation is the DEFAULT order, not the only one. All tasks then all
+    // habits is an accidental type grouping baked into the sort — nobody chose
+    // it; it is what building the list in two passes produces. The ordering is
+    // applied in `grouped` below, per group, NOT here: see the note there.
     return [
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
       ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
@@ -494,21 +341,32 @@ export function Braindump() {
 
   const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 
-  const grouped: [string, RowItem[]][] = useMemo(() => {
-    if (braindumpGroupBy === 'none') return [['', rows]];
-    const groups = new Map<string, RowItem[]>();
-    for (const row of rows) {
-      const key =
-        braindumpGroupBy === 'type'
-          ? row.itemType === 'task'
-            ? 'Tasks'
-            : 'Habits'
-          : (row.itemType === 'task' && row.item.project) || 'No project';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(row);
-    }
-    return [...groups.entries()];
-  }, [rows, braindumpGroupBy]);
+  /**
+   * Grouped first, then sorted WITHIN each group — the order Day × List uses,
+   * and the rule the plan states: grouping owns the outer order.
+   *
+   * Sorting `rows` before this ran instead made the SECTIONS move. The map is
+   * filled by walking the row list, so its insertion order — which is what
+   * `[...groups.entries()]` returns — became "whichever group owns the first
+   * row under the current ordering". Grouping by Project with Ordering off
+   * rendered [Work, Home]; switching to Title A–Z rendered [Home, Work]. The
+   * rows inside were right either way, which is why it reads as a jump rather
+   * than as a bug.
+   */
+  const grouped: RowGroup<RowItem>[] = useMemo(() => {
+    // 'type' is the braindump's own value and has no canvas counterpart — the
+    // canvas answers "what is in here" with the Type FILTER instead. Everything
+    // else routes through the shared core, so 'project' resolves the container
+    // axis through the registry here exactly as it does on the canvas.
+    const groups: RowGroup<RowItem>[] =
+      braindumpGroupBy === 'type'
+        ? [
+            { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
+            { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
+          ].filter((g) => g.rows.length > 0)
+        : groupRows(rows, braindumpGroupBy, {});
+    return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
+  }, [rows, braindumpGroupBy, braindumpSortBy]);
 
   return (
     <section
@@ -531,7 +389,12 @@ export function Braindump() {
           <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
             Braindump
           </h2>
-          <FilterPopover />
+          {/* Portalled, so the sidebar's 280px minimum never constrains the
+              240px panel — which is the decisive advantage over a persistent
+              chip bar. A bar would sit IN FLOW above a grid whose hour height is
+              derived from remaining column height, so adding your first filter
+              would visibly re-scale every hour row of the day. */}
+          <DisplayMenu surface="braindump" trigger="icon" align="start" />
           <Button
             variant="ghost"
             size="icon"
@@ -586,16 +449,16 @@ export function Braindump() {
         )}
       >
         <div className="px-[14px] py-2">
-          {grouped.map(([label, groupRows]) =>
-            label ? (
-              <GroupSection key={label} label={label} className="pt-5 first:pt-1">
-                {groupRows.map((row) => (
+          {grouped.map((g) =>
+            g.label ? (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} className="pt-5 first:pt-1">
+                {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
               </GroupSection>
             ) : (
               <div key="all" className="space-y-0">
-                {groupRows.map((row) => (
+                {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
               </div>

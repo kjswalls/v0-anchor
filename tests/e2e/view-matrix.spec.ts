@@ -11,9 +11,27 @@ import { reloadApp,     currentDateStr } from './helpers/app';
 
 // The header controls are dropdown selectors: open the trigger by its
 // aria-label, then click the option in the menu.
-async function pick(page: Page, control: 'Filter by type' | 'Layout' | 'Scope', option: string) {
+async function pick(page: Page, control: 'Layout' | 'Scope', option: string) {
   await page.getByRole('button', { name: control, exact: true }).click();
   await page.getByRole('menuitem', { name: option }).click();
+}
+
+/**
+ * The Display menu: trigger → section submenu → value.
+ *
+ * Type used to be its own capsule dropdown reachable as `pick(page, 'Filter by
+ * type', …)`. It is a content question, so it moved inside Display with the
+ * other two filters; the capsule now holds only the pair that changes the view's
+ * SHAPE. The trigger is keyed by surface because the braindump renders a second
+ * one, and an unkeyed testid would match both.
+ *
+ * Value rows carry menuitemradio (single-select) or menuitemcheckbox (multi),
+ * which is also the assertion that the a11y roles are actually wired.
+ */
+async function pickDisplay(page: Page, section: string, value: string) {
+  await page.getByTestId('display-trigger-canvas').click();
+  await page.getByRole('menuitem', { name: section }).click();
+  await page.getByRole('menuitemradio', { name: value, exact: true }).click();
 }
 
 test.describe('View matrix', () => {
@@ -61,10 +79,10 @@ test.describe('View matrix', () => {
       const canvas = page.locator('[data-tour="timeline"]');
       await expect(canvas.getByText(title)).toBeVisible({ timeout: 10_000 });
 
-      await pick(page, 'Filter by type', 'Habits');
+      await pickDisplay(page, 'Type', 'Habits');
       await expect(canvas.getByText(title)).toHaveCount(0, { timeout: 5_000 });
 
-      await pick(page, 'Filter by type', 'All');
+      await pickDisplay(page, 'Type', 'All');
       await expect(canvas.getByText(title)).toBeVisible({ timeout: 5_000 });
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);

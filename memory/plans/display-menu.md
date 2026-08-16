@@ -6,8 +6,31 @@ copies of the habits-vanish bug underneath them; expose grouping (which exists i
 but has no UI) and ordering (which does not exist at all) on every surface that can honour
 them.
 
-**Status (2026-08-11):** Design pass complete and approved. Step 1 shipped (`a81018a` —
-the custom-type `containerKind` unblock). Building on `feat/display-menu`.
+**Status (2026-08-15): LANDED ON `main`.** Phases 0–5b and Step 6's A + A′ shipped on
+`feat/display-menu-impl`, each followed by an adversarial review, and the branch
+fast-forwarded `main` from `a1c03c2` to `f68a3d1` — 27 commits. **The plan is complete
+here** — Phase B belongs to `feat/organize-console`, which shipped it as migration 027
+plus its app half. See the ledger for what that means and what NOT to rebuild.
+
+**Merge gate, for whoever lands the next branch off this base.** The branch had never
+been pushed, so that was the first CI run over all 27 commits. What was checked: 944
+unit tests over 56 files, lint clean, `packages/types` dist rebuilt with no drift (the
+one thing CI actually gates besides vitest), and `next build` green. What was NOT
+checked, because nothing in this repo checks it: **types.** `next.config.mjs` sets
+`typescript: { ignoreBuildErrors: true }` and the workflow runs only the dist check and
+vitest, so `tsc --noEmit` reports 30 errors that have been accumulating unobserved. All
+30 predate this branch — verified file-by-file against the touched list, and for
+`lib/planner-types.ts` (the one overlap) the erroring declarations are byte-identical to
+`main`, just shifted 27 lines. Two are live: `edit-project-dialog.tsx:147,303` compares
+`repeatFrequency` against `'weekly'`, which is not in the union, so those branches are
+dead code.
+
+**`DEFAULT_PROJECTS` / `DEFAULT_HABIT_GROUPS` do not satisfy their own declared types** —
+both are missing `id` (`planner-types.ts:114-124`). That is the same defect
+organize-console's Phase 0 met from the data side: 223 of its 228 unlinked group
+references belong to one account with **zero `habit_groups` rows**, because those groups
+have only ever existed as a client-side constant. The type error and the backfill miss
+are one bug seen from two ends; Phase 6 of that plan is where it resolves.
 
 Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
@@ -102,7 +125,7 @@ exist. Verified against `a1c03c2`:
 | Overdue | On the canvas an overdue item is by definition not on the day you are looking at. The past-due bar owns it. |
 | Duration, assignee, aiStatus, has-notes, has-subtasks | Near-always empty. A permanently blank control is worse than none. |
 | Sort by recently-added | `created_at` does not reach the client (see problem 5). |
-| Group by status | `'status'` is a legal `GroupBy` with no branch, already excluded from the palette. The two vocabularies are frozen external contracts. **Delete the union member**, and coerce a stale persisted value at `adoptLegacyViewPrefs` (`view-store.ts:247`). |
+| Group by status | Done in 5a: the union member is gone, and a stale value is coerced at BOTH doors — `view-store`'s persist `merge` and `adoptLegacyViewPrefs`. `planner-storage` partializes `groupBy`, so the legacy mirror is a second live source, not a theoretical one. |
 | Saved views / presets | Correct end state, premature — there is not yet one honest filter menu to save from. |
 | An "Other" lane past the lane budget | A lane naming groups it cannot spatially distinguish is a channel that lies. Overflow groups stay in the cap row, reachable by focus. |
 
@@ -113,16 +136,54 @@ exist. Verified against `a1c03c2`:
 | Phase | Content | Size | Status |
 |---|---|---|---|
 | **Step 1** | `containerKind: 'projects'` on the custom template + the two sweeps that tested `type === 'task'` | <1 h | **shipped** `a81018a` |
-| **0** | One `ViewFilters`; custom `merge`; legacy read-time normalizer; `Priority[]` convergence | ~½ d | in progress |
-| **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | |
-| **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | |
-| **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | |
-| **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | |
-| **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and the Schedule's Anytime strip | ~6 d | |
-| **5b** | Schedule lanes + Week focus/recede | ~5 d | |
-| **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | |
-| **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | |
-| **B** | `container_id` + backfill + dual-write + `containerId` into `packages/types` + undo wiring + rename | ~2 d | |
+| **0** | One `ViewFilters`; custom `merge`; legacy read-time normalizer; `Priority[]` convergence | ~½ d | **shipped** `dba554f` + `cb82e05` |
+| **1** | `lib/filters.ts` — the pass-through rule; delete all three habits-wipes; explicit None values; project-block rules | ~1.5 d | **shipped** `0d36efc` + `adf944d` |
+| **2** | Fold `week-schedule.tsx:325-361` (a verbatim copy of `use-day-items.ts:34-63`) into the hook | ~½ d | **shipped** — `useDayItemsForDates` |
+| **3** | `components/primitives/display-menu.tsx`; delete `filter-popover.tsx`; mount on canvas, sidebar **and mobile header** | ~3 d | **shipped** — Ordering deferred to 4 |
+| **4** | `lib/sort-rows.ts`, applied post-derivation on the three list surfaces; repair the degenerate habit comparator (`day-items.ts:121` returns 0 whenever either `startTime` is missing) | ~1 d | **shipped** |
+| **5a** | Extract `buildListGroups` into a pure `lib/grouping.ts`; grouping in Day×Buckets, Week×Buckets, Week×List and both Schedules' Anytime strips | ~6 d | **shipped** |
+| **5b** | Schedule lanes + Week focus/recede | ~5 d | **shipped** |
+
+**Carried into 5b from the 5a review and done:** the strip's own "Anytime" heading now
+gives way to the group headings rather than sitting above them, so grouping by Time bucket
+no longer renders "Anytime › Anytime".
+| **A** | `lib/container-registry.ts` over the existing five tables | ~1 d | **shipped** `dbe2960` |
+| **A′** | Case-sensitivity normalization, split out — it changes which colour resolves for an account holding both `Work` and `work` | ~½ d | **shipped** `2fe86a0` |
+| **B** | container ids + backfill + dual-write + undo wiring + rename | ~2 d | **DONE ELSEWHERE** — migration 027 + app half on `feat/organize-console` |
+
+**Phase B is not this plan's work and never should have been.** Decision 9 said so —
+*"its Phase 0 and this plan's Phase B are the **same migration**; schedule it once"* —
+and it was scheduled once, on `feat/organize-console`, which shipped it on 2026-08-12:
+`7e12c2d` (migration 027, applied and verified against the live DB), `c24e92b` (the
+rename fan-out), `61c9a8f` (the rename UI), `81c5c21` (agent writes reach the id) and
+`0a38733` (the trash-blind rename guard, and undo unlinking members). Do not build any
+part of it here.
+
+**The design there is TWO columns — `items.project_id` and `items.group_id` — not one
+`container_id`.** Each carries a real FK with `ON DELETE SET NULL`, which a single
+column pointing at either of two tables cannot. This plan's "one axis, two namespaces"
+framing argues for one column; 027 weighed that against referential integrity and chose
+integrity. The axis stays one axis app-side regardless — that is what `itemField` is for.
+
+**What the live database revealed** (worth keeping, whoever asks next): 206 items name
+a container that has no row. 194 habits are in a `Personal` group that does not exist in
+`habit_groups` at all — written by `orphanContainerFallback: 'Personal'` and the two
+`|| 'Personal'` fallbacks in `removeHabitGroup` / `cleanupOrphanedReferences` — and 12
+tasks name a deleted project, `Housework`. Both backfills correctly leave those null.
+That is the whole argument for id references in one number.
+
+**A shipped four kinds, not five.** `role: 'classify' \| 'gate'` over projects +
+habit groups (classify) and routines + programs (gate); `item_types` stays out per
+decision 9. The seam is types, not convention: `ClassifyKind` is what a ref can name
+and what `containerRefOf` returns, `GateKind` is what `ScopeKind` now *is* (aliased,
+not re-declared).
+
+**A′ turned out to be mostly a STORE phase, not a data phase.** Normalizing stored
+data is a migration and belongs to B. What A′ fixed was the app-side inconsistency:
+three lookups folded by hand while the two verbs that *repair* references compared
+exactly, so `removeHabitGroup` left a habit stored as `personal` pointing at a
+deleted `Personal`. It also took `GroupSection`'s glyph off the label — see the
+gotcha below.
 
 Phases 0–2 are pure correctness and are worth landing even if the redesign stops.
 
@@ -130,18 +191,290 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
 
 ## Gotchas that cost time to find
 
-- **`containerId` must enter `taskShape` AND `habitShape`** in `packages/types` before Phase
-  B, or undo silently reverts a container change. `diffItem` (`planner-store.ts:576-584`)
-  iterates `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside
-  the shape never enters an undo patch: undo sends the *label* back and leaves
-  `container_id` on the new container. UI shows success; next reload shows the revert.
-  Additive-optional is safe — the `parentItemId`/`assignee`/`aiStatus` precedent — but
-  CLAUDE.md makes the committed `dist/` a CI gate, so it must be planned.
-- **No migration creates `projects` or `habit_groups`.** Thirteen tables are created across
-  `supabase/migrations/`; neither of those is among them. They exist only in the stale
-  `supabase/schema.sql`. Any SQL touching them needs `to_regclass` guards — the SQL mirror
-  of the `unavailable()` pattern migration 024 uses app-side. Worth checking separately how
-  `.env.test` and any fresh Supabase project get provisioned.
+- **`deriveDayItems` used to read the weekday in the BROWSER's zone and the date in the
+  USER's** — fixed in 5a by DELETING the input. Tasks and habits go through
+  `shouldShowOnDate(row, dateStr, timezone)`, which is tz-resolved; project blocks went
+  through `date.getDay()` / `date.getDate()`, which are not, so when the two zones
+  differed a Thursday block rendered on Wednesday. `DayItemsInput` no longer carries a
+  `Date` at all — `calendarParts(dateStr)` builds the weekday, the month-day and the
+  month's length through `Date.UTC`, so the disagreement is unrepresentable rather than
+  merely corrected. Note what that costs: the fix is **structural, not pinned by a
+  red-then-green mutation**, because there is no longer an API through which to reproduce
+  the bug. `tests/unit/day-items.test.ts` pins the resolution itself instead, and those
+  cases would have passed before the fix given a Date that agreed with its dateStr.
+- **That also dissolved the `getTime()` memo key question.** `use-day-items` keyed on the
+  exact instant because two instants could share a `dateStr` and disagree on `getDay()`.
+  With the Date gone the mapping is total, so the key is the resolved `dateStr` list —
+  provably the derivation's whole input. The gotcha that said this needed a
+  zone-divergence test is retired: there is nothing left to diverge.
+- **The mobile shell renders `MobileHeader` above every `activeTab` guard**
+  (`mobile-shell.tsx:55`), so anything mounted there rides all three tabs. Gate on
+  `useMobileNavStore(s => s.activeTab)`, not on the header's own existence.
+- **Mobile never reads `view.scope`.** `MobileViewRouter` dispatches on `layout` alone and
+  hardcodes `data-view-scope="day"` (`mobile-view-router.tsx:34`); `commands/registry.ts`
+  hides both scope commands there for the same reason. But `scope` PERSISTS across the
+  768px breakpoint, and `useIsMobile` is a live `matchMedia` listener — a narrowed window,
+  a snapped half-screen or a rotated tablet all reach the phone shell carrying whatever
+  scope was last set. Any mobile surface deriving behaviour from `scope` must state its
+  own instead, or it answers for a view nobody is looking at, with nothing on that surface
+  able to correct it.
+- **Nothing clears `canvasGroupBy` on a scope or layout change** (`view-store.ts:154-167`).
+  So a control that HIDES itself when the current view cannot honour grouping strands the
+  clause: the trigger keeps counting it with no row to account for it. Unhonoured values
+  stay visible and disabled with the reason on the rail — the same grammar Buckets already
+  uses. Phase 4's Ordering is the second axis with this shape; use the same rule.
+- **Don't derive an ARIA role from close-behaviour.** `ValueRow` mapped
+  `keepOpen ? menuitemcheckbox : menuitemradio`, which made the "Switch to List" ACTION a
+  sixth unselected radio among five real grouping values — in the default view, so it is
+  what a first-run screen-reader user hears. Action rows take `role="menuitem"` explicitly.
+- **A props-level test passes while the MOUNT is wrong.** Both mobile defects above lived
+  in `mobile-header.tsx`, not in `DisplayMenu`, and every component test stayed green.
+  `tests/unit/display-menu.test.tsx` now renders `MobileHeader` itself; it needs
+  `next/navigation` and `@/lib/supabase` (with an `auth` object) mocked to do so.
+- **Grouping and Ordering are independent axes, and grouping owns the outer order.**
+  `day-list.tsx` sorts WITHIN each group, after `buildListGroups`. Because `sortRows(rows,
+  'default')` returns the same array, routine grouping keeps `routine_items.sort_order` —
+  the only place that sequence is visible outside the manager — until the user picks an
+  ordering, which then wins.
+- **`sortRows` returns its input array unchanged for `'default'`.** The derivation's own
+  order IS the default, so there is nothing to do. Callers must not mutate the result.
+- **Group FIRST, then sort within each group — on every surface.** The braindump shipped
+  the other way round for one commit, and the failure is instructive: its grouping map is
+  filled by walking the row list, so `[...groups.entries()]` returns whichever group owned
+  the first row. Sorting the flat list first made the SECTION HEADINGS reorder while the
+  rows inside each stayed correct. `lib/grouping.ts` takes unsorted rows and returns them
+  in arrival order; every caller applies `sortRows` per group afterwards.
+- **`'none'` is one unlabelled section, not a per-view default.** Day × List's
+  HABITS / TASKS / PROJECTS and a bucket card's HABITS / TASKS are presentation choices
+  for those views, so they stay local (`defaultListGroups`, `defaultBucketGroups`) — the
+  shared core would otherwise have to know which surface was asking. Callers that render
+  `g.label ? <GroupSection> : flat` get the flat default for free; the two that want
+  something richer branch on `groupBy === 'none'` BEFORE calling, or they render a
+  section with an empty heading.
+- **Grouping resolves the container axis through the registry, so habits section by their
+  own group.** `buildListGroups` hoisted every habit into one "Habits" section and grouped
+  only the tasks, which made "group by Project" answer a question about tasks and then
+  file the rest of the day under its own type name. Priority lost the same hoist: a type
+  that does not carry the field lands in "No priority" beside everything else that has
+  none, which is the call `sortRows` already made. Section keys are the PREFIXED refs, so
+  a project and a habit group sharing a name stay two sections — the seeds collide, so
+  that is the shipped state of a fresh account. Unset is kind-tagged (`none:project` /
+  `none:group`) rather than reusing the filter's single `NO_CONTAINER`: the filter needs
+  one checkbox catching both sides, a heading has room to say which side it is.
+- **Habits carry no `order`.** `habitShape` omits it (`packages/types/src/schemas.ts:206`),
+  `itemFromRow`'s habit branch never reads it, `reorderTasks` early-returns on
+  `type !== 'task'`, and the registry says `orderable: false`
+  (`item-registry.ts:319`). So `byTimeThenOrder`'s `order` tail is inert for habits —
+  two untimed habits compare equal and hold their load order (`ORDER BY "order",
+  created_at`). Do not write a test that supplies `order` on a habit fixture through a
+  cast: it asserts behaviour production cannot reach, and it typechecks only because of
+  the cast.
+- **Re-run `tsc` AFTER adding test files, not just after touching source.** Four errors
+  shipped in Phase 4 because the typecheck ran before the new test file existed and never
+  again. `pnpm test` does not typecheck, and neither CI nor the Vercel build gates on it
+  (`next.config.mjs` sets `ignoreBuildErrors`).
+- **`view.clearFilters` in the palette and Reset display now differ.** Reset clears the
+  filters, the grouping AND the type filter; the palette command clears `canvasFilters`
+  only, which its own label ("Clear canvas filters") states honestly. Phase 6 owns parity —
+  when it lands, both should route through one function.
+- **`@testing-library/user-event` is not a dependency.** Component tests use `fireEvent`.
+  Radix's `DropdownMenuTrigger` opens on **pointerdown**, not click, so `fireEvent.click` on
+  a trigger leaves the menu shut and every query beneath it fails for the wrong reason. Sub
+  triggers and items do respond to click. jsdom also needs `PointerEvent`,
+  `hasPointerCapture`, `scrollIntoView` and `ResizeObserver` shimmed — see the top of
+  `tests/unit/display-menu.test.tsx`, which carries them locally rather than editing the
+  shared `tests/unit/setup.ts`.
+- **A test named for a guard must assert a field that guard can write.** `removeProject`
+  has one `set()` and writes exactly `projects` and `project: undefined`. A case titled
+  "leaves a habit alone" that asserted `group` was true under every implementation,
+  including one with the guard deleted — `group` belongs to `removeHabitGroup`. Before
+  writing an assertion, name the write the verb actually performs.
+- **"Blocked" was the wrong shape for grouping; support has THREE states.** 5a made
+  "partly honoured" the common case — Buckets groups its untimed rows, Schedule its
+  Anytime strip — so `groupByBlockedBy(): string | null` became
+  `groupBySupport(): { honoured, note }`. A partly-honoured value stays ENABLED with the
+  part it reaches on its rail; disabling it would say it does nothing. Exactly one
+  combination is inert now (Time bucket on Buckets, where the view already IS that
+  partition), and the "Switch to List" escape row renders only while the current value is
+  inert — it used to ride every non-List layout, resolving nothing.
+- **A test asserting the TAIL of a list survives a mutation that DUPLICATES rows.** The
+  first version of "leaves the timed spine ungrouped" checked `slice(-3)` and stayed green
+  when the timed rows were handed to the grouping pass, because that renders them inside
+  the groups AND leaves the spine below intact. Assert the whole sequence: six rows, this
+  order, once each.
+- **Time bucket gets NO answer on Schedule — not lanes, not focus.** y already is the
+  bucket, and `autoCorrectBucket` (`planner-store.ts:596-602`) forces a timed item's bucket
+  to match its `startTime`, so bucket lanes are mutually exclusive on y *by construction*:
+  a literal staircase with two thirds of the field dead at every height. 5b shipped
+  dividing by it for one commit — the rule was written in `view-options.ts` and implemented
+  nowhere, and `planLanes` never saw the value. A rule stated in a comment is not a rule.
+- **A raw arbitrary shadow and a var-shaped one land in DIFFERENT tailwind-merge groups.**
+  `cn('shadow-[var(--sched-shadow)]', 'shadow-[0_0_0_1px_var(--x)]')` emits BOTH — verified
+  by calling `twMerge` directly — and Tailwind then orders same-utility candidates by string
+  compare, so `'0'` sorts before `'v'` and the base wins. The receded hairline never
+  painted, in either theme, while the token had exactly one consumer and looked wired. Wrap
+  every composite shadow in its own `--sched-shadow-*` token so the two collide in one
+  group. `--sched-shadow-done` worked only because it was already var-shaped.
+- **A sticky box is constrained to its CONTAINING BLOCK — including the cap row.** The
+  week's cap row spent a commit in an 18px wrapper of its own: zero travel, on the one
+  variant that is *always* focus and where the caps are the only way to clear one. It is
+  the same rule `week-schedule.tsx` spells out for the pinned hour gutter. It also needs
+  `LANE_CAP_Z` (22) — above `WEEK_GUTTER_Z`, or the gutter's opaque background slides over
+  the captions on the first scroll.
+- **A wrapper that pads unconditionally around a component that renders `null`** moves the
+  whole view. `LaneCapRow` returns null when nothing is grouped; its `pt-6` did not.
+- **`preview` invalidates a block's EXTENTS, not its lane.** `const L = preview ? undefined
+  : layout` predates lanes and was right then. Once every block carries a band, dropping
+  the layout on pointer-down threw the block to the field's left edge across every lane
+  until pointer-up. `bandOnly()` keeps the x half and clears what the new extents stale.
+- **Lanes are one `layoutOverlaps` call PER LANE, not one call with lanes in it.** That is
+  semantics, not tuning: two blocks in different lanes may share a time but never a column,
+  so they must not cluster, column-pack or occlude each other. `LayoutOptions.root` supplies
+  the lane's band and every existing rule then runs against the lane's width. Passing a root
+  changes one other thing deliberately — **every** entry gets a layout, including
+  un-overlapped ones, because the ABSENCE of a layout means "the whole field" to the
+  renderer, which is exactly the wrong default once a block belongs to a lane.
+- **`isReceded` must return false for a row the plan never saw.** The obvious
+  `laneKeyOf(...) !== active` gives the opposite, and did — caught on the first test run,
+  against a docstring three lines above asserting the safe behaviour. The failure modes are
+  not symmetric: a stray at full strength stands out; a receded stray is work greyed out
+  for a reason nothing on screen can explain.
+- **Focus is resolved against the current plan, never cleared on a group-by change.** A
+  key held in a store that knows nothing about grouping outlives the lanes that named it.
+  Resolving makes it stop applying; clearing it would need a cross-store hook on every
+  writer of `canvasGroupBy` and would still miss a rehydrate.
+- **A ref written during render is a lint error** (`Cannot access refs during render`), so
+  `useFieldWidth`'s freeze holds the EXPOSED value in state instead. Gating the observer on
+  a `freeze` dep is not the alternative: it tears down and re-attaches, which fires an
+  immediate measurement — the one thing the freeze exists to prevent.
+- **A render test can pass because of a missing input rather than the rule it names.**
+  `WeekSchedule` passes no `fieldWidth` at all, so its "never divides" case stayed green
+  with the `variant === 'day'` rule deleted. The rule is pinned in the pure test, which
+  hands week an explicit width; the render test now says plainly what it does and does not
+  cover.
+- **Deleting a RULE can hollow out a test that used to guard it.** The two cases pinning
+  the phone's `scope` prop were real red-green guards while `groupByBlockedBy` answered
+  'Day only' for every value on week. 5a deleted that rule, and since both cases seeded
+  `layout: 'list'` — the one layout whose answer does not vary by scope — they went on
+  passing with the prop ignored entirely. Every previous tautology in this project was one
+  I wrote badly; this one I wrote well and then broke from the other end. When a phase
+  changes a predicate, re-run the tests that name it **with the predicate stubbed**, not
+  just green.
+- **`BucketCard`'s own collapse toggle carries `aria-expanded` too.** A
+  `button[aria-expanded]` sweep for section headings inside a bucket picks it up first —
+  filter on `group/heading`, which is `GroupSection`'s own class, rather than slicing the
+  first result off.
+- **`toDateStr` builds an uncached `Intl.DateTimeFormat` per call** (`recurrence.ts:47-49`,
+  ~50µs against ~0.05µs for `getTime()`). Week × Buckets mounts 28 cells that each call
+  `useDayItems`, and dnd-kit re-renders every droppable on each collision-target change
+  with the planner deps untouched — so resolving dates in a render body costs ~1.3ms on
+  every one of those. `use-day-items` memoizes the resolution on the INSTANT key, which is
+  strictly finer than the dateStr key it feeds and so cannot serve a stale string.
+- **Habit-group refs case-fold; project refs do not — and grouping has to agree.**
+  `sameContainer` (`filters.ts:149`), `getHabitGroupColor` and `GroupSection`'s glyph
+  lookup all fold `group:` refs, because `makeAddDraft` writes a lowercase 'personal'
+  against DEFAULT_HABIT_GROUPS' 'Personal' whenever the groups list has not loaded yet.
+  `lib/grouping.ts` keyed on the raw ref for one commit, which split one habit group into
+  two sections that the menu's single checkbox selects together. Phase A′ still owns the
+  general normalization; this is only the grouping key.
+- **Day × Buckets groups its untimed rows; Week × Buckets groups the whole cell.** Not an
+  oversight — the day card has `scheduled:{bucket}:before|after:{type}:{id}` drop zones
+  between its timed rows and `inferDropTime` reads the neighbours' times, so that spine
+  cannot be partitioned. A week cell has ONE droppable (`week:{date}:{bucket}`) and
+  renders every habit before every task, so it was never in one time order for a
+  partition to disturb. `groupBySupport` encodes the asymmetry: 'Untimed rows only' on
+  day, no note on week.
+- **`lib/item-container.ts` was planned and not written.** The artifact's 5a sketch had a
+  ~30-line module for container resolution, but `lib/filters.ts` already owns
+  `containerRefOf` / `containerName` / `containerKindOf` — the same question, answered
+  through the same registry field, for the filter path. A second module would have been a
+  second answer to drift from. `lib/grouping.ts` calls the existing one; only the
+  unset-label split (which SIDE of the axis is empty) is new, and it lives with the
+  grouping that needs it.
+- **Don't `git checkout --` a file you haven't staged.** The Phase 2 hook is a new
+  function in an existing file; reverting a mutation-test edit that way restored HEAD's
+  version and silently discarded the work. Copy to the scratchpad first, or stage before
+  mutating.
+
+- **A label is not an identity, and `GroupSection` treated it as one.** It matched the
+  heading TEXT against projects first and habit groups second, so a project named
+  "Morning" put its icon on the Time bucket › Morning heading, and (once the braindump
+  carries habits) a habit group would borrow a same-named project's icon — the seeds
+  disagree on two of three: 🧘/💚 Wellness, 🏠/⭐ Personal. It takes `groupKey`
+  (`RowGroup.key`, which carries the namespace) now. **Why it went unnoticed:** a stored
+  EMOJI is not an icon token, so `resolveCategoryIcon` falls through to the name-derived
+  icon either way — only a *picked* `icon:Anchor` ever reached the wrong heading. Any
+  test of this has to pick an icon explicitly or it asserts nothing.
+- **A fold applied on BOTH sides needs a fixture that differs on both.**
+  `cleanupOrphanedReferences` folds building its set of live names and folds again
+  asking about the item. A habit stored `personal` against a group stored `Personal`
+  catches an unfolded SET and leaves an unfolded LOOKUP green — `'personal'` already
+  equals its own folded form. Both spellings, always. Caught by its own mutation run,
+  not by review; this is the sixth distinct shape of tautological test in this project.
+- **`sameContainerName(kind, …)` is the store's API; `foldRef` is the ref path's.** They
+  are the same policy (`foldRef` is built from `foldContainerName`) because the store
+  holds BARE NAMES — `items.group` is `'personal'`, `habitGroups[i].name` is
+  `'Personal'` — and nine identity lookups in `planner-store.ts` compare those directly.
+  A ref-only API would have left every one of them spelling its own comparison.
+- **View-layer project filters were deliberately left exact.** `week-buckets.tsx:120`,
+  `project-block.tsx:143`, `day-schedule.tsx:232`, `day-buckets.tsx:221` and
+  `app-shell.tsx:321` all compare `t.project === project.name`. Projects do not fold, so
+  routing them through the registry is churn with no behaviour delta — but if
+  `project.caseFold` ever flips, these five are the sites that will NOT follow.
+- **A mutation run with a FILE FILTER does not measure the suite, and must not be
+  reported as if it did.** A′'s commit claims flipping `project.caseFold` "turns five
+  tests red across two files". It turns **16 red across 7** — the two extra files at
+  that commit were `grouping.test.ts` and `filters-pass-through.test.ts`, and Phase B's
+  schedule-lane render tests joined later, because folding project keys MERGES two lanes
+  and the lane assertions notice. The number was wrong because the run was
+  `vitest run <the two files I was editing>`. The code was better pinned than claimed,
+  which is the benign direction — but the same habit reported in the other direction is
+  a phase that looks verified and is not. **Mutation runs go through the whole suite.**
+  Found by the Step 6 review; it was the only one of 23 findings to survive.
+- **A fixture has to REACH the branch it names.** Two of these now. A′'s orphan sweep
+  folds on both sides and the fixture differed on one. B's "does not sweep up another
+  container's items when renaming ONTO its name" seeded that item WITH a `containerId`,
+  so it took the id branch and never reached the name comparison the test is about —
+  green under the exact mutation it is named for. Both were caught by mutation runs,
+  neither by review. When a predicate has two branches, the fixture must say which one
+  it is exercising.
+- **`db-allowlists.test.ts` proves a field is not DROPPED, not where it LANDS.** Adding
+  `containerId` to the shapes turned it red before `lib/db.ts` was touched — it did its
+  job. But it probes with a truthy value and only counts keys, so a guard copied from
+  `group` (`&& updates.containerId != null`) passes it while making "remove this item
+  from its project" a no-op that reverts on reload. Any nullable field needs its own
+  clearing case.
+- **CHECK `git log --all` AND THE REMOTE LEDGER BEFORE AUTHORING A MIGRATION.** This
+  worktree branches from `a1c03c2`; `supabase/migrations/` here stops at 024, and that
+  was read as "024 is the latest". It is not — it is only the latest *on this branch*.
+  The remote ledger already held 025 `theme_palette`, 026 `user_extensions` and 027
+  `container_ids`, none of them in this tree. A duplicate `container_id` column was
+  authored, applied to the shared database, and dropped again an hour later; the ledger
+  insert silently no-opped on `on conflict do nothing` because 025 was taken, so the
+  column existed with no ledger row — precisely the drift CLAUDE.md warns about. The
+  directory is the source of truth for *schema*; the ledger is the record of what is
+  *applied*, and other branches move it. `select version, name from
+  supabase_migrations.schema_migrations order by version` costs one query.
+- **Container ids are not agent-writable, on either design.** `feat/organize-console`
+  `.omit()`s `projectId`/`groupId` from both create schemas, and this plan reached the
+  same call independently for `containerId`: during dual-write the id and the name are
+  two spellings of one fact, so a body carrying both can contradict itself — and an id is
+  guessable where a name is not, while RLS covers `items` rather than the value in that
+  column. Agents send the NAME; the route resolves the id (`81c5c21`).
+- **An id field must enter `taskShape` AND `habitShape`** in `packages/types`, or undo
+  silently reverts a container change. `diffItem` (`planner-store.ts`) iterates
+  `getItemTypeConfig(...).fields` = `Object.keys(taskShape)`, so a field outside the
+  shape never enters an undo patch: undo sends the *label* back and leaves the id on the
+  new container. UI shows success; next reload shows the revert. Additive-optional is
+  safe — the `parentItemId`/`assignee`/`aiStatus` precedent — but CLAUDE.md makes the
+  committed `dist/` a CI gate. 027's app half does this with `projectId`/`groupId`.
+- **`projects` and `habit_groups` DO exist in the live database, but no migration
+  creates them.** Verified by query, not inference: `to_regclass` returns both. They were
+  created out-of-band and survive in the tree only in the stale `supabase/schema.sql`, so
+  a fresh Supabase project provisioned from migrations alone would have neither — which
+  is why any SQL touching them still needs `to_regclass` guards, the mirror of the
+  `unavailable()` pattern 024 uses app-side. Worth settling separately how `.env.test`
+  and a fresh project get provisioned.
 - **Undoing a rename is O(N) unbatched PATCHes.** `planner-store.ts:2274-2299` runs one
   `dbUpdateItem` per restored item with no batching.
 - **`ScrollArea` silently drops `max-h`** — every scroll box in the menu is plain

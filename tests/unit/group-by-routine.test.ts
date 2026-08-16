@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildListGroups } from '@/components/views/day-list';
+import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
+// manage-collections-dialog is gone — the Organize console replaced it, and
+// `swapMembers` moved to lib/collections on the way out.
 import { swapMembers } from '@/lib/collections';
-import type { Task, Habit, Routine, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, Routine } from '@/lib/planner-types';
 
 /**
  * Group-by-routine (Phase 5) and the routine ordering it makes visible.
@@ -9,6 +11,9 @@ import type { Task, Habit, Routine, TimeBucket } from '@/lib/planner-types';
  * The two shipped together on purpose: `routine_items.sort_order` has existed
  * since migration 024 and nothing outside the manager ever rendered it, so a
  * reorder control alone would have been a preference with no observable effect.
+ *
+ * Moved from `buildListGroups` (components/views/day-list.tsx) to the shared
+ * core in Phase 5a. Same branch, now reached by six surfaces instead of one.
  */
 
 const task = (id: string, over: Partial<Task> = {}): Task =>
@@ -19,19 +24,18 @@ const habit = (id: string, over: Partial<Habit> = {}): Habit =>
 
 const routine = (id: string, name: string, itemIds: string[]): Routine => ({ id, name, itemIds });
 
-const empty = <T,>(): Record<TimeBucket, T[]> => ({ anytime: [], morning: [], afternoon: [], evening: [] });
-
-function groups(tasks: Task[], habits: Habit[], routines: Routine[]) {
-  const t = empty<Task>();
-  t.morning = tasks;
-  const h = empty<Habit>();
-  h.morning = habits;
-  return buildListGroups(t, h, 'routine', routines);
+/** Habits then tasks — the row order `flattenDayRows` hands every surface. */
+function groups(tasks: Task[], habits: Habit[], routines: Routine[]): RowGroup<GroupableRow>[] {
+  const rows: GroupableRow[] = [
+    ...habits.map((h) => ({ itemType: 'habit' as const, item: h })),
+    ...tasks.map((t) => ({ itemType: 'task' as const, item: t })),
+  ];
+  return groupRows(rows, 'routine', { routines });
 }
 
-const ids = (g: { rows: { item: { id: string } }[] }) => g.rows.map((r) => r.item.id);
+const ids = (g: RowGroup<GroupableRow>) => g.rows.map((r) => r.item.id);
 
-describe('buildListGroups — group by routine', () => {
+describe('groupRows — group by routine', () => {
   it('puts habits and tasks under the same routine', () => {
     // Every other grouping here pulls habits into their own section. A routine
     // holds both, so doing that would put half a morning routine outside the

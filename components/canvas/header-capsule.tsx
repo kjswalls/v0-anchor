@@ -18,15 +18,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { FilterPopover } from '@/components/primitives/filter-popover';
+import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import {
-  LAYOUT_OPTIONS,
-  SCOPE_OPTIONS,
-  TYPE_OPTIONS,
-  type ViewOption,
-} from '@/lib/view-options';
+import { LAYOUT_OPTIONS, SCOPE_OPTIONS, type ViewOption } from '@/lib/view-options';
 import { goToDate, stepScope } from '@/lib/nav-commands';
 
 /**
@@ -72,7 +67,10 @@ function SelectMenu<T extends string>({
             >
               <OptIcon className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1">{o.label}</span>
-              {o.value === value && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
+              {/* Inherited colour, not `text-primary-foreground` — that token is
+                  --lime-ink, dark-green ink meant to sit ON a lime fill, and on
+                  the popover ground it is very nearly invisible. */}
+              {o.value === value && <Check className="h-3.5 w-3.5" />}
             </DropdownMenuItem>
           );
         })}
@@ -82,9 +80,10 @@ function SelectMenu<T extends string>({
 }
 
 export function HeaderCapsule() {
-  const { selectedDate, projects } = usePlannerStore();
-  const { scope, layout, typeFilter, canvasFilters, setScope, setLayout, setTypeFilter, setCanvasFilters } =
-    useViewStore();
+  const selectedDate = usePlannerStore((s) => s.selectedDate);
+  // Type and the canvas filters left with the popover — DisplayMenu reads them
+  // from the store itself rather than taking them through here.
+  const { scope, layout, setScope, setLayout } = useViewStore();
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -176,29 +175,28 @@ export function HeaderCapsule() {
         )}
       </div>
 
-      {/* Row 2 — white pill: type · layout · scope selectors */}
+      {/* Row 2 — white pill: shape on the left, content on the right.
+          Type used to sit alone on the far left while the filter popover sat on
+          the far right, so the pill held one filter at each end with the two
+          shape controls between them. Type is a content question and now lives
+          in Display with the rest of them; what stays out here is the pair that
+          changes the view's SHAPE. */}
       <div className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]">
         <SelectMenu
-          value={typeFilter}
-          options={TYPE_OPTIONS}
-          onChange={(v) => setTypeFilter(v)}
-          ariaLabel="Filter by type"
+          value={layout}
+          options={LAYOUT_OPTIONS}
+          onChange={(v) => setLayout(v)}
+          ariaLabel="Layout"
+        />
+        <SelectMenu
+          value={scope}
+          options={SCOPE_OPTIONS}
+          onChange={(v) => setScope(v)}
+          ariaLabel="Scope"
         />
         <div className="ml-auto flex items-center">
-          <SelectMenu
-            value={layout}
-            options={LAYOUT_OPTIONS}
-            onChange={(v) => setLayout(v)}
-            ariaLabel="Layout"
-          />
-          <SelectMenu
-            value={scope}
-            options={SCOPE_OPTIONS}
-            onChange={(v) => setScope(v)}
-            ariaLabel="Scope"
-          />
           <div className="mx-1 h-4 w-px bg-border" />
-          <FilterPopover value={canvasFilters} onChange={setCanvasFilters} projects={projects} />
+          <DisplayMenu surface="canvas" />
         </div>
       </div>
     </div>

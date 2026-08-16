@@ -1,57 +1,25 @@
 import type { Habit, Item, Priority, Task } from './planner-types';
 import { getItemTypeConfig } from './item-registry';
+import {
+  NO_CONTAINER,
+  classifyKindForItemType,
+  containerRef,
+  getContainerKindConfig,
+  sameContainerRef,
+} from './container-registry';
 
 /**
  * The filter vocabulary, and the pure predicates over it.
  *
  * Deliberately store-free — `lib/day-items.ts` is documented pure and imports
- * only planner-types + recurrence, and it needs these. Phase 1 adds the
- * registry-backed pass-through rule here; Phase 0 is just the container
- * vocabulary and the shape.
- */
-
-/**
- * A container reference is `<kind>:<name>`.
+ * only planner-types + recurrence, and it needs these.
  *
- * Prefixed because Project and Habit Group are ONE filter axis with two
- * namespaces, and a bare name cannot say which one it means. The starter sets
- * used to make that concrete — DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both
- * shipped Work / Wellness / Personal — and Phase 6 gave them disjoint names so a
- * new account no longer starts life with three ambiguous ones. The prefix stays:
- * nothing stops a user naming a project and a group the same thing, and it is
- * also what lets a single `containers: string[]` carry both without a
- * discriminated shape.
+ * The container GRAMMAR — what a ref is, which kinds exist, how two of them
+ * compare — moved to `lib/container-registry.ts` in Phase A. What is left here
+ * is the filter side: which items a selection admits. Import the vocabulary from
+ * the registry, never from this module; a re-export would be a second place to
+ * look and eventually a second answer.
  */
-export type ContainerKind = 'project' | 'group';
-
-/** Sentinel for "carries this axis, but the value is unset". */
-export const NO_CONTAINER = 'none:';
-
-export const containerRef = (kind: ContainerKind, name: string): string => `${kind}:${name}`;
-
-/** `project:Work` → `Work`. An unprefixed legacy value is returned as-is. */
-export function containerName(ref: string): string {
-  const i = ref.indexOf(':');
-  return i === -1 ? ref : ref.slice(i + 1);
-}
-
-/** `project:Work` → `project`, or null when the ref carries no namespace. */
-export function containerKindOf(ref: string): ContainerKind | null {
-  const i = ref.indexOf(':');
-  if (i === -1) return null;
-  const kind = ref.slice(0, i);
-  return kind === 'project' || kind === 'group' ? kind : null;
-}
-
-/** The `project:` half of a container selection, as bare names. */
-export function projectNamesFrom(containers: string[]): string[] {
-  return containers.filter((c) => c.startsWith('project:')).map(containerName);
-}
-
-/** The `group:` half of a container selection, as bare names. */
-export function groupNamesFrom(containers: string[]): string[] {
-  return containers.filter((c) => c.startsWith('group:')).map(containerName);
-}
 
 /**
  * "Carries the field, but the value is unset."
@@ -127,32 +95,17 @@ export function typeNameOf(row: Task | Habit | Item): string {
  * exactly what "No group" must catch.
  */
 export function containerRefOf(row: Task | Habit | Item, typeName = typeNameOf(row)): string | null {
-  const kind = getItemTypeConfig(typeName).containerKind;
-  if (kind === 'projects') {
-    const project = (row as { project?: string }).project;
-    return project ? containerRef('project', project) : NO_CONTAINER;
-  }
-  if (kind === 'habitGroups') {
-    const group = (row as { group?: string }).group;
-    return group ? containerRef('group', group) : NO_CONTAINER;
-  }
-  return null;
+  const kind = classifyKindForItemType(getItemTypeConfig(typeName).containerKind);
+  if (kind === null) return null;
+  // The field is the registry's, not a branch: `project` for projects, `group`
+  // for habit groups. A third classify kind reads its own column with no edit
+  // here, which is the whole point of moving the two-way `if` into config.
+  const field = getContainerKindConfig(kind).itemField!;
+  const value = (row as Record<string, unknown>)[field];
+  return typeof value === 'string' && value ? containerRef(kind, value) : NO_CONTAINER;
 }
 
-/**
- * Habit-group refs compare case-INSENSITIVELY; project refs compare exactly.
- *
- * Not a preference — the seeds collide on case. makeAddDraft writes a lowercase
- * 'personal' (item-dialog.tsx:383-387) against DEFAULT_HABIT_GROUPS'
- * capitalised 'Personal', and the codebase already case-folds groups at
- * group-section.tsx and in getHabitGroupColor. A project name is typed once by
- * the user and is compared exactly everywhere else, so folding it here would be
- * the odd one out.
- */
-const sameContainer = (a: string, b: string): boolean =>
-  a === b || (a.startsWith('group:') && b.startsWith('group:') && a.toLowerCase() === b.toLowerCase());
-
-/** Empty selection = no-op. Otherwise the rule above, then membership. */
+/** Empty selection = no-op. Then the pass-through rule, then membership. */
 export function passesContainerFilter(
   row: Task | Habit | Item,
   containers: string[],
@@ -161,7 +114,9 @@ export function passesContainerFilter(
   if (containers.length === 0) return true;
   const ref = containerRefOf(row, typeName);
   if (ref === null) return true; // carries no container axis — pass through
-  return containers.some((c) => sameContainer(c, ref));
+  // Case policy lives in the registry's `caseFold` — habit groups fold, projects
+  // do not, and `foldRef` is the only expression of that.
+  return containers.some((c) => sameContainerRef(c, ref));
 }
 
 /** Empty selection = no-op. Habits carry no priority, so they pass through. */
@@ -214,7 +169,7 @@ export const EMPTY_VIEW_FILTERS: ViewFilters = {
  * Not "unless it already looks prefixed". Project names are unvalidated free
  * text (manage-categories only trims; there is no CHECK constraint), so a
  * project called "Client: Acme" would fail a contains-a-colon test and be left
- * bare — after which `projectNamesFrom` drops it, the project filter silently
+ * bare — after which `namesOfKind` drops it, the project filter silently
  * stops narrowing, and the habits-wipe stops firing, while the trigger still
  * counts it as one active clause. The filter reads as active and does nothing.
  *

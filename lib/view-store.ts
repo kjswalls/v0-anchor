@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, TimeBucket } from './planner-types';
+import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { isSortBy, type SortBy } from './sort-rows';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -79,6 +80,9 @@ interface ViewStore {
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
+  /** Ordering, per surface. List surfaces only — see lib/sort-rows.ts. */
+  canvasSortBy: SortBy;
+  braindumpSortBy: SortBy;
   braindumpFilters: ViewFilters;
   canvasFilters: ViewFilters;
   typeMode: TypeMode;
@@ -116,6 +120,8 @@ interface ViewStore {
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
+  setCanvasSortBy: (sortBy: SortBy) => void;
+  setBraindumpSortBy: (sortBy: SortBy) => void;
   setBraindumpFilters: (filters: ViewFilters) => void;
   setCanvasFilters: (filters: ViewFilters) => void;
   /**
@@ -157,6 +163,8 @@ export const useViewStore = create<ViewStore>()(
       typeFilter: 'all',
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
+      canvasSortBy: 'default',
+      braindumpSortBy: 'default',
       braindumpFilters: EMPTY_VIEW_FILTERS,
       canvasFilters: EMPTY_VIEW_FILTERS,
       typeMode: 'sans',
@@ -181,6 +189,8 @@ export const useViewStore = create<ViewStore>()(
         usePlannerStore.getState().setGroupBy(canvasGroupBy);
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
+      setCanvasSortBy: (canvasSortBy) => set({ canvasSortBy }),
+      setBraindumpSortBy: (braindumpSortBy) => set({ braindumpSortBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
 
@@ -269,6 +279,19 @@ export const useViewStore = create<ViewStore>()(
           ...p,
           braindumpFilters: normalizeFilters(p.braindumpFilters),
           canvasFilters: normalizeFilters(p.canvasFilters),
+          // Scalars, so the shallow spread already supplies the default for a
+          // blob that predates them. Coerced anyway because the value reaches a
+          // COMPARATOR: an unrecognised string falls through sortRows' branches
+          // to the priority arm and silently reorders the list, and a persisted
+          // payload is user-editable in devtools.
+          canvasSortBy: isSortBy(p.canvasSortBy) ? p.canvasSortBy : 'default',
+          braindumpSortBy: isSortBy(p.braindumpSortBy) ? p.braindumpSortBy : 'default',
+          // Same reason, one release later: 'status' WAS a legal GroupBy and is
+          // sitting in real payloads. It falls through groupRows' branches to the
+          // container arm, so a stale blob would silently group by project — and
+          // the Grouping row would render "None" over it, because no option
+          // matches, while the trigger counted it as one active clause.
+          canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
         };
       },
     }
@@ -302,7 +325,11 @@ export function adoptLegacyViewPrefs() {
   useViewStore.setState({
     scope: legacy.viewMode,
     typeFilter: legacy.timelineItemFilter,
-    canvasGroupBy: legacy.groupBy,
+    // The second door 'status' can come through: planner-storage partializes
+    // `groupBy`, so a blob written before Phase 5a deleted the member rehydrates
+    // planner-store with it and this copies it across on first mount. The
+    // declared type says that cannot happen; the stored JSON disagrees.
+    canvasGroupBy: isGroupBy(legacy.groupBy) ? legacy.groupBy : 'none',
     adoptedLegacy: true,
   });
 }

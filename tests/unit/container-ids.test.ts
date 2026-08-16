@@ -289,4 +289,41 @@ describe('deleting a container', () => {
     expect(moved.group).toBe('Personal');
     expect(moved.groupId).toBeUndefined();
   });
+
+  /**
+   * An id that resolves to no row, which is what the display-menu merge made
+   * reachable. Both sides of that merge were half-right: main matched on the
+   * NAME and guarded `project &&`; 027 matched on `i.projectId === project?.id`
+   * and did not. Combined naively the guard covers only the name half, and the
+   * id half reads `undefined === undefined` — true for every item that has not
+   * been backfilled, which unfiles the entire account off one bad id.
+   *
+   * Not hypothetical on the way in: `restoreFromTrash` and undo both replay a
+   * container id against a store that may no longer hold the row.
+   */
+  it('does nothing at all when the id names no container', () => {
+    const before = store().items.map((i) => ({
+      id: i.id,
+      project: (i as { project?: string }).project,
+      projectId: (i as { projectId?: string }).projectId,
+      group: (i as { group?: string }).group,
+      groupId: (i as { groupId?: string }).groupId,
+    }));
+
+    store().removeProject('pr-does-not-exist');
+    store().removeHabitGroup('gr-does-not-exist');
+
+    const after = store().items.map((i) => ({
+      id: i.id,
+      project: (i as { project?: string }).project,
+      projectId: (i as { projectId?: string }).projectId,
+      group: (i as { group?: string }).group,
+      groupId: (i as { groupId?: string }).groupId,
+    }));
+
+    // task-stranger is the one that proves it: it carries `project: 'Work'`
+    // with NO projectId, so an unguarded id comparison matches it first.
+    expect(after).toEqual(before);
+    expect((find('task-stranger') as { project?: string }).project).toBe('Work');
+  });
 });

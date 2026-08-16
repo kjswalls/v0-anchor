@@ -39,8 +39,19 @@ import {
   type RoutineStanding,
 } from './active';
 import type { Item, Program, Routine } from './planner-types';
+import type { GateKind } from './container-registry';
 
-export type ScopeKind = 'routine' | 'program';
+/**
+ * The rail's rows are exactly the GATE containers — the kinds whose membership
+ * switches work off rather than describing it.
+ *
+ * Aliased rather than re-declared so the seam is one fact: a kind that starts
+ * gating gets a rail row by declaring `role: 'gate'`, and a classify kind can
+ * never acquire one by someone widening a string union here. This is the type
+ * half of what `ActivationContext` enforces at runtime by taking only routines
+ * and programs.
+ */
+export type ScopeKind = GateKind;
 
 export interface ScopeRow {
   kind: ScopeKind;

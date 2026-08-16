@@ -10,22 +10,29 @@ export default defineConfig({
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
     globals: true,
     /**
-     * Raised from vitest's 5s default, because the suite outgrew it.
+     * Vitest's 5000ms default is a LOGIC-test default, and 20 of these files
+     * mount real component trees in jsdom. Measured over the whole suite: the
+     * slowest test is 678ms and nothing else clears 1000ms — the assertions are
+     * cheap. What is not cheap is the environment, and it is charged to whichever
+     * test renders first in a file: across three full runs, cumulative `import`
+     * ranged 1236s-1519s and `transform` 85s-238s while `tests` held flat at
+     * ~118s. Under that contention (four worktrees share this machine) the
+     * suite's slowest test crossed 5000ms in two runs of three, from a true cost
+     * of 678ms — a 7x swing that says nothing about the code under test.
      *
-     * The heavy cases here stand up whole React trees in jsdom — the Organize
-     * console, the EOD review, a portalled dialog — and several of them sit
-     * within a second or two of the 5s line when run alone. At full parallelism
-     * they cross it: full-suite runs went red intermittently in
-     * `confirm-focus-return` and `eod-dismiss`, always by TIMEOUT and never by
-     * assertion, and never reproducibly in isolation.
+     * 15000 keeps a genuine hang failing while putting ~22x between the measured
+     * cost and the budget. Raise the FLOOR rather than pinning one test: the
+     * first-render cost lands wherever a file's first test happens to be, so a
+     * per-test override just moves the flake to whichever test is reordered into
+     * that slot.
      *
-     * The failures are indistinguishable from real ones at a glance, so they
-     * teach everyone to re-run a red suite instead of reading it — which is the
-     * expensive part, not the minutes. 30s costs nothing on a green run (the
-     * budget is per test, not a delay) and only bites when something genuinely
-     * hangs, which is the case a timeout should be reserved for.
+     * organize-console reached the same conclusion independently and set 30000,
+     * from watching `confirm-focus-return` and `eod-dismiss` go red by timeout
+     * under parallelism and never in isolation — the same 7x swing, observed
+     * rather than measured. This side keeps 15000 because it is the number with
+     * the measurement behind it; the merge only moved 13 to 20.
      */
-    testTimeout: 30_000,
+    testTimeout: 15_000,
   },
   resolve: {
     alias: {
