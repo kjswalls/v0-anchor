@@ -687,26 +687,67 @@ const lastHistoryEntryId = (): string | null =>
  * covering the item dialog, the command palette, and anything added later,
  * without the async lookup a synchronous action cannot await.
  *
- * The rollback must leave NO trace in history:
- *  - it is not a user action, so it must not push an entry of its own. A bare
- *    `set()` here would be a labelless mutation and land as "Unknown action".
- *  - the failed create's OWN entry goes too. Left behind, ⌘Z offers to undo
- *    something that never happened, and ⌘⇧Z re-adds the phantom from the
- *    snapshot with no failing write underneath to heal it a second time.
+ * The rollback leaves no trace in history: it is not a user action, so it
+ * pushes no entry of its own (a bare `set()` here would be a labelless mutation
+ * landing as "Unknown action"), and the failed create's own entry is stripped
+ * of the phantom and relabelled — see forgetFailedContainer.
+ *
+ * WHAT IT CANNOT DO. If the user's Save wins the race — the item's INSERT goes
+ * out before the container's rejection comes back — that item is already lost
+ * to 23503 and nothing here retrieves it. Clearing the reference stops the NEXT
+ * save carrying it; the one already in flight is why the proactive refusals in
+ * the console and the item dialog matter, and why this is the net rather than
+ * the plan.
  */
 const undoFailedCreate = (
   error: unknown,
   entryId: string | null,
-  noun: 'project' | 'habit group',
+  kind: 'project' | 'group',
+  id: string,
   name: string,
-  rollback: () => void,
 ) => {
+  const noun = kind === 'project' ? 'project' : 'habit group';
   console.error(`create ${noun} failed`, error);
 
+  // SAVED AND RESTORED, never a hard `false`. `isUpdatingUndoRedo` is a plain
+  // boolean rather than a counter, and `initializeStore` holds it true across
+  // its ENTIRE fetch while `userId` is already stamped — so a create rejecting
+  // inside the load window used to hand the flag back unblocked. The republish
+  // below then woke the subscriber's lazy-baseline branch mid-load, seeding a
+  // second 'Session start' and leaving `historyIndex` naming a snapshot the
+  // store did not hold. One ⌘Z after that soft-deleted every row the load had
+  // just brought in — verified by an A/B probe whose only variable was whether
+  // the create resolved.
+  const wasSuppressed = isUpdatingUndoRedo;
   isUpdatingUndoRedo = true;
   try {
-    rollback();
-    dropHistoryEntry(entryId);
+    usePlannerStore.setState((state) => {
+      if (kind === 'project') {
+        return {
+          projects: state.projects.filter((p) => p.id !== id),
+          // Items filed into it in the meantime lose the reference too, or the
+          // next save re-sends an id no row will ever match.
+          ...projectItems(
+            state.items.map((item) =>
+              item.type !== 'habit' && item.projectId === id
+                ? { ...item, project: undefined, projectId: undefined }
+                : item
+            )
+          ),
+        };
+      }
+      return {
+        habitGroups: state.habitGroups.filter((g) => g.id !== id),
+        ...projectItems(
+          state.items.map((item) =>
+            item.type === 'habit' && item.groupId === id
+              ? { ...item, group: '', groupId: undefined }
+              : item
+          )
+        ),
+      };
+    });
+    forgetFailedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
     // The baseline has to follow the rollback, or the next real change is
     // diffed against a snapshot that still holds the phantom.
     const s = usePlannerStore.getState();
@@ -718,17 +759,29 @@ const undoFailedCreate = (
       programs: s.programs,
     });
   } finally {
-    isUpdatingUndoRedo = false;
+    isUpdatingUndoRedo = wasSuppressed;
   }
 
-  // Republish the undo flags the subscriber was suppressed from writing.
-  const info = getHistoryInfo();
-  usePlannerStore.setState({
-    canUndo: historyIndex > 0,
-    canRedo: historyIndex < historyStack.length - 1,
-    actionLog: info.actionLog,
-    historyIndex: info.currentIndex,
-  });
+  // Republish the action log so the relabelled entry reaches the popover. Only
+  // when nothing else is mid-write: inside initializeStore's window this would
+  // publish half-loaded history over the top of the load.
+  //
+  // BOTH THIS GUARD AND THE SAVE/RESTORE ABOVE ARE KEPT, and each alone is
+  // enough to stop the load-window corruption — verified by probing them
+  // separately. Neither is dead code: this one keeps the rollback from
+  // publishing over a load in progress, the other keeps the suppression flag
+  // honest for every other reader of it. The consequence of getting it wrong is
+  // one ⌘Z soft-deleting everything the load brought in, which is worth two
+  // cheap defences rather than one clever one.
+  if (!wasSuppressed) {
+    const info = getHistoryInfo();
+    usePlannerStore.setState({
+      canUndo: historyIndex > 0,
+      canRedo: historyIndex < historyStack.length - 1,
+      actionLog: info.actionLog,
+      historyIndex: info.currentIndex,
+    });
+  }
 
   // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
   // survived: the container looks created for the rest of the session. 23505 is
@@ -747,27 +800,57 @@ const isUniqueViolation = (error: unknown): boolean => {
 };
 
 /**
- * Take back a history entry whose action turned out not to have happened.
+ * Erase a container the database never accepted from the whole undo history.
  *
- * Used only by the optimistic-create rollback. Leaving the entry behind would
- * mean ⌘Z offers to undo something that never landed, and — worse — ⌘⇧Z
- * REDOES it: `syncContainers` sees the container present in the restored
- * snapshot and absent from current, and puts it straight back in the store,
- * this time with no failing write underneath to heal it.
+ * REWRITES THE SNAPSHOTS; TOUCHES NO INDEX. The first version of this popped
+ * the failed create's entry off the stack and decremented `historyIndex`, which
+ * is only safe when that entry is still the top AND the user has not moved —
+ * and the guards it needed for that handed every other case straight back to
+ * the bug. Review reproduced both halves: with the user having acted during the
+ * round trip (which the item dialog's own Save flow guarantees), the store lost
+ * the phantom while every snapshot kept it, so ONE ⌘Z put it back and fired
+ * `dbRestoreProject` against a row that never existed.
  *
- * Refuses unless the entry is still exactly the top of the stack and the user
- * has not moved: a round trip has passed, so they may have done something else,
- * or undone their way backwards, in the meantime. Dropping the wrong entry
- * would be a far worse bug than the one this exists to fix.
+ * Stripping the id from every snapshot instead has no such precondition. The
+ * stack length, the log length and `historyIndex` are all untouched, so the
+ * invariant that `historyIndex` names the state the store holds cannot be
+ * broken by this function at all — whatever the user did meanwhile, whether two
+ * creates are in flight at once, and regardless of MAX_HISTORY_SIZE having
+ * shifted entries off the front.
+ *
+ * Members go with it. An item filed into the phantom before the rejection
+ * landed still names it in older snapshots, and undoing into one of those would
+ * re-file the item against a container that does not exist.
  */
-const dropHistoryEntry = (entryId: string | null): boolean => {
-  if (!entryId) return false;
-  if (historyIndex !== historyStack.length - 1) return false;
-  if (actionLog.length === 0 || actionLog[actionLog.length - 1].id !== entryId) return false;
-  historyStack.pop();
-  actionLog.pop();
-  historyIndex--;
-  return true;
+const forgetFailedContainer = (
+  kind: 'project' | 'group',
+  id: string,
+  entryId: string | null,
+  label: string,
+) => {
+  for (const snapshot of historyStack) {
+    if (kind === 'project') {
+      snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type !== 'habit' && item.projectId === id
+          ? { ...item, project: undefined, projectId: undefined }
+          : item
+      );
+    } else {
+      snapshot.habitGroups = snapshot.habitGroups.filter((g) => g.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type === 'habit' && item.groupId === id
+          ? { ...item, group: '', groupId: undefined }
+          : item
+      );
+    }
+  }
+
+  // The entry STAYS — removing it is what forced the index arithmetic — but it
+  // stops claiming something happened. Its snapshot now matches its
+  // predecessor, so undoing across it is a no-op rather than a resurrection.
+  const entry = entryId ? actionLog.find((a) => a.id === entryId) : undefined;
+  if (entry) entry.label = label;
 };
 
 // Get appropriate bucket for a given time
@@ -2247,9 +2330,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) {
           dbCreateProject(userId, project).catch((error) => {
-            undoFailedCreate(error, entryId, 'project', name, () =>
-              set((state) => ({ projects: state.projects.filter((p) => p.id !== project.id) }))
-            );
+            undoFailedCreate(error, entryId, 'project', project.id, name);
           });
         }
       },
@@ -2496,11 +2577,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) {
           dbCreateHabitGroup(userId, group).catch((error) => {
-            undoFailedCreate(error, entryId, 'habit group', name, () =>
-              set((state) => ({
-                habitGroups: state.habitGroups.filter((g) => g.id !== group.id),
-              }))
-            );
+            undoFailedCreate(error, entryId, 'group', group.id, name);
           });
         }
       },
