@@ -32,19 +32,24 @@ vi.mock('vaul', () => ({
   },
 }));
 
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() }) }));
+
 const listDeleted = vi.fn();
+const createProject = vi.fn(async () => {});
+const fetchTrashedNames = vi.fn(async () => ({ projects: [], groups: [] }));
 vi.mock('@/lib/db', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     listDeleted: (...args: unknown[]) => listDeleted(...args),
-    fetchTrashedNames: vi.fn(async () => ({ projects: [], groups: [] })),
+    createProject: (...args: unknown[]) => createProject(...(args as [])),
+    fetchTrashedNames: (...args: unknown[]) => fetchTrashedNames(...(args as [])),
   };
 });
 
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { whenGone } from '@/components/planner/organize/sections/trash';
-import { heldByTrash } from '@/components/planner/organize/use-trashed-names';
+import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { TrashEntry } from '@/lib/db';
 
@@ -54,6 +59,9 @@ const restoreFromTrash = vi.fn();
 
 beforeEach(() => {
   listDeleted.mockReset();
+  createProject.mockReset();
+  createProject.mockResolvedValue(undefined);
+  fetchTrashedNames.mockClear();
   restoreFromTrash.mockReset();
   usePlannerStore.setState({
     userId: 'u1',
@@ -309,5 +317,98 @@ describe('the trashed-name guard does not go stale mid-session', () => {
 
     fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
     expect(screen.queryByTestId('project-new-problem')).toBeNull();
+  });
+
+  /**
+   * The union tracks LEAVING the live array, and `undoFailedCreate` makes a
+   * container leave it — so the store's own rollback fed the guard a name that
+   * nothing anywhere is holding.
+   *
+   * The user's second attempt is then refused with a sentence that is simply
+   * false ("a deleted project called Work still has that name"), and pointed at
+   * a Trash that does not contain it. Retrying is the ONE thing they can
+   * usefully do after `Couldn't create "Work". Nothing was saved.` — and it is
+   * the thing this locked them out of, for the rest of the visit, with no way
+   * back but a reload.
+   *
+   * Note the failure here is deliberately NOT 23505. On a unique violation
+   * there really is a trashed row holding the name and the server list already
+   * carries it, correct id and all; it is every other rejection — offline, RLS,
+   * a dropped connection — where the phantom's id is the only thing in the
+   * union, and where refusing is pure invention.
+   */
+  it('lets the user retry a name whose create the database refused', async () => {
+    const failed = new Error('network');
+    createProject.mockRejectedValueOnce(failed);
+
+    render(<OrganizeConsole open onOpenChange={() => {}} section="projects" />);
+
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
+    fireEvent.click(screen.getByTestId('project-add'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Gone from the canvas — that part is the rollback working.
+    expect(usePlannerStore.getState().projects).toEqual([]);
+
+    fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
+    expect(screen.queryByTestId('project-new-problem')).toBeNull();
+    expect(screen.getByTestId('project-add')).not.toBeDisabled();
+  });
+});
+
+describe('what the bin lookup costs', () => {
+  /**
+   * Both instances of ItemDialog — app-shell's modal and desktop-shell's docked
+   * panel — are mounted for the whole session, open or not, and each call of
+   * this hook is two SELECTs. Ungated that is four queries fired during first
+   * paint, competing with the fetches that actually put the app on screen, to
+   * answer a question about a create row nobody has opened.
+   *
+   * These pin the mechanism. The dialog's own half is `enabled: !!state` at its
+   * call site, which is not observable from here without standing the whole
+   * component up.
+   */
+  const Probe = ({ on = true }: { on?: boolean }) => {
+    useTrashedNames({ enabled: on });
+    return null;
+  };
+
+  it('asks nothing while disabled, and asks once it is enabled', async () => {
+    const view = render(<Probe on={false} />);
+    await act(async () => {});
+    expect(fetchTrashedNames).not.toHaveBeenCalled();
+
+    view.rerender(<Probe on />);
+    await act(async () => {});
+    expect(fetchTrashedNames).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses hooks that mount together into one round trip', async () => {
+    // The console's Labels pane: Projects and Habit groups each call the hook,
+    // both mount in the same tick, and neither knows about the other.
+    render(
+      <>
+        <Probe />
+        <Probe />
+        <Probe />
+      </>
+    );
+    await act(async () => {});
+    expect(fetchTrashedNames).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache the ANSWER — a later mount reads the bin again', async () => {
+    const first = render(<Probe />);
+    await act(async () => {});
+    first.unmount();
+
+    render(<Probe />);
+    await act(async () => {});
+    // Sharing an in-flight request is free; sharing a settled one would mean a
+    // container binned since the first read stayed invisible for the session.
+    expect(fetchTrashedNames).toHaveBeenCalledTimes(2);
   });
 });

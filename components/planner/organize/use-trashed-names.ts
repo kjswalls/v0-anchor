@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerStore, wasNeverCreated } from '@/lib/planner-store';
 import { fetchTrashedNames, type TrashedName } from '@/lib/db';
 
 /**
@@ -43,8 +43,19 @@ import { fetchTrashedNames, type TrashedName } from '@/lib/db';
  *
  * A container that comes BACK — undo, or a Trash restore — drops out of the
  * union again, because it is live once more.
+ *
+ * `enabled` exists because two of this hook's callers are the item dialog, and
+ * BOTH of its instances — app-shell's modal and desktop-shell's docked panel —
+ * are mounted for the whole session whether or not anything is open in them.
+ * Left ungated that is four SELECTs fired during first paint, on the same
+ * connection as the fetches that actually put the app on screen, to answer a
+ * question nobody has asked yet. Gate it on open and the cost moves to the
+ * moment a create becomes possible, which is the first moment the answer can
+ * matter — and it is fresher there, which the dialog's own comment wanted.
  */
-export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedName[] } {
+export function useTrashedNames(
+  { enabled = true }: { enabled?: boolean } = {},
+): { projects: TrashedName[]; groups: TrashedName[] } {
   const userId = usePlannerStore((s) => s.userId);
   const [names, setNames] = useState<{ projects: TrashedName[]; groups: TrashedName[] }>({
     projects: [],
@@ -57,9 +68,9 @@ export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedNam
   });
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !enabled) return;
     let live = true;
-    fetchTrashedNames(userId)
+    loadTrashedNames(userId)
       .then((rows) => {
         if (live) setNames(rows);
       })
@@ -75,7 +86,7 @@ export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedNam
     return () => {
       live = false;
     };
-  }, [userId]);
+  }, [userId, enabled]);
 
   useEffect(() => {
     // Optional-called: a unit test that mocks `@/lib/planner-store` with only
@@ -97,9 +108,46 @@ export function useTrashedNames(): { projects: TrashedName[]; groups: TrashedNam
   };
 }
 
+/**
+ * Containers that left the live array — MINUS the ones that were never in the
+ * database to begin with.
+ *
+ * A rollback looks exactly like a delete from out here: `undoFailedCreate`
+ * filters the refused container out of `state.projects`, which is the same
+ * observable event `removeProject` produces. Without the exemption the guard
+ * held the name of a row that does not exist, in the bin or anywhere else, and
+ * answered the user's retry — the one move left to them after "Nothing was
+ * saved" — with a sentence inviting them to restore it from a Trash it is not
+ * in. Only a reload cleared it.
+ *
+ * A 23505 failure loses nothing by this: there IS a trashed row holding that
+ * name, and the server list already carries it under its own real id.
+ */
+/**
+ * Requests in flight, so hooks that mount in the same tick share one round trip.
+ *
+ * The console's Labels pane is the case that needs it: Projects and Habit groups
+ * each call this hook, both are mounted together, and each call is two SELECTs.
+ * Deduping by user id collapses that to one pair without any of the staleness a
+ * result cache would introduce — the entry is dropped the moment it settles, so
+ * the NEXT mount still gets a fresh read, which is the behaviour the union is
+ * built around.
+ */
+const inFlight = new Map<string, Promise<{ projects: TrashedName[]; groups: TrashedName[] }>>();
+
+const loadTrashedNames = (userId: string) => {
+  const existing = inFlight.get(userId);
+  if (existing) return existing;
+  const request = fetchTrashedNames(userId).finally(() => {
+    inFlight.delete(userId);
+  });
+  inFlight.set(userId, request);
+  return request;
+};
+
 const vanished = (before: TrashedName[], after: TrashedName[]): TrashedName[] =>
   before
-    .filter((b) => !after.some((a) => a.id === b.id))
+    .filter((b) => !after.some((a) => a.id === b.id) && !wasNeverCreated(b.id))
     .map((b) => ({ id: b.id, name: b.name }));
 
 /** Drop anything that is live again — undo, or a restore out of the Trash. */

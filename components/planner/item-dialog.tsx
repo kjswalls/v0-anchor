@@ -496,12 +496,19 @@ export function ItemDialog({
   /**
    * The names a trashed container is still holding.
    *
-   * Staler here than in the console — this dialog mounts once for the session,
-   * so a container deleted after it mounted is invisible to this copy. That is
-   * why the store carries the real net (undoFailedCreate): this is the polite
-   * refusal, not the guarantee.
+   * Gated on `state`, and that is not only about cost. BOTH instances of this
+   * component — app-shell's modal and desktop-shell's docked panel — are mounted
+   * for the entire session, so an ungated fetch here is four SELECTs during
+   * first paint for a create row nobody has opened. Asking on open instead also
+   * makes the answer FRESHER than a mount-time read could be, which is what the
+   * previous note here was apologising for.
+   *
+   * Still not a guarantee: a container binned while this is open is invisible to
+   * the fetched list. The union in the hook covers same-session deletes, and the
+   * store's rollback (undoFailedCreate) covers the rest. This is the polite
+   * refusal; that is the net.
    */
-  const trashedNames = useTrashedNames();
+  const trashedNames = useTrashedNames({ enabled: !!state });
 
   const router = useRouter();
   const pathname = usePathname();

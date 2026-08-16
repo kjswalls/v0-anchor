@@ -369,18 +369,71 @@ describe('a create the database REFUSES', () => {
   });
 
   it('keeps the undo flags honest after the rollback', async () => {
+    /**
+     * This used to assert `canUndo === canUndoAfterReal` and `canRedo === false`
+     * — both of which are `true`/`false` for the whole test either way, so it
+     * passed against a rollback that did nothing at all AND against one that
+     * corrupted the index. Only ever seeing a flag in one state proves nothing
+     * about a flag.
+     *
+     * So: the exact index and lengths, and both flags observed BOTH ways.
+     */
     vi.mocked(db.createProject).mockResolvedValueOnce(undefined);
     store().addProject('Real', 'icon:Star');
     await settle();
-    const canUndoAfterReal = store().canUndo;
+    expect(store().historyIndex).toBe(1); // Session start, then the create.
 
     vi.mocked(db.createProject).mockRejectedValue(duplicate);
     store().addProject('Work', 'icon:Briefcase');
     await settle();
 
-    // The refused create must not have moved the user's position in history.
-    expect(store().canUndo).toBe(canUndoAfterReal);
+    // The refused create's entry STAYS — stripped and relabelled, not removed —
+    // so the index advances exactly as a successful create's would.
+    expect(store().historyIndex).toBe(2);
+    expect(store().actionLog).toHaveLength(3);
+    expect(store().canUndo).toBe(true);
     expect(store().canRedo).toBe(false);
+
+    store().undo();
+    expect(store().historyIndex).toBe(1);
+    expect(store().canRedo).toBe(true); // ← the other direction
+
+    store().undo();
+    expect(store().historyIndex).toBe(0);
+    expect(store().canUndo).toBe(false); // ← and this one
+    expect(store().projects).toEqual([]);
+  });
+
+  it('a no-op create leaves no label armed for the next mutation to wear', async () => {
+    /**
+     * `2b65db4` moved `setNextActionLabel` to AFTER the `alreadyExists` guard in
+     * both create actions, and nothing pinned it.
+     *
+     * Armed before the guard, a duplicate create returns without ever calling
+     * `set()` — so the label is never spent and sits on a module-level variable
+     * waiting. The next mutation to reach a tracked slice without arming its own
+     * label picks it up, and is then logged, shown in the history popover and
+     * undone as "Add project: Work". A create that did nothing renames someone
+     * else's action.
+     */
+    vi.mocked(db.createProject).mockResolvedValue(undefined);
+    store().addProject('Work', 'icon:Briefcase');
+    await settle();
+    expect(labels()[0]).toBe('Add project: Work');
+    const settled = labels().length;
+
+    // Same name again. The guard returns early; nothing happened.
+    store().addProject('Work', 'icon:Briefcase');
+    await settle();
+    expect(labels().length).toBe(settled);
+
+    // Any set() that reaches a tracked slice without arming a label lands here.
+    usePlannerStore.setState((state) => ({
+      projects: [...state.projects, { id: 'other', name: 'Other', emoji: 'icon:Star' }],
+    }));
+
+    expect(labels()[0]).not.toBe('Add project: Work');
+    expect(labels()[0]).toBe('Unknown action');
   });
 
   it('does not desynchronise the stack if the user UNDID during the round trip', async () => {

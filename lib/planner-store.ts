@@ -699,6 +699,27 @@ const lastHistoryEntryId = (): string | null =>
  * the console and the item dialog matter, and why this is the net rather than
  * the plan.
  */
+/**
+ * Container ids that were seated optimistically and then refused.
+ *
+ * Published because the rollback is INDISTINGUISHABLE from a delete to anything
+ * watching this store: both are "a container that was in `projects` and now is
+ * not". `useTrashedNames` watches exactly that, to catch the name of a container
+ * binned mid-visit — and so it caught the phantom too, and spent the rest of the
+ * session refusing a name that nothing anywhere holds. The user's one useful
+ * response to "Nothing was saved" is to try again; that was the response it
+ * locked out.
+ *
+ * A uuid per failed create, never cleared. Both are deliberate: ids are uuids so
+ * a stale entry cannot collide with a real container even across an account
+ * switch, and a session with enough refused creates for the set to matter has a
+ * much larger problem than its memory.
+ */
+const neverCreated = new Set<string>();
+
+/** True for a container this store seated and the database then rejected. */
+export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
+
 const undoFailedCreate = (
   error: unknown,
   entryId: string | null,
@@ -708,6 +729,12 @@ const undoFailedCreate = (
 ) => {
   const noun = kind === 'project' ? 'project' : 'habit group';
   console.error(`create ${noun} failed`, error);
+
+  // BEFORE the setState below, not after. The history subscriber and
+  // useTrashedNames' both run synchronously inside set(), so a watcher that
+  // asks "was this real?" while reacting to the removal has to be able to get
+  // the right answer already.
+  neverCreated.add(id);
 
   // SAVED AND RESTORED, never a hard `false`. `isUpdatingUndoRedo` is a plain
   // boolean rather than a counter, and `initializeStore` holds it true across
