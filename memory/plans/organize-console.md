@@ -579,6 +579,7 @@ phase happened to sweep the same code:
 | `0a38733` | Phase 0b's review | the chained fan-out outrunning undo; the filter remap with no inverse |
 | `49705b0` | *(Phase 4 itself)* | a subtask-restore rule keyed on two clocks agreeing; an unlatch that could never fire |
 | `2b65db4` | Phase 4's review | a rollback that could soft-delete the whole account on one ⌘Z |
+| `ced2230` | `2b65db4`'s review | a name the app then refused to let the user retry, all session |
 
 **`2b65db4` is the one to remember, because the defect was in the SAFETY NET.** It
 healed a phantom container the database had refused — a real data-loss bug — and to do
@@ -609,7 +610,14 @@ instinct is the opposite, because a fix feels small.
 `0a38733` was the first fix commit to get a review of its own (`18dad7f`), and it found two
 HIGH defects immediately. **Review the fix, not just the build.**
 
-**Four for four now, and the shape repeats: the bug is always in the part that looked most
+**Five for five now** — `ced2230`, the rewrite that removed the index arithmetic, was itself
+the fifth. It is a milder bug than the one it replaced (an unusable create row, not lost
+data), but it is the same shape: the rollback removes a container from `state.projects`, and
+`useTrashedNames` cannot tell that apart from a delete, so a refused name stayed refused for
+the visit. **A fix that makes a store look like it did something is a fix that lies to every
+subscriber watching for that something.**
+
+**And the shape repeats: the bug is always in the part that looked most
 carefully reasoned.** Every one of these was a deliberate mechanism with a paragraph of
 justification above it — the resolution moved to `updateItem` "because the store always
 sends both halves"; the fan-out chained "so the writes cannot split"; the cascade matched on
@@ -631,6 +639,22 @@ group re-file had no end-to-end case.
 probes during the build, six more during the fix — every claim in Phase 4's suite has a
 recorded red behind it. A test whose failure you have never seen is a guess about what the
 code does.
+
+**Phase 5 found the subtlest one yet, and it was green for a reason no reading would catch.**
+`sorts a holder with no return date LAST` used two blockers and passed with the comparator's
+`!da` branch INVERTED — because a two-element `Array.sort` calls the comparator exactly once,
+in whichever direction the engine chooses, so one of the two undefined branches is never
+evaluated and is free to say the opposite thing. The generalisation is worth carrying:
+**a comparator test whose fixture count equals its branch count proves nothing about the
+branch that did not run** — assert the same answer from a reversed input, and add a third
+element so the sort actually sorts.
+
+Phase 5's other probe was the opposite result and just as useful: the picker's cursor clamp
+survived deletion entirely, because every path the *user* can move a cursor along was already
+bounded at the point of the `setCursor`. Rather than delete it, the reachable trigger was
+identified — the candidate pool shrinking beneath an open picker, which the "stays open after
+an add" change made a much longer window — and pinned. **A guard nothing can break is either
+dead code or an untested case; deciding which is the point of the probe.**
 
 **The chained fan-out outran undo.** Chaining fixed the split write but moved the dispatch
 AFTER undo's per-item writes, so a ⌘Z inside the container write's round trip was
@@ -1130,9 +1154,9 @@ show the caller.
   dialog also gained the proactive refusal. See the fix-commit table for what that cost.
   Residual, and narrower: if the user's Save wins the race against the rejection, that item
   is already lost to 23503 and nothing recovers it — the proactive guards are the plan, the
-  rollback is the net. And a rolled-back name is treated by `useTrashedNames` as
-  deleted-this-session, so it stays refused for the rest of the visit; correct for the 23505
-  that causes it, conservative for a network blip.
+  rollback is the net. ~~And a rolled-back name is treated by `useTrashedNames` as
+  deleted-this-session, so it stays refused for the rest of the visit.~~ **Closed by
+  `d5dc2c5`** — see the rollback-leftovers entry below.
 - **⌘Z after a restore severs the members' DB link.** `applyHistoryState`'s per-item diff
   yields `{project: undefined, projectId: undefined}` against the pre-restore snapshot and
   writes both NULL, so a second trip through the Trash returns an empty container. Rare
@@ -1152,9 +1176,93 @@ while `project_id` stayed NULL — the parked name-reference case — and the re
 nothing to reconnect: the claim was not merely unasserted but unreachable. Creating the
 project first makes the agent-side create resolve a real id.
 
+### The rollback's leftovers (`d5dc2c5`)
+
+Four findings from the rollback's review, and one was a bug the rollback itself created.
+
+**The name it refused to give back.** `useTrashedNames` watches containers LEAVING the live
+arrays, because one binned mid-visit is gone from the store and not yet in the fetched bin.
+`undoFailedCreate` makes a container leave the live arrays too — and from outside, the two
+are indistinguishable. So a create the database refused blacklisted its own name for the
+rest of the session: the user, having just read "Nothing was saved", tries again and is
+refused with a sentence that is false, pointing at a Trash the row is not in. Only a reload
+cleared it. The store now publishes `wasNeverCreated(id)`. A 23505 loses nothing by the
+exemption — a trashed row really does hold that name, and the server list already carries it
+under its own real id.
+
+**The undo toast was already safe, but nothing was holding it that way.**
+`useUndoToast` decides "is this new?" from `actionLog[0].id`, so POPPING an entry slides the
+previous one into the front and re-raises its toast minutes late, with Undo now wired to a
+different step. Real against the first design; dead since `ced2230` replaced the pop with a
+relabel. But the reason it is dead is a property of the LOG — ids stable, length never
+shrinks — not of the rollback. Three tests hold that property now; restoring the pop turns
+all three red, the first with the original symptom.
+
+**Four SELECTs before anything was open.** Both `ItemDialog` instances (app-shell's modal,
+desktop-shell's docked panel) are mounted all session, and each bin lookup is two queries.
+Gated on `!!state`, which also makes the answer fresher than a mount-time read; co-mounted
+hooks share one in-flight request, dropped on settle — sharing a pending request is free,
+sharing a settled one would hide a container binned since.
+
+**And three tests that would have passed anyway.** `keeps the undo flags honest` watched
+`canUndo`/`canRedo` in ONE state each for the whole test, so it passed against a rollback
+that did nothing AND against one that corrupted the index. The label reordering from
+`2b65db4` (`setNextActionLabel` moved after the de-dupe guard) was pinned by nothing at all
+— armed before the guard, a duplicate create leaves the label on a module-level variable for
+the next unlabelled mutation to be logged and undone under.
+
 ### Phase 5 — Routine correctness and reach
 
-Each item independently revertable.
+**Status 2026-08-16 — BUILT (`198a259`).** 1019 unit tests, lint 0 errors, build green;
+e2e scope-rail 5/5, programs 3/3, organize 10/10.
+
+**(a) was already done** — Phase 2 shipped the `Comes back` DayField wiring
+`setRoutinePaused`'s third argument. **(b) is the phase**, and the fix is architectural
+rather than local: `routineStandingOn` in `lib/active.ts` is now the ONE derivation of
+local-vs-effective, and `buildScopeRows` was rewired to call it. The console had its own
+partial copy — `isPausedOn` alone — which is why it rendered `Active` with un-greyed members
+and a delete confirm claiming nothing would return, one column from a rail saying `off`.
+Two implementations of a disjunctive rule is exactly how that happened, and the disagreement
+is invisible unless someone has both surfaces open.
+
+The switch still shows LOCAL (it is the value it writes); the note, the greying and the
+delete consequence read EFFECTIVE. **The delete copy was wrong in the program case
+specifically:** deleting the routine removes the whole activation path, so program-held items
+DO come back — the local-only check stayed silent about the half a user most wants before
+pressing Delete.
+
+`IN N PROGRAMS` navigates. `onNavigate` sets section AND selection, deliberately unlike
+`onSectionChange`, which clears it — clearing is right for the rail and wrong here, where the
+id is the entire point of the move.
+
+**(c)/(d)** landed with the type glyph coming off the REGISTRY (`glyph` on `ItemTypeConfig`,
+a custom type's own icon) rather than a `type === 'habit'` ternary, so a new type needs no
+code. The picker browses on an empty query, shares one cursor between pointer and keyboard,
+and stays open across adds — which broke two e2e helpers that re-clicked the opener, now
+idempotent.
+
+***A focus bug the gate found, and it was app-wide.*** The confirm prompt is shared and
+store-driven, so it has no `<AlertDialogTrigger>` — and Radix closes modal content with
+`preventDefault(); trigger?.focus()`, which cancels FocusScope's own restore and then focuses
+nothing. Dismissing ANY confirm in the app dropped the cursor on `<body>`, so the next Tab
+restarted from the top of the document. Deciding *not* to delete is the ordinary outcome of
+reading a delete prompt. Fixed by capturing in `onOpenAutoFocus` (before FocusScope moves
+focus) and restoring in `onCloseAutoFocus`, guarded on `isConnected` so a confirmed delete
+does not chase the control it just unmounted.
+
+**Two mutation probes changed what shipped**, which is the practice earning its keep again:
+- The picker's cursor **clamp survived deletion** — every path the *user* can move the cursor
+  along is already bounded, so the clamp's only reachable trigger is the pool shrinking
+  underneath an open picker (an item deleted in another tab, the agent API, a redo). Now
+  tested that way.
+- The blocker ranking **passed with its `!da` branch inverted**. A two-element sort calls the
+  comparator ONCE, in whichever direction the engine picks, so a two-item fixture exercises
+  one of the two undefined branches and leaves the other free to say the opposite. The
+  ranking assertions now run both array orders and a three-item case. *Generalisation: any
+  test of a comparator with fixture-order-dependent branches is suspect until it asserts the
+  same answer from a reversed input.*
+
+*Original plan text, for reference:*
 (a) **Pause-until** — wire `setRoutinePaused`'s third argument.
 (b) **The effective-state note and `IN N PROGRAMS`** — the highest-value correctness fix.
 (c) **Member rows gain the type glyph and the meta column.**
