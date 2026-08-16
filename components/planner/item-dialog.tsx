@@ -81,6 +81,8 @@ import {
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
+import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 /**
@@ -490,6 +492,16 @@ export function ItemDialog({
     updateRoutine,
     updateProgram,
   } = usePlannerStore();
+
+  /**
+   * The names a trashed container is still holding.
+   *
+   * Staler here than in the console — this dialog mounts once for the session,
+   * so a container deleted after it mounted is invisible to this copy. That is
+   * why the store carries the real net (undoFailedCreate): this is the polite
+   * refusal, not the guarantee.
+   */
+  const trashedNames = useTrashedNames();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -1002,10 +1014,32 @@ export function ItemDialog({
       });
     };
 
-    const createContainer = () => {
+    /**
+     * Returns false when the name was refused, so the caller keeps the popover
+     * open — a field that clears and closes on a create that did not happen is
+     * how this bug stayed invisible.
+     *
+     * The bin is consulted here for the MESSAGE. `addProject` now rolls a
+     * refused create back on its own, so the item is never lost either way; but
+     * the rollback arrives a round trip later as a toast, and a container you
+     * watched appear and then vanish is a worse answer than one that was never
+     * accepted. See use-trashed-names.ts for why the store cannot check this
+     * itself: the lookup is async and the action is not.
+     */
+    const createContainer = (): boolean => {
       const name = d.newContainer.name.trim();
-      if (!name) return;
-      if (config.containerKind === 'projects') addProject(name, d.newContainer.icon);
+      if (!name) return false;
+      const projects = config.containerKind === 'projects';
+      const held = heldByTrash(
+        projects ? trashedNames.projects : trashedNames.groups,
+        name,
+        projects ? 'project' : 'habit group'
+      );
+      if (held) {
+        toast.error(held);
+        return false;
+      }
+      if (projects) addProject(name, d.newContainer.icon);
       else addHabitGroup(name, d.newContainer.icon);
       patch({
         container: name,
@@ -1015,6 +1049,7 @@ export function ItemDialog({
           icon: makeIconToken(config.form.newContainerIcon),
         },
       });
+      return true;
     };
 
     // A dated item with no bucket still lands somewhere — 'anytime' — which is
@@ -1112,16 +1147,16 @@ export function ItemDialog({
                     onKeyDown={(e) => {
                       if (e.key !== 'Enter') return;
                       e.preventDefault();
-                      createContainer();
-                      close();
+                      // Closing only on acceptance: a refused name has to stay
+                      // on screen next to the message explaining it.
+                      if (createContainer()) close();
                     }}
                     data-sub-input
                   />
                   <AddIconButton
                     size="input"
                     onClick={() => {
-                      createContainer();
-                      close();
+                      if (createContainer()) close();
                     }}
                     aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
                   />

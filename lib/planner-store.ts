@@ -2,6 +2,11 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+// The store's one UI import, and it earns it: a swallowed write failure is the
+// exact bug undoFailedCreate exists to fix, so the net has to be able to speak.
+// planner-store is 'use client' and no server route imports it, and <Toaster>
+// is mounted in the root layout.
+import { toast } from 'sonner';
 import type {
   Task,
   Habit,
@@ -649,6 +654,120 @@ const saveToHistory = (state: HistoryState) => {
   } else {
     historyIndex++;
   }
+};
+
+/** The entry `saveToHistory` just wrote, so a failed write can take it back. */
+const lastHistoryEntryId = (): string | null =>
+  actionLog.length > 0 ? actionLog[actionLog.length - 1].id : null;
+
+/**
+ * Take an optimistic container back out when the database refused it.
+ *
+ * WHY THIS EXISTS AT ALL. `projects_user_id_name_key` and
+ * `habit_groups_user_id_name_key` are PLAIN unique indexes over
+ * `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a soft-deleted
+ * container reserves its name for the full 30 days while being invisible to
+ * this store, whose arrays come from `deleted_at`-filtered fetches. The
+ * `alreadyExists` guards above therefore cannot see the row that is about to
+ * reject the insert, and the insert used to fail into a bare
+ * `.catch(console.error)` AFTER the optimistic `set()` had landed.
+ *
+ * What that left behind is worse than a missing container. Every later edit to
+ * it is an `.eq('id', …)` matching zero rows, so it accepts a glyph, a colour
+ * and a whole time block and keeps none of them — and because
+ * `items_project_id_fkey` is a COMPOSITE foreign key, any item filed into it
+ * has its own INSERT rejected with 23503 in full. The item dialog's inline
+ * "new project" is the sharp end: type the name of a project you deleted last
+ * week, save, and you lose the project AND the task you were writing, with the
+ * only evidence a console line nobody will read.
+ *
+ * Healing it HERE rather than at the call sites is the point. The console's
+ * create rows consult the bin and refuse with a sentence (see
+ * use-trashed-names.ts) — that is the good path, and this is the net under it,
+ * covering the item dialog, the command palette, and anything added later,
+ * without the async lookup a synchronous action cannot await.
+ *
+ * The rollback must leave NO trace in history:
+ *  - it is not a user action, so it must not push an entry of its own. A bare
+ *    `set()` here would be a labelless mutation and land as "Unknown action".
+ *  - the failed create's OWN entry goes too. Left behind, ⌘Z offers to undo
+ *    something that never happened, and ⌘⇧Z re-adds the phantom from the
+ *    snapshot with no failing write underneath to heal it a second time.
+ */
+const undoFailedCreate = (
+  error: unknown,
+  entryId: string | null,
+  noun: 'project' | 'habit group',
+  name: string,
+  rollback: () => void,
+) => {
+  console.error(`create ${noun} failed`, error);
+
+  isUpdatingUndoRedo = true;
+  try {
+    rollback();
+    dropHistoryEntry(entryId);
+    // The baseline has to follow the rollback, or the next real change is
+    // diffed against a snapshot that still holds the phantom.
+    const s = usePlannerStore.getState();
+    updatePrevStateBaseline({
+      items: s.items,
+      projects: s.projects,
+      habitGroups: s.habitGroups,
+      routines: s.routines,
+      programs: s.programs,
+    });
+  } finally {
+    isUpdatingUndoRedo = false;
+  }
+
+  // Republish the undo flags the subscriber was suppressed from writing.
+  const info = getHistoryInfo();
+  usePlannerStore.setState({
+    canUndo: historyIndex > 0,
+    canRedo: historyIndex < historyStack.length - 1,
+    actionLog: info.actionLog,
+    historyIndex: info.currentIndex,
+  });
+
+  // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
+  // survived: the container looks created for the rest of the session. 23505 is
+  // the only error this insert can realistically raise, and the trash is the
+  // only place the name can be hiding, so the sentence can be specific.
+  toast.error(
+    isUniqueViolation(error)
+      ? `Couldn't create “${name}” — a deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
+      : `Couldn't create “${name}”. Nothing was saved.`
+  );
+};
+
+const isUniqueViolation = (error: unknown): boolean => {
+  const code = (error as { code?: string } | null)?.code;
+  return code === '23505' || (error instanceof Error && error.message.includes('duplicate key value'));
+};
+
+/**
+ * Take back a history entry whose action turned out not to have happened.
+ *
+ * Used only by the optimistic-create rollback. Leaving the entry behind would
+ * mean ⌘Z offers to undo something that never landed, and — worse — ⌘⇧Z
+ * REDOES it: `syncContainers` sees the container present in the restored
+ * snapshot and absent from current, and puts it straight back in the store,
+ * this time with no failing write underneath to heal it.
+ *
+ * Refuses unless the entry is still exactly the top of the stack and the user
+ * has not moved: a round trip has passed, so they may have done something else,
+ * or undone their way backwards, in the meantime. Dropping the wrong entry
+ * would be a far worse bug than the one this exists to fix.
+ */
+const dropHistoryEntry = (entryId: string | null): boolean => {
+  if (!entryId) return false;
+  if (historyIndex !== historyStack.length - 1) return false;
+  if (actionLog.length === 0 || actionLog[actionLog.length - 1].id !== entryId) return false;
+  historyStack.pop();
+  actionLog.pop();
+  historyIndex--;
+  return true;
 };
 
 // Get appropriate bucket for a given time
@@ -2114,15 +2233,25 @@ export const usePlannerStore = create<PlannerStore>()(
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
 
       addProject: (name, emoji) => {
-        setNextActionLabel(`Add project: ${name}`);
+        // The label goes AFTER the guard. Armed before it, a no-op create
+        // leaves `Add project: Foo` pending on a module-level variable and the
+        // user's next unlabelled mutation is logged and undone under that name.
         const alreadyExists = get().projects.some((p) => p.name === name);
         if (alreadyExists) return;
+        setNextActionLabel(`Add project: ${name}`);
 
         const project: Project = { id: crypto.randomUUID(), name, emoji };
         set((state) => ({ projects: [...state.projects, project] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateProject(userId, project).catch(console.error);
+        if (userId) {
+          dbCreateProject(userId, project).catch((error) => {
+            undoFailedCreate(error, entryId, 'project', name, () =>
+              set((state) => ({ projects: state.projects.filter((p) => p.id !== project.id) }))
+            );
+          });
+        }
       },
 
       updateProject: (id, updates) => {
@@ -2354,12 +2483,26 @@ export const usePlannerStore = create<PlannerStore>()(
         const normalized = name.toLowerCase();
         const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
         if (alreadyExists) return;
+        // Labelled at last: this create has always logged as "Unknown action"
+        // while its own delete was named, so the history popover could show you
+        // a group being removed and never how it arrived. Not in
+        // SIGNIFICANT_ACTIONS, so no undo toast — same as `Add project:`.
+        setNextActionLabel(`Add habit group: ${name}`);
 
         const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
         set((state) => ({ habitGroups: [...state.habitGroups, group] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateHabitGroup(userId, group).catch(console.error);
+        if (userId) {
+          dbCreateHabitGroup(userId, group).catch((error) => {
+            undoFailedCreate(error, entryId, 'habit group', name, () =>
+              set((state) => ({
+                habitGroups: state.habitGroups.filter((g) => g.id !== group.id),
+              }))
+            );
+          });
+        }
       },
 
       updateHabitGroup: (id, updates) => {
