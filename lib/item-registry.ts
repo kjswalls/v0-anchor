@@ -44,6 +44,20 @@ export interface ItemTypeConfig {
    * accent ramp projects draw from.
    */
   accent: string
+  /**
+   * Icon token (`icon:PascalName`) for the type's glyph, wherever an ITEM has
+   * to say what kind of thing it is rather than what it is called.
+   *
+   * On the registry rather than in a `type === 'habit' ? … : …` at the one call
+   * site, because the call sites multiply: the Organize console's member rows
+   * and its add-search both need it today, and every one of them would
+   * otherwise be a branch to update when a type is added.
+   *
+   * Optional, and safe to leave unset: {@link CategoryIcon} falls back to a
+   * name-hashed glyph, so a custom type with no icon still gets a stable one
+   * rather than nothing.
+   */
+  glyph?: string
   /** Valid values for the item's scalar `status` field. */
   allowedStatuses: readonly string[]
   /** The status meaning "finished" for one-shot (non-recurring) items. */
@@ -171,6 +185,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     label: 'Task',
     labelPlural: 'Tasks',
     accent: 'var(--primary)',
+    glyph: 'icon:CircleCheck',
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',
@@ -306,6 +321,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     // Honey is already the habit hue everywhere it has one (streak strip,
     // flame) via the warning alias — reuse it rather than minting a token.
     accent: 'var(--warning)',
+    glyph: 'icon:Repeat',
     allowedStatuses: ['pending', 'done', 'skipped'],
     doneStatus: 'done',
     defaultFrequency: 'daily',
@@ -389,7 +405,7 @@ export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as KnownItemType[]
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 
 export function buildCustomTypeConfig(
-  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural' | 'color'>
+  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural' | 'color' | 'icon'>
 ): ItemTypeConfig {
   const label = def.label || capitalize(def.name)
   const labelPlural = def.labelPlural || `${label}s`
@@ -398,6 +414,10 @@ export function buildCustomTypeConfig(
     label,
     labelPlural,
     accent: def.color?.trim() || accentColorForName(def.name),
+    // The user's own pick, which the type row already stores. Left undefined
+    // when unset so CategoryIcon hashes the SLUG — the same value the accent
+    // ramp hashes, so a type's glyph and its colour are derived from one string.
+    glyph: def.icon?.trim() || undefined,
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',

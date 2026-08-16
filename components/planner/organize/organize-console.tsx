@@ -132,6 +132,24 @@ export function OrganizeConsole({
     setPendingNew(false);
   }, []);
 
+  /**
+   * A section change that KEEPS a selection, which `onSectionChange` deliberately
+   * does not.
+   *
+   * Clearing the selection is right for the rail, where a section change means
+   * "show me the projects" and carrying an id across would open whatever row
+   * shared an index. Here the id is the entire point of the move: the routine
+   * detail's reverse view is naming a specific program, and landing on the
+   * Programs list with nothing selected would make the user find it again.
+   *
+   * Not routed through `onValueChange` — that would clear the id on the way past.
+   */
+  const onNavigate = useCallback((next: ConsoleSection, id: string) => {
+    setActive(next);
+    setSelectedId(id);
+    setPendingNew(false);
+  }, []);
+
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent
@@ -208,6 +226,7 @@ export function OrganizeConsole({
                 section={s.id}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                onNavigate={onNavigate}
                 focusNew={pendingNew && s.id === initial}
               />
             </TabsPrimitive.Content>
@@ -269,15 +288,25 @@ function SectionBody({
   section,
   selectedId,
   onSelect,
+  onNavigate,
   focusNew,
 }: {
   section: ConsoleSection;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Jump to another section AND select something in it. See ProgramHolders. */
+  onNavigate: (section: ConsoleSection, id: string) => void;
   focusNew: boolean;
 }) {
   if (section === 'routines') {
-    return <RoutinesSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+    return (
+      <RoutinesSection
+        selectedId={selectedId}
+        onSelect={onSelect}
+        onOpenProgram={(id) => onNavigate('programs', id)}
+        focusNew={focusNew}
+      />
+    );
   }
   if (section === 'programs') {
     return <ProgramsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;

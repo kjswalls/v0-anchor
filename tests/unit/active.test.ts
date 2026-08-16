@@ -8,6 +8,7 @@ import {
   suppressionReason,
   suppressionLabel,
   isProgramActiveOn,
+  routineStandingOn,
   type ActivationContext,
 } from '@/lib/active';
 import type { Item, Routine, Program } from '@anchor-app/types';
@@ -687,5 +688,179 @@ describe('suppressionLabel — one definition for three surfaces', () => {
   it('formats a day without going through an instant', () => {
     expect(suppressionLabel({ kind: 'paused', until: '2026-01-01' })).toBe('Paused until Jan 1');
     expect(suppressionLabel({ kind: 'paused', until: '2026-12-31' })).toBe('Paused until Dec 31');
+  });
+});
+
+/**
+ * routineStandingOn — the one derivation of local-vs-effective, shared by the
+ * ScopeRail and the Organize console's routine detail.
+ *
+ * It exists because those two surfaces DID disagree: the console resolved the
+ * routine's own pause and nothing else, so a routine held off by a program read
+ * `Active` there and `off` two columns away. A rule this easy to half-implement
+ * needs one home and a test on that home, not a test on each caller.
+ */
+describe('routineStandingOn — local vs effective', () => {
+  const TZ = 'America/New_York';
+  const D = '2026-08-15';
+  const held = (...ids: string[]) => ({ routineIds: ids });
+
+  it('answers for itself when no program holds it', () => {
+    const s = routineStandingOn(routine({ id: 'r' }), [], D, TZ);
+    expect(s.localOn).toBe(true);
+    expect(s.effectiveOn).toBe(true);
+    expect(s.holders).toEqual([]);
+    expect(s.soonestBlocker).toBeUndefined();
+  });
+
+  it('is off both ways when its own switch is off', () => {
+    const s = routineStandingOn(
+      routine({ id: 'r', pausedAt: '2026-08-01T00:00:00Z' }),
+      [program({ id: 'p', ...held('r'), state: 'active' })],
+      D,
+      TZ,
+    );
+    expect(s.localOn).toBe(false);
+    // A live holder does NOT override the routine's own pause — the two are
+    // conjunctive downward, disjunctive across holders.
+    expect(s.effectiveOn).toBe(false);
+  });
+
+  it('SPLITS when the routine is on and its only holder is off', () => {
+    // The case the console was blind to, and the reason for the whole split.
+    const s = routineStandingOn(
+      routine({ id: 'r' }),
+      [program({ id: 'p', ...held('r'), state: 'paused' })],
+      D,
+      TZ,
+    );
+    expect(s.localOn).toBe(true);
+    expect(s.effectiveOn).toBe(false);
+    expect(s.blockers.map((p) => p.id)).toEqual(['p']);
+  });
+
+  it('is carried by ANY live holder, however many are off', () => {
+    const s = routineStandingOn(
+      routine({ id: 'r' }),
+      [
+        program({ id: 'off1', ...held('r'), state: 'paused' }),
+        program({ id: 'off2', ...held('r'), state: 'paused' }),
+        program({ id: 'on', ...held('r'), state: 'active' }),
+      ],
+      D,
+      TZ,
+    );
+    expect(s.effectiveOn).toBe(true);
+    // The off ones are still reported — they are blocked, just not blocking —
+    // so a caller can say "2 of these 3 are off" without re-deriving it.
+    expect(s.blockers.map((p) => p.id)).toEqual(['off1', 'off2']);
+  });
+
+  it('ignores programs that do not hold it', () => {
+    const s = routineStandingOn(
+      routine({ id: 'r' }),
+      [program({ id: 'other', ...held('someone-else'), state: 'paused' })],
+      D,
+      TZ,
+    );
+    expect(s.holders).toEqual([]);
+    expect(s.effectiveOn).toBe(true);
+  });
+
+  /**
+   * BOTH ARRAY ORDERS, every time, and that is not belt-and-braces.
+   *
+   * The comparator has two undefined branches — `!da` and `!db` — and a
+   * two-element sort only ever calls it once, in whichever direction the engine
+   * happens to pick. A single fixture therefore exercises ONE branch and leaves
+   * the other free to say anything at all, including the opposite thing. That is
+   * not hypothetical: inverting `!da` alone left this suite entirely green.
+   *
+   * Asserting the same answer from both input orders is also the real contract —
+   * `blockers` comes out of a `.filter` over store order, so which one arrives
+   * first is an accident of how the user created their programs.
+   */
+  const rankedFirst = (...programs: Program[]) => {
+    const forward = routineStandingOn(routine({ id: 'r' }), programs, D, TZ);
+    const reverse = routineStandingOn(routine({ id: 'r' }), [...programs].reverse(), D, TZ);
+    // A comparator that answers differently depending on input order is broken
+    // even when one of the answers is the one you wanted.
+    expect(forward.soonestBlocker?.id).toBe(reverse.soonestBlocker?.id);
+    return forward.soonestBlocker?.id;
+  };
+
+  it('ranks the soonest RETURN, not the first in the array', () => {
+    // Disjunctive: the FIRST holder back carries the routine, so the earliest
+    // return is the honest date to show.
+    expect(
+      rankedFirst(
+        program({ id: 'late', ...held('r'), startsOn: '2026-12-01' }),
+        program({ id: 'soon', ...held('r'), startsOn: '2026-09-01' }),
+      ),
+    ).toBe('soon');
+  });
+
+  it('sorts a holder with no return date LAST, never first', () => {
+    // A manually paused program has no scheduled return by construction.
+    // Letting it win the ranking would name the one thing that will never
+    // arrive on its own as the thing to wait for.
+    expect(
+      rankedFirst(
+        program({ id: 'manual', ...held('r'), state: 'paused' }),
+        program({ id: 'dated', ...held('r'), startsOn: '2026-09-01' }),
+      ),
+    ).toBe('dated');
+  });
+
+  it('keeps the ranking honest with three, where the sort really sorts', () => {
+    // Two elements is one comparison; three forces the engine through both
+    // branches whichever direction it starts from.
+    expect(
+      rankedFirst(
+        program({ id: 'manual', ...held('r'), state: 'paused' }),
+        program({ id: 'late', ...held('r'), startsOn: '2026-12-01' }),
+        program({ id: 'soon', ...held('r'), startsOn: '2026-09-01' }),
+      ),
+    ).toBe('soon');
+  });
+
+  it('still names a blocker when none of them has a date', () => {
+    const s = routineStandingOn(
+      routine({ id: 'r' }),
+      [
+        program({ id: 'a', ...held('r'), state: 'paused' }),
+        program({ id: 'b', ...held('r'), state: 'paused' }),
+      ],
+      D,
+      TZ,
+    );
+    // Undefined here would silently drop the whole note at the call site.
+    expect(s.soonestBlocker?.id).toBe('a');
+  });
+
+  it('agrees with the resolver about the item underneath', () => {
+    /**
+     * The property that matters more than any individual field: if this says
+     * `effectiveOn`, the item resolver must agree the member is live. Two
+     * separate implementations of the disjunctive rule is exactly how the
+     * console and the rail drifted apart in the first place.
+     */
+    const item = habit({ id: 'i' });
+    const r = routine({ id: 'r', itemIds: ['i'] });
+    const cases: Program[][] = [
+      [],
+      [program({ id: 'p', ...held('r'), state: 'paused' })],
+      [program({ id: 'p', ...held('r'), state: 'active' })],
+      [
+        program({ id: 'a', ...held('r'), state: 'paused' }),
+        program({ id: 'b', ...held('r'), state: 'active' }),
+      ],
+      [program({ id: 'p', ...held('r'), startsOn: '2026-09-01' })],
+    ];
+    for (const programs of cases) {
+      const standing = routineStandingOn(r, programs, D, TZ);
+      const live = isItemActiveOn(item, D, { userTimezone: TZ, routines: [r], programs });
+      expect(standing.effectiveOn).toBe(live);
+    }
   });
 });

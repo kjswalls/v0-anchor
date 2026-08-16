@@ -450,6 +450,71 @@ export function programResumeDate(program: Program, dateStr: string): string | u
 }
 
 /**
+ * Where a routine actually stands on `dateStr` — its own switch, and what the
+ * rest of the app is doing about it.
+ *
+ * THE SPLIT IS THE POINT. A routine has a switch of its own AND can sit inside
+ * programs that answer for it, so "is this routine on?" has two different true
+ * answers and each is correct for a different job. `localOn` is what the user
+ * set and what a control must write back; `effectiveOn` is what the resolver
+ * obeys and therefore what the rest of the screen has to agree with. A surface
+ * that resolves only the local pause shows `Active` with un-greyed members while
+ * a program holds the whole thing off — which is exactly what the console did,
+ * one column away from a ScopeRail reporting the opposite.
+ *
+ * DISJUNCTIVE, matching {@link isItemActiveOn}: a standalone routine answers for
+ * itself, and one held by several programs is live while ANY holder is. Read the
+ * `blockers.length < holders.length` test as "at least one holder is carrying
+ * it" — counting rather than `.some()` because `blockers` is wanted anyway.
+ *
+ * Shared with the scope rail rather than re-derived there. Two copies of this
+ * rule is precisely how the two surfaces came to disagree in the first place,
+ * and the disagreement is invisible until someone has both open.
+ */
+export interface RoutineStanding {
+  /** The routine's own switch — what the segmented control shows and writes. */
+  localOn: boolean;
+  /** What the resolver obeys, and so what the member list must grey on. */
+  effectiveOn: boolean;
+  /** Every program holding this routine, on or off. */
+  holders: readonly Program[];
+  /** Holders that are switched off on this date. */
+  blockers: readonly Program[];
+  /**
+   * The blocker that comes back first — undefined only when nothing blocks.
+   *
+   * Ranked by {@link programResumeDate}, with "no return date" sorting LAST: a
+   * manually paused program has no scheduled return by construction, and letting
+   * it win the ranking would name it as the thing to wait for when it is the one
+   * thing that will never arrive on its own.
+   */
+  soonestBlocker?: Program;
+}
+
+export function routineStandingOn(
+  routine: Routine,
+  programs: readonly Program[] | undefined,
+  dateStr: string,
+  tz: string,
+): RoutineStanding {
+  const localOn = !isPausedOn(routine, dateStr, tz);
+  const holders = (programs ?? EMPTY_PROGRAMS).filter((p) => p.routineIds.includes(routine.id));
+  const blockers = holders.filter((p) => !isProgramActiveOn(p, dateStr));
+  const effectiveOn = localOn && (holders.length === 0 || blockers.length < holders.length);
+
+  const ranked = [...blockers].sort((a, b) => {
+    const da = programResumeDate(a, dateStr);
+    const db = programResumeDate(b, dateStr);
+    if (da === db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da < db ? -1 : 1;
+  });
+
+  return { localOn, effectiveOn, holders, blockers, soonestBlocker: ranked[0] };
+}
+
+/**
  * For a path that is NOT carrying the item: when it would, and which of its
  * containers to blame.
  *

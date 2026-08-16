@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -228,6 +228,170 @@ describe('the routines section', () => {
     const zone = id('routine-delete').closest('div')?.parentElement;
     expect(zone).toHaveTextContent('its 1 item stays exactly as it is');
     expect(zone).not.toHaveTextContent('come back into view');
+  });
+});
+
+/* ── effective state (Phase 5b) ───────────────────────────────────────── */
+
+describe('a routine a program is holding off', () => {
+  /**
+   * The correctness fix this phase exists for.
+   *
+   * `RoutineDetail` resolved `isPausedOn` alone — the routine's OWN switch — so
+   * a routine held off by a program rendered `Active`, with its members at full
+   * contrast and a delete confirm that said nothing about items reappearing,
+   * while the ScopeRail one column away reported it off. Both were reading the
+   * same store; only one of them was resolving the whole rule.
+   *
+   * `off` here is a program whose season has passed, so `isProgramActiveOn`
+   * returns false for a reason with no manual flag involved — the case a
+   * `state === 'paused'` check would have missed.
+   */
+  const held = () =>
+    seed({
+      items: [habit('i1', 'Stretch'), habit('i2', 'Read')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1', 'i2'] })],
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+      ],
+    });
+
+  it('keeps the switch on LOCAL truth — that is the value it writes', () => {
+    held();
+    open('routines');
+    click('routine-row');
+    // Rendering this as Paused would be a lie about the stored value, and
+    // turning the program back on would hand back a routine the user believes
+    // they switched off.
+    expect(id('routine-state-active')).toHaveAttribute('aria-pressed', 'true');
+    expect(id('routine-state-paused')).toHaveAttribute('aria-pressed', 'false');
+    // And no resume field, which belongs to the routine's own pause.
+    expect(maybe('routine-resume')).toBeNull();
+  });
+
+  it('says who is overruling it, and when its items come back', () => {
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      // Starts in the future, so programResumeDate has a date to give.
+      programs: [program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-09-01' })],
+    });
+    open('routines');
+    click('routine-row');
+    const note = id('routine-held-note');
+    expect(note).toHaveTextContent('“Summer” is off');
+    expect(note).toHaveTextContent('hidden anyway');
+    expect(note).toHaveTextContent('Sep 1');
+  });
+
+  it('promises no date when the blocking program has none to give', () => {
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      // Switched off by hand: no scheduled return exists, and inventing one is
+      // the exact failure the binding-constraint rule guards against.
+      programs: [program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' })],
+    });
+    open('routines');
+    click('routine-row');
+    expect(id('routine-held-note')).toHaveTextContent('when one of those programs does');
+  });
+
+  it('stays quiet while ANY holder is carrying it', () => {
+    // Disjunctive, exactly as the resolver: one live program is enough, however
+    // many others are off. Naming "Summer" here would report a suppression that
+    // is not happening.
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+        program('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
+      ],
+    });
+    open('routines');
+    click('routine-row');
+    expect(maybe('routine-held-note')).toBeNull();
+  });
+
+  it('counts the blockers rather than naming them all', () => {
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
+        program('p2', 'Term', { routineIds: ['r1'], state: 'paused' }),
+      ],
+    });
+    open('routines');
+    click('routine-row');
+    expect(id('routine-held-note')).toHaveTextContent('All 2 programs holding it are off');
+  });
+
+  it('warns that deleting it puts the items BACK, which the local check missed', () => {
+    held();
+    open('routines');
+    click('routine-row');
+    // Deleting the routine removes the whole activation path, so these items
+    // are on screen again the moment it goes — and the old copy, keyed on the
+    // local pause, said nothing at all.
+    const zone = id('routine-delete').closest('div')?.parentElement;
+    expect(zone).toHaveTextContent('they come back into view');
+  });
+
+  it('greys the members on EFFECTIVE state, not the local switch', () => {
+    held();
+    open('routines');
+    click('routine-row');
+    const rows = screen.getAllByTestId('routine-member');
+    for (const row of rows) {
+      expect(within(row).getByTitle(/Stretch|Read/)).toHaveClass('text-muted-foreground');
+    }
+  });
+});
+
+describe('IN N PROGRAMS — the reverse view', () => {
+  const seeded = () =>
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
+        program('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
+        program('p3', 'Other', { routineIds: [], state: 'active' }),
+      ],
+    });
+
+  it('lists the holders and no one else, saying which is carrying it', () => {
+    seeded();
+    open('routines');
+    click('routine-row');
+    const rows = screen.getAllByTestId('routine-holder');
+    expect(rows.map((r) => r.getAttribute('data-program-id'))).toEqual(['p1', 'p2']);
+    expect(rows[0]).toHaveAttribute('data-holder-state', 'off');
+    expect(rows[1]).toHaveAttribute('data-holder-state', 'on');
+  });
+
+  it('is absent entirely for a routine no program holds', () => {
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+    });
+    open('routines');
+    click('routine-row');
+    expect(maybe('routine-holders')).toBeNull();
+  });
+
+  it('lands on that program, SELECTED — the point of the jump', () => {
+    seeded();
+    open('routines');
+    click('routine-row');
+    fireEvent.click(screen.getAllByTestId('routine-holder')[0]);
+
+    // A section change through the rail clears the selection by design. This one
+    // must not: arriving at the Programs list with nothing selected would make
+    // the user find the program the previous screen just named.
+    expect(id('program-detail')).toHaveAttribute('data-program-id', 'p1');
   });
 });
 
@@ -911,5 +1075,194 @@ describe('the section filter', () => {
     fireEvent.change(field, { target: { value: 'week' } });
     fireEvent.keyDown(field, { key: 'ArrowDown' });
     expect(document.activeElement).toHaveAttribute('data-routine-id', 'r3');
+  });
+});
+
+/* ── member rows and the picker (Phase 5c, 5d) ────────────────────────── */
+
+describe('a member row', () => {
+  const mixed = () =>
+    seed({
+      items: [
+        habit('i1', 'Stretch', { startTime: '07:30' }),
+        task('i2', 'Stretch', { timeBucket: 'evening' }),
+        task('i3', 'Email', { timeBucket: 'anytime' }),
+      ],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1', 'i2', 'i3'] })],
+    });
+
+  it('carries a type glyph, so two items with ONE title are two rows', () => {
+    // Both are called "Stretch". Without the glyph these rows are identical,
+    // here and in the search that adds them — and picking the wrong one is a
+    // silent write that only diverges later, when the habit keeps recurring.
+    mixed();
+    open('routines');
+    click('routine-row');
+    const rows = screen.getAllByTestId('routine-member');
+    const glyphOf = (row: HTMLElement) => row.querySelector('svg')?.getAttribute('class');
+    expect(glyphOf(rows[0])).not.toEqual(glyphOf(rows[1]));
+  });
+
+  it('shows a clock time in tabular figures and a bucket name in prose', () => {
+    mixed();
+    open('routines');
+    click('routine-row');
+    const metas = screen.getAllByTestId('routine-member-meta');
+    expect(metas[0]).toHaveTextContent('07:30');
+    expect(metas[0]).toHaveClass('font-num');
+    // Mono on a word is instrumentation cosplay: tabular figures exist to line
+    // digits up, and "Evening" has none to line up.
+    expect(metas[1]).toHaveTextContent('Evening');
+    expect(metas[1]).not.toHaveClass('font-num');
+  });
+
+  it('says nothing at all for an unscheduled item', () => {
+    // Most rows in a braindump-fed routine are unscheduled, so "anytime" would
+    // be the loudest repeated thing on the pane while carrying no signal.
+    mixed();
+    open('routines');
+    click('routine-row');
+    expect(screen.getAllByTestId('routine-member-meta')[2]).toHaveTextContent('');
+  });
+});
+
+describe('the member picker', () => {
+  const three = () =>
+    seed({
+      items: [habit('i1', 'Stretch'), habit('i2', 'Read'), task('i3', 'Email')],
+      routines: [routine('r1', 'Morning')],
+    });
+
+  const openPicker = () => {
+    open('routines');
+    click('routine-row');
+    click('routine-member-add');
+  };
+
+  it('browses on an empty query, rather than demanding the title up front', () => {
+    // The old picker showed nothing until you typed, which quietly required you
+    // to already know the name of the thing you were looking for.
+    three();
+    openPicker();
+    expect(screen.getAllByTestId('routine-member-candidate')).toHaveLength(3);
+  });
+
+  it('walks the list with ↑/↓ and commits the HIGHLIGHTED row', () => {
+    three();
+    openPicker();
+    const field = id('routine-member-search');
+
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'ArrowUp' });
+    expect(screen.getAllByTestId('routine-member-candidate')[1]).toHaveAttribute('data-active');
+
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i2']);
+  });
+
+  it('never walks off either end', () => {
+    three();
+    openPicker();
+    const field = id('routine-member-search');
+    fireEvent.keyDown(field, { key: 'ArrowUp' });
+    expect(screen.getAllByTestId('routine-member-candidate')[0]).toHaveAttribute('data-active');
+
+    for (let i = 0; i < 9; i++) fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i3']);
+  });
+
+  it('stays open after an add, with the query cleared and the cursor home', () => {
+    // Collecting is almost never one act. Closing after each add made building
+    // a four-item routine four round trips through a button 30px away.
+    three();
+    openPicker();
+    fireEvent.keyDown(id('routine-member-search'), { key: 'ArrowDown' });
+    fireEvent.keyDown(id('routine-member-search'), { key: 'Enter' });
+
+    expect(id('routine-member-search')).toHaveValue('');
+    const rows = screen.getAllByTestId('routine-member-candidate');
+    // The added one is gone from the pool, and the highlight is back at the top
+    // rather than sitting on whatever slid into index 1.
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveAttribute('data-active');
+    expect(rows[0]).toHaveAttribute('data-item-id', 'i1');
+  });
+
+  it('resets the cursor as the query narrows, so ↵ commits what is lit', () => {
+    three();
+    openPicker();
+    const field = id('routine-member-search');
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    // A cursor at index 2 against a one-row list is either a missing highlight
+    // or an add of the wrong thing, depending on how it is clamped.
+    fireEvent.change(field, { target: { value: 'read' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i2']);
+  });
+
+  it('says nothing matches INSIDE the list, and ↵ there does nothing', () => {
+    three();
+    openPicker();
+    const field = id('routine-member-search');
+    fireEvent.change(field, { target: { value: 'zzz' } });
+    expect(id('routine-member-none')).toHaveTextContent('Nothing matches “zzz”');
+
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual([]);
+    // And the field is still the thing with focus, so typing continues to work.
+    expect(maybe('routine-member-search')).toBeInTheDocument();
+  });
+
+  it('distinguishes an empty POOL from an empty search', () => {
+    // Telling someone to refine a search that cannot succeed is the worse of
+    // the two wrong answers here.
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+    });
+    openPicker();
+    expect(id('routine-member-none')).toHaveTextContent('Everything is already in here.');
+  });
+
+  it('keeps a highlight when the pool shrinks under it', () => {
+    /**
+     * The cursor is bounded at every point the USER can move it, so this is the
+     * one path that can leave it dangling: the list shrinking on its own. The
+     * picker now stays open across adds, which makes the window it is open for
+     * much longer, and `items` is written by more than this pane — another tab,
+     * the agent API, a realtime update, a redo.
+     *
+     * Unclamped, `candidates[cursor]` is undefined: the highlight vanishes,
+     * `aria-activedescendant` points at nothing, and ↑ has to be pressed once
+     * per index of overshoot before anything lights up again.
+     */
+    three();
+    openPicker();
+    const field = id('routine-member-search');
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+
+    act(() => {
+      usePlannerStore.setState({ items: [habit('i1', 'Stretch')] } as never);
+    });
+
+    const rows = screen.getAllByTestId('routine-member-candidate');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveAttribute('data-active');
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i1']);
+  });
+
+  it('keeps pointer and keyboard on ONE cursor', () => {
+    // Two independent notions of "current" is the classic way a picker adds the
+    // row the highlight was not on.
+    three();
+    openPicker();
+    fireEvent.mouseMove(screen.getAllByTestId('routine-member-candidate')[2]);
+    fireEvent.keyDown(id('routine-member-search'), { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i3']);
   });
 });

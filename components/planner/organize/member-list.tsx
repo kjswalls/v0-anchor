@@ -1,11 +1,11 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
-import { isCollectible } from '@/lib/item-registry';
+import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { countLive, swapMembers, useLiveItemIds } from '@/lib/collections';
 import { Eyebrow } from './primitives';
 import { inActiveSection, useEscapeRung } from './escape-ladder';
@@ -79,6 +79,69 @@ function RailButton({
   );
 }
 
+/* ── what a member row says about an item ─────────────────────────────── */
+
+/**
+ * The type glyph.
+ *
+ * A member row used to be a bare title, so two items called "Stretch" — one a
+ * task, one a habit — were the same row twice, here AND in the add-search that
+ * feeds it. Picking the wrong one is a silent write: it lands in the routine,
+ * looks right, and only diverges later when the habit keeps recurring.
+ *
+ * The token comes off the REGISTRY rather than a `type === 'habit'` ternary, so
+ * a user-defined type brings its own glyph with it and this component never
+ * learns the type list. `name` is the label, which is what CategoryIcon hashes
+ * if a custom type has no icon set — stable per type, and never blank.
+ */
+function TypeGlyph({ item, className }: { item: Item; className?: string }) {
+  const config = getItemTypeConfig(itemTypeName(item));
+  return (
+    <span className="flex w-[18px] shrink-0 justify-center">
+      <CategoryIcon glyph={config.glyph} name={config.label} className={cn('h-3.5 w-3.5', className)} />
+    </span>
+  );
+}
+
+/**
+ * The 64px meta column: WHEN, in as few characters as possible.
+ *
+ * `numeric` drives `font-num` and is deliberately not "always on". Tabular
+ * figures exist to make digits line up in a column; running a word like
+ * `Anytime` through them buys nothing and reads as instrumentation. A clock
+ * time is numeric, a bucket name is not.
+ *
+ * An unscheduled item says nothing rather than "unscheduled" — the column is
+ * 64px, and most rows in a braindump-fed routine are unscheduled, so the word
+ * would be the loudest repeated thing on the pane while carrying no signal.
+ */
+function memberMeta(item: Item): { text: string; numeric: boolean } {
+  if (item.startTime) return { text: item.startTime, numeric: true };
+  if (item.timeBucket && item.timeBucket !== 'anytime') {
+    return { text: BUCKET_TEXT[item.timeBucket] ?? item.timeBucket, numeric: false };
+  }
+  return { text: '', numeric: false };
+}
+
+/**
+ * How many rows the picker draws.
+ *
+ * A cap rather than the whole pool because browsing on an empty query means
+ * this list is now unbounded by default — someone with 400 braindump items
+ * would render 400 buttons to pick one. Eight is deliberately more than the six
+ * the search-only version showed: the list is scrollable and arrow-navigable
+ * now, so more rows cost nothing to reach, and a browse list of six is barely a
+ * browse.
+ */
+const PICKER_LIMIT = 8;
+
+const BUCKET_TEXT: Record<string, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+  anytime: 'Anytime',
+};
+
 /* ── items ────────────────────────────────────────────────────────────── */
 
 export function ItemMemberList({
@@ -111,7 +174,11 @@ export function ItemMemberList({
   const items = usePlannerStore((s) => s.items);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState('');
+  /** Index into `candidates` of the highlighted row. See the keyboard block. */
+  const [cursor, setCursor] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
 
   // The two-pane layout never remounts this component — it swaps the props
   // under it — so without this an open search box AND its typed query survive a
@@ -127,12 +194,25 @@ export function ItemMemberList({
     setLastOwnerId(ownerId);
     setAdding(false);
     setQuery('');
+    setCursor(0);
   }
 
+  /**
+   * STAYS OPEN. Collecting is almost never a single act — a routine is built by
+   * adding four things in a row — and closing after each one made that four
+   * round trips through a button that is 30px away and re-focuses the field
+   * each time. The query clears instead, which drops back to the browse list
+   * with the item just added removed from it, so the next one is one ↓↵ away.
+   *
+   * The cursor goes home rather than staying put: the list underneath has
+   * changed completely (a cleared query re-shows the whole pool), so holding an
+   * index would leave the highlight on an unrelated row.
+   */
   const add = (id: string) => {
     onChange([...memberIds, id]);
     setQuery('');
-    setAdding(false);
+    setCursor(0);
+    searchRef.current?.focus();
   };
 
   // Rung: close the search before the plate. The active-section guard is
@@ -142,17 +222,39 @@ export function ItemMemberList({
     if (!adding || !inActiveSection(rootRef.current)) return false;
     setAdding(false);
     setQuery('');
+    setCursor(0);
     return true;
   });
 
+  /**
+   * BROWSES ON AN EMPTY QUERY. The old picker showed nothing until you typed,
+   * which quietly required you to already know the title of the thing you were
+   * looking for — in a console whose entire job is finding one of thirty
+   * objects you have half-forgotten. An empty query now means "everything
+   * eligible", and typing narrows it.
+   *
+   * `isCollectible` is the registry's answer, not a type check, so a
+   * user-defined type joins routines the day it is created.
+   */
   const q = query.trim().toLowerCase();
-  const candidates = q
-    ? items
-        .filter(
-          (i) => isCollectible(i) && !memberIds.includes(i.id) && i.title.toLowerCase().includes(q)
-        )
-        .slice(0, 6)
-    : [];
+  const pool = items.filter((i) => isCollectible(i) && !memberIds.includes(i.id));
+  const candidates = (q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool).slice(
+    0,
+    PICKER_LIMIT
+  );
+
+  // Clamped during render, not in an effect. `candidates` shrinks as the user
+  // types and as items are added, and a cursor left past the end would paint one
+  // frame with no highlight anywhere — and, worse, arm Enter on `undefined`.
+  const active = Math.min(cursor, Math.max(0, candidates.length - 1));
+
+  // Keep the highlight on screen. Without this the cursor walks off the bottom
+  // of the 148px window and ↓ appears to stop working — the selection is moving,
+  // just where nobody can see it. `nearest` so it never scrolls when it doesn't
+  // have to, which is what keeps the list from lurching on every keystroke.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [active, query]);
 
   return (
     <div ref={rootRef} className="flex flex-col gap-1.5">
@@ -175,6 +277,8 @@ export function ItemMemberList({
             data-member-index={i}
             className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
           >
+            <TypeGlyph item={item} />
+
             {/* Greyed while the container is off, NOT struck through — struck
                 through means done, and this isn't done, it's set aside. */}
             <span
@@ -186,6 +290,21 @@ export function ItemMemberList({
             >
               {item.title}
             </span>
+
+            {(() => {
+              const meta = memberMeta(item);
+              return (
+                <span
+                  data-testid={`${testPrefix}-member-meta`}
+                  className={cn(
+                    'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
+                    meta.numeric && 'font-num'
+                  )}
+                >
+                  {meta.text}
+                </span>
+              );
+            })()}
 
             {/* Buttons, not drag. The console renders inside the shell's
                 DndContext, so a sortable list here would need a nested one and
@@ -232,40 +351,114 @@ export function ItemMemberList({
       {adding ? (
         <div className="flex flex-col gap-1">
           <Input
+            ref={searchRef}
             autoFocus
             placeholder="Find an item…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              // Home on every keystroke: the list under the cursor is a
+              // different list now, so the old index points at nothing the user
+              // chose.
+              setCursor(0);
+            }}
+            /**
+             * The whole keyboard contract, on the input rather than the rows.
+             *
+             * The rows are buttons and could take focus themselves, but then ↓
+             * from the field moves focus OUT of it and the next character typed
+             * goes nowhere. This is the combobox pattern for exactly that
+             * reason: focus never leaves the input, `aria-activedescendant`
+             * tells a screen reader which row is current, and the highlight is
+             * ours to draw.
+             */
+            role="combobox"
+            aria-expanded
+            aria-controls={`${testPrefix}-member-candidates`}
+            aria-activedescendant={
+              candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
+            }
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && candidates[0]) add(candidates[0].id);
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setCursor(Math.min(active + 1, candidates.length - 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setCursor(Math.max(active - 1, 0));
+              } else if (e.key === 'Enter') {
+                // Guarded on the row existing, not on the list being non-empty:
+                // Enter on "Nothing matches" must do nothing, not add whatever
+                // happens to be at index 0 of a stale render.
+                if (candidates[active]) {
+                  e.preventDefault();
+                  add(candidates[active].id);
+                }
+              }
             }}
             className="bg-background border-border h-8"
             data-testid={`${testPrefix}-member-search`}
           />
-          {candidates.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => add(item.id)}
-              data-testid={`${testPrefix}-member-candidate`}
-              data-item-id={item.id}
-              className="hover:bg-accent flex h-8 items-center rounded-[5px] px-[7px] text-left text-sm"
-            >
-              <span className="truncate">{item.title}</span>
-            </button>
-          ))}
-          {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
-              something and the field keeps focus. */}
-          {q && candidates.length === 0 && (
-            <p className="text-muted-foreground px-[7px] py-1 text-xs">
-              Nothing matches &ldquo;{query.trim()}&rdquo;.
-            </p>
-          )}
+
+          {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
+          <div
+            id={`${testPrefix}-member-candidates`}
+            role="listbox"
+            className="max-h-[148px] space-y-px overflow-y-auto"
+          >
+            {candidates.map((item, i) => (
+              <button
+                key={item.id}
+                ref={i === active ? activeRef : undefined}
+                type="button"
+                role="option"
+                id={`${testPrefix}-cand-${item.id}`}
+                aria-selected={i === active}
+                // Pointer and keyboard drive the SAME cursor, so moving the
+                // mouse over a row and pressing Enter does what the highlight
+                // says. Two independent "current" notions is the classic way a
+                // picker adds the wrong thing.
+                onMouseMove={() => i !== active && setCursor(i)}
+                onClick={() => add(item.id)}
+                data-testid={`${testPrefix}-member-candidate`}
+                data-item-id={item.id}
+                data-active={i === active || undefined}
+                className={cn(
+                  'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
+                  i === active && 'bg-accent'
+                )}
+              >
+                {/* The same glyph as the row it will become. Without it, choosing
+                    between two same-titled items is a coin flip — and this is the
+                    half where getting it wrong is a write. */}
+                <TypeGlyph item={item} />
+                <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              </button>
+            ))}
+
+            {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
+                something and the field keeps focus. Two different empties: one
+                is a query that found nothing, the other is a pool with nothing
+                left in it, and telling someone to refine a search that cannot
+                succeed is the worse of the two wrong answers. */}
+            {candidates.length === 0 && (
+              <p
+                className="text-muted-foreground px-[7px] py-1 text-xs"
+                data-testid={`${testPrefix}-member-none`}
+              >
+                {pool.length === 0
+                  ? 'Everything is already in here.'
+                  : `Nothing matches “${query.trim()}”.`}
+              </p>
+            )}
+          </div>
         </div>
       ) : (
         <button
           type="button"
-          onClick={() => setAdding(true)}
+          onClick={() => {
+            setAdding(true);
+            setCursor(0);
+          }}
           className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center gap-2 self-start rounded-[5px] px-[7px] text-sm"
           data-testid={`${testPrefix}-member-add`}
         >

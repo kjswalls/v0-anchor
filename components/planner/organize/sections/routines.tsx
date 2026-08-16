@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 // The shell's shared AlertDialog, rendered once in AppShell. Using it rather
 // than a local <AlertDialog> keeps the console's confirms on the same surface
 // as every other destructive prompt in the app — and keeps the plate free of a
 // second dismissable layer competing for Escape.
 import { useUIStore } from '@/lib/ui-store';
-import { isPausedOn } from '@/lib/active';
+import { programResumeDate, routineStandingOn } from '@/lib/active';
 import {
   byName,
   countLive,
@@ -18,7 +19,7 @@ import {
   useLiveItemIds,
   useToday,
 } from '@/lib/collections';
-import { ObjectRow, Segmented, SegmentedOption, SettingRow } from '../primitives';
+import { Eyebrow, ObjectRow, Segmented, SegmentedOption, SettingRow } from '../primitives';
 import {
   BackRow,
   DangerZone,
@@ -30,7 +31,75 @@ import {
   TeachingLine,
 } from '../detail-parts';
 import { ItemMemberList } from '../member-list';
-import type { Item, Routine } from '@/lib/planner-types';
+import { cn } from '@/lib/utils';
+import type { Item, Program, Routine } from '@/lib/planner-types';
+
+/**
+ * IN N PROGRAMS — the reverse view, which exists nowhere else in the app.
+ *
+ * Membership has only ever been navigable downwards: a program lists its
+ * routines, and from a routine you could not see what was answering for it. That
+ * is fine until a program holds the routine OFF, at which point the one thing
+ * the user needs is the name of the thing overruling them and a way to get to
+ * it — and the only route was to guess which program it was and open each one.
+ *
+ * Rows are buttons, and land on that program's detail in the Programs section.
+ * `off` is stated as a word rather than encoded in luminance alone: this list is
+ * short, mixed, and the distinction is the entire reason it is on screen.
+ */
+function ProgramHolders({
+  holders,
+  blockerIds,
+  onOpen,
+}: {
+  holders: readonly Program[];
+  blockerIds: ReadonlySet<string>;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="routine-holders">
+      <div className="flex h-[22px] items-center">
+        <Eyebrow>
+          In <span className="font-num">{holders.length}</span>{' '}
+          {holders.length === 1 ? 'program' : 'programs'}
+        </Eyebrow>
+      </div>
+
+      {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
+      <div className="max-h-32 space-y-px overflow-y-auto">
+        {holders.map((program) => {
+          const off = blockerIds.has(program.id);
+          return (
+            <button
+              key={program.id}
+              type="button"
+              onClick={() => onOpen(program.id)}
+              data-testid="routine-holder"
+              data-program-id={program.id}
+              data-holder-state={off ? 'off' : 'on'}
+              className="hover:bg-accent focus-visible:outline-ring flex h-[30px] w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left focus-visible:outline-1 focus-visible:outline-solid"
+            >
+              <span className="flex w-[18px] shrink-0 justify-center">
+                <CategoryIcon glyph={program.icon} name={program.name} className="h-3.5 w-3.5" />
+              </span>
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-sm',
+                  off ? 'text-muted-foreground' : 'text-foreground'
+                )}
+              >
+                {program.name}
+              </span>
+              <span className="text-muted-foreground w-[64px] shrink-0 text-right text-2xs">
+                {off ? 'off' : 'carrying'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /**
  * ROUTINES — the section that goes first, because it is the object people
@@ -46,10 +115,13 @@ import type { Item, Routine } from '@/lib/planner-types';
 export function RoutinesSection({
   selectedId,
   onSelect,
+  onOpenProgram,
   focusNew,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Cross-section jump, for the reverse view — see ProgramHolders. */
+  onOpenProgram: (id: string) => void;
   focusNew: boolean;
 }) {
   const routines = usePlannerStore((s) => s.routines);
@@ -123,7 +195,11 @@ export function RoutinesSection({
 
       <DetailColumn hasSelection={!!selected}>
         {selected ? (
-          <RoutineDetail routine={selected} onBack={() => onSelect(null)} />
+          <RoutineDetail
+            routine={selected}
+            onBack={() => onSelect(null)}
+            onOpenProgram={onOpenProgram}
+          />
         ) : (
           <TeachingLine>A routine groups items you want to pause together.</TeachingLine>
         )}
@@ -132,7 +208,15 @@ export function RoutinesSection({
   );
 }
 
-function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => void }) {
+function RoutineDetail({
+  routine,
+  onBack,
+  onOpenProgram,
+}: {
+  routine: Routine;
+  onBack: () => void;
+  onOpenProgram: (id: string) => void;
+}) {
   const items = usePlannerStore((s) => s.items);
   const programs = usePlannerStore((s) => s.programs);
   const updateRoutine = usePlannerStore((s) => s.updateRoutine);
@@ -142,7 +226,22 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
   const liveIds = useLiveItemIds();
   const { todayStr, tz } = useToday();
 
-  const paused = isPausedOn(routine, todayStr, tz);
+  /**
+   * Local AND effective, from the same helper the ScopeRail uses.
+   *
+   * This pane used to resolve `isPausedOn` alone, which is only the routine's
+   * OWN switch — so a routine held off by a program showed `Active`, with its
+   * members at full contrast and a delete confirm promising items would "come
+   * back into view", while the rail one column away reported it off. Both were
+   * reading the same store.
+   *
+   * The segmented control still writes and shows LOCAL, because that is the
+   * value it owns; everything about what is actually happening — the note, the
+   * member greying, the delete consequence — reads EFFECTIVE, because that is
+   * what the rest of the app obeys.
+   */
+  const standing = routineStandingOn(routine, programs, todayStr, tz);
+  const paused = !standing.localOn;
   // Local noon, so the picker's bound is a calendar day rather than an instant
   // — and derived from the USER's today, not the browser's.
   const today = parseDay(todayStr)!;
@@ -154,8 +253,10 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
   // Which programs hold this routine — a reverse view that does not exist
   // anywhere in the app today. From a routine you currently cannot see what is
   // answering for it.
-  const heldBy = programs.filter((p) => p.routineIds.includes(routine.id));
+  const heldBy = standing.holders;
   const liveCount = countLive(routine.itemIds, liveIds);
+  /** Would deleting this routine put its items back on screen? */
+  const reappear = !standing.effectiveOn;
 
   return (
     <div className="flex flex-col" data-testid="routine-detail" data-routine-id={routine.id}>
@@ -246,19 +347,65 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
         </p>
       )}
 
+      {/* The override, and the whole reason this pane needed the effective
+          split. The switch above says Active and is telling the truth about the
+          value it writes; this says what that value is currently achieving,
+          which is nothing. Rendered only when the two disagree — a routine that
+          is simply on has nothing to explain. */}
+      {standing.localOn && !standing.effectiveOn && standing.soonestBlocker && (
+        <p
+          className="text-muted-foreground mt-3 max-w-[62ch] text-xs"
+          data-testid="routine-held-note"
+        >
+          {standing.blockers.length === 1 ? (
+            <>&ldquo;{standing.soonestBlocker.name}&rdquo; is off, so its items are hidden anyway.</>
+          ) : (
+            <>
+              All <span className="font-num">{standing.blockers.length}</span> programs holding it
+              are off, so its items are hidden anyway.
+            </>
+          )}{' '}
+          {/* The soonest holder to return, because the rule is disjunctive: the
+              FIRST program back carries the routine, whatever the others do. A
+              program with no scheduled return says nothing rather than
+              promising a date it does not have. */}
+          {programResumeDate(standing.soonestBlocker, todayStr)
+            ? `They come back on ${formatShort(programResumeDate(standing.soonestBlocker, todayStr)!)}.`
+            : 'They come back when one of those programs does.'}
+        </p>
+      )}
+
+      {heldBy.length > 0 && (
+        <div className="mt-5">
+          <ProgramHolders
+            holders={heldBy}
+            blockerIds={new Set(standing.blockers.map((p) => p.id))}
+            onOpen={onOpenProgram}
+          />
+        </div>
+      )}
+
       <div className="mt-5">
         <ItemMemberList
           ownerId={routine.id}
           ownerName={routine.name}
           memberIds={routine.itemIds}
           members={members}
-          dimmed={paused}
+          // EFFECTIVE, not local. The greying answers "is this item showing up
+          // in my day?", and the resolver — not this routine's own switch — is
+          // what decides that.
+          dimmed={!standing.effectiveOn}
           testPrefix="routine"
           orderable
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
         />
       </div>
 
+      {/* `reappear` reads EFFECTIVE, not the local pause. Deleting the routine
+          removes the whole activation path, so items held out of sight by a
+          PROGRAM come back exactly as ones held out by the routine's own switch
+          do — and the local-only version stayed silent about it, which is the
+          half of the sentence a user would want before pressing Delete. */}
       <DangerZone
         label="Delete this routine"
         testId="routine-delete"
@@ -267,7 +414,7 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
             &ldquo;{routine.name}&rdquo; is removed, but its {liveCount}{' '}
             {liveCount === 1 ? 'item stays' : 'items stay'} exactly as{' '}
             {liveCount === 1 ? 'it is' : 'they are'} — {liveCount === 1 ? 'it' : 'they'} just stop
-            being grouped{paused ? ', and they come back into view' : ''}.
+            being grouped{reappear ? ', and they come back into view' : ''}.
           </>
         }
         onDelete={() =>
@@ -277,7 +424,7 @@ function RoutineDetail({ routine, onBack }: { routine: Routine; onBack: () => vo
               liveCount === 1 ? 'item stays' : 'items stay'
             } exactly as ${liveCount === 1 ? 'it is' : 'they are'} — ${
               liveCount === 1 ? 'it' : 'they'
-            } just stop being grouped${paused ? ', and they come back into view' : ''}.`,
+            } just stop being grouped${reappear ? ', and they come back into view' : ''}.`,
             confirmLabel: 'Delete',
             destructive: true,
             onConfirm: () => {

@@ -215,7 +215,12 @@ test.describe('scope rail', () => {
       await rail(page).getByTestId('scope-rail-add').click();
       await createContainer(page, 'routine', routineName);
       for (const title of [first, second]) {
-        await page.getByTestId('routine-member-add').click();
+        // The picker STAYS OPEN after an add (Phase 5d) so a run of them is one
+        // gesture, which means the opener is gone by the second pass. Reaching
+        // for it unconditionally is how this loop used to work and would now
+        // time out on a control that is deliberately absent.
+        const opener = page.getByTestId('routine-member-add');
+        if (await opener.isVisible()) await opener.click();
         await page.getByTestId('routine-member-search').fill(title);
         await page.getByTestId('routine-member-candidate').first().click();
       }
@@ -282,8 +287,80 @@ test.describe('scope rail', () => {
       // …and the split is not cosmetic: the program two levels up really is
       // carrying the item's visibility.
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
+
+      /**
+       * PHASE 5's GATE: the console and the rail must answer the same question
+       * the same way, about the same routine, in the same session.
+       *
+       * They did not. `RoutineDetail` resolved `isPausedOn` alone — the
+       * routine's OWN switch — so this pane said `Active`, drew its members at
+       * full contrast, and offered a delete confirm claiming nothing would come
+       * back into view, while the row asserted three lines up says `off`. Both
+       * were reading one store; only the rail resolved the whole rule.
+       *
+       * Both now go through `routineStandingOn`, so this is a test that the two
+       * callers still share it rather than that two implementations still agree.
+       */
+      await rail(page).getByTestId('scope-rail-add').click();
+      await page.getByRole('tab', { name: 'Routines' }).click();
+      await page.getByTestId('routine-row').filter({ hasText: routineName }).click();
+
+      // LOCAL on the switch, because that is the value the switch writes.
+      await expect(page.getByTestId('routine-state-active')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      );
+      // EFFECTIVE in the prose, because that is what the rest of the app obeys.
+      await expect(page.getByTestId('routine-held-note')).toContainText(programName);
+      // And the reverse view names the program that is doing it — a route from
+      // the routine to its holder that existed nowhere in the app before.
+      const holder = page.getByTestId('routine-holder').filter({ hasText: programName });
+      await expect(holder).toHaveAttribute('data-holder-state', 'off');
+
+      await holder.click();
+      await expect(page.getByTestId('program-detail')).toBeVisible();
+      await expect(page.getByTestId('program-detail')).toContainText(programName);
+      await closeManager(page);
     } finally {
       await cleanupTestData(page, [], [habitId]);
     }
+  });
+
+  test('a delete confirm hands the cursor back to the row it was opened from', async ({
+    page,
+  }) => {
+    /**
+     * The most commonly broken thing in a web console, and the most felt.
+     *
+     * The confirm is the app's ONE shared AlertDialog, driven by a store action
+     * rather than an `<AlertDialogTrigger>` — so Radix's close-focus handler
+     * (`preventDefault()` then `trigger?.focus()`) cancelled FocusScope's restore
+     * and focused nothing. The cursor landed on `<body>` and the next Tab
+     * restarted from the top of the document, which inside a modal means
+     * nowhere useful.
+     *
+     * Run in a real browser as well as in jsdom because focus is exactly the
+     * thing jsdom approximates: the unit test pins the mechanism, this pins that
+     * the mechanism survives a portal, an overlay and a scroll lock.
+     */
+    const routineName = scope.title('Focus');
+    await rail(page).getByTestId('scope-rail-add').click();
+    await createContainer(page, 'routine', routineName);
+
+    const trigger = page.getByTestId('routine-delete');
+    await trigger.focus();
+    await trigger.click();
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+
+    // Escape is the keyboard's "no", and deciding not to delete is the ordinary
+    // outcome of reading a delete prompt.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('confirm-dialog')).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    // The console itself is still open — that Escape was consumed by the
+    // confirm, not passed through to the plate underneath it.
+    await expect(page.getByTestId('organize-console')).toBeVisible();
+    await closeManager(page);
   });
 });
