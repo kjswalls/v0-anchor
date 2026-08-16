@@ -1918,3 +1918,89 @@ export interface TrashedName {
   id: string;
   name: string;
 }
+
+/* ── first-run container seeding (Phase 6) ─────────────────────────────── */
+
+/**
+ * Has this account already been considered for seeding?
+ *
+ * FAILS CLOSED — a read that did not work answers `true`, i.e. "already
+ * seeded", which is the opposite of {@link fetchTrashedNames}'s fail-open and
+ * for the opposite reason. There, a failed lookup costs a refusal the user can
+ * work around. Here it would cost an automatic INSERT of containers into an
+ * account whose state we could not read: a transient failure during a token
+ * refresh would duplicate someone's starter set, and the second copy is
+ * indistinguishable from rows they made themselves.
+ *
+ * `maybeSingle`, not `single`: `single()` errors with PGRST116 on zero rows,
+ * which is exactly the brand-new account this feature exists for, and would
+ * make it permanently unseedable. The same trap is documented on
+ * isOnboardingComplete.
+ */
+export async function fetchContainersSeeded(
+  userId: string,
+  client?: DbClient,
+): Promise<boolean> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('containers_seeded')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) return true;
+  return data?.containers_seeded ?? false;
+}
+
+/**
+ * Latch the account as considered.
+ *
+ * Upsert rather than update: a brand-new account has no `user_settings` row at
+ * all until something writes one, and an UPDATE matching zero rows reports
+ * success — so the latch would silently never set and the seed would run again
+ * on every load, stacking a fresh starter set each time.
+ *
+ * THROWS. Every other write in this module that nobody awaits swallows into a
+ * console line; this one must not, because the caller's correctness depends on
+ * knowing whether the latch is down. See seedStarterContainers, which sets the
+ * latch BEFORE creating anything for the same reason.
+ */
+export async function markContainersSeeded(userId: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('user_settings')
+    .upsert({ user_id: userId, containers_seeded: true }, { onConflict: 'user_id' });
+  if (error) throw error;
+}
+
+/**
+ * Link existing items to a container that has just been created for the name
+ * they were already carrying — 027's backfill, re-run for one container.
+ *
+ * 027 says in its own comments that this has to happen: its backfill left 119
+ * group references NULL because the groups they name have only ever existed as a
+ * client-side constant, and it is written re-runnable so that whatever creates
+ * those rows can adopt them. A migration cannot do it, because the rows are
+ * created by the app at an arbitrary later moment.
+ *
+ * `is null` on the id column is what makes this safe to call on any container,
+ * including one the user creates by hand with a name that happens to match: it
+ * only ever fills a blank, never re-points a member that already resolves.
+ */
+export async function adoptContainerMembers(
+  userId: string,
+  column: 'project_id' | 'group_id',
+  id: string,
+  name: string,
+  client?: DbClient,
+): Promise<number> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('items')
+    .update({ [column]: id })
+    .eq('user_id', userId)
+    .is(column, null)
+    .eq(column === 'project_id' ? 'project' : 'group', name)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
+}

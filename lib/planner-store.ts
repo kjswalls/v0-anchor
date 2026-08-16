@@ -60,8 +60,10 @@ import {
   deleteProgram as dbDeleteProgram,
   restoreProgram as dbRestoreProgram,
   itemDbType,
+  adoptContainerMembers,
   type TrashEntry,
 } from './db';
+import type { SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
@@ -265,6 +267,8 @@ interface PlannerStore {
 
   // Project actions
   addProject: (name: string, emoji: string) => void;
+  /** First-run starter containers. See seedStarterContainers for the guards. */
+  seedStarterContainers: (plan: SeedPlan) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   removeProject: (id: string) => void;
   getProjectEmoji: (name: string) => string;
@@ -2359,6 +2363,87 @@ export const usePlannerStore = create<PlannerStore>()(
           dbCreateProject(userId, project).catch((error) => {
             undoFailedCreate(error, entryId, 'project', project.id, name);
           });
+        }
+      },
+
+      /**
+       * The first-run starter set, and the repair that shares its shape.
+       *
+       * ONE `set()` AND ONE HISTORY ENTRY, not six. Six `addProject` calls would
+       * work and would be wrong: the history popover would open on a brand-new
+       * account already listing six actions the user did not perform, and their
+       * first ⌘Z would delete one starter container while leaving five. This is
+       * a single arrival, so it undoes as one.
+       *
+       * GUARDS, ALL THREE. `userId` because a create without one writes nothing
+       * and leaves an optimistic row that vanishes on reload. `isLoading`
+       * because `initializeStore` REPLACES `projects`, `habitGroups` and `items`
+       * wholesale when its fetch resolves — anything seeded inside that window
+       * is silently discarded, which is the same trap `canCreate` guards in the
+       * console and the one the e2e suite found the hard way. And the container
+       * arrays being empty, re-checked HERE rather than trusted from the plan:
+       * the plan was computed before two awaits (the latch read and the bin
+       * read), and a fetch resolving in between is exactly how an account with
+       * containers gets a second set of them.
+       *
+       * ADOPTION IS PART OF THE SAME `set()`. When a container is created for a
+       * name its items already carry, those items get the new id in the same
+       * commit — otherwise the store holds members whose `groupId` is undefined
+       * while the database has just linked them, and the next edit writes the
+       * stale shape back.
+       */
+      seedStarterContainers: (plan) => {
+        const state = get();
+        const userId = state.userId;
+        if (!userId || state.isLoading) return;
+        if (state.projects.length > 0 || state.habitGroups.length > 0) return;
+        if (plan.projects.length === 0 && plan.groups.length === 0) return;
+
+        const projects: Project[] = plan.projects.map((p) => ({
+          id: crypto.randomUUID(),
+          name: p.name,
+          emoji: p.emoji,
+        }));
+        const groups: HabitGroupType[] = plan.groups.map((g) => ({
+          id: crypto.randomUUID(),
+          name: g.name,
+          emoji: g.emoji,
+        }));
+
+        setNextActionLabel(
+          plan.reason === 'adopt' ? 'Add missing containers' : 'Add starter containers'
+        );
+
+        const projectByName = new Map(projects.map((p) => [p.name, p]));
+        const groupByName = new Map(groups.map((g) => [g.name, g]));
+
+        set((s) => ({
+          projects: [...s.projects, ...projects],
+          habitGroups: [...s.habitGroups, ...groups],
+          ...projectItems(
+            s.items.map((item) => {
+              if (item.type === 'habit') {
+                const g = item.group ? groupByName.get(item.group.trim()) : undefined;
+                return g && !item.groupId ? { ...item, groupId: g.id } : item;
+              }
+              const p = item.project ? projectByName.get(item.project.trim()) : undefined;
+              return p && !item.projectId ? { ...item, projectId: p.id } : item;
+            })
+          ),
+        }));
+
+        // Sequential per container: the adopt UPDATE must not go out before the
+        // INSERT it depends on, or `items_project_id_fkey` rejects it — the
+        // composite key means a bad id takes the whole statement down.
+        for (const project of projects) {
+          dbCreateProject(userId, project)
+            .then(() => adoptContainerMembers(userId, 'project_id', project.id, project.name))
+            .catch((error) => console.error('seed project failed', project.name, error));
+        }
+        for (const group of groups) {
+          dbCreateHabitGroup(userId, group)
+            .then(() => adoptContainerMembers(userId, 'group_id', group.id, group.name))
+            .catch((error) => console.error('seed habit group failed', group.name, error));
         }
       },
 

@@ -7,6 +7,8 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { loadSettings } from '@/lib/settings-service';
+import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
+import { runFirstRunSeed } from '@/lib/seed-containers';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -109,6 +111,32 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     };
 
     /**
+     * First-run container seeding (organize-console decision 2), run AFTER the
+     * load has resolved and only when it resolved cleanly.
+     *
+     * The DECISION lives in lib/seed-containers.ts — the order of its steps is
+     * the design, and an ordering that only exists inside a provider closure is
+     * an ordering no test can reach. This is the trigger and the wiring.
+     *
+     * `snapshot` is a thunk rather than a value: three awaits happen inside, and
+     * Supabase re-emits SIGNED_IN on every hidden→visible transition, so the
+     * store has to be read at the moment it is used rather than closed over.
+     *
+     * Failures are swallowed to a console line by design. This is a nicety
+     * running behind a load that already succeeded, and a toast about a starter
+     * set nobody asked for would be the first thing a new account ever said to
+     * its owner. Nothing is latched on failure, so the next load retries.
+     */
+    const seedIfFirstRun = (userId: string) =>
+      runFirstRunSeed(userId, {
+        hasSeeded: fetchContainersSeeded,
+        markSeeded: markContainersSeeded,
+        trashedNames: fetchTrashedNames,
+        snapshot: () => usePlannerStore.getState(),
+        commit: (plan) => usePlannerStore.getState().seedStarterContainers(plan),
+      }).catch((error) => console.error('first-run container seeding failed', error));
+
+    /**
      * Load the planner ONCE per account, for the same reason hydrateSettings
      * above dedupes — and with more at stake.
      *
@@ -156,7 +184,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           const state = usePlannerStore.getState();
           if (state.error && state.userId === userId && loadedUserId.current === userId) {
             loadedUserId.current = null;
+            return;
           }
+          // Only on a load that WORKED. Seeding off a failed load would read
+          // empty arrays that mean "the fetch broke", decide the account is
+          // brand new, and write a starter set into an account that already has
+          // containers it could not see.
+          if (!state.error) void seedIfFirstRun(userId);
         },
         // Kept as belt and braces: if the store's catch is ever removed, this
         // is what stops the latch becoming permanent again.
