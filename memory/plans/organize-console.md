@@ -578,6 +578,33 @@ phase happened to sweep the same code:
 | `81c5c21` | Phase 0's review | undo NULLing every member's `project_id` |
 | `0a38733` | Phase 0b's review | the chained fan-out outrunning undo; the filter remap with no inverse |
 | `49705b0` | *(Phase 4 itself)* | a subtask-restore rule keyed on two clocks agreeing; an unlatch that could never fire |
+| `2b65db4` | Phase 4's review | a rollback that could soft-delete the whole account on one ⌘Z |
+
+**`2b65db4` is the one to remember, because the defect was in the SAFETY NET.** It
+healed a phantom container the database had refused — a real data-loss bug — and to do
+that it popped the failed create's history entry. Two ways that went wrong:
+
+*It cleared `isUpdatingUndoRedo` unconditionally.* That flag is a plain boolean, not a
+counter, and `initializeStore` holds it true across its **entire** fetch while `userId`
+is already stamped — so a create issued in the load window really does reach the
+database. Rejecting there handed the flag back unblocked, woke the history subscriber's
+lazy-baseline branch mid-load, and left `historyIndex` naming a snapshot the store did
+not hold. One ⌘Z then soft-deleted **every row the load had just brought in.** Reproduced
+by an A/B probe whose only variable was whether the create resolved.
+
+*And popping an entry needs preconditions that hand every other case back to the bug.*
+The entry must still be the top and the user must not have moved — but the item dialog's
+own Save flow guarantees they have. In every refused branch the store lost the phantom
+while the snapshots kept it, so one ⌘Z put it back and fired `dbRestoreProject` against a
+row that never existed. All three tests stopped one keystroke short of it.
+
+The rewrite does no index arithmetic at all: it strips the phantom from every snapshot
+and relabels the entry. Stack length, log length and `historyIndex` are untouched, so the
+invariant cannot be broken by that function under any interleaving.
+
+**The lesson that generalises: a fix for a data-loss bug is itself a data-loss risk, and
+it deserves a heavier review than the feature it patches — not a lighter one.** The
+instinct is the opposite, because a fix feels small.
 
 `0a38733` was the first fix commit to get a review of its own (`18dad7f`), and it found two
 HIGH defects immediately. **Review the fix, not just the build.**
@@ -1097,11 +1124,15 @@ the trash instead of a raw 23505 string, because the holder may be a row no endp
 show the caller.
 
 *Still open, deliberately:*
-- **`addProject`/`addHabitGroup` still seat a phantom for callers outside the console** —
-  `item-dialog`'s inline create and `lib/commands/registry.ts`. The console's guard is
-  proactive and explains; the root fix is a rollback inside the store action, which touches
-  undo plumbing (a labelless `set()` needs history suppression) and deserves its own review
-  pass rather than the tail of this one.
+- ~~`addProject`/`addHabitGroup` still seat a phantom for callers outside the console.~~
+  **Closed by `2b65db4` + `ced2230`** — a refused create now rolls itself back out of the
+  store, which covers the item dialog, the palette and anything added later; the item
+  dialog also gained the proactive refusal. See the fix-commit table for what that cost.
+  Residual, and narrower: if the user's Save wins the race against the rejection, that item
+  is already lost to 23503 and nothing recovers it — the proactive guards are the plan, the
+  rollback is the net. And a rolled-back name is treated by `useTrashedNames` as
+  deleted-this-session, so it stays refused for the rest of the visit; correct for the 23505
+  that causes it, conservative for a network blip.
 - **⌘Z after a restore severs the members' DB link.** `applyHistoryState`'s per-item diff
   yields `{project: undefined, projectId: undefined}` against the pre-restore snapshot and
   writes both NULL, so a second trip through the Trash returns an empty container. Rare
