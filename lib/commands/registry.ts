@@ -501,13 +501,16 @@ export const STATIC_COMMANDS: Command[] = [
       return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard openChat,
-    // Open braindump and focusOmnibar already use. The past-due pill is
-    // Today-only on mobile (components/shell/mobile-shell.tsx:60) while the
-    // omnibar is mounted on Braindump too, so without the tab switch this
-    // command flips isOpen on a tab that renders nothing: it looks broken, and
-    // the drawer would then ambush the user the moment they swiped to Today.
+    // Open braindump and focusOmnibar already use. The rule outlived the
+    // reason: this used to switch mobile to Today, because the past-due pill
+    // was mounted on that tab alone. The surface is a line in the dock now
+    // (components/sidebar/dock-notices.tsx), which mobile mounts on every tab,
+    // so the tab switch became a navigation the user did not ask for — and
+    // desktop inherited the exact bug it was written to prevent, because the
+    // dock's rows do not render while the sidebar column is collapsed. Flipping
+    // isOpen there looks broken in precisely the same way.
     run: (ctx) => {
-      if (ctx.isMobile) useMobileNavStore.getState().setActiveTab('today');
+      if (!ctx.isMobile) useSidebarStore.getState().setLeftSidebarOpen(true);
       const store = useMorningStore.getState();
       store.resetDismissal();
       store.open();

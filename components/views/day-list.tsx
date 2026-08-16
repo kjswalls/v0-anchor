@@ -8,8 +8,6 @@ import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
-import { ProgramNotice } from '@/components/views/program-notice';
-import { toDateStr } from '@/lib/recurrence';
 import type { Task, Habit, GroupBy, TimeBucket, Routine } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -157,9 +155,8 @@ export function buildListGroups(
 
 export function DayList() {
   const { tasksByBucket, habitsByBucket, totalCount } = useDayItems();
-  const { selectedDate, navDirection, userTimezone, routines } = usePlannerStore();
+  const { selectedDate, navDirection, routines } = usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
-  const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const groups = buildListGroups(tasksByBucket, habitsByBucket, canvasGroupBy, routines);
 
@@ -172,10 +169,12 @@ export function DayList() {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* Before the empty state, not after it: "nothing planned yet" is a
-            lie on a day whose work is real and merely away, and that is exactly
-            the day this line exists for. */}
-        <ProgramNotice dateStr={toDateStr(selectedDate, timezone)} />
+        {/* ProgramNotice used to sit here, above the empty state — "nothing
+            planned yet" is a lie on a day whose work is real and merely away.
+            It now renders once in the canvas header row beside the date
+            (components/shell/desktop-shell.tsx), which qualifies the empty
+            state from above just as well and reaches every day layout instead
+            of the two that remembered to mount it. */}
 
         {totalCount === 0 ? (
           <div className="py-16 text-center">

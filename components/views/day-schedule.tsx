@@ -32,7 +32,6 @@ import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
-import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -1350,10 +1349,10 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* Above everything, because it qualifies everything below it: this day
-            is missing work, and here is what is holding it. Renders on no other
-            day — see ProgramNotice. */}
-        <ProgramNotice dateStr={toDateStr(selectedDate, timezone)} className="px-1" />
+        {/* ProgramNotice used to sit here, above everything, because it
+            qualifies everything below it. It says the same thing from the
+            canvas header row now (components/shell/desktop-shell.tsx), where it
+            is beside the date it is about and costs the scroller no height. */}
 
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (

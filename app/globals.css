@@ -1368,21 +1368,29 @@ body {
   stroke-width: 1.5;
 }
 
-/* Undo toast placement: a cohesive card that floats ABOVE the sidebar dock
-   (history controls) rather than covering them, aligned to the sidebar's left
-   edge. Sonner 1.x only takes a single offset, so pin left+bottom here.
-   Desktop clears the dock (~156px); mobile sits above the tab bar + omnibar. */
+/* Undo toast placement: a cohesive card that floats ABOVE the dock (history
+   controls, and now the app's notice stack) rather than covering them, aligned
+   to the sidebar's left edge. Sonner 1.x only takes a single offset, so pin
+   left+bottom here.
+
+   BOTH breakpoints measure now. --toast-bottom is published by whichever dock
+   is mounted, via hooks/use-toast-anchor.ts, so the toast tracks a capsule that
+   changes height for three reasons: chat expanding, a notice arriving, and a
+   notice being dismissed. Mobile used to hardcode 120px against a capsule
+   standing 130–164px tall — it was already drawing over the tab bar, and a
+   notice row would only have pushed it further under.
+
+   The fallbacks are per-breakpoint because the two docks are different heights,
+   and they only cover the frame before the first measurement lands. */
 [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
   left: 12px !important;
   right: 12px !important;
-  bottom: 120px !important;
+  bottom: var(--toast-bottom, 140px) !important;
 }
 @media (min-width: 768px) {
   [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
     left: 20px !important;
     right: auto !important;
-    /* --toast-bottom is measured from the live dock (sidebar-dock.tsx); the
-       fallback covers the moment before it's set. */
     bottom: var(--toast-bottom, 156px) !important;
     width: 356px !important;
   }

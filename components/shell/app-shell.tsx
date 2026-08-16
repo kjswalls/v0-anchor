@@ -100,8 +100,8 @@ function DragGhost() {
 }
 
 /**
- * App shell: owns the DndContext, global keyboard shortcuts, auto-triggers
- * (EOD/morning), the dialog mount point, and the desktop/mobile split.
+ * App shell: owns the DndContext, global keyboard shortcuts, the EOD deep
+ * link, the dialog mount point, and the desktop/mobile split.
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
@@ -211,35 +211,13 @@ export function AppShell() {
     }
   }, []);
 
-  // EOD auto-trigger: open the EOD review modal when the review time has passed today
-  const eodStore = useEODStore();
-  useEffect(() => {
-    if (!eodStore.eodReviewEnabled) return;
-
-    const userTz =
-      usePlannerStore.getState().userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const now = new Date();
-
-    const todayStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: userTz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(now);
-
-    if (eodStore.lastEodReviewDate === todayStr) return;
-
-    const currentTime = new Intl.DateTimeFormat('en-GB', {
-      timeZone: userTz,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(now);
-
-    if (currentTime >= eodStore.eodReviewTime) {
-      eodStore.open();
-    }
-  }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
+  // There is deliberately NO in-app EOD auto-trigger here. There used to be
+  // one (open the review on load once the review time had passed), and it made
+  // every refresh after that time re-open the modal until "Done for today" was
+  // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
+  // instead: the rituals.eod palette command, or the nightly push notification
+  // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
+  // settings) whose tap lands on the ?eod=1 deep link above.
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

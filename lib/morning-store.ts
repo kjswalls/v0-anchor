@@ -90,6 +90,27 @@ interface MorningStore {
    * and a browser-global string cannot express that.
    */
   morningAutoAgeLastRunByUser: Record<string, string>;
+  /**
+   * What today's sweep actually took, so the dock can say so and hand it back.
+   *
+   * The sweep is the app's only unattended writer — it unschedules work while
+   * nobody is looking — and until now its entire receipt was the global undo
+   * toast, which fires for five seconds on load and is gone. If it ran at 6am
+   * and you opened the tab at nine, there was no evidence it had happened.
+   *
+   * PRIOR FIELD VALUES, not just ids. "Put them back" has to be a FORWARD
+   * action: an hour later the sweep is no longer the top of the history stack,
+   * so a stack pop would undo whatever you did last instead. Restoring the four
+   * fields `unscheduleTasks` clears is the same outcome addressed at these
+   * specific rows, and it stays correct however long the line sits there.
+   *
+   * LOCAL-ONLY and per-device, exactly like the stamp above and for the same
+   * reason: this is a record of what you have been TOLD on this device, the
+   * sweep that produced it was already device-gated, and keeping it out of
+   * Supabase means the feature needs no migration. Self-pruning on write, so
+   * expiry is free — a receipt for an earlier day can never be shown again.
+   */
+  morningAutoAgeReceiptByUser: Record<string, AutoAgeReceipt>;
   dismiss: () => void;
   /** Undo today's dismissal so the morning check renders again. */
   resetDismissal: () => void;
@@ -107,6 +128,27 @@ interface MorningStore {
   clearUserScopedState: () => void;
   getAutoAgeLastRunDate: (userId: string) => string | null;
   setAutoAgeLastRunDate: (userId: string, date: string) => void;
+  /** Today's receipt, or null once it has been acted on or the day has turned. */
+  getAutoAgeReceipt: (userId: string, todayStr: string) => AutoAgeReceipt | null;
+  setAutoAgeReceipt: (userId: string, receipt: AutoAgeReceipt) => void;
+  /** After "Put them back", or after the user waves the line away. */
+  clearAutoAgeReceipt: (userId: string) => void;
+}
+
+/** One row as it stood immediately before the sweep unscheduled it. */
+export interface SweptItem {
+  id: string;
+  title: string;
+  isScheduled: boolean;
+  startDate?: string;
+  timeBucket?: string;
+  startTime?: string;
+}
+
+export interface AutoAgeReceipt {
+  /** The day the sweep ran. A receipt is only ever shown on its own day. */
+  date: string;
+  items: SweptItem[];
 }
 
 export const useMorningStore = create<MorningStore>()(
@@ -114,6 +156,7 @@ export const useMorningStore = create<MorningStore>()(
     (set, get) => ({
       ...USER_SCOPED_DEFAULTS,
       morningAutoAgeLastRunByUser: {},
+      morningAutoAgeReceiptByUser: {},
 
       dismiss: () => {
         const today = format(new Date(), 'yyyy-MM-dd');
@@ -212,6 +255,38 @@ export const useMorningStore = create<MorningStore>()(
             [userId]: date,
           },
         })),
+
+      // Date-checked on READ as well as pruned on write. The write-side prune
+      // only runs when a sweep happens, and a receipt outlives the tab it was
+      // written in — leave a laptop open across midnight and yesterday's
+      // "12 items were put aside this morning" is still sitting in the map.
+      getAutoAgeReceipt: (userId, todayStr) => {
+        const receipt = get().morningAutoAgeReceiptByUser[userId];
+        return receipt && receipt.date === todayStr && receipt.items.length > 0 ? receipt : null;
+      },
+
+      setAutoAgeReceipt: (userId, receipt) =>
+        set((state) => ({
+          morningAutoAgeReceiptByUser: {
+            // Same self-pruning as the stamp above, and load-bearing here in a
+            // way it is not there: a receipt carries a row per swept item, so
+            // an unpruned map would accumulate every sweep every account on
+            // this browser ever ran.
+            ...Object.fromEntries(
+              Object.entries(state.morningAutoAgeReceiptByUser).filter(
+                ([, r]) => r.date === receipt.date
+              )
+            ),
+            [userId]: receipt,
+          },
+        })),
+
+      clearAutoAgeReceipt: (userId) =>
+        set((state) => {
+          const next = { ...state.morningAutoAgeReceiptByUser };
+          delete next[userId];
+          return { morningAutoAgeReceiptByUser: next };
+        }),
     }),
     {
       name: MORNING_STORE_PERSIST_KEY,
@@ -232,6 +307,9 @@ export const useMorningStore = create<MorningStore>()(
           morningAutoAgeEnabled: (state.morningAutoAgeEnabled as boolean) ?? false,
           morningAutoAgeDays: (state.morningAutoAgeDays as number) ?? 30,
           morningAutoAgeLastRunByUser: {},
+          // Nothing to migrate — receipts did not exist before, and one is only
+          // ever valid on the day it was written anyway.
+          morningAutoAgeReceiptByUser: {},
         };
       },
       /**
@@ -272,6 +350,9 @@ export const useMorningStore = create<MorningStore>()(
         morningAutoAgeEnabled: state.morningAutoAgeEnabled,
         morningAutoAgeDays: state.morningAutoAgeDays,
         morningAutoAgeLastRunByUser: state.morningAutoAgeLastRunByUser,
+        // Persisted for the whole point of it: a receipt has to survive the
+        // reload that the undo toast could not.
+        morningAutoAgeReceiptByUser: state.morningAutoAgeReceiptByUser,
       }),
     }
   )

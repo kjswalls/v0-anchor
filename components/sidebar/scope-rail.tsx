@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Moon, Plus } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { toDateStr } from '@/lib/recurrence';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -246,6 +246,37 @@ function ScopeRow({
       >
         {row.name}
       </button>
+
+      {/* The STANDING half of "N items are away with Summer": how much this
+          switch is holding back, on every date, stated on the switch that is
+          doing the holding.
+
+          Its date-bound twin — how much is missing from the day you happen to
+          be looking at — is the header-row line in
+          components/views/program-notice.tsx. Neither belongs in the dock: a
+          fact that is true all the time and asks nothing of the reader is the
+          exact thing lib/dock-notices.ts refuses, because a notice surface that
+          accumulates permanent lines stops being read.
+
+          Same moon as the header line, on purpose. One glyph for "away", so the
+          two readings of the same fact are visibly the same fact — and the same
+          guilt-free treatment: muted, no badge, no count chip, no warning tint.
+
+          `flips` on an off row is what would come BACK if you flipped it, which
+          is precisely what is away. Rendered for routines too, not just
+          programs: it is the same sentence about the same kind of object, and
+          gating it on kind would be an arbitrary distinction the rail does not
+          otherwise draw. */}
+      {!row.effectiveOn && row.flips.length > 0 && (
+        <span
+          data-testid="scope-away-count"
+          data-away-count={row.flips.length}
+          className="text-muted-foreground flex shrink-0 items-center gap-0.5 font-num text-[10.5px] tabular-nums"
+        >
+          <Moon className="h-2.5 w-2.5 shrink-0" aria-hidden />
+          {row.flips.length}
+        </span>
+      )}
 
       <span className="text-muted-foreground max-w-[54%] shrink-0 truncate text-[10.5px]">
         {row.state}

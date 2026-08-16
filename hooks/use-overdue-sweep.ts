@@ -325,12 +325,39 @@ export function useOverdueSweep() {
     // duplicate toast.
     if (readPersistedAutoAgeLastRunDate(userId) === todayStr) return;
 
-    // ONE batched action => one history entry => one undo. The undo toast is NOT
-    // raised here: unscheduleTasks labels the entry `Unschedule task: N items`,
-    // which is a SIGNIFICANT_ACTIONS prefix in hooks/use-undo-toast.ts, so the
-    // global undo toast fires on its own with a working Undo button. Raising our
-    // own toast as well would stack two toasts for one action.
-    planner.unscheduleTasks(graced.map((item) => item.id));
+    // Snapshot BEFORE the mutation — these are the fields it is about to clear,
+    // and they are the only record of them that will exist afterwards. The
+    // receipt is what lets the dock offer "Put them back" as a forward action
+    // hours later, when popping the history stack would reverse something else
+    // entirely (lib/planner-store.ts `restoreScheduling`).
+    const receipt = {
+      date: todayStr,
+      items: graced.map((item) => ({
+        id: item.id,
+        title: item.title,
+        isScheduled: 'isScheduled' in item ? !!item.isScheduled : false,
+        startDate: 'startDate' in item ? item.startDate : undefined,
+        timeBucket: item.timeBucket,
+        startTime: item.startTime,
+      })),
+    };
+
+    // ONE batched action => one history entry => one undo.
+    //
+    // The undo TOAST is deliberately stood down with the label override. It
+    // used to fire on its own, because `Unschedule task:` is a
+    // SIGNIFICANT_ACTIONS prefix in hooks/use-undo-toast.ts — but a five-second
+    // toast is a confirmation of something the user just did, and this ran
+    // unattended, frequently before the tab was even open. It appeared at
+    // whatever instant the app happened to load and then it was gone, which is
+    // why the sweep was effectively silent. The dock line replaces it and
+    // persists (components/sidebar/dock-notices.tsx). ⌘Z is untouched — the
+    // history entry is still written, only the toast is suppressed.
+    planner.unscheduleTasks(
+      graced.map((item) => item.id),
+      { label: `Aged out: ${graced.length} items` },
+    );
+    morning.setAutoAgeReceipt(userId, receipt);
 
     // Stamp AFTER the mutation, never before.
     //

@@ -3,7 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
-import { MorningCheck } from '@/components/ai/morning-check';
+import { ProgramNotice } from '@/components/views/program-notice';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
@@ -94,18 +94,32 @@ export function DesktopShell() {
           className="canvas-container flex flex-shrink-0 items-start gap-3 pt-[31px] pb-2"
         >
           <HeaderCapsule />
+          {/* "6 items are away with Summer" — the day's own suppression line,
+              beside the day it is about. It costs this row nothing: the row's
+              height is max(children), which the capsule already sets at 96, and
+              mt-2 + h-8 lands its centre on the date row's (the capsule's p-2
+              plus half of its 32px nav row = 24px from the top, both ways).
+              Being here rather than inside a view is what gets it into `buckets`
+              too — it used to exist only in day-schedule and day-list. */}
+          {/* max-w bounds the truncate: program names are user data, and an
+              unbounded line here would push WeekScale off the row's right end
+              before it ever thought about eliding. */}
+          <ProgramNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
           <WeekScale className="ml-auto" />
         </div>
 
-        {/* Past-due bar. CONTRACT: 50px in flow at every task count, forever —
-            the list lives in a portaled Popover and costs this column zero
-            layout pixels. lib/use-fit-hour-px.ts derives the schedule grid's
-            hour height from the space left below this element, so anything that
-            makes this bar's height depend on content (a list rendered in flow, a
-            height derived from line-height) drives hourPx to its MIN_HOUR_PX
-            floor and destroys the fit-to-height contract. Nothing else in the
-            tree says so, which is why it's said here. */}
-        <MorningCheck />
+        {/* The waiting bar used to sit here, and its "50px in flow, forever"
+            contract was rent for the address rather than a design decision:
+            lib/use-fit-hour-px.ts derives the schedule grid's hour height from
+            the space left below this point, so a bar whose height tracked its
+            content drove hourPx to its MIN_HOUR_PX floor. It is a line in the
+            sidebar dock now (components/sidebar/dock-notices.tsx), nothing
+            measures into that column, and the 50px came back to the timeline.
+
+            The rule this leaves behind still binds: anything mounted between
+            the header row and the timeline is an input to the grid's height and
+            must be constant-height at every data volume, or it must not go
+            here. */}
 
         {/* min-h-0 is explicit rather than relying on overflow-hidden to zero the
             automatic minimum size of a flex item: this column is what
