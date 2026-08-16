@@ -123,7 +123,7 @@ function WeekColumn({
 }: {
   date: Date;
   activeId: string | null;
-  /** Width the week scale control asks for; floors at the old fixed w-60. */
+  /** Width the week scale control asks for. */
   colPx: number;
   currentBucket: TimeBucket | null;
   variant: BucketStyle;
@@ -155,11 +155,12 @@ function WeekColumn({
       // boxes rather than inside one. Also spaces the day header off the stack.
       //
       // The width was a fixed `w-60 min-w-60` until the week scale control
-      // landed. WEEK_GEOMETRY.buckets floors at that same 240px, and at seven
-      // days the arithmetic doesn't clear it until the canvas is past ~1940px —
-      // so this renders identically to the old fixed width on every realistic
-      // screen until the control is actually moved. A bucket card carries
-      // stacked rows under a caption; it needs room a schedule block doesn't.
+      // landed. It stayed effectively fixed for that control's first release
+      // too — WEEK_GEOMETRY.buckets floored at the same 240px, which on a 1440px
+      // window is what four of the six stops resolved to, so most of the slider
+      // did nothing here. The floor is derived now (see the constant); 240 is
+      // still roughly where the DEFAULT lands, but the stops either side of it
+      // are distinct.
       style={{ width: colPx, gap: bucketGap(variant, 'mini') }}
       className="group/col flex flex-none snap-start flex-col"
     >

@@ -17,8 +17,12 @@ import {
   resolveWeekDays,
   resolveWeekDaysFromLastCanvas,
   stepWeekDays,
+  stepWeekDaysFromLastCanvas,
+  stepWeekRung,
   visibleDays,
   weekColumnPx,
+  weekRungIndex,
+  weekRungs,
   weekStops,
 } from '@/lib/week-columns';
 
@@ -150,19 +154,168 @@ describe('weekColumnPx', () => {
 });
 
 describe('week-buckets geometry', () => {
-  it('reproduces the old fixed w-60 at the default on every realistic canvas', () => {
-    // Buckets had no gutter and a hardcoded 240px column. The arithmetic only
-    // clears 240 at seven days past a ~1940px scrollport, so until you move the
-    // control this view is pixel-identical to what shipped.
-    for (const vp of [VP_1280, VP_1440, VP_1920, 1900]) {
-      expect(weekColumnPx(MAX_WEEK_DAYS, vp, BUCKETS)).toBe(240);
+  it('pays for one gap fewer than schedule, having no gutter child to space off', () => {
+    // The bug this replaced: buckets charged N gaps for its N columns, discarding
+    // 28px of canvas and making every stop ~4px narrower than it had to be. A row
+    // of N boxes has N − 1 gaps; schedule's gutter is the extra box that makes its
+    // count N.
+    //
+    // Stated as the invariant rather than as a number: at a stop that fits, the
+    // columns and their gaps consume the canvas to within a pixel per column —
+    // which is the flooring, and nothing else.
+    for (const vp of [VP_1280, VP_1440, 1256, VP_1920, 2400]) {
+      for (const days of WEEK_DAY_STOPS) {
+        const colPx = weekColumnPx(days, vp, BUCKETS);
+        if (colPx === BUCKETS.minColPx || colPx === MAX_COL_PX) continue; // clamped
+        const used = 2 * CANVAS_PAD_PX + (days - 1) * BUCKETS.gapPx + days * colPx;
+        expect(used).toBeLessThanOrEqual(vp);
+        expect(vp - used).toBeLessThan(days);
+      }
     }
-    expect(weekColumnPx(MAX_WEEK_DAYS, 2400, BUCKETS)).toBeGreaterThan(240);
   });
 
-  it('still widens on the stops that do clear the floor', () => {
-    expect(weekColumnPx(4, VP_1920, BUCKETS)).toBe(325);
-    expect(weekColumnPx(3, VP_1920, BUCKETS)).toBe(442);
+  it('keeps the derived default at the old fixed w-60 or wider', () => {
+    // The floor came down from 240 (the view's old `w-60`) to 200 so the ladder
+    // would separate — see WEEK_GEOMETRY. The compensating promise is that 200 is
+    // somewhere you can only GO: on every canvas from a 13" laptop up, the
+    // default is at least as wide as the column that shipped.
+    for (const vp of [VP_1280, VP_1440, 1256, 1700, VP_1920, 2400]) {
+      const colPx = weekColumnPx(defaultWeekDays(vp, BUCKETS), vp, BUCKETS);
+      expect(colPx).toBeGreaterThanOrEqual(238);
+    }
+  });
+
+  it('separates the stops a 240px floor used to collapse', () => {
+    // The reported bug, as arithmetic. At 240 a 1440px window resolved seven,
+    // six, five AND four days to exactly 240 — two thirds of the slider's travel
+    // changed nothing. Every stop that fits is now a distinct width.
+    const widths = WEEK_DAY_STOPS.map((d) => weekColumnPx(d, VP_1440, BUCKETS));
+    const distinct = new Set(widths.filter((w) => w !== BUCKETS.minColPx));
+    expect(distinct.size).toBe(widths.filter((w) => w !== BUCKETS.minColPx).length);
+    // …and the stops that don't fit are honestly reported as not fitting rather
+    // than silently rendering as their neighbour.
+    expect(weekStops(VP_1440, BUCKETS).filter((s) => s.fits).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('widens on the stops that clear the floor', () => {
+    expect(weekColumnPx(4, VP_1920, BUCKETS)).toBe(332);
+    expect(weekColumnPx(3, VP_1920, BUCKETS)).toBe(452);
+  });
+});
+
+describe('weekRungs', () => {
+  it('is one rung per distinct width, narrowest first', () => {
+    for (const vp of [VP_1280, VP_1440, 1256, VP_1920, 2400]) {
+      for (const geo of [SCHEDULE, BUCKETS]) {
+        const widths = weekRungs(vp, geo).map((r) => r.colPx);
+        expect(new Set(widths).size).toBe(widths.length);
+        for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThan(widths[i - 1]);
+      }
+    }
+  });
+
+  it('is the whole ladder when every stop resolves to its own width', () => {
+    // Schedule on a 1700px window: 152/179/216/273/366/480, all distinct.
+    expect(weekRungs(1256, SCHEDULE).map((r) => r.days)).toEqual([...WEEK_DAY_STOPS]);
+  });
+
+  it('collapses the stops that share a width, keeping the most days', () => {
+    // Buckets on a 1440px window: seven, six and five days all clamp to the 200px
+    // floor and render identically, so they are ONE position on the control — the
+    // one labelled seven, because at the floor "as many days as fit" is the honest
+    // promise. This is the dead-notch bug, stated as arithmetic.
+    expect(weekStops(VP_1440, BUCKETS).map((s) => s.colPx)).toEqual([200, 200, 200, 212, 292, 452]);
+    expect(weekRungs(VP_1440, BUCKETS).map((r) => r.days)).toEqual([7, 4, 3, 2]);
+  });
+
+  it('never offers a rung the canvas cannot render, and always offers at least one', () => {
+    for (const vp of [200, 300, 700, VP_1280, 1256, VP_1920, 3200]) {
+      for (const geo of [SCHEDULE, BUCKETS]) {
+        const rungs = weekRungs(vp, geo);
+        expect(rungs.length).toBeGreaterThanOrEqual(1);
+        expect(rungs.length).toBeLessThanOrEqual(WEEK_DAY_STOPS.length);
+        // At most one rung is a non-fitting one — the floor — and if there is one
+        // it is the narrowest.
+        const notFitting = rungs.filter((r) => !r.fits);
+        expect(notFitting.length).toBeLessThanOrEqual(1);
+        if (notFitting.length === 1) expect(rungs[0].fits).toBe(false);
+      }
+    }
+  });
+
+  it('collapses to a single rung on a canvas that holds no width at all', () => {
+    // Sidebar plus item panel on a small laptop: every stop is the floor, so the
+    // control has one position and nothing to choose. The component reads this to
+    // go inert rather than offering travel that does nothing.
+    expect(weekRungs(300, SCHEDULE)).toHaveLength(1);
+    expect(weekRungs(300, SCHEDULE)[0].colPx).toBe(SCHEDULE.minColPx);
+  });
+});
+
+describe('weekRungIndex', () => {
+  it('finds a stored day count by the width it resolves to, not by its label', () => {
+    // Choose five days on a wide canvas, then shrink the window until five clamps
+    // to the floor: the rung at that width is labelled SEVEN, and the thumb has to
+    // land on it rather than nowhere.
+    expect(weekColumnPx(5, VP_1440, BUCKETS)).toBe(BUCKETS.minColPx);
+    expect(weekRungIndex(5, VP_1440, BUCKETS)).toBe(0);
+    expect(weekRungs(VP_1440, BUCKETS)[0].days).toBe(7);
+  });
+
+  it('agrees with the ladder for a count that is its own rung', () => {
+    for (const vp of [VP_1280, VP_1440, 1256, VP_1920]) {
+      for (const geo of [SCHEDULE, BUCKETS]) {
+        weekRungs(vp, geo).forEach((rung, i) => {
+          expect(weekRungIndex(rung.days, vp, geo)).toBe(i);
+        });
+      }
+    }
+  });
+});
+
+describe('stepWeekRung', () => {
+  it('changes the column width on every single step', () => {
+    // The whole reason rungs exist. Walking the ladder end to end must never
+    // produce the same width twice in a row, on any canvas or layout.
+    for (const vp of [VP_1280, VP_1440, 1256, VP_1920, 2400]) {
+      for (const geo of [SCHEDULE, BUCKETS]) {
+        // Annotated, because MAX_WEEK_DAYS is the literal type 7 off a const array.
+        let days: number = MAX_WEEK_DAYS;
+        let last = weekColumnPx(days, vp, geo);
+        for (let i = 0; i < WEEK_DAY_STOPS.length; i++) {
+          const next = stepWeekRung(days, 1, vp, geo);
+          const width = weekColumnPx(next, vp, geo);
+          if (next === days) break; // saturated at the wide end
+          expect(width).toBeGreaterThan(last);
+          days = next;
+          last = width;
+        }
+      }
+    }
+  });
+
+  it('can move the stored count by more than one day, and never by nothing', () => {
+    // Buckets at 996: the rungs are 7 → 4 → 3 → 2, so one step wider from the
+    // floor skips two stops that would have rendered identically.
+    expect(stepWeekRung(7, 1, VP_1440, BUCKETS)).toBe(4);
+    expect(stepWeekRung(4, -1, VP_1440, BUCKETS)).toBe(7);
+  });
+
+  it('saturates at both ends instead of wrapping', () => {
+    const rungs = weekRungs(VP_1440, BUCKETS);
+    const narrowest = rungs[0].days;
+    const widest = rungs[rungs.length - 1].days;
+    expect(stepWeekRung(narrowest, -1, VP_1440, BUCKETS)).toBe(narrowest);
+    expect(stepWeekRung(widest, 1, VP_1440, BUCKETS)).toBe(widest);
+    // An oversized delta lands on the end rather than running off it — the same
+    // contract stepWeekDays has. (Holding the shortcut down is a stream of ±1s.)
+    expect(stepWeekRung(narrowest, 99, VP_1440, BUCKETS)).toBe(widest);
+    expect(stepWeekRung(widest, -99, VP_1440, BUCKETS)).toBe(narrowest);
+  });
+
+  it('sanitises a garbage stored value the way clamp does', () => {
+    expect(stepWeekRung(undefined, 0, 1256, SCHEDULE)).toBe(MAX_WEEK_DAYS);
+    expect(stepWeekRung(999, 0, 1256, SCHEDULE)).toBe(MAX_WEEK_DAYS);
   });
 });
 
@@ -215,11 +368,13 @@ describe('visibleDays', () => {
 });
 
 describe('the width-derived default', () => {
+  /** The candidate set the default actually chooses from: the stops that fit. */
+  const fittingStops = (vp: number, geo: typeof SCHEDULE) =>
+    weekStops(vp, geo).filter((s) => s.fits);
+
   it('never picks a stop further than the tolerance from the best available', () => {
     for (const vp of [VP_1280, VP_1440, VP_1920, 2400]) {
-      const deltas = WEEK_DAY_STOPS.map((d) =>
-        Math.abs(weekColumnPx(d, vp, SCHEDULE) - TARGET_COL_PX)
-      );
+      const deltas = fittingStops(vp, SCHEDULE).map((s) => Math.abs(s.colPx - TARGET_COL_PX));
       const chosenDelta = Math.abs(weekColumnPx(defaultWeekDays(vp, SCHEDULE), vp, SCHEDULE) - TARGET_COL_PX);
       expect(chosenDelta).toBeLessThanOrEqual(Math.min(...deltas) + TARGET_TOLERANCE_PX);
     }
@@ -228,15 +383,14 @@ describe('the width-derived default', () => {
   it('prefers more days whenever two stops are within the tolerance of each other', () => {
     for (const vp of [VP_1280, VP_1440, VP_1920, 2400]) {
       const chosen = defaultWeekDays(vp, SCHEDULE);
-      const best = Math.min(
-        ...WEEK_DAY_STOPS.map((d) => Math.abs(weekColumnPx(d, vp, SCHEDULE) - TARGET_COL_PX))
-      );
+      const fitting = fittingStops(vp, SCHEDULE);
+      const best = Math.min(...fitting.map((s) => Math.abs(s.colPx - TARGET_COL_PX)));
       // Nothing with MORE days was also in contention — if it had been, it
-      // should have won.
-      for (const days of WEEK_DAY_STOPS) {
-        if (days <= chosen) continue;
-        const delta = Math.abs(weekColumnPx(days, vp, SCHEDULE) - TARGET_COL_PX);
-        expect(delta).toBeGreaterThan(best + TARGET_TOLERANCE_PX);
+      // should have won. Stops that don't fit are not in contention at all, which
+      // is a separate invariant with its own test below.
+      for (const stop of fitting) {
+        if (stop.days <= chosen) continue;
+        expect(Math.abs(stop.colPx - TARGET_COL_PX)).toBeGreaterThan(best + TARGET_TOLERANCE_PX);
       }
     }
   });
@@ -272,6 +426,44 @@ describe('the width-derived default', () => {
       [narrow, VP_1280],
     ] as const) {
       expect(Math.abs(weekColumnPx(days, vp, SCHEDULE) - TARGET_COL_PX)).toBeLessThan(80);
+    }
+  });
+
+  it('never hands out a stop that does not fit', () => {
+    // The bug that made the week scale look broken in Week × Buckets: with a
+    // 240px floor, four of its six stops clamped to the same width, so they all
+    // sat the same distance from the target and the prefer-more-days tie-break
+    // handed the default to seven — which showed five columns and scrolled.
+    for (const vp of [700, VP_1280, VP_1440, 1256, VP_1920, 2400, 3200]) {
+      for (const geo of [SCHEDULE, BUCKETS]) {
+        const chosen = defaultWeekDays(vp, geo);
+        const stop = weekStops(vp, geo).find((s) => s.days === chosen)!;
+        // …unless nothing fits at all, where every stop is the floor and only the
+        // label differs. The most days is the honest label for that.
+        if (weekStops(vp, geo).some((s) => s.fits)) expect(stop.fits).toBe(true);
+        else expect(chosen).toBe(MAX_WEEK_DAYS);
+      }
+    }
+  });
+
+  it('falls back to the whole week when the canvas holds no stop at all', () => {
+    // A laptop with the sidebar and the item panel open. Every stop renders at
+    // the floor and scrolls, so they are pixel-identical and the day count is
+    // only a label — MAX_WEEK_DAYS is what both views showed before this control
+    // existed.
+    expect(weekStops(300, SCHEDULE).some((s) => s.fits)).toBe(false);
+    expect(defaultWeekDays(300, SCHEDULE)).toBe(MAX_WEEK_DAYS);
+    expect(defaultWeekDays(300, BUCKETS)).toBe(MAX_WEEK_DAYS);
+  });
+
+  it('opens both week layouts at a comparable column on the same canvas', () => {
+    // Not a coincidence worth asserting for its own sake — it is the check that
+    // the two geometries are being driven by the same target rather than by their
+    // own accumulated history. Switching layout should not change the density.
+    for (const vp of [VP_1280, VP_1440, 1256, VP_1920, 2400]) {
+      const s = weekColumnPx(defaultWeekDays(vp, SCHEDULE), vp, SCHEDULE);
+      const b = weekColumnPx(defaultWeekDays(vp, BUCKETS), vp, BUCKETS);
+      expect(Math.abs(s - b)).toBeLessThan(TARGET_TOLERANCE_PX);
     }
   });
 
@@ -333,6 +525,28 @@ describe('the last-measured-canvas cache', () => {
     expect(resolveWeekDaysFromLastCanvas(4)).toBe(4);
     forgetWeekCanvas();
     expect(resolveWeekDaysFromLastCanvas(4)).toBe(4);
+  });
+
+  it('steps on RUNGS against the measured canvas, so ⌘− never no-ops', () => {
+    // The keyboard shortcuts run from a keydown handler with no DOM to measure, so
+    // they resolve against the canvas the view last recorded — and must land on the
+    // same rung the slider would have.
+    forgetWeekCanvas();
+    noteWeekCanvas(VP_1440, BUCKETS);
+    expect(stepWeekDaysFromLastCanvas(7, 1)).toBe(4);
+    expect(stepWeekDaysFromLastCanvas(4, -1)).toBe(7);
+    // Stepping from null starts at the derived default, not at the ladder's end.
+    expect(stepWeekDaysFromLastCanvas(null, -1)).toBe(
+      stepWeekRung(defaultWeekDays(VP_1440, BUCKETS), -1, VP_1440, BUCKETS)
+    );
+  });
+
+  it('falls back to a raw stop step when nothing has measured', () => {
+    // Unreachable from the shortcuts, which are gated on a mounted week view. A
+    // step still has to be a step.
+    forgetWeekCanvas();
+    expect(stepWeekDaysFromLastCanvas(5, 1)).toBe(4);
+    expect(stepWeekDaysFromLastCanvas(null, 1)).toBe(MAX_WEEK_DAYS - 1);
   });
 });
 

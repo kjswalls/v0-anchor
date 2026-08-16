@@ -8,8 +8,7 @@ import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filter
 import {
   clampWeekDays,
   isScalableLayout,
-  resolveWeekDaysFromLastCanvas,
-  stepWeekDays,
+  stepWeekDaysFromLastCanvas,
 } from './week-columns';
 
 /**
@@ -178,10 +177,12 @@ export const useViewStore = create<ViewStore>()(
       // Stepping is always an adjustment, so it resolves the current effective
       // value first — from the last measured canvas when nothing is stored yet —
       // and writes a concrete number. Stepping from null must not jump.
+      //
+      // One step is one visible change of COLUMN WIDTH, not one day: stops that
+      // resolve to the same width are one rung (see weekRungs), so a shortcut can
+      // move the stored count by more than one and never by nothing.
       stepWeekDaysVisible: (delta) =>
-        set((s) => ({
-          weekDaysVisible: stepWeekDays(resolveWeekDaysFromLastCanvas(s.weekDaysVisible), delta),
-        })),
+        set((s) => ({ weekDaysVisible: stepWeekDaysFromLastCanvas(s.weekDaysVisible, delta) })),
       setBucketStyle: (bucketStyle) => set({ bucketStyle }),
       toggleBucketCollapsed: (bucket) =>
         set((s) => ({

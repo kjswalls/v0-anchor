@@ -5,13 +5,14 @@ import { ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { useViewStore } from '@/lib/view-store';
 import {
-  WEEK_DAY_STOPS,
+  MAX_WEEK_DAYS,
   WEEK_GEOMETRY,
   clampWeekDays,
   isScalableLayout,
   resolveWeekDays,
   visibleDays,
-  weekStops,
+  weekRungIndex,
+  weekRungs,
   type ScalableLayout,
 } from '@/lib/week-columns';
 import { cn } from '@/lib/utils';
@@ -27,15 +28,34 @@ import { cn } from '@/lib/utils';
  * right edge of the grid it scales, at every window width and in both the
  * capped and full-width canvases.
  *
- * The slider's value is an INDEX INTO THE LADDER, not a day count, so that
- * dragging right means wider — the ladder runs seven days (narrowest columns)
- * to two (widest). The stored preference is the day count; see lib/week-columns.
+ * ── What the control says, and what it stores ──
+ * It READS OUT A COLUMN WIDTH, and it stores a day count.
+ *
+ * The readout was the day count for this control's first release, on the
+ * argument that the width is what the setting resolves to rather than what it
+ * means. The argument had a hole: "5 days" is a claim about the canvas that the
+ * view breaks whenever the stop is clamped, and it broke it often — the number
+ * said five while six and a half columns were on screen, or while four were and
+ * the grid scrolled. A width makes no claim it can fail; it is measurable off the
+ * screen at any moment. Days moved to the hover explanation, where the
+ * qualification ("about 5 of 7 fit, and the grid scrolls") can travel with them.
+ *
+ * The stored preference stays a day count, because a stored WIDTH stops meaning
+ * the same thing the moment the canvas resizes: open the item panel and a stored
+ * 260px is four and a half columns, where "five days" is still five. So the
+ * control displays one and remembers the other, which is also why the readout can
+ * change without anyone touching it.
+ *
+ * ── Why the ladder is measured, not fixed ──
+ * The slider's value is an index into the RUNG ladder — one rung per distinct
+ * column width available on this canvas, which is a subset of WEEK_DAY_STOPS
+ * (see weekRungs). Stops that resolve to the same width are one position, so
+ * every notch is a visible change. Before that, Week × Buckets on a 13" canvas
+ * offered four notches that all rendered identically.
  *
  * Mounted unconditionally and self-hiding, so the header row's layout doesn't
  * have to know about it.
  */
-
-const STOP_COUNT = WEEK_DAY_STOPS.length;
 
 /** Half the slider thumb (`size-3.5`). The thumb's travel is inset by this much
  *  at each end, so a tick rail that spans the full track drifts out of
@@ -89,32 +109,36 @@ export function WeekScale({ className }: { className?: string }) {
   const scalable = layout as ScalableLayout;
   const geo = WEEK_GEOMETRY[scalable];
   const ready = viewportPx !== null;
-  const stops = viewportPx === null ? null : weekStops(viewportPx, geo);
   // Until a week view has measured, fall back to the ladder's narrow end rather
   // than guessing a default that the very next frame would contradict.
   const current =
     viewportPx === null ? clampWeekDays(days) : resolveWeekDays(days, viewportPx, geo);
-  const index = WEEK_DAY_STOPS.indexOf(current as (typeof WEEK_DAY_STOPS)[number]);
-  const stop = stops?.[index];
+  const rungs = viewportPx === null ? null : weekRungs(viewportPx, geo);
+  const index = viewportPx === null ? 0 : weekRungIndex(current, viewportPx, geo);
+  const stop = rungs?.[index];
+  /** Widest rung. Zero when the canvas holds exactly one width — everything
+   *  clamped to the floor, which happens on a laptop with the sidebar and the
+   *  item panel both open. There is nothing to choose then, and the control goes
+   *  inert rather than offering travel that does nothing. */
+  const lastIndex = rungs ? rungs.length - 1 : 0;
 
   const setIndex = (next: number) => {
-    const clamped = Math.min(STOP_COUNT - 1, Math.max(0, next));
-    setWeekDaysVisible(WEEK_DAY_STOPS[clamped]);
+    if (!rungs) return;
+    setWeekDaysVisible(rungs[Math.min(lastIndex, Math.max(0, next))].days);
   };
 
-  // The day count only. The pixel width is what the setting RESOLVES to, not
-  // what it means, and it changes under you when the canvas resizes — so it
-  // belongs in the hover explanation, where it can be given its context, rather
-  // than in a number that appears to be the value you set.
-  const readout = daysLabel(current);
+  // The COLUMN WIDTH — see the header. Before the first measurement there is no
+  // width to report, and the em dash is the same "nothing yet" the control's
+  // disabled state already says.
+  const readout = stop ? `${stop.colPx}px` : '—';
 
   const explain =
     stop && viewportPx !== null
       ? stop.fits
-        ? `${daysLabel(stop.days)} across the canvas — ${stop.colPx}px per column`
+        ? `${stop.colPx}px per column — ${daysLabel(stop.days)} across the canvas`
         : `${stop.colPx}px is as narrow as a column goes — about ${Math.floor(
             visibleDays(stop.colPx, viewportPx, geo)
-          )} of ${stop.days} days fit, and the grid scrolls`
+          )} of ${MAX_WEEK_DAYS} days fit, and the grid scrolls`
       : undefined;
 
   return (
@@ -122,6 +146,11 @@ export function WeekScale({ className }: { className?: string }) {
       data-testid="week-scale"
       data-days={current}
       data-col-px={stop?.colPx ?? ''}
+      // Whether the stop in force actually fits, or renders at the floor and
+      // scrolls. The derived default never picks a non-fitting stop, so this is
+      // 'false' only on a stop the user chose — which is what makes it worth
+      // asserting on.
+      data-fits={stop ? String(stop.fits) : ''}
       // Inert for the sub-frame before the first measurement. Until then the
       // resolved day count is a fallback rather than the derived default, so a
       // step taken in that window would move from the wrong rung — and land
@@ -138,7 +167,7 @@ export function WeekScale({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setIndex(index - 1)}
-        disabled={!ready || index<= 0}
+        disabled={!ready || index <= 0}
         aria-label="Narrower day columns"
         title="Narrower columns (⌘−)"
         className={STEP_BUTTON}
@@ -153,13 +182,16 @@ export function WeekScale({ className }: { className?: string }) {
       <div className="relative flex h-7 w-[116px] items-center">
         <Slider
           min={0}
-          max={STOP_COUNT - 1}
+          // Never 0: Radix divides by (max − min) to place the thumb, so a
+          // one-rung canvas would put NaN in the transform. The control is
+          // disabled in that case anyway — this keeps it from drawing wrong.
+          max={Math.max(1, lastIndex)}
           step={1}
           value={[index]}
           onValueChange={([v]) => setIndex(v)}
-          disabled={!ready}
+          disabled={!ready || lastIndex === 0}
           aria-label="Day column width"
-          aria-valuetext={readout}
+          aria-valuetext={explain ?? readout}
           className={cn(
             // Above the ticks, so the thumb covers the notch it is parked on —
             // which is what reads as the knob sitting IN a detent rather than
@@ -183,10 +215,21 @@ export function WeekScale({ className }: { className?: string }) {
           className="pointer-events-none absolute top-1/2 mt-[3px] h-[3px]"
           style={{ left: THUMB_HALF_PX, right: THUMB_HALF_PX }}
         >
-          {WEEK_DAY_STOPS.map((d, i) => (
+          {/* One notch per RUNG, so the count changes with the canvas — which is
+              the point: every notch drawn is a width you can actually get, and
+              the thumb lands on one. A fixed six drawn against a five-rung ladder
+              would put the knob between marks.
+
+              Uniform weight, deliberately. Fading the notch whose stop has to
+              scroll was tried and dropped: it is always the leftmost, which is
+              the end the lime range fill covers whenever the thumb is parked
+              right of it, and a 1px mark's contrast against that fill swamps a
+              0.15-vs-0.35 opacity step. An invisible signal is worse than none;
+              `data-fits` and the hover explanation carry it instead. */}
+          {(rungs ?? []).map((rung, i) => (
             <span
-              key={d}
-              style={{ left: `${(i / (STOP_COUNT - 1)) * 100}%` }}
+              key={rung.days}
+              style={{ left: lastIndex === 0 ? '0%' : `${(i / lastIndex) * 100}%` }}
               className="absolute top-0 h-[3px] w-px -translate-x-1/2 rounded-full bg-muted-foreground/35"
             />
           ))}
@@ -196,7 +239,7 @@ export function WeekScale({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setIndex(index + 1)}
-        disabled={!ready || index>= STOP_COUNT - 1}
+        disabled={!ready || index >= lastIndex}
         aria-label="Wider day columns"
         title="Wider columns (⌘+)"
         className={STEP_BUTTON}

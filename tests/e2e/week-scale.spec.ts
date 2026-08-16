@@ -2,7 +2,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { reloadApp, setLayout, setScope } from './helpers/app';
 
-/** Positions on the day-count ladder — see WEEK_DAY_STOPS in lib/week-columns. */
+/** Positions on the day-count ladder — see WEEK_DAY_STOPS in lib/week-columns.
+ *  An upper bound on the rung ladder too, which is a subset of it. */
 const WEEK_STOP_COUNT = 6;
 
 /**
@@ -153,16 +154,59 @@ test.describe('week scale', () => {
 
     const { root, narrower } = scaleOf(page);
     // Buckets has no gutter and a wider gap, so its ladder differs — but the
-    // target is the same, and 270px at four days is what comes nearest.
+    // target is the same, and 277px at four days is what comes nearest. Schedule
+    // opens at 273 on this same canvas: switching layout must not change the
+    // density, which is the point of deriving both from one target.
+    await expect(root).toHaveAttribute('data-col-px', '277');
     await expect(root).toHaveAttribute('data-days', '4');
-    expect(await columnWidths(page)).toEqual(Array(7).fill(270));
+    await expect(root).toHaveAttribute('data-fits', 'true');
+    expect(await columnWidths(page)).toEqual(Array(7).fill(277));
 
-    // Narrowing runs into the 240px floor — its old fixed w-60, which a bucket
-    // card carrying stacked rows under a counted header genuinely needs.
+    // One notch narrower is a DIFFERENT width. It did not used to be: buckets
+    // floored at 240 and this scrollport resolved seven, six and five days all to
+    // exactly that, so the first half of the slider's travel was a no-op.
     await narrower.click();
+    await expect(root).toHaveAttribute('data-col-px', '216');
+    expect(await columnWidths(page)).toEqual(Array(7).fill(216));
+
+    // Two notches in, the floor takes over and the grid starts scrolling — which
+    // the control reports rather than showing a width that isn't on screen. The
+    // stored count jumps 5 → 7 rather than 5 → 6: at this canvas six and seven
+    // days both render at the floor, so they are ONE rung and one click of travel
+    // (see weekRungs). The width is what the control reads out, and it moved.
     await narrower.click();
-    await expect(root).toHaveAttribute('data-days', '6');
-    expect(await columnWidths(page)).toEqual(Array(7).fill(240));
+    await expect(root).toHaveAttribute('data-col-px', '200');
+    await expect(root).toHaveAttribute('data-days', '7');
+    await expect(root).toHaveAttribute('data-fits', 'false');
+    expect(await columnWidths(page)).toEqual(Array(7).fill(200));
+
+    // …and that is the end of the ladder, because there is no narrower width to
+    // reach. The button says so rather than accepting clicks that do nothing.
+    await expect(narrower).toBeDisabled();
+  });
+
+  test('reads out the column width, not a day count', async ({ page }) => {
+    await setScope(page, 'Week');
+    await setLayout(page, 'Schedule');
+
+    const { root, wider } = scaleOf(page);
+    // The readout is the one number in the control, and it is a width: "5 days"
+    // was a claim about the canvas that the view breaks whenever a stop is clamped
+    // — it read five while six and a half columns were on screen. A width is
+    // measurable off the screen at any moment.
+    await expect(root).toHaveAttribute('data-col-px', '273');
+    await expect(root).toContainText('273px');
+    await expect(root).not.toContainText('days');
+
+    await wider.click();
+    await expect(root).toContainText('366px');
+
+    // Days survive in the hover explanation, where the qualification can travel
+    // with them.
+    await expect(root.locator('[title]').last()).toHaveAttribute(
+      'title',
+      /366px per column — 3 days across the canvas/
+    );
   });
 
   test('the choice survives a reload', async ({ page }) => {
