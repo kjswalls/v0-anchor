@@ -71,10 +71,13 @@ export function ProgramNotice({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      // The manager is where this is undone, and it is otherwise reachable only
-      // from the palette and the item chips — so the sentence that reports the
-      // consequence is also the way back to the control that caused it.
-      onClick={() => openDialog({ type: 'manage-collections', tab: 'programs' })}
+      // The console is where this is undone, so the sentence that reports the
+      // consequence is also the way back to the control that caused it — and it
+      // lands on the program actually doing the hiding rather than on the list.
+      // With several off, the first named is the one the sentence leads with.
+      onClick={() =>
+        openDialog({ type: 'organize', section: 'programs', focusId: off[0]?.id })
+      }
       data-testid="program-notice"
       data-date={dateStr}
       data-hidden-count={hidden}

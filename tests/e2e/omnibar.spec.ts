@@ -10,6 +10,7 @@ import {
 } from './helpers/api';
 import { reloadApp, omnibar, omnibarPanel } from './helpers/app';
 import { getTodayStr } from './helpers/dates';
+import { BASE_URL } from './helpers/env';
 
 /**
  * Omnibar — the app's ONLY command surface (there is no ⌘K modal), and the only
@@ -111,7 +112,7 @@ test.describe('Omnibar', () => {
       await expect
         .poll(
           async () => {
-            const res = await page.request.get('http://localhost:3000/api/agent/context', {
+            const res = await page.request.get(`${BASE_URL}/api/agent/context`, {
               headers: { Authorization: `Bearer ${apiKey()}` },
             });
             const body = await res.json();

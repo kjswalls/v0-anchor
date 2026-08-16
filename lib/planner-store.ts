@@ -2,6 +2,11 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+// The store's one UI import, and it earns it: a swallowed write failure is the
+// exact bug undoFailedCreate exists to fix, so the net has to be able to speak.
+// planner-store is 'use client' and no server route imports it, and <Toaster>
+// is mounted in the root layout.
+import { toast } from 'sonner';
 import type {
   Task,
   Habit,
@@ -43,6 +48,7 @@ import {
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
+  renameContainerMembers as dbRenameContainerMembers,
   fetchRoutines,
   createRoutine as dbCreateRoutine,
   updateRoutine as dbUpdateRoutine,
@@ -53,8 +59,12 @@ import {
   updateProgram as dbUpdateProgram,
   deleteProgram as dbDeleteProgram,
   restoreProgram as dbRestoreProgram,
+  itemDbType,
+  adoptContainerMembers,
+  type TrashEntry,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
+import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
@@ -70,6 +80,7 @@ import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } fr
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
+import { foldContainerName, sameContainerName } from './container-registry';
 
 interface PlannerStore {
   /**
@@ -258,6 +269,8 @@ interface PlannerStore {
 
   // Project actions
   addProject: (name: string, emoji: string) => void;
+  /** First-run starter containers. See seedStarterContainers for the guards. */
+  seedStarterContainers: (plan: SeedPlan, forUserId: string) => CommitResult;
   updateProject: (id: string, updates: Partial<Project>) => void;
   removeProject: (id: string) => void;
   getProjectEmoji: (name: string) => string;
@@ -321,6 +334,20 @@ interface PlannerStore {
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
   removeHabitGroup: (id: string) => void;
+
+  /**
+   * Put one row of the Trash back (Organize console, Phase 4).
+   *
+   * One action for all five kinds rather than five, because the hard parts are
+   * identical and are all about HISTORY: decision 3 says a restore is a normal
+   * entry and ⌘Z re-deletes it, and that only holds if the label is armed
+   * before the single set() that carries every slice being touched. See the
+   * implementation for the two traps.
+   *
+   * Takes the whole TrashEntry, not an id: the bin lives in a local hook and
+   * never enters the store, so this is the only way the entity reaches it.
+   */
+  restoreFromTrash: (entry: TrashEntry) => void;
   getHabitGroupEmoji: (name: string) => string;
   getHabitGroupColor: (name: string) => string;
 
@@ -360,6 +387,37 @@ const projectItems = (items: Item[]) => ({
   ) as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
 });
+
+/**
+ * A container NAME write implies an ID write (migration 027).
+ *
+ * Every surface that files an item still speaks in names — the item dialog's
+ * chips, the agent API, the braindump — and converting those ~15 call sites is
+ * explicitly out of scope. So the resolution happens once, here, at the moment
+ * a name is written: the name stays authoritative for display, and the id it
+ * resolves to is what survives the container being renamed.
+ *
+ * Returning `undefined` for an unmatched name is correct, not a fallback. Some
+ * items name a container that has no row at all — 12 of them on the live
+ * database name a project called "Housework" — and inventing a link for those
+ * would file them under whatever container is created with that name next.
+ */
+const projectIdFor = (name: string | undefined, projects: Project[]) =>
+  name ? projects.find((p) => p.name === name)?.id : undefined;
+
+/**
+ * The habit-group twin, with the case-insensitive fallback the group surfaces
+ * already use — getHabitGroupEmoji and getHabitGroupColor both normalise, and
+ * addHabitGroup de-dupes case-insensitively, so an exact-only match here would
+ * strand a habit that says "personal" against a group row named "Personal".
+ */
+const groupIdFor = (name: string | undefined, groups: HabitGroupType[]) =>
+  name
+    ? (
+        groups.find((g) => g.name === name) ??
+        groups.find((g) => g.name.toLowerCase() === name.toLowerCase())
+      )?.id
+    : undefined;
 
 // History management for undo/redo
 /**
@@ -526,6 +584,21 @@ let actionLog: ActionLogEntry[] = [];
 let pendingActionLabel: string | null = null;
 let pendingActionReceipt: string | undefined;
 
+/**
+ * What a restored row is CALLED in its history entry.
+ *
+ * The bin is the one list in the app that mixes kinds, so "Restore: Morning" is
+ * ambiguous in a way no other label is — and this string is what the user reads
+ * in the history popover when deciding what ⌘Z is about to take back.
+ */
+const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
+  item: 'item',
+  project: 'project',
+  group: 'habit group',
+  routine: 'routine',
+  program: 'program',
+};
+
 // Set the label for the next action that will be saved to history
 export const setNextActionLabel = (label: string, receipt?: string) => {
   pendingActionLabel = label;
@@ -587,6 +660,278 @@ const saveToHistory = (state: HistoryState) => {
   } else {
     historyIndex++;
   }
+};
+
+/** The entry `saveToHistory` just wrote, so a failed write can take it back. */
+const lastHistoryEntryId = (): string | null =>
+  actionLog.length > 0 ? actionLog[actionLog.length - 1].id : null;
+
+/**
+ * Take an optimistic container back out when the database refused it.
+ *
+ * WHY THIS EXISTS AT ALL. `projects_user_id_name_key` and
+ * `habit_groups_user_id_name_key` are PLAIN unique indexes over
+ * `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a soft-deleted
+ * container reserves its name for the full 30 days while being invisible to
+ * this store, whose arrays come from `deleted_at`-filtered fetches. The
+ * `alreadyExists` guards above therefore cannot see the row that is about to
+ * reject the insert, and the insert used to fail into a bare
+ * `.catch(console.error)` AFTER the optimistic `set()` had landed.
+ *
+ * What that left behind is worse than a missing container. Every later edit to
+ * it is an `.eq('id', …)` matching zero rows, so it accepts a glyph, a colour
+ * and a whole time block and keeps none of them — and because
+ * `items_project_id_fkey` is a COMPOSITE foreign key, any item filed into it
+ * has its own INSERT rejected with 23503 in full. The item dialog's inline
+ * "new project" is the sharp end: type the name of a project you deleted last
+ * week, save, and you lose the project AND the task you were writing, with the
+ * only evidence a console line nobody will read.
+ *
+ * Healing it HERE rather than at the call sites is the point. The console's
+ * create rows consult the bin and refuse with a sentence (see
+ * use-trashed-names.ts) — that is the good path, and this is the net under it,
+ * covering the item dialog, the command palette, and anything added later,
+ * without the async lookup a synchronous action cannot await.
+ *
+ * The rollback leaves no trace in history: it is not a user action, so it
+ * pushes no entry of its own (a bare `set()` here would be a labelless mutation
+ * landing as "Unknown action"), and the failed create's own entry is stripped
+ * of the phantom and relabelled — see forgetFailedContainer.
+ *
+ * WHAT IT CANNOT DO. If the user's Save wins the race — the item's INSERT goes
+ * out before the container's rejection comes back — that item is already lost
+ * to 23503 and nothing here retrieves it. Clearing the reference stops the NEXT
+ * save carrying it; the one already in flight is why the proactive refusals in
+ * the console and the item dialog matter, and why this is the net rather than
+ * the plan.
+ */
+/**
+ * Container ids that were seated optimistically and then refused.
+ *
+ * Published because the rollback is INDISTINGUISHABLE from a delete to anything
+ * watching this store: both are "a container that was in `projects` and now is
+ * not". `useTrashedNames` watches exactly that, to catch the name of a container
+ * binned mid-visit — and so it caught the phantom too, and spent the rest of the
+ * session refusing a name that nothing anywhere holds. The user's one useful
+ * response to "Nothing was saved" is to try again; that was the response it
+ * locked out.
+ *
+ * A uuid per failed create, never cleared. Both are deliberate: ids are uuids so
+ * a stale entry cannot collide with a real container even across an account
+ * switch, and a session with enough refused creates for the set to matter has a
+ * much larger problem than its memory.
+ */
+const neverCreated = new Set<string>();
+
+/** True for a container this store seated and the database then rejected. */
+export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
+
+/**
+ * Take a refused container back out of the store and out of history.
+ *
+ * Extracted so first-run seeding gets the SAME rollback a hand-made create gets.
+ * Its inserts can be refused for a reason no fault is needed to reach: two tabs
+ * opening a first run both read the seeding latch as false, both plan the same
+ * names, and the second one's insert meets `projects_user_id_name_key`. Left
+ * behind, that tab holds six containers that do not exist — and because
+ * `items_project_id_fkey` is composite, the first item filed into one has its
+ * own INSERT rejected in full.
+ *
+ * Everything careful here was paid for twice (see the fix-commit table in
+ * memory/plans/organize-console.md); duplicating it for the seed path would have
+ * been the third time.
+ */
+const removeRefusedContainer = (
+  kind: 'project' | 'group',
+  id: string,
+  entryId: string | null,
+  label: string,
+) => {
+  // BEFORE the setState below, not after. The history subscriber and
+  // useTrashedNames' both run synchronously inside set(), so a watcher that
+  // asks "was this real?" while reacting to the removal has to be able to get
+  // the right answer already.
+  neverCreated.add(id);
+
+  // SAVED AND RESTORED, never a hard `false`. `isUpdatingUndoRedo` is a plain
+  // boolean rather than a counter, and `initializeStore` holds it true across
+  // its ENTIRE fetch while `userId` is already stamped — so a create rejecting
+  // inside the load window used to hand the flag back unblocked. The republish
+  // below then woke the subscriber's lazy-baseline branch mid-load, seeding a
+  // second 'Session start' and leaving `historyIndex` naming a snapshot the
+  // store did not hold. One ⌘Z after that soft-deleted every row the load had
+  // just brought in — verified by an A/B probe whose only variable was whether
+  // the create resolved.
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((state) => {
+      if (kind === 'project') {
+        return {
+          projects: state.projects.filter((p) => p.id !== id),
+          // Items filed into it in the meantime lose the reference too, or the
+          // next save re-sends an id no row will ever match.
+          ...projectItems(
+            state.items.map((item) =>
+              item.type !== 'habit' && item.projectId === id
+                ? { ...item, project: undefined, projectId: undefined }
+                : item
+            )
+          ),
+        };
+      }
+      return {
+        habitGroups: state.habitGroups.filter((g) => g.id !== id),
+        ...projectItems(
+          state.items.map((item) =>
+            item.type === 'habit' && item.groupId === id
+              ? { ...item, group: '', groupId: undefined }
+              : item
+          )
+        ),
+      };
+    });
+    forgetFailedContainer(kind, id, entryId, label);
+    // The baseline has to follow the rollback, or the next real change is
+    // diffed against a snapshot that still holds the phantom.
+    const s = usePlannerStore.getState();
+    updatePrevStateBaseline({
+      items: s.items,
+      projects: s.projects,
+      habitGroups: s.habitGroups,
+      routines: s.routines,
+      programs: s.programs,
+    });
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+
+  // Republish the action log so the relabelled entry reaches the popover. Only
+  // when nothing else is mid-write: inside initializeStore's window this would
+  // publish half-loaded history over the top of the load.
+  //
+  // BOTH THIS GUARD AND THE SAVE/RESTORE ABOVE ARE KEPT, and each alone is
+  // enough to stop the load-window corruption — verified by probing them
+  // separately. Neither is dead code: this one keeps the rollback from
+  // publishing over a load in progress, the other keeps the suppression flag
+  // honest for every other reader of it. The consequence of getting it wrong is
+  // one ⌘Z soft-deleting everything the load brought in, which is worth two
+  // cheap defences rather than one clever one.
+  if (!wasSuppressed) {
+    const info = getHistoryInfo();
+    usePlannerStore.setState({
+      canUndo: historyIndex > 0,
+      canRedo: historyIndex < historyStack.length - 1,
+      actionLog: info.actionLog,
+      historyIndex: info.currentIndex,
+    });
+  }
+};
+
+/**
+ * A seed container the database refused.
+ *
+ * Same rollback, and deliberately SILENT. `undoFailedCreate` says it out loud
+ * because a hand-made create is something the user just did and is watching for;
+ * this one is a starter set they never asked for, and "Couldn't create Work"
+ * would be the first thing a brand-new account ever said to its owner. Nothing
+ * is lost by the silence: the row simply is not there, which is the state the
+ * account was in a second earlier.
+ *
+ * `null` for the entry id because the seed pushes no history entry at all —
+ * there is nothing to relabel, and `forgetFailedContainer` still strips the id
+ * from every snapshot, which is the half that matters.
+ */
+const rollbackSeedContainer = (
+  error: unknown,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  console.error(`seed ${kind} failed`, name, error);
+  removeRefusedContainer(kind, id, null, '');
+};
+
+const undoFailedCreate = (
+  error: unknown,
+  entryId: string | null,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  const noun = kind === 'project' ? 'project' : 'habit group';
+  console.error(`create ${noun} failed`, error);
+
+  removeRefusedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
+
+  // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
+  // survived: the container looks created for the rest of the session. 23505 is
+  // the only error this insert can realistically raise, and the trash is the
+  // only place the name can be hiding, so the sentence can be specific.
+  toast.error(
+    isUniqueViolation(error)
+      ? `Couldn't create “${name}” — a deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
+      : `Couldn't create “${name}”. Nothing was saved.`
+  );
+};
+
+const isUniqueViolation = (error: unknown): boolean => {
+  const code = (error as { code?: string } | null)?.code;
+  return code === '23505' || (error instanceof Error && error.message.includes('duplicate key value'));
+};
+
+/**
+ * Erase a container the database never accepted from the whole undo history.
+ *
+ * REWRITES THE SNAPSHOTS; TOUCHES NO INDEX. The first version of this popped
+ * the failed create's entry off the stack and decremented `historyIndex`, which
+ * is only safe when that entry is still the top AND the user has not moved —
+ * and the guards it needed for that handed every other case straight back to
+ * the bug. Review reproduced both halves: with the user having acted during the
+ * round trip (which the item dialog's own Save flow guarantees), the store lost
+ * the phantom while every snapshot kept it, so ONE ⌘Z put it back and fired
+ * `dbRestoreProject` against a row that never existed.
+ *
+ * Stripping the id from every snapshot instead has no such precondition. The
+ * stack length, the log length and `historyIndex` are all untouched, so the
+ * invariant that `historyIndex` names the state the store holds cannot be
+ * broken by this function at all — whatever the user did meanwhile, whether two
+ * creates are in flight at once, and regardless of MAX_HISTORY_SIZE having
+ * shifted entries off the front.
+ *
+ * Members go with it. An item filed into the phantom before the rejection
+ * landed still names it in older snapshots, and undoing into one of those would
+ * re-file the item against a container that does not exist.
+ */
+const forgetFailedContainer = (
+  kind: 'project' | 'group',
+  id: string,
+  entryId: string | null,
+  label: string,
+) => {
+  for (const snapshot of historyStack) {
+    if (kind === 'project') {
+      snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type !== 'habit' && item.projectId === id
+          ? { ...item, project: undefined, projectId: undefined }
+          : item
+      );
+    } else {
+      snapshot.habitGroups = snapshot.habitGroups.filter((g) => g.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type === 'habit' && item.groupId === id
+          ? { ...item, group: '', groupId: undefined }
+          : item
+      );
+    }
+  }
+
+  // The entry STAYS — removing it is what forced the index arithmetic — but it
+  // stops claiming something happened. Its snapshot now matches its
+  // predecessor, so undoing across it is a no-op rather than a resurrection.
+  const entry = entryId ? actionLog.find((a) => a.id === entryId) : undefined;
+  if (entry) entry.label = label;
 };
 
 // Get appropriate bucket for a given time
@@ -1180,6 +1525,7 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: 0, // custom types aren't manually orderable (created_at sorts)
+          projectId: projectIdFor(itemData.project, get().projects),
         };
         set((state) => ({
           ...projectItems([...state.items, item]),
@@ -1203,6 +1549,7 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
+          projectId: projectIdFor(taskData.project, get().projects),
         };
         set((state) => ({
           ...projectItems([...state.items, task]),
@@ -1233,6 +1580,14 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // Re-file: the id follows the name, INCLUDING to undefined. Key
+        // presence is the test, not truthiness — clearing `project` is how
+        // unfiling is expressed, and leaving a stale id behind would let a
+        // later rename of the old container pull the name back onto an item
+        // the user had already taken out of it.
+        if ('project' in updates) {
+          newUpdates.projectId = projectIdFor(updates.project, get().projects);
         }
 
         updateItemAction(id, 'task', newUpdates);
@@ -1926,6 +2281,7 @@ export const usePlannerStore = create<PlannerStore>()(
           skippedDates: [],
           dailyCounts: {},
           currentDayCount: 0,
+          groupId: groupIdFor(habitData.group, get().habitGroups),
         };
         set((state) => ({
           ...projectItems([...state.items, habit]),
@@ -1947,6 +2303,10 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || habit.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // See updateTask — the id follows the name on every re-file.
+        if ('group' in updates) {
+          newUpdates.groupId = groupIdFor(updates.group, get().habitGroups);
         }
 
         updateItemAction(id, 'habit', newUpdates);
@@ -2058,28 +2418,243 @@ export const usePlannerStore = create<PlannerStore>()(
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
 
       addProject: (name, emoji) => {
-        setNextActionLabel(`Add project: ${name}`);
-        const alreadyExists = get().projects.some((p) => p.name === name);
+        // The label goes AFTER the guard. Armed before it, a no-op create
+        // leaves `Add project: Foo` pending on a module-level variable and the
+        // user's next unlabelled mutation is logged and undone under that name.
+        const alreadyExists = get().projects.some((p) => sameContainerName('project', p.name, name));
         if (alreadyExists) return;
+        setNextActionLabel(`Add project: ${name}`);
 
         const project: Project = { id: crypto.randomUUID(), name, emoji };
         set((state) => ({ projects: [...state.projects, project] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateProject(userId, project).catch(console.error);
+        if (userId) {
+          dbCreateProject(userId, project).catch((error) => {
+            undoFailedCreate(error, entryId, 'project', project.id, name);
+          });
+        }
+      },
+
+      /**
+       * The first-run starter set, and the repair that shares its shape.
+       *
+       * ONE `set()` AND ONE HISTORY ENTRY, not six. Six `addProject` calls would
+       * work and would be wrong: the history popover would open on a brand-new
+       * account already listing six actions the user did not perform, and their
+       * first ⌘Z would delete one starter container while leaving five. This is
+       * a single arrival, so it undoes as one.
+       *
+       * GUARDS, ALL THREE. `userId` because a create without one writes nothing
+       * and leaves an optimistic row that vanishes on reload. `isLoading`
+       * because `initializeStore` REPLACES `projects`, `habitGroups` and `items`
+       * wholesale when its fetch resolves — anything seeded inside that window
+       * is silently discarded, which is the same trap `canCreate` guards in the
+       * console and the one the e2e suite found the hard way. And the container
+       * arrays being empty, re-checked HERE rather than trusted from the plan:
+       * the plan was computed before two awaits (the latch read and the bin
+       * read), and a fetch resolving in between is exactly how an account with
+       * containers gets a second set of them.
+       *
+       * ADOPTION IS PART OF THE SAME `set()`. When a container is created for a
+       * name its items already carry, those items get the new id in the same
+       * commit — otherwise the store holds members whose `groupId` is undefined
+       * while the database has just linked them, and the next edit writes the
+       * stale shape back.
+       */
+      seedStarterContainers: (plan, forUserId) => {
+        const state = get();
+        const userId = state.userId;
+        // THE OWNER CHECK, and it is not redundant with the caller's. The plan
+        // is computed across two more awaits after the caller looked, and
+        // Supabase delivers a bare SIGNED_IN for a different user with no
+        // intervening SIGNED_OUT — the provider handles that case in two other
+        // places. Without this, one account's plan was committed into another
+        // account's store, and with adoption in the mix that meant creating a
+        // container named after someone else's data.
+        if (!userId || userId !== forUserId || state.isLoading) return 'refused';
+        if (state.projects.length > 0 || state.habitGroups.length > 0) return 'refused';
+        // Distinguished from a refusal on purpose: this is a stable answer, and
+        // the caller latches on it so the account stops being asked. A refusal
+        // is "ask again next load".
+        if (plan.projects.length === 0 && plan.groups.length === 0) return 'nothing-to-do';
+
+        const projects: Project[] = plan.projects.map((p) => ({
+          id: crypto.randomUUID(),
+          name: p.name,
+          emoji: p.emoji,
+        }));
+        const groups: HabitGroupType[] = plan.groups.map((g) => ({
+          id: crypto.randomUUID(),
+          name: g.name,
+          emoji: g.emoji,
+        }));
+
+        const projectByName = new Map(projects.map((p) => [p.name, p]));
+        const groupByName = new Map(groups.map((g) => [g.name, g]));
+
+        /**
+         * NO HISTORY ENTRY, and this is a change of mind the review earned.
+         *
+         * The plan asked for the seed to be "undoable like anything else", and
+         * the first version obliged with one entry. Two consequences neither of
+         * us had costed: a brand-new account arrives with `canUndo: true` and a
+         * logged action its owner did not perform, and pressing ⌘Z — the very
+         * first thing many people try — SOFT-DELETES all six rows, which puts
+         * six containers the user never made into a Trash they have never opened
+         * and reserves all six names for thirty days, because the unique indexes
+         * have no `WHERE deleted_at IS NULL`.
+         *
+         * Decision 2 asks for "fully deletable", and they are: every one goes
+         * through the console's ordinary delete. It does not ask for undoable,
+         * and a seed is not a user action — the same reasoning `undoFailedCreate`
+         * already applies to itself two hundred lines up.
+         *
+         * Suppressed the way the rollback suppresses: save and restore the flag
+         * rather than clearing it, because `initializeStore` holds it true
+         * across its whole fetch and a hard `false` here would hand it back
+         * unblocked mid-load.
+         */
+        const wasSuppressed = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set((s) => ({
+            projects: [...s.projects, ...projects],
+            habitGroups: [...s.habitGroups, ...groups],
+            ...projectItems(
+              s.items.map((item) => {
+                // Matched on the EXACT stored text, never a trimmed copy. The
+                // adopting UPDATE filters on the name it is given, so a store
+                // that links " Personal" while the database matches "Personal"
+                // produces a link that looks right until the next reload drops
+                // it. planSeed keeps names exact for the same reason.
+                if (item.type === 'habit') {
+                  const g = item.group ? groupByName.get(item.group) : undefined;
+                  return g && !item.groupId ? { ...item, groupId: g.id } : item;
+                }
+                const p = item.project ? projectByName.get(item.project) : undefined;
+                return p && !item.projectId ? { ...item, projectId: p.id } : item;
+              })
+            ),
+          }));
+          /**
+           * BOTH BASELINES, and the second one is not optional — the first
+           * version updated only `prevStateJson` and undo walked straight past
+           * the seed.
+           *
+           * `updatePrevStateBaseline` sets what the NEXT change is diffed
+           * against. But history is a stack of whole snapshots, and the one at
+           * `historyIndex` is still 'Session start' from before the seed. The
+           * user's first real edit pushes a snapshot on top of that, so one ⌘Z
+           * lands on the pre-seed state and takes the containers with it — the
+           * suppression having made sure there was no entry in between to stop
+           * at.
+           *
+           * Rewriting that snapshot in place is the honest fix rather than a
+           * patch: the seed is part of what this session STARTED with, which is
+           * exactly what 'Session start' is supposed to name. Length and index
+           * are untouched, so it cannot break the invariant that `historyIndex`
+           * names the state the store holds.
+           */
+          const s = get();
+          const seeded = {
+            items: s.items,
+            projects: s.projects,
+            habitGroups: s.habitGroups,
+            routines: s.routines,
+            programs: s.programs,
+          };
+          updatePrevStateBaseline(seeded);
+          if (historyStack[historyIndex]) {
+            historyStack[historyIndex] = JSON.parse(JSON.stringify(seeded));
+          }
+        } finally {
+          isUpdatingUndoRedo = wasSuppressed;
+        }
+
+        // Sequential per container: the adopt UPDATE must not go out before the
+        // INSERT it depends on, or `items_project_id_fkey` rejects it — the
+        // composite key means a bad id takes the whole statement down.
+        //
+        // A REFUSED INSERT IS ROLLED BACK, exactly as a hand-made one is. Two
+        // tabs opening a first run both read the latch as false and both plan
+        // the same names; the second one's insert hits the unique index, and
+        // without this the tab keeps six containers that do not exist — and the
+        // first item filed into one is rejected by the composite FK and lost.
+        for (const project of projects) {
+          dbCreateProject(userId, project)
+            .then(() => adoptContainerMembers(userId, 'project_id', project.id, project.name))
+            .catch((error) => rollbackSeedContainer(error, 'project', project.id, project.name));
+        }
+        for (const group of groups) {
+          dbCreateHabitGroup(userId, group)
+            .then(() => adoptContainerMembers(userId, 'group_id', group.id, group.name))
+            .catch((error) => rollbackSeedContainer(error, 'group', group.id, group.name));
+        }
+
+        return 'committed';
       },
 
       updateProject: (id, updates) => {
         const project = get().projects.find((p) => p.id === id);
         setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
+        // THE RENAME FAN-OUT (migration 027). Members hold the name for display
+        // and the id for identity; renaming has to move the name on every one of
+        // them or the container silently empties. Keyed on projectId, so a
+        // member whose text drifted still follows and a same-named stranger does
+        // not. Guarded on the name actually changing — an emoji or colour edit
+        // arrives through this same action.
+        const renamedTo =
+          updates.name !== undefined && project && updates.name !== project.name
+            ? updates.name
+            : null;
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type !== 'habit' && i.projectId === id
+                    ? { ...i, project: renamedTo }
+                    : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
+        if (userId) {
+          // CHAINED, not fired side by side, and this is the safety net under
+          // `takenBy`. That guard can only see LIVE projects — the store never
+          // loads soft-deleted ones — while projects_user_id_name_key is a
+          // plain unique index that spans them. So renaming onto a TRASHED
+          // project's name passes the guard, and the two writes do not fail
+          // together: the container UPDATE raises 23505 while the member
+          // fan-out touches no unique index and succeeds. The container would
+          // keep its old name while every member claimed the new one.
+          //
+          // Sequencing them turns that corruption into an ordinary optimistic
+          // update that reverts on reload, which is the failure mode every
+          // other write in this store already has. A better message needs the
+          // trashed names, which arrive with the Trash in Phase 4.
+          const write = dbUpdateProject(userId, id, updates);
+          (renamedTo
+            ? write.then(() => {
+                // A ROUND TRIP HAS PASSED, so re-check before firing. Chaining
+                // fixed the split write but moved this dispatch AFTER undo's:
+                // undo restores the old name with plain per-item writes and no
+                // fan-out of its own, so a ⌘Z landing inside this window used to
+                // be overwritten here — the container reverted while every
+                // member kept the name the user had just undone, and unlike an
+                // ordinary optimistic write that state survives a reload.
+                if (get().projects.find((p) => p.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'project_id', id, renamedTo);
+              })
+            : write
+          ).catch(console.error);
+        }
       },
 
       removeProject: (id) => {
@@ -2097,7 +2672,26 @@ export const usePlannerStore = create<PlannerStore>()(
             // items.project is plain text with no FK and no trigger, so a
             // reload re-reads the dead name. Name-referenced containers are the
             // documented parked limitation (migration 024).
-            i.type !== 'habit' && i.project === project?.name ? { ...i, project: undefined } : i
+            // Both halves, or the store contradicts itself: an item reading
+            // unfiled while still carrying the id would follow the container's
+            // next rename straight back into a project it had left.
+            //
+            // The DB row keeps BOTH on purpose — deleteProject only stamps
+            // deleted_at, so the link survives for a Trash restore to reconnect
+            // (Phase 4). That in-session/persisted asymmetry is pre-existing and
+            // unchanged here; 027 makes fixing it possible, it does not fix it.
+            //
+            // `project &&` guards the whole disjunction, not just the name half:
+            // an id that is not in the store leaves `project` undefined, and
+            // `i.projectId === project?.id` then reads `undefined === undefined`
+            // and unfiles every item that never had an id — which is all of them
+            // before 027's backfill reaches an account.
+            i.type !== 'habit' &&
+            project &&
+            (i.projectId === project.id ||
+              (i.project && sameContainerName('project', i.project, project.name)))
+              ? { ...i, project: undefined, projectId: undefined }
+              : i
           )),
         }));
 
@@ -2105,8 +2699,13 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbDeleteProject(userId, id).catch(console.error);
       },
 
+      // These three, and every identity lookup below, ask the container registry
+      // whether this kind folds rather than spelling a comparison. Projects do
+      // not fold, so they are `===` in effect — written this way so the policy
+      // has one home and the two kinds read the same, not two idioms whose
+      // difference you have to already know about.
       getProjectEmoji: (name) => {
-        const project = get().projects.find((p) => p.name === name);
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
         return project?.emoji || '';
       },
 
@@ -2114,12 +2713,12 @@ export const usePlannerStore = create<PlannerStore>()(
       // name-hash ramp remains the no-choice default, so nothing changes for
       // projects that never picked one.
       getProjectColor: (name) => {
-        const project = get().projects.find((p) => p.name === name);
-        return project?.color || accentColorForName(name);
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
+        return project?.color || accentColorForName(foldContainerName('project', name));
       },
 
       getProject: (name) => {
-        return get().projects.find((p) => p.name === name);
+        return get().projects.find((p) => sameContainerName('project', p.name, name));
       },
 
       // TASK-LIKE, not 'task'. These three used findItem(id, 'task') and wrote
@@ -2148,7 +2747,9 @@ export const usePlannerStore = create<PlannerStore>()(
           if (!task || !task.project) return state;
           dbType = dbTypeOf(task);
 
-          const project = state.projects.find((p) => p.name === task.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, task.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           taskUpdates = {
@@ -2184,7 +2785,9 @@ export const usePlannerStore = create<PlannerStore>()(
           );
           if (!firstTask || !firstTask.project) return state;
 
-          const project = state.projects.find((p) => p.name === firstTask.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, firstTask.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           return projectItems(state.items.map((i) => {
@@ -2237,26 +2840,59 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addHabitGroup: (name, emoji, color) => {
-        const normalized = name.toLowerCase();
-        const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
+        const alreadyExists = get().habitGroups.some((g) => sameContainerName('group', g.name, name));
         if (alreadyExists) return;
+        // Labelled at last: this create has always logged as "Unknown action"
+        // while its own delete was named, so the history popover could show you
+        // a group being removed and never how it arrived. Not in
+        // SIGNIFICANT_ACTIONS, so no undo toast — same as `Add project:`.
+        setNextActionLabel(`Add habit group: ${name}`);
 
         const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
         set((state) => ({ habitGroups: [...state.habitGroups, group] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateHabitGroup(userId, group).catch(console.error);
+        if (userId) {
+          dbCreateHabitGroup(userId, group).catch((error) => {
+            undoFailedCreate(error, entryId, 'group', group.id, name);
+          });
+        }
       },
 
       updateHabitGroup: (id, updates) => {
+        const group = get().habitGroups.find((g) => g.id === id);
+        // See updateProject — the same fan-out, for the same reason.
+        const renamedTo =
+          updates.name !== undefined && group && updates.name !== group.name
+            ? updates.name
+            : null;
         set((state) => ({
           habitGroups: state.habitGroups.map((g) =>
             g.id === id ? { ...g, ...updates } : g
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type === 'habit' && i.groupId === id ? { ...i, group: renamedTo } : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
+        if (userId) {
+          // Chained, and re-checked on resume, for the same two reasons as
+          // updateProject — see the notes there.
+          const write = dbUpdateHabitGroup(userId, id, updates);
+          (renamedTo
+            ? write.then(() => {
+                if (get().habitGroups.find((g) => g.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'group_id', id, renamedTo);
+              })
+            : write
+          ).catch(console.error);
+        }
       },
 
       removeHabitGroup: (id) => {
@@ -2268,9 +2904,29 @@ export const usePlannerStore = create<PlannerStore>()(
         setNextActionLabel(`Delete habit group: ${group?.name || 'Unknown'}`);
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
+          // Folded, unlike every version before A′. `makeAddDraft` writes a
+          // lowercase 'personal' against the seeded 'Personal' whenever the
+          // groups list has not loaded yet, so `i.group === group.name` left
+          // exactly those habits pointing at a group that no longer exists —
+          // the orphan this reassignment is here to prevent.
           ...projectItems(state.items.map((i) =>
-            i.type === 'habit' && i.group === group?.name
-              ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
+            // Reassigns rather than unassigns — see the confirm copy, which
+            // names the destination. The id moves with the name (027): a
+            // destination that exists as a row hands over its id, and the
+            // 'Personal' fallback resolves to undefined when no such row exists,
+            // which is the honest answer for an account whose default groups
+            // were never persisted.
+            //
+            // `group &&` guards the whole disjunction for the same reason
+            // removeProject's does: without it an unknown id makes
+            // `i.groupId === group?.id` true for every habit not yet linked.
+            i.type === 'habit' &&
+            group &&
+            (i.groupId === group.id || sameContainerName('group', i.group, group.name))
+              ? (() => {
+                  const dest = state.habitGroups.find((g) => g.id !== id);
+                  return { ...i, group: dest?.name || 'Personal', groupId: dest?.id };
+                })()
               : i
           )),
         }));
@@ -2279,15 +2935,152 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbDeleteHabitGroup(userId, id).catch(console.error);
       },
 
+      restoreFromTrash: (entry) => {
+        const userId = get().userId;
+        const state = get();
+
+        /**
+         * The next state, computed BEFORE anything is labelled.
+         *
+         * TRAP A — an armed label with no state change. setNextActionLabel
+         * writes a module-level variable that only saveToHistory consumes, and
+         * saveToHistory only runs when the subscriber sees the snapshot JSON
+         * actually move. So labelling a restore that turns out to be a no-op
+         * (the row is already back — a double-click, a stale bin) leaves
+         * "Restore project: Work" armed, and the user's next unrelated edit is
+         * logged, undone and receipted under that name. Returning early here,
+         * before the label, is what makes that unreachable.
+         */
+        const next = (() => {
+          switch (entry.kind) {
+            case 'item': {
+              const item = entry.entity as Item;
+              if (state.items.some((i) => i.id === item.id)) return null;
+              // The co-deleted subtasks land in the SAME projection rebuild —
+              // db.restoreItem's cascade puts them back in the database, and a
+              // parent that reappeared with an empty checklist until the next
+              // reload would read as the subtasks having been lost.
+              const back = [item, ...(entry.children ?? [])].filter(
+                (i) => !state.items.some((existing) => existing.id === i.id)
+              );
+              if (back.length === 0) return null;
+              return projectItems([...state.items, ...back]);
+            }
+            case 'project': {
+              const project = entry.entity as Project;
+              if (state.projects.some((p) => p.id === project.id)) return null;
+              // Members re-file in the same set(). The link never left the
+              // database — removeProject clears the store's copy and writes
+              // nothing to items — so this is the store catching up with what a
+              // reload would have shown anyway, not a new claim about the data.
+              //
+              // KNOWN LIMIT, and it is the price of doing this at all: ⌘Z after
+              // a restore goes through applyHistoryState, whose per-item diff
+              // sees {project: undefined, projectId: undefined} against the
+              // pre-restore snapshot and writes both as NULL. So undoing a
+              // restore does not merely re-bin the container — it also severs
+              // the DB link the NEXT restore would have reconnected, and a
+              // second trip through the Trash returns an empty container. The
+              // gesture is rare (you have just deliberately restored the thing)
+              // and the outcome still matches what the delete confirm promised
+              // — "they just stop being filed under Work" — so it is accepted
+              // rather than papered over. Fixing it properly means teaching the
+              // history diff that a container's membership is the container's
+              // to own, which is a change to undo, not to this action.
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                projects: [...state.projects, project],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type !== 'habit'
+                          ? { ...i, project: project.name, projectId: project.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'group': {
+              const group = entry.entity as HabitGroupType;
+              if (state.habitGroups.some((g) => g.id === group.id)) return null;
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                habitGroups: [...state.habitGroups, group],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type === 'habit'
+                          ? { ...i, group: group.name, groupId: group.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'routine': {
+              const routine = entry.entity as Routine;
+              if (state.routines.some((r) => r.id === routine.id)) return null;
+              // itemIds arrive already hydrated from the join tables — see
+              // listDeleted on why an empty array here would hard-delete the
+              // very membership the soft delete preserved.
+              return { routines: [...state.routines, routine] };
+            }
+            case 'program': {
+              const program = entry.entity as Program;
+              if (state.programs.some((p) => p.id === program.id)) return null;
+              return { programs: [...state.programs, program] };
+            }
+          }
+        })();
+        if (!next) return;
+
+        setNextActionLabel(`Restore ${TRASH_NOUNS[entry.kind]}: ${entry.name}`);
+
+        /**
+         * TRAP B — exactly ONE set(). A second one produces a second history
+         * entry that the label has already been spent on, so it logs as
+         * "Unknown action" and ⌘Z undoes only half the restore: the container
+         * comes back trashed while its members stay re-filed. Every slice this
+         * touches is in the object above for that reason.
+         *
+         * A restored container releases its members' suppression, so this rides
+         * withReleaseGrace exactly as removeRoutine and updateRoutine do.
+         */
+        if (entry.kind === 'routine' || entry.kind === 'program') {
+          withReleaseGrace(() => set(next));
+        } else {
+          set(next);
+        }
+
+        if (!userId) return;
+        switch (entry.kind) {
+          case 'item':
+            dbRestoreItem(entry.id, itemDbType(entry.entity as Item)).catch(console.error);
+            break;
+          case 'project':
+            dbRestoreProject(userId, entry.id).catch(console.error);
+            break;
+          case 'group':
+            dbRestoreHabitGroup(userId, entry.id).catch(console.error);
+            break;
+          case 'routine':
+            dbRestoreRoutine(userId, entry.id).catch(console.error);
+            break;
+          case 'program':
+            dbRestoreProgram(userId, entry.id).catch(console.error);
+            break;
+        }
+      },
+
       getHabitGroupEmoji: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         return group?.emoji || '';
       },
 
       getHabitGroupColor: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const normalized = foldContainerName('group', name);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         if (group?.color) return group.color;
 
         // Theme-aware tokens (app/globals.css). Stored group.color above passes
@@ -2304,8 +3097,11 @@ export const usePlannerStore = create<PlannerStore>()(
 
       cleanupOrphanedReferences: () => {
         const state = get();
-        const projectNames = new Set(state.projects.map(p => p.name));
-        const groupNames = new Set(state.habitGroups.map(g => g.name));
+        // Keyed on the FOLDED name so membership answers the same question the
+        // rest of the app does: a habit stored as 'personal' is not an orphan
+        // while a group called 'Personal' exists.
+        const projectNames = new Set(state.projects.map((p) => foldContainerName('project', p.name)));
+        const groupNames = new Set(state.habitGroups.map((g) => foldContainerName('group', g.name)));
 
         set(projectItems(state.items.map((i) => {
           // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
@@ -2317,10 +3113,10 @@ export const usePlannerStore = create<PlannerStore>()(
           // wants exactly this sweep once containers move to ids. If you wire
           // it up, note that it only mutates state: persisting the repair needs
           // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
-          if (i.type !== 'habit' && i.project && !projectNames.has(i.project)) {
+          if (i.type !== 'habit' && i.project && !projectNames.has(foldContainerName('project', i.project))) {
             return { ...i, project: undefined };
           }
-          if (i.type === 'habit' && !groupNames.has(i.group)) {
+          if (i.type === 'habit' && !groupNames.has(foldContainerName('group', i.group))) {
             return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
           }
           return i;

@@ -2,15 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { deriveDayItems, type DayItemsInput } from '@/lib/day-items';
 import {
   EMPTY_VIEW_FILTERS,
-  NO_CONTAINER,
   NO_PRIORITY,
-  containerRef,
   containerRefOf,
   passesContainerFilter,
   passesPriorityFilter,
   typeNameOf,
   type ViewFilters,
 } from '@/lib/filters';
+import { NO_CONTAINER, containerRef } from '@/lib/container-registry';
 import type { Habit, Item, Project, Task } from '@/lib/planner-types';
 
 /**
@@ -26,7 +25,6 @@ import type { Habit, Item, Project, Task } from '@/lib/planner-types';
 
 const TZ = 'America/New_York';
 const DATE_STR = '2026-07-08'; // a Wednesday
-const DATE = new Date('2026-07-08T12:00:00');
 
 const task = (over: Partial<Task>): Task =>
   ({
@@ -59,7 +57,6 @@ const input = (over: Partial<DayItemsInput>): DayItemsInput => ({
   habits: [],
   projects: [],
   dateStr: DATE_STR,
-  date: DATE,
   timezone: TZ,
   typeFilter: 'all',
   showCompletedTasks: true,
@@ -174,8 +171,11 @@ describe('explicit None values', () => {
 
 describe('habit groups compare case-insensitively, projects exactly', () => {
   it("matches 'personal' against 'Personal'", () => {
-    // makeAddDraft seeds a lowercase 'personal'; DEFAULT_HABIT_GROUPS ships
-    // capitalised 'Personal'. Both exist in real data.
+    // makeAddDraft falls back to a lowercase 'personal' when an account has no
+    // groups, and 119 habits on the live database carry a capitalised
+    // 'Personal' from before that. Both exist in real data, which is why the
+    // comparison folds. (The starter set no longer ships either — Phase 6
+    // renamed the defaults — but the rows that do are still out there.)
     const lower = habit({ group: 'personal' });
     const upper = habit({ group: 'Personal' });
 

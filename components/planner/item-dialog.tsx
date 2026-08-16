@@ -81,6 +81,8 @@ import {
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
+import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 /**
@@ -490,6 +492,23 @@ export function ItemDialog({
     updateRoutine,
     updateProgram,
   } = usePlannerStore();
+
+  /**
+   * The names a trashed container is still holding.
+   *
+   * Gated on `state`, and that is not only about cost. BOTH instances of this
+   * component — app-shell's modal and desktop-shell's docked panel — are mounted
+   * for the entire session, so an ungated fetch here is four SELECTs during
+   * first paint for a create row nobody has opened. Asking on open instead also
+   * makes the answer FRESHER than a mount-time read could be, which is what the
+   * previous note here was apologising for.
+   *
+   * Still not a guarantee: a container binned while this is open is invisible to
+   * the fetched list. The union in the hook covers same-session deletes, and the
+   * store's rollback (undoFailedCreate) covers the rest. This is the polite
+   * refusal; that is the net.
+   */
+  const trashedNames = useTrashedNames({ enabled: !!state });
 
   const router = useRouter();
   const pathname = usePathname();
@@ -1002,10 +1021,32 @@ export function ItemDialog({
       });
     };
 
-    const createContainer = () => {
+    /**
+     * Returns false when the name was refused, so the caller keeps the popover
+     * open — a field that clears and closes on a create that did not happen is
+     * how this bug stayed invisible.
+     *
+     * The bin is consulted here for the MESSAGE. `addProject` now rolls a
+     * refused create back on its own, so the item is never lost either way; but
+     * the rollback arrives a round trip later as a toast, and a container you
+     * watched appear and then vanish is a worse answer than one that was never
+     * accepted. See use-trashed-names.ts for why the store cannot check this
+     * itself: the lookup is async and the action is not.
+     */
+    const createContainer = (): boolean => {
       const name = d.newContainer.name.trim();
-      if (!name) return;
-      if (config.containerKind === 'projects') addProject(name, d.newContainer.icon);
+      if (!name) return false;
+      const projects = config.containerKind === 'projects';
+      const held = heldByTrash(
+        projects ? trashedNames.projects : trashedNames.groups,
+        name,
+        projects ? 'project' : 'habit group'
+      );
+      if (held) {
+        toast.error(held);
+        return false;
+      }
+      if (projects) addProject(name, d.newContainer.icon);
       else addHabitGroup(name, d.newContainer.icon);
       patch({
         container: name,
@@ -1015,6 +1056,7 @@ export function ItemDialog({
           icon: makeIconToken(config.form.newContainerIcon),
         },
       });
+      return true;
     };
 
     // A dated item with no bucket still lands somewhere — 'anytime' — which is
@@ -1112,16 +1154,16 @@ export function ItemDialog({
                     onKeyDown={(e) => {
                       if (e.key !== 'Enter') return;
                       e.preventDefault();
-                      createContainer();
-                      close();
+                      // Closing only on acceptance: a refused name has to stay
+                      // on screen next to the message explaining it.
+                      if (createContainer()) close();
                     }}
                     data-sub-input
                   />
                   <AddIconButton
                     size="input"
                     onClick={() => {
-                      createContainer();
-                      close();
+                      if (createContainer()) close();
                     }}
                     aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
                   />
@@ -1222,13 +1264,13 @@ export function ItemDialog({
                     close();
                     // Replaces this dialog rather than stacking on it —
                     // openDialog swaps the single active slot. Same escape the
-                    // type chip's "Manage types…" row makes.
-                    useUIStore.getState().openDialog({ type: 'manage-collections' });
+                    // type chip's "Organize types…" row makes.
+                    useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
                   }}
                   testId="item-dialog-routine-manage"
                 >
                   <Plus className="size-3.5" />
-                  Manage routines…
+                  Organize routines…
                 </ChipOption>
               </div>
             )}
@@ -1272,14 +1314,14 @@ export function ItemDialog({
                   onSelect={() => {
                     close();
                     useUIStore.getState().openDialog({
-                      type: 'manage-collections',
-                      tab: 'programs',
+                      type: 'organize',
+                      section: 'programs',
                     });
                   }}
                   testId="item-dialog-program-manage"
                 >
                   <Plus className="size-3.5" />
-                  Manage programs…
+                  Organize programs…
                 </ChipOption>
               </div>
             )}
@@ -1856,11 +1898,11 @@ export function ItemDialog({
                     // swaps the single active slot.
                     useUIStore
                       .getState()
-                      .openDialog({ type: 'manage-categories', tab: 'types' });
+                      .openDialog({ type: 'organize', section: 'types' });
                   }}
                 >
                   <Plus className="size-3.5" />
-                  Manage types…
+                  Organize types…
                 </ChipOption>
               </>
             )}

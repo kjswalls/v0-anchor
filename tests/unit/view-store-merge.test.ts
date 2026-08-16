@@ -1,15 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useViewStore } from '@/lib/view-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  containerRef,
-  isEmptyFilters,
-  normalizeFilters,
-  projectNamesFrom,
-  groupNamesFrom,
-  containerName,
-  containerKindOf,
-} from '@/lib/filters';
+import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { EMPTY_VIEW_FILTERS, isEmptyFilters, normalizeFilters } from '@/lib/filters';
+import { containerKindOf, containerName, containerRef, namesOfKind } from '@/lib/container-registry';
+
+const projectNamesFrom = (refs: string[]) => namesOfKind(refs, 'project');
+const groupNamesFrom = (refs: string[]) => namesOfKind(refs, 'group');
 
 /**
  * The rehydration gap the e2e suite structurally cannot cover.
@@ -101,6 +97,54 @@ describe('the persist merge, through a real rehydrate', () => {
 
     expect(s.canvasFilters.containers).toEqual([]);
     expect(s.braindumpFilters.containers).toEqual([]);
+  });
+
+  it("drops a persisted 'status' grouping, which Phase 5a deleted from the union", async () => {
+    // It WAS a legal GroupBy and is sitting in real payloads. Left alone it
+    // falls through groupRows' branches to the container arm, so the day would
+    // silently section by project — while the Grouping row rendered "None" over
+    // it (no option matches) and the trigger counted it as one active clause.
+    seed({ canvasGroupBy: 'status' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('none');
+  });
+
+  it('keeps a grouping value that is still legal', async () => {
+    // The coercion must not be a reset in disguise.
+    seed({ canvasGroupBy: 'routine' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('routine');
+  });
+});
+
+describe('adoptLegacyViewPrefs — the second door a stale grouping comes through', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useViewStore.setState({ adoptedLegacy: false, canvasGroupBy: 'none' });
+  });
+
+  it("coerces 'status' out of the planner-store mirror", () => {
+    // planner-storage partializes `groupBy`, so a blob written before Phase 5a
+    // rehydrates planner-store with it and this copies it across on first
+    // mount. The declared type says that cannot happen; the stored JSON
+    // disagrees, which is the whole reason a runtime guard exists.
+    usePlannerStore.setState({ groupBy: 'status' as never });
+
+    adoptLegacyViewPrefs();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('none');
+  });
+
+  it('still adopts a legal one', () => {
+    usePlannerStore.setState({ groupBy: 'priority' });
+
+    adoptLegacyViewPrefs();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('priority');
   });
 });
 
@@ -209,5 +253,106 @@ describe('isEmptyFilters', () => {
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, containers: ['project:Work'] })).toBe(false);
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, priorities: ['high'] })).toBe(false);
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, hideFinished: true })).toBe(false);
+  });
+});
+
+/**
+ * A rename now has to reach the PERSISTED filter refs (migration 027 / Phase 0b).
+ *
+ * `containers` holds `project:Work` — a NAME, in localStorage, from before
+ * containers had stable ids. Renaming was parked until 027, so these could never
+ * go stale; now they can, and a stale ref does not degrade gracefully.
+ * `passesContainerFilter` matches nothing, so the canvas or the braindump
+ * empties completely and the only clue on screen is a filter chip naming a
+ * project that no longer exists.
+ */
+describe('renameContainerRef follows a container rename', () => {
+  beforeEach(() => {
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Wellness'] },
+      braindumpFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work'] },
+    });
+  });
+
+  it('rewrites the ref in both filter sets', () => {
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).not.toContain('project:Work');
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:Deep Work']);
+  });
+
+  it('leaves refs of the other kind alone', () => {
+    // The group must share the project's NAME, or the assertion passes against a
+    // kind-blind implementation too: `group:Wellness` could never be confused
+    // with a project called Work no matter how the matching worked, so the
+    // earlier fixture proved nothing. `group:Work` is the only shape that can
+    // catch a rewrite that ignores the prefix.
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Work'] },
+    });
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    expect(useViewStore.getState().canvasFilters.containers).toEqual([
+      'project:Deep Work',
+      'group:Work',
+    ]);
+  });
+
+  it('does not leave a duplicate when both were selected', () => {
+    useViewStore.setState({
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'project:Home'] },
+    });
+    useViewStore.getState().renameContainerRef('project', 'Work', 'Home');
+    expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:Home']);
+  });
+
+  it('is inert when nothing referenced the old name', () => {
+    const before = useViewStore.getState().canvasFilters;
+    useViewStore.getState().renameContainerRef('project', 'Untouched', 'Renamed');
+    expect(useViewStore.getState().canvasFilters).toBe(before);
+  });
+
+  /**
+   * The remap is driven by the STORE, not by the rename call site — which is
+   * what makes undo work. Fired optimistically from the console it had no
+   * inverse: undo restored the container's old name and the ref kept the new
+   * one, so one ⌘Z after a rename emptied the canvas. Worse than the stale ref
+   * it was added to prevent, because localStorage survives the reload that
+   * would otherwise have repaired it.
+   */
+  it('follows a rename made through the planner store', () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Deep Work', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Deep Work');
+  });
+
+  it('follows it BACK when the rename is reverted', () => {
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Deep Work', emoji: 'icon:Briefcase' }],
+    });
+    // What undo does: same id, previous name.
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Work');
+    expect(useViewStore.getState().canvasFilters.containers).not.toContain('project:Deep Work');
+  });
+
+  it('ignores a DIFFERENT container that merely arrives holding the old name', () => {
+    // Keyed on the id, so deleting Work and creating an unrelated project later
+    // named Work does not retarget a ref that belonged to the first one.
+    usePlannerStore.setState({
+      projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+    usePlannerStore.setState({
+      projects: [{ id: 'pr2', name: 'Something Else', emoji: 'icon:Briefcase' }],
+    });
+    expect(useViewStore.getState().canvasFilters.containers).toContain('project:Work');
   });
 });

@@ -15,6 +15,23 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 /**
+ * jsdom implements no Pointer Capture API, and Radix Select's trigger calls
+ * `target.hasPointerCapture(e.pointerId)` on pointerdown before deciding whether
+ * the gesture is a click or a drag-to-select. A missing method THROWS, and it
+ * throws inside React's dispatch, so the error surfaces as an unhandled
+ * exception with the test still reporting green — the menu simply never opens
+ * and every assertion about its contents quietly checks nothing.
+ *
+ * Reporting `false` puts every gesture on the click path, which is the one a
+ * test drives.
+ */
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+
+/**
  * jsdom implements no window.matchMedia either, and it is not optional chaining
  * away — `hooks/use-mobile.ts` and `hooks/use-media-query.ts` call it directly
  * in an effect, so ANY component that renders a ResponsiveModal, the desktop

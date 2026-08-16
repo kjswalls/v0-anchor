@@ -51,12 +51,8 @@ import { addDays, subDays } from 'date-fns';
 
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
-import {
-  EMPTY_VIEW_FILTERS,
-  containerRef,
-  isEmptyFilters,
-  projectNamesFrom,
-} from '../filters';
+import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
+import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, openAddDialog } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
@@ -73,12 +69,7 @@ import { programStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
-import {
-  CANVAS_GROUP_BY_OPTIONS,
-  LAYOUT_OPTIONS,
-  TYPE_OPTIONS,
-  type CanvasGroupBy,
-} from '../view-options';
+import { CANVAS_GROUP_BY_OPTIONS, LAYOUT_OPTIONS, TYPE_OPTIONS } from '../view-options';
 import {
   assignBucket,
   isCancelled,
@@ -92,7 +83,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { Priority, TimeBucket, Routine, Program } from '../planner-types';
+import type { GroupBy, Priority, TimeBucket, Routine, Program } from '../planner-types';
 
 /**
  * The command registry.
@@ -552,7 +543,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.groupBy',
     label: 'Group by',
-    description: 'Priority, Time bucket and Routine reshape the List layout; Buckets honours Project',
+    description: 'Sections every layout — Buckets groups its untimed rows, Schedule its Anytime strip',
     group: 'view',
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
@@ -561,9 +552,9 @@ export const STATIC_COMMANDS: Command[] = [
       kind: 'enum',
       placeholder: 'Group by',
       flatten: true,
-      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy as CanvasGroupBy),
+      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy),
     },
-    run: (_ctx, arg) => view().setCanvasGroupBy(arg as CanvasGroupBy),
+    run: (_ctx, arg) => view().setCanvasGroupBy(arg as GroupBy),
   },
   {
     id: 'view.filterProject',
@@ -580,7 +571,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Never flattened: names are free text, so flattening lets a project
       // called "Today" or "List" outrank the built-in command of that name.
       options: () => {
-        const active = projectNamesFrom(view().canvasFilters.containers);
+        const active = namesOfKind(view().canvasFilters.containers, 'project');
         return planner().projects.map((p) => ({
           value: p.name,
           label: p.name,
@@ -1004,25 +995,28 @@ export const STATIC_COMMANDS: Command[] = [
     },
   },
   {
+    // The id and the aliases are FROZEN even though the surface was renamed:
+    // ids are the stable handle the e2e suite and command-usage ranking key on,
+    // and an alias is muscle memory. Only the label follows the rename.
     id: 'app.categories',
-    label: 'Manage projects & groups',
+    label: 'Organize projects & groups',
     group: 'app',
     icon: FolderOpen,
-    keywords: 'projects groups categories manage folders edit',
+    keywords: 'projects groups categories manage organize folders edit labels',
     aliases: ['projects', 'groups'],
-    run: () => useUIStore.getState().openDialog({ type: 'manage-categories' }),
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'projects' }),
   },
   {
     id: 'app.collections',
-    label: 'Manage routines & programs',
+    label: 'Organize routines & programs',
     group: 'app',
     icon: RepeatIcon,
-    keywords: 'routines programs collections manage group pause',
+    keywords: 'routines programs collections manage organize group pause',
     aliases: ['routines'],
-    // Not gated on collectionsAvailable: the dialog explains the situation
+    // Not gated on collectionsAvailable: the console explains the situation
     // better than a missing row does, and a row that silently disappears reads
     // as a broken palette rather than an unavailable feature.
-    run: () => useUIStore.getState().openDialog({ type: 'manage-collections' }),
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'routines' }),
   },
   {
     id: 'app.shortcuts',

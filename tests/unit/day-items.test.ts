@@ -4,7 +4,6 @@ import type { Task, Habit, Project } from '@/lib/planner-types';
 
 const TZ = 'America/New_York';
 const DATE_STR = '2026-07-08'; // a Wednesday
-const DATE = new Date('2026-07-08T12:00:00');
 
 function task(overrides: Partial<Task>): Task {
   return {
@@ -36,7 +35,6 @@ function input(overrides: Partial<DayItemsInput>): DayItemsInput {
     habits: [],
     projects: [],
     dateStr: DATE_STR,
-    date: DATE,
     timezone: TZ,
     typeFilter: 'all',
     showCompletedTasks: true,
@@ -132,5 +130,63 @@ describe('deriveDayItems', () => {
     const h = habit({ timeBucket: 'anytime' });
     const result = deriveDayItems(input({ tasks: [t], habits: [h] }));
     expect(result.totalCount).toBe(2);
+  });
+});
+
+/**
+ * A project block's weekday comes from `dateStr`, the same string everything
+ * else on the day is resolved against.
+ *
+ * It used to come from a `date: Date` passed beside it, read with `getDay()` —
+ * which answers in the BROWSER's zone, while `dateStr` and `shouldShowOnDate`
+ * answer in the USER's. When the two differed the same column was Thursday for
+ * a task and Wednesday for a block, so a Thursday block rendered on Wednesday.
+ *
+ * What fixed it is structural: `DayItemsInput` no longer HAS a Date, so the two
+ * cannot disagree. These cases pin the resolution itself — they would have
+ * passed before the fix too, given a Date that agreed with its dateStr, and
+ * that is the point. There is no longer a way to hand it one that doesn't.
+ */
+describe('deriveDayItems — the weekday comes from dateStr', () => {
+  const block = (over: Record<string, unknown>) =>
+    ({
+      id: 'p',
+      name: 'Block',
+      emoji: '🧱',
+      startTime: '09:00',
+      timeBucket: 'morning',
+      ...over,
+    }) as unknown as Project;
+
+  const on = (dateStr: string, project: Project) =>
+    deriveDayItems(input({ dateStr, projects: [project] })).recurringProjects.length === 1;
+
+  it('reads a custom weekday set off the calendar date', () => {
+    // 2026-08-13 is a Thursday (weekday 4) in every zone that calls it that,
+    // because the only thing being asked is the string.
+    expect(on('2026-08-13', block({ repeatFrequency: 'custom', repeatDays: [4] }))).toBe(true);
+    expect(on('2026-08-13', block({ repeatFrequency: 'custom', repeatDays: [3] }))).toBe(false);
+  });
+
+  it('splits weekdays from weekends on the same rule', () => {
+    expect(on('2026-08-15', block({ repeatFrequency: 'weekends' }))).toBe(true); // Saturday
+    expect(on('2026-08-15', block({ repeatFrequency: 'weekdays' }))).toBe(false);
+    expect(on('2026-08-14', block({ repeatFrequency: 'weekdays' }))).toBe(true); // Friday
+  });
+
+  it('clamps a monthly block to the last day of a SHORT month', () => {
+    // The other half of the removed Date: `lastDayOfMonth` was built with
+    // `new Date(y, m + 1, 0)` off the same local-zone Date object.
+    const thirty_first = block({ repeatFrequency: 'monthly', repeatMonthDay: 31 });
+    expect(on('2026-02-28', thirty_first)).toBe(true);
+    expect(on('2026-02-27', thirty_first)).toBe(false);
+    expect(on('2026-03-31', thirty_first)).toBe(true);
+    expect(on('2026-03-30', thirty_first)).toBe(false);
+  });
+
+  it('handles a leap February', () => {
+    const thirty_first = block({ repeatFrequency: 'monthly', repeatMonthDay: 31 });
+    expect(on('2028-02-29', thirty_first)).toBe(true);
+    expect(on('2028-02-28', thirty_first)).toBe(false);
   });
 });

@@ -21,8 +21,8 @@
  *      is a resolver DELTA — flip the switch in a copy of the world, re-run
  *      `inactiveItemIdsOn`, diff. The same delta drives the hover preview, so
  *      the number and the ghost can never disagree about what is about to
- *      happen. (The manager's attach confirm already reasons this way; see
- *      `wouldHide` in manage-collections-dialog.tsx.)
+ *      happen. (The Organize console's attach confirm already reasons this way;
+ *      see `wouldHide` in components/planner/organize/sections/programs.tsx.)
  *
  * See memory/plans/programs-routines.md, Phase 5.
  */
@@ -34,11 +34,24 @@ import {
   isPausedOn,
   isProgramActiveOn,
   programResumeDate,
+  routineStandingOn,
   type ActivationContext,
+  type RoutineStanding,
 } from './active';
 import type { Item, Program, Routine } from './planner-types';
+import type { GateKind } from './container-registry';
 
-export type ScopeKind = 'routine' | 'program';
+/**
+ * The rail's rows are exactly the GATE containers — the kinds whose membership
+ * switches work off rather than describing it.
+ *
+ * Aliased rather than re-declared so the seam is one fact: a kind that starts
+ * gating gets a rail row by declaring `role: 'gate'`, and a classify kind can
+ * never acquire one by someone widening a string union here. This is the type
+ * half of what `ActivationContext` enforces at runtime by taking only routines
+ * and programs.
+ */
+export type ScopeKind = GateKind;
 
 export interface ScopeRow {
   kind: ScopeKind;
@@ -180,13 +193,11 @@ function programStateLine(program: Program, todayStr: string): string {
  */
 function routineStateLine(
   routine: Routine,
-  localOn: boolean,
-  effectiveOn: boolean,
-  blockers: readonly Program[],
+  standing: RoutineStanding,
   todayStr: string,
   tz: string,
 ): string {
-  if (!localOn) {
+  if (!standing.localOn) {
     return isPausedOn(routine, todayStr, tz) && routine.pausedUntil
       ? `Off · back ${formatDay(routine.pausedUntil)}`
       : 'Off';
@@ -195,17 +206,9 @@ function routineStateLine(
   // the disjunctive rule one live program carries the routine regardless of how
   // many others are off, and naming them there would report a suppression that
   // is not happening.
-  if (effectiveOn || blockers.length === 0) return 'On';
-  const soonest = [...blockers].sort((a, b) => {
-    const da = programResumeDate(a, todayStr);
-    const db = programResumeDate(b, todayStr);
-    if (da === db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    return da < db ? -1 : 1;
-  })[0];
-  const more = blockers.length - 1;
-  return `On · held with ${soonest.name}${more > 0 ? ` +${more}` : ''}`;
+  if (standing.effectiveOn || !standing.soonestBlocker) return 'On';
+  const more = standing.blockers.length - 1;
+  return `On · held with ${standing.soonestBlocker.name}${more > 0 ? ` +${more}` : ''}`;
 }
 
 /**
@@ -265,26 +268,26 @@ export function buildScopeRows(
   });
 
   const routineRows = routines.map((routine) => {
-    const localOn = !isPausedOn(routine, todayStr, tz);
-    const holders = programs.filter((p) => p.routineIds.includes(routine.id));
-    const blockers = holders.filter((p) => !isProgramActiveOn(p, todayStr));
-    // Disjunctive, exactly as in the resolver: a standalone routine answers for
-    // itself, and one held by several programs is live while ANY holder is.
-    const effectiveOn = localOn && (holders.length === 0 || blockers.length < holders.length);
+    // Shared with the Organize console's routine detail — see routineStandingOn.
+    // The two surfaces used to derive this separately and disagreed about the
+    // same routine, which is only visible with both open.
+    const standing = routineStandingOn(routine, programs, todayStr, tz);
     return finish(
       {
         kind: 'routine',
         id: routine.id,
         name: routine.name,
         icon: routine.icon,
-        localOn,
-        effectiveOn,
-        state: routineStateLine(routine, localOn, effectiveOn, blockers, todayStr, tz),
+        localOn: standing.localOn,
+        effectiveOn: standing.effectiveOn,
+        state: routineStateLine(routine, standing, todayStr, tz),
       },
       routine,
       inactiveItemIdsOn(items, todayStr, {
         ...ctx,
-        routines: routines.map((r) => (r.id === routine.id ? flippedRoutine(r, localOn) : r)),
+        routines: routines.map((r) =>
+          r.id === routine.id ? flippedRoutine(r, standing.localOn) : r
+        ),
       }),
     );
   });

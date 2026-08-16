@@ -68,7 +68,7 @@ describe('theme palettes — CSS contract', () => {
   });
 
   it('no CSS palette block exists for a slug missing from the catalog', () => {
-    const known = new Set(THEME_PALETTES.map((p) => p.value));
+    const known = new Set<string>(THEME_PALETTES.map((p) => p.value));
     for (const match of globalsCss.matchAll(/:root\[data-theme='([a-z0-9-]+)'\]/g)) {
       expect(known.has(match[1]), `CSS block for unlisted palette "${match[1]}"`).toBe(true);
     }

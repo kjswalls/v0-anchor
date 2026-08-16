@@ -200,11 +200,7 @@ export default function SettingsPage() {
       // ui-store is a module singleton and survives client-side navigation, so
       // arming the dialog before pushing lands on the planner with it already
       // open — no new prop threading through AppShell.
-      useUIStore.getState().openDialog(
-        record.action === 'manage-categories'
-          ? { type: 'manage-categories', tab: record.tab }
-          : { type: 'manage-collections', tab: record.tab }
-      );
+      useUIStore.getState().openDialog({ type: 'organize', section: record.section });
       router.push('/');
     },
     [router]

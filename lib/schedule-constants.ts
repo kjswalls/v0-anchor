@@ -108,6 +108,17 @@ export const NOW_MARKER_Z = 20;
  */
 export const WEEK_GUTTER_Z = 21;
 
+/**
+ * …and the grouping cap row sits above even the gutter.
+ *
+ * It has to out-paint everything that scrolls under it, and on Week that
+ * includes the pinned hour gutter — which is itself pinned above the now-marker
+ * and any hovered block. A cap row below the gutter would have the gutter's
+ * opaque background slide over the lane captions on the first vertical scroll,
+ * which is precisely the case the caps exist for.
+ */
+export const LANE_CAP_Z = 22;
+
 /** One line of content (12/17). A free band shorter than this cannot hold a
  *  title at all. */
 export const LINE_H = 17;

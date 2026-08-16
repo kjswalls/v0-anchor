@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
-import { isPausedOn, isProgramActiveOn } from '@/lib/active';
+import {
+  isPausedOn,
+  isProgramActiveOn,
+  programResumeDate,
+  routineStandingOn,
+} from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import type { Program, Routine } from '@/lib/planner-types';
 
@@ -93,10 +98,29 @@ export const countLive = (ids: readonly string[], live: Set<string>) =>
  * A LIVE container wears no marker at all — only the exception is labelled.
  * This is the guilt-free law (overlap-blocks decision 1): never a warning
  * colour, never a badge, never a dotted border.
+ *
+ * `programs` is optional so the callers that genuinely have no container context
+ * keep working, but the console passes it — without it this answered the LOCAL
+ * pause only, so a routine held off by a program wore no pill and read as live
+ * in the list while the detail pane beside it said held and the rail dimmed its
+ * row. Three views of one routine, two answers.
  */
-export function routinePillLabel(routine: Routine, todayStr: string, tz: string): string | null {
-  if (!isPausedOn(routine, todayStr, tz)) return null;
-  return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
+export function routinePillLabel(
+  routine: Routine,
+  todayStr: string,
+  tz: string,
+  programs?: readonly Program[],
+): string | null {
+  if (isPausedOn(routine, todayStr, tz)) {
+    return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
+  }
+  if (!programs?.length) return null;
+  // Its own switch is on and nothing is carrying it — a different sentence from
+  // "Paused", because the user did not do this and resuming is not the fix.
+  const { effectiveOn, soonestBlocker } = routineStandingOn(routine, programs, todayStr, tz);
+  if (effectiveOn || !soonestBlocker) return null;
+  const back = programResumeDate(soonestBlocker, todayStr);
+  return back ? `Held · ${formatShort(back)}` : 'Held';
 }
 
 /** The same, for a program's three ways of being off. */
@@ -170,31 +194,78 @@ export function swapMembers(ids: string[], a: string, b: string): string[] {
  * switching selection in a two-pane layout carries the PREVIOUS container's
  * half-typed draft into the next one's field.
  */
-export function useNameDraft(id: string, name: string, commit: (next: string) => void) {
+export function useNameDraft(
+  id: string,
+  name: string,
+  commit: (next: string) => void,
+  /**
+   * Returns a sentence when the typed name cannot be used, or null.
+   *
+   * Load-bearing for projects and habit groups, not decoration: both tables
+   * carry UNIQUE (user_id, name), and the two writes a rename issues do NOT
+   * fail together. `update projects set name=…` raises 23505 and is swallowed
+   * by the store's `.catch(console.error)`, while the members' fan-out — keyed
+   * on project_id, touching no unique index — SUCCEEDS. The container keeps its
+   * old name while every one of its items claims the new one, which reads as
+   * the items having moved into a different project entirely. Refusing before
+   * the write is the only place this can be caught.
+   */
+  validate?: (next: string) => string | null,
+) {
   const [draft, setDraft] = useState(name);
+  const [problem, setProblem] = useState<string | null>(null);
 
   // Adjusted during render rather than in an effect — React's documented
   // "adjusting state when a prop changes" pattern. An effect paints one frame
   // holding the PREVIOUS container's text, and that frame is live: a blur or an
   // Enter landing in it commits the old name onto the new object.
-  const source = `${id} ${name}`;
-  const [lastSource, setLastSource] = useState(source);
-  if (source !== lastSource) {
-    setLastSource(source);
+  // Compared as two values rather than joined into one key: there is then no
+  // separator to choose, and nothing a name could contain that would make two
+  // different (id, name) pairs look identical. The first version of this joined
+  // them with a template literal and the separator went in as a literal NUL —
+  // invisible in every editor, harmless at runtime, and enough to make git
+  // treat the whole file as binary and stop producing diffs for it.
+  const [last, setLast] = useState({ id, name });
+  if (last.id !== id || last.name !== name) {
+    setLast({ id, name });
     setDraft(name);
+    // The problem goes with the draft that caused it. Left behind, a refusal
+    // earned by one container is re-parented onto the next one selected — and
+    // it names a clash that container does not have.
+    setProblem(null);
   }
 
   return {
     draft,
-    setDraft,
-    reset: () => setDraft(name),
-    commit: () => {
+    problem,
+    setDraft: (next: string) => {
+      setDraft(next);
+      // Clears as they type. A problem that outlives the text that caused it
+      // reads as the field being broken rather than the name being taken.
+      if (problem) setProblem(null);
+    },
+    reset: () => {
+      setDraft(name);
+      setProblem(null);
+    },
+    /** True when the name was accepted — callers use it to decide whether to blur. */
+    commit: (): boolean => {
       const next = draft.trim();
       if (!next || next === name) {
         setDraft(name);
-        return;
+        setProblem(null);
+        return true;
       }
+      const said = validate?.(next) ?? null;
+      if (said) {
+        // The draft STAYS. Snapping back to the old name here would discard
+        // what they typed and leave nothing to correct.
+        setProblem(said);
+        return false;
+      }
+      setProblem(null);
       commit(next);
+      return true;
     },
   };
 }

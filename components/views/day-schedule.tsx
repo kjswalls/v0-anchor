@@ -21,7 +21,16 @@ import {
   PANE_TRIM,
   PANE_WRAP_PX,
 } from '@/lib/schedule-constants';
-import { layoutOverlaps, type BlockLayout, type OverlapEntry } from '@/lib/schedule-overlap';
+import {
+  bandOnly,
+  layoutOverlaps,
+  type BlockLayout,
+  type OverlapEntry,
+  type OverlapLayout,
+} from '@/lib/schedule-overlap';
+import { planLanes, isReceded } from '@/lib/schedule-lanes';
+import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
+import { LaneCapRow } from '@/components/primitives/lane-cap';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
@@ -32,6 +41,9 @@ import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
+import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -122,15 +134,32 @@ export function formatClock(totalMin: number, timeFormatStr: string, meridiem = 
  * both themes). So the marker lives in the lane, where nothing is layered over
  * it, and the hour gutter carries the reading of the clock.
  */
-export function NowMarker({ top }: { top: number }) {
+export function NowMarker({ top, lanes }: { top: number; lanes?: number[] }) {
+  // ONE diamond, a stub per lane. Not one marker per lane: the clock is a single
+  // fact about the day, and giving lane 0 alone a stub would read as "now" being
+  // a property of that group. The diamond stays on the first lane's rail, where
+  // the hour gutter's reading of the time already points.
+  const stubs = lanes?.length ? lanes : [0];
   return (
     <div
       className="pointer-events-none absolute left-0 right-0 z-[var(--now-z)]"
       style={{ top, '--now-z': NOW_MARKER_Z } as React.CSSProperties}
       aria-hidden
     >
-      <span className="absolute left-[2px] top-[-3.5px] h-[7px] w-[7px] rotate-45 bg-primary shadow-[0_0_0_1px_var(--canvas)]" />
-      <span className="absolute left-3 top-0 w-6 border-t border-primary" />
+      <span
+        className="absolute top-[-3.5px] h-[7px] w-[7px] rotate-45 bg-primary shadow-[0_0_0_1px_var(--canvas)]"
+        style={{ left: `calc(${stubs[0]}% + 2px)` }}
+      />
+      {stubs.map((leftPct, i) => (
+        // Still a 24px STUB in each lane's own channel, never a rule across the
+        // lane: a lime hairline under 80%-opacity glass composites to a dimmed
+        // olive, and lime is the one accent that is never allowed to dim.
+        <span
+          key={i}
+          className="absolute top-0 w-6 border-t border-primary"
+          style={{ left: `calc(${leftPct}% + 12px)` }}
+        />
+      ))}
     </div>
   );
 }
@@ -505,6 +534,7 @@ export function ScheduleBlock({
   variant = 'day',
   layout,
   fieldWidth,
+  receded = false,
 }: {
   entry: TimedEntry;
   gridStartMin: number;
@@ -528,6 +558,17 @@ export function ScheduleBlock({
    * existed.
    */
   layout?: BlockLayout;
+  /**
+   * Off-group while another grouping lane is focused (Phase 5b).
+   *
+   * SUBTRACTIVE, never a wrapper `opacity`. Three lime things live inside a
+   * block — the done checkbox, the multi-select mark, and the entire accent of a
+   * project-less task — and lime is the one colour in this app that never fades;
+   * `day-schedule.tsx` already refused a wrapper opacity once for exactly that.
+   * So recession is spent on the plate, the edge and the rail ink, and every lime
+   * mark inside stays at full strength.
+   */
+  receded?: boolean;
 }) {
   const {
     getProjectColor,
@@ -743,10 +784,17 @@ export function ScheduleBlock({
    * resize starts it is stale — `preview` is local state, `entry` never changes,
    * and the pass would keep describing a block that is no longer that shape for
    * the whole gesture. Dropping it mid-resize means you drag against honest
-   * full-width geometry and the pockets/columns re-form on release, which is the
-   * same reasoning that already suppresses `canExpand` below.
+   * geometry and the pockets/columns re-form on release, which is the same
+   * reasoning that already suppresses `canExpand` below.
+   *
+   * But only the TIME-DERIVED half is stale. `preview` moves a block's start and
+   * duration; it cannot move it into another lane. Dropping the whole layout used
+   * to mean dropping the band with it, and since lanes landed every block carries
+   * one — so pressing a resize handle threw the block to the field's left edge,
+   * spanning every lane, until pointer-up. `bandOnly` keeps the x half and clears
+   * everything the new extents invalidate.
    */
-  const L = preview ? undefined : layout;
+  const L = preview ? bandOnly(layout) : layout;
 
   // Content sits in its free band when something covers this pane, and in the
   // whole pane otherwise. Everything downstream measures the BAND, not the pane:
@@ -802,7 +850,13 @@ export function ScheduleBlock({
   const canExpand = narrow && !preview;
 
   // Done de-colours the rail with its bead: they are one glyph, not two states.
-  const railColor = done ? 'color-mix(in oklab, var(--muted-foreground) 45%, transparent)' : accent;
+  // Off-group does the same, one step lighter — the rail is where the block's
+  // identity lives, so it is the right thing to spend a recession on.
+  const railColor = done
+    ? 'color-mix(in oklab, var(--muted-foreground) 45%, transparent)'
+    : receded
+      ? 'var(--grp-off-ink)'
+      : accent;
 
   // Blocks are drag sources — drop on another hour to reschedule, or on the
   // Anytime section to un-time. The source stays in place (dimmed) while the
@@ -923,6 +977,9 @@ export function ScheduleBlock({
     // wash over the whole block: the accent bar is `var(--primary)` on an
     // unprojected task, and fading the pane would take the lime down with it.
     suppressed && 'text-muted-foreground',
+    // Same treatment as set-aside, and for the same reason: the title carries
+    // the recession so the plate does not have to fade the marks inside it.
+    receded && !done && 'text-muted-foreground',
     done && 'text-muted-foreground line-through opacity-60'
   );
 
@@ -1035,6 +1092,12 @@ export function ScheduleBlock({
         data-slot="pane"
         {...attributes}
         {...listeners}
+        // The pane is the block's only stable handle: the wrapper is
+        // pointer-events-none and the title is inside a content box that changes
+        // shape with the pane's width. `receded` rides it because that is the
+        // element the recession is spent on.
+        data-block-id={item.id}
+        data-receded={receded ? 'true' : 'false'}
         onClick={(e) => {
           if (wasDraggedRef.current) return;
           const selection = useSelectionStore.getState();
@@ -1075,6 +1138,17 @@ export function ScheduleBlock({
           done
             ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
             : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
+          // Off-group: the plate thins and trades its modelling for a hairline.
+          // It KEEPS its hover lamp — a receded block is still a live target you
+          // can read, click and drag; recession says "not what you asked about",
+          // not "unavailable". Ordered after `done` so a finished off-group block
+          // stays finished-looking, which is the more specific fact.
+          // shadow-[var(--sched-shadow-off)], never the literal ring: see the
+          // token's own note in globals.css. A raw `shadow-[0_0_0_1px_…]` lands
+          // in a different tailwind-merge group from the base shadow, so both
+          // survive cn() and Tailwind's alphabetical utility order hands it to
+          // the base — the hairline never paints, in either theme.
+          receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
           // Selected brightens the pane — lit brighter than hover, its own
           // latched state (the list rows latch a wash; a grid block latches the
           // lamp). Kept off `done` blocks, whose lamp is deliberately out.
@@ -1103,7 +1177,11 @@ export function ScheduleBlock({
             half the pane, which is a coloured container by area — and that was
             always an argument about WIDTH, not about which view you are in, so it
             keys off the same threshold the content treatment does. */}
-        {!done && !narrow && (
+        {/* The wash is the block's lamp, and an off-group block is not lit. It
+            goes rather than dimming: the gradient is built from the item's own
+            accent, so fading it would be exactly the "lime through an opacity"
+            move the recession rule forbids. */}
+        {!done && !narrow && !receded && (
           <span
             aria-hidden
             className={cn(
@@ -1290,6 +1368,20 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   const timed = useMemo(() => deriveTimedEntries(day), [day]);
   const overlapEntries = useMemo(() => toOverlapEntries(timed), [timed]);
 
+  // The Anytime strip sections like any other row list. `'none'` comes back as a
+  // single unlabelled group, which renders as today's flat strip.
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const untimedGroups = useMemo(
+    () =>
+      groupBySupport('day', 'schedule', canvasGroupBy).honoured
+        ? groupRows(untimed, canvasGroupBy, { routines })
+        : [{ key: '', label: '', rows: untimed }],
+    [untimed, canvasGroupBy, routines]
+  );
+  /** True when the strip renders real sections rather than one flat list. */
+  const grouped = untimedGroups.some((g) => g.label);
+
   // The marker only exists on today, and only if the setting allows it —
   // Settings → "Show current time indicator" sat there for a long time with
   // nothing to switch; this is the thing it switches.
@@ -1309,7 +1401,14 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // channels as actually fit at MIN_CHANNEL_PX". This is the whole mobile answer:
   // the same component in a ~294px field gets two channels instead of six without
   // either shell having to say so.
-  const { fieldWidth, fieldRef } = useFieldWidth();
+  //
+  // FROZEN during a drag or a resize. The lane budget is derived from this
+  // width, so an unfrozen measurement lets a lane count change mid-gesture —
+  // and the blocks would then jump sideways under the cursor that is dragging
+  // one of them. Nothing else reads it in a way a stale value can hurt: the
+  // channel count and the wrap threshold both degrade gracefully for the length
+  // of one gesture.
+  const { fieldWidth, fieldRef } = useFieldWidth(dragging || resizing);
   const contentRange = useMemo(() => deriveGridRange(timed, markerMin), [timed, markerMin]);
   const { gridStartHour, gridEndHour } = dragging || resizing ? FULL_DAY_RANGE : contentRange;
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
@@ -1326,19 +1425,51 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       ? Math.floor(nowMinShown / 60)
       : null;
 
-  // Where overlapping blocks go. Keyed on hourPx because a pane floored at
-  // PANE_MIN_H covers grid it does not own, so the PAINTED extents the pass packs
-  // on move with the scale — the TOPOLOGY does not, by construction.
-  const overlap = useMemo(
+  /**
+   * The grouping's answer on x: lanes, or focus (lib/schedule-lanes.ts).
+   *
+   * Built from the TIMED rows only. The Anytime strip above sections by the same
+   * grouping but with headings, and a group that exists only up there has no lane
+   * to name — a cap over an empty band would be a channel with nothing in it.
+   */
+  const lanePlan = useMemo(
     () =>
-      layoutOverlaps(overlapEntries, {
-        hourPx,
-        gridStartMin: gridStartHour * 60,
-        variant: 'day',
-        fieldWidth,
-      }),
-    [overlapEntries, hourPx, gridStartHour, fieldWidth]
+      planLanes(
+        timed.map((e) => ({ itemType: e.itemType, item: e.item })),
+        canvasGroupBy,
+        { variant: 'day', fieldWidth, routines }
+      ),
+    [timed, canvasGroupBy, fieldWidth, routines]
   );
+  const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
+
+  /**
+   * Where overlapping blocks go. Keyed on hourPx because a pane floored at
+   * PANE_MIN_H covers grid it does not own, so the PAINTED extents the pass packs
+   * on move with the scale — the TOPOLOGY does not, by construction.
+   *
+   * ONE PASS PER LANE. That is not an optimisation, it is the semantics: two
+   * blocks in different lanes may share a time but never a column, so they are
+   * not a conflict and must not cluster, column-pack or occlude each other. The
+   * lane's band goes in as the pass's root, and every rule inside it — packing,
+   * containment, the inset cascade, the content band — then runs against the
+   * lane's width instead of the field's.
+   */
+  const overlap = useMemo(() => {
+    const base = { hourPx, gridStartMin: gridStartHour * 60, variant: 'day' as const, fieldWidth };
+    if (lanePlan.mode !== 'lanes') return layoutOverlaps(overlapEntries, base);
+
+    const merged: OverlapLayout = new Map();
+    for (const lane of lanePlan.lanes) {
+      const inLane = overlapEntries.filter((e) => lanePlan.laneOf.get(e.id) === lane.key);
+      const sub = layoutOverlaps(inLane, {
+        ...base,
+        root: { leftPct: lane.leftPct, rightPct: lane.rightPct },
+      });
+      for (const [id, L] of sub) merged.set(id, L);
+    }
+    return merged;
+  }, [overlapEntries, hourPx, gridStartHour, fieldWidth, lanePlan]);
 
   return (
     <ScrollArea className="h-full flex-1">
@@ -1349,10 +1480,10 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
-        {/* ProgramNotice used to sit here, above everything, because it
-            qualifies everything below it. It says the same thing from the
-            canvas header row now (components/shell/desktop-shell.tsx), where it
-            is beside the date it is about and costs the scroller no height. */}
+        {/* Above everything, because it qualifies everything below it: this day
+            is missing work, and here is what is holding it. Renders on no other
+            day — see ProgramNotice. */}
+        <ProgramNotice className="px-1" />
 
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (
@@ -1362,18 +1493,43 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
             className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
-            <GroupSection label="Anytime" variant="canvas">
-              {untimed.map((row) => (
-                <TaskRow key={row.item.id} row={row} />
-              ))}
-              {untimed.length === 0 && dragging && (
-                <div className="py-2 text-center text-xs text-muted-foreground/50">
-                  Drop here to keep it time-free
-                </div>
-              )}
-            </GroupSection>
+            {/* The grid below cannot take headings — a row's y position IS its
+                time, so a section either breaks the axis or floats free of it.
+                This strip is an ordinary row list and can; the grid gets the
+                same partition expressed on x, as lanes.
+
+                The strip's own "Anytime" heading gives way to the group headings
+                rather than sitting above them. Nesting them read as a stutter at
+                best and as a literal "Anytime › Anytime" when grouping by time
+                bucket, and the strip is already identified by its position and
+                its drop target. */}
+            {grouped ? (
+              untimedGroups.map((g) => (
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row} />
+                  ))}
+                </GroupSection>
+              ))
+            ) : (
+              <GroupSection label="Anytime" variant="canvas">
+                {untimed.map((row) => (
+                  <TaskRow key={row.item.id} row={row} />
+                ))}
+                {untimed.length === 0 && dragging && (
+                  <div className="py-2 text-center text-xs text-muted-foreground/50">
+                    Drop here to keep it time-free
+                  </div>
+                )}
+              </GroupSection>
+            )}
           </div>
         )}
+
+        {/* The partition's only caption. Above the grid rather than inside it,
+            because it names the x axis — and sticky, so it survives a scroll
+            down a long day. */}
+        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
 
         {/* Hour grid with absolutely positioned blocks */}
         <div ref={anchorRef} className="relative">
@@ -1414,10 +1570,19 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               block (PANE_OFFSET) so the rail and bead can still sit on the true
               hour line while the pane clears its neighbour. */}
           <div ref={fieldRef} className="absolute bottom-0 right-0 top-0" style={{ left: DAY_FIELD_LEFT }}>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-0 left-[5px] top-0 w-px bg-[var(--sched-rail)]"
-            />
+            {/* One rail per lane. The hour rules deliberately do NOT break at a
+                lane boundary — the grammar is "y is shared, x is categorical",
+                and ruling each lane separately would draw a table, which claims
+                the cells are independent of each other. The rail is what says
+                where a lane begins. */}
+            {(lanePlan.mode === 'lanes' ? lanePlan.lanes : [{ key: 'field', leftPct: 0 }]).map((lane) => (
+              <span
+                key={lane.key}
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 top-0 w-px bg-[var(--sched-rail)]"
+                style={{ left: `calc(${lane.leftPct}% + 5px)` }}
+              />
+            ))}
             {timed.map((entry) => (
               <ScheduleBlock
                 key={entry.item.id}
@@ -1426,9 +1591,15 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                 hourPx={hourPx}
                 layout={overlap.get(entry.item.id)}
                 fieldWidth={fieldWidth}
+                receded={isReceded(lanePlan, focusedKey, entry.item.id)}
               />
             ))}
-            {nowY !== null && <NowMarker top={nowY} />}
+            {nowY !== null && (
+              <NowMarker
+                top={nowY}
+                lanes={lanePlan.mode === 'lanes' ? lanePlan.lanes.map((l) => l.leftPct) : undefined}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import type { Item, Task, Habit } from './planner-types';
 import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
-import { containerRef, passesContainerFilter, typeNameOf } from './filters';
+import { passesContainerFilter, typeNameOf } from './filters';
+import { containerRef } from './container-registry';
 
 /**
  * Pure search parsing + matching for the omnibar (and anything else that

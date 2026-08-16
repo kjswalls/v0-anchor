@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import {
   DAY_FIELD_LEFT,
@@ -22,18 +23,22 @@ import {
   type TimedEntry,
 } from '@/components/views/day-schedule';
 import { layoutOverlaps } from '@/lib/schedule-overlap';
-import { MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
+import { LANE_CAP_Z, MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
 import { CANVAS_PAD_PX } from '@/lib/week-columns';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useWeekColumns } from '@/lib/use-week-columns';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useViewStore } from '@/lib/view-store';
+import { groupRows } from '@/lib/grouping';
+import { planLanes, isReceded, type LanePlan } from '@/lib/schedule-lanes';
+import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
+import { LaneCapRow } from '@/components/primitives/lane-cap';
+import { groupBySupport } from '@/lib/view-options';
+import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
-import { deriveDayItems } from '@/lib/day-items';
-import { inactiveItemIdsOn } from '@/lib/active';
+import { useDayItemsForDates } from '@/hooks/use-day-items';
 import { programBoundaries, boundaryLabel } from '@/lib/program-boundaries';
 import { cn } from '@/lib/utils';
 
@@ -111,11 +116,21 @@ function WeekScheduleColumn({
   today,
   nowY,
   showBoundaryRail,
+  lanePlan,
 }: {
   col: ColumnData;
   hours: number[];
   gridStartMin: number;
   hourPx: number;
+  /**
+   * The WEEK's lane plan, built once over all seven columns and handed down.
+   *
+   * Not per column: focus is a question about the week ("where does Deep Work
+   * land"), and a per-column plan would give the same group a different lane key
+   * set on a day it happens to be absent from — so focusing it would recede that
+   * whole column instead of leaving it empty.
+   */
+  lanePlan: LanePlan;
   /** Width the week scale control asks for. The column may still exceed it —
    *  see minColPx below. */
   colPx: number;
@@ -128,8 +143,21 @@ function WeekScheduleColumn({
   nowY: number | null;
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
+  const routines = usePlannerStore((s) => s.routines);
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
+
+  // Per column, like the overlap pass below: seven strips are seven independent
+  // lists. `'none'` comes back as one unlabelled group — today's flat strip.
+  const untimedGroups = useMemo(
+    () =>
+      groupBySupport('week', 'schedule', canvasGroupBy).honoured
+        ? groupRows(col.untimed, canvasGroupBy, { routines })
+        : [{ key: '', label: '', rows: col.untimed }],
+    [col.untimed, canvasGroupBy, routines]
+  );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
   // this one level up would rebuild all seven whenever any one day changed.
@@ -253,9 +281,22 @@ function WeekScheduleColumn({
           isOver && 'border-primary bg-primary/5'
         )}
       >
-        {col.untimed.map((row) => (
-          <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-        ))}
+        {/* Same rule as Day × Schedule: the hour grid below cannot take
+            headings, this strip can. It is 88px and scrolls, so a grouped strip
+            shows fewer rows at rest — that is the cost of having asked. */}
+        {untimedGroups.map((g) =>
+          g.label ? (
+            <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+              {g.rows.map((row) => (
+                <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+              ))}
+            </GroupSection>
+          ) : (
+            g.rows.map((row) => (
+              <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+            ))
+          )
+        )}
         {col.untimed.length === 0 && (
           <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
         )}
@@ -283,6 +324,7 @@ function WeekScheduleColumn({
               hourPx={hourPx}
               variant="week"
               layout={overlap.get(entry.item.id)}
+              receded={isReceded(lanePlan, focusedKey, entry.item.id)}
             />
           ))}
           {nowY !== null && <NowMarker top={nowY} />}
@@ -293,23 +335,18 @@ function WeekScheduleColumn({
 }
 
 export function WeekSchedule({ activeId }: { activeId: string | null }) {
+  // Only what this file still reads for itself. Everything the day pipeline
+  // needs — tasks, habits, projects, items, routines, the two show* prefs, and
+  // both view-store filter slices — is read by useDayItemsForDates now.
+  // `programs` stays: the boundary rail is Week × Schedule's own.
   const {
     selectedDate,
     weekStartDay,
     navDirection,
-    tasks,
-    habits,
-    projects,
-    items: allItems,
-    routines,
     programs,
-    showCompletedTasks,
-    showPausedOnGrid,
     userTimezone,
     showCurrentTimeIndicator,
   } = usePlannerStore();
-  const typeFilter = useViewStore((s) => s.typeFilter);
-  const canvasFilters = useViewStore((s) => s.canvasFilters);
   const timeFormatStr = useTimeFormat();
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nowMin = useNowMinutes(timezone);
@@ -320,45 +357,49 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     return Array.from({ length: 7 }, (_, i) => addDays(start, i));
   }, [selectedDate, weekStartsOn]);
 
-  // Derive all seven days once here (deriveDayItems is pure — no hooks in the
-  // loop) so both the shared hour range and the columns come from one pass.
+  // All seven days from the one shared pipeline, so the shared hour range and
+  // the columns come from one pass — and so a rule added to the canvas filter
+  // set lands here without anyone remembering this file exists. The plural hook
+  // is what makes that possible: Week × Schedule needs every column resolved
+  // before it can size any of them, which is why this used to be a verbatim
+  // second copy of use-day-items' body.
+  const days = useDayItemsForDates(weekDays);
+
   const perDay: ColumnData[] = useMemo(() => {
     const dateStrs = weekDays.map((d) => toDateStr(d, timezone));
     const boundaries = programBoundaries(dateStrs, programs);
     return weekDays.map((d, i) => {
-        const dateStr = dateStrs[i];
-        const items = deriveDayItems({
-          tasks,
-          habits,
-          projects,
-          date: d,
-          dateStr,
-          timezone,
-          typeFilter,
-          showCompletedTasks,
-          filters: canvasFilters,
-          // Per COLUMN, not per week: a pause ending mid-week — or a program's
-          // range starting on Wednesday — must show the handoff in the right
-          // column rather than blanking or filling all seven.
-          inactiveItemIds: showPausedOnGrid
-            ? undefined
-            : inactiveItemIdsOn(allItems, dateStr, {
-                userTimezone: timezone,
-                routines,
-                programs,
-              }),
-        });
-        const boundary = boundaries.get(dateStr);
-        return {
-          date: d,
-          dateStr,
-          timed: deriveTimedEntries(items),
-          untimed: deriveUntimedRows(items),
-          boundary: boundary ? boundaryLabel(boundary) : undefined,
-        };
-      });
-  },
-    [weekDays, tasks, habits, projects, allItems, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]
+      const dateStr = dateStrs[i];
+      const boundary = boundaries.get(dateStr);
+      return {
+        date: d,
+        dateStr,
+        timed: deriveTimedEntries(days[i]),
+        untimed: deriveUntimedRows(days[i]),
+        boundary: boundary ? boundaryLabel(boundary) : undefined,
+      };
+    });
+  }, [weekDays, days, programs, timezone]);
+
+  /**
+   * ONE plan for the whole week — see the prop's note on WeekScheduleColumn.
+   *
+   * `variant: 'week'` forces focus mode unconditionally, and that is arithmetic
+   * rather than a compromise: at every derived default on every common monitor a
+   * week column is exactly one 140px channel, so there is nothing to divide.
+   * Focus costs zero pixels and answers the question a week grid otherwise
+   * cannot — where does this group actually land across the week.
+   */
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const lanePlan = useMemo(
+    () =>
+      planLanes(
+        perDay.flatMap((c) => c.timed.map((e) => ({ itemType: e.itemType, item: e.item }))),
+        canvasGroupBy,
+        { variant: 'week', routines }
+      ),
+    [perDay, canvasGroupBy, routines]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the
@@ -399,7 +440,19 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   return (
     <ScrollArea className="h-full flex-1">
-      <div ref={weekColsRef} data-wide="true" className="canvas-container flex gap-2 py-6 pb-20">
+      {/* ONE canvas-container around the caption AND the grid.
+          The caption was in its own container for one commit, and a sticky box
+          is constrained to its CONTAINING BLOCK: an 18px box holding an 18px
+          element has no travel at all, so the caps scrolled away at ~43px on the
+          one variant where they are the ONLY focus control. Sharing the grid's
+          container is what gives them something to stick against — the same rule
+          the pinned hour gutter below spells out in full.
+          Its own `pt-6` went with it: LaneCapRow returns null when nothing is
+          grouped, and a wrapper that pads regardless moved the whole ungrouped
+          week 24px down. */}
+      <div data-wide="true" className="canvas-container py-6 pb-20">
+        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} z={LANE_CAP_Z} />
+        <div ref={weekColsRef} className="flex gap-2">
         {/* Hour gutter — same top offsets as the columns so labels line up, and
             the same bare left-aligned mono marks the day view uses. Week has no
             Anytime rows of its own beside the gutter to answer to (its strips
@@ -518,8 +571,10 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               today={isToday(col.date)}
               nowY={col.dateStr === todayStr ? nowY : null}
               showBoundaryRail={showBoundaryRail}
+              lanePlan={lanePlan}
             />
           ))}
+          </div>
         </div>
       </div>
       <ScrollBar orientation="horizontal" />

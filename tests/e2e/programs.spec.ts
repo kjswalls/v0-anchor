@@ -124,7 +124,10 @@ test.describe('programs', () => {
     kind: 'routine' | 'program',
     title: string
   ) {
-    await page.getByTestId(`${kind}-member-add`).click();
+    // Opened only if it is closed: the picker stays open across adds (Phase 5d),
+    // so this helper has to be safe to call twice against one container.
+    const opener = page.getByTestId(`${kind}-member-add`);
+    if (await opener.isVisible()) await opener.click();
     await page.getByTestId(`${kind}-member-search`).fill(title);
     await page.getByTestId(`${kind}-member-candidate`).first().click();
     await expect(page.getByTestId(`${kind}-member`)).toHaveCount(1);

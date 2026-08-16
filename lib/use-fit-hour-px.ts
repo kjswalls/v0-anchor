@@ -85,8 +85,11 @@ export function useFitHourPx(rowCount: number, freeze = false) {
  * absolutely positioned against the grid, so its width depends on the viewport
  * and never on what this hook reports.
  */
-export function useFieldWidth() {
+export function useFieldWidth(freeze = false) {
   const fieldRef = useRef<HTMLDivElement>(null);
+  /** What the observer sees. Never frozen — the element really is this wide. */
+  const [measured, setMeasured] = useState<number | null>(null);
+  /** What callers see. Stops tracking `measured` while a gesture is in flight. */
   const [fieldWidth, setFieldWidth] = useState<number | null>(null);
 
   useLayoutEffect(() => {
@@ -94,13 +97,30 @@ export function useFieldWidth() {
     if (!el) return;
     const measure = () => {
       const w = el.clientWidth;
-      if (w > 0) setFieldWidth((prev) => (prev === w ? prev : w));
+      if (w > 0) setMeasured((prev) => (prev === w ? prev : w));
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  /**
+   * The freeze, held here rather than inside the observer.
+   *
+   * A ref written during render is the obvious way to do this and is exactly
+   * what React forbids; gating the observer on a dep would tear it down and
+   * re-attach it, which fires an immediate measurement — the one thing the
+   * freeze exists to prevent. Holding the EXPOSED value instead leaves the
+   * observer untouched and costs one render when a gesture ends.
+   *
+   * `fieldWidth === null` overrides the freeze: with no width at all the lane
+   * planner cannot divide, so a component mounting mid-gesture would otherwise
+   * be locked into focus mode until the gesture ended.
+   */
+  useEffect(() => {
+    if (!freeze || fieldWidth === null) setFieldWidth(measured);
+  }, [freeze, measured, fieldWidth]);
 
   return { fieldWidth, fieldRef };
 }

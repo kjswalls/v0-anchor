@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, TimeBucket } from './planner-types';
+import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { isSortBy, type SortBy } from './sort-rows';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -78,6 +79,9 @@ interface ViewStore {
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
+  /** Ordering, per surface. List surfaces only — see lib/sort-rows.ts. */
+  canvasSortBy: SortBy;
+  braindumpSortBy: SortBy;
   braindumpFilters: ViewFilters;
   canvasFilters: ViewFilters;
   typeMode: TypeMode;
@@ -115,8 +119,25 @@ interface ViewStore {
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
+  setCanvasSortBy: (sortBy: SortBy) => void;
+  setBraindumpSortBy: (sortBy: SortBy) => void;
   setBraindumpFilters: (filters: ViewFilters) => void;
   setCanvasFilters: (filters: ViewFilters) => void;
+  /**
+   * Follow a container rename through the persisted filter refs.
+   *
+   * `containers` holds `project:Work` / `group:Wellness` — NAMES, in
+   * localStorage, from before containers had stable ids. Renaming was parked
+   * until migration 027, so these could never go stale; now they can, and a
+   * stale ref does not degrade gracefully: `passesContainerFilter` matches
+   * nothing, so the canvas or the braindump empties completely and the only
+   * clue is a filter chip naming a project that no longer exists.
+   *
+   * Called from the rename site rather than from planner-store's action,
+   * because this store already imports planner-store and the reverse would
+   * close a cycle.
+   */
+  renameContainerRef: (kind: 'project' | 'group', from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
   /** `null` hands the choice back to the width-derived default. */
@@ -141,6 +162,8 @@ export const useViewStore = create<ViewStore>()(
       typeFilter: 'all',
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
+      canvasSortBy: 'default',
+      braindumpSortBy: 'default',
       braindumpFilters: EMPTY_VIEW_FILTERS,
       canvasFilters: EMPTY_VIEW_FILTERS,
       typeMode: 'sans',
@@ -165,8 +188,29 @@ export const useViewStore = create<ViewStore>()(
         usePlannerStore.getState().setGroupBy(canvasGroupBy);
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
+      setCanvasSortBy: (canvasSortBy) => set({ canvasSortBy }),
+      setBraindumpSortBy: (braindumpSortBy) => set({ braindumpSortBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
+
+      renameContainerRef: (kind, from, to) => {
+        const oldRef = `${kind}:${from}`;
+        const newRef = `${kind}:${to}`;
+        const swap = (filters: ViewFilters): ViewFilters => {
+          if (!filters.containers.includes(oldRef)) return filters;
+          // Through a Set: renaming Work → Home while BOTH were selected would
+          // otherwise leave two identical refs, and the chip row would render
+          // "Home" twice.
+          return {
+            ...filters,
+            containers: [...new Set(filters.containers.map((c) => (c === oldRef ? newRef : c)))],
+          };
+        };
+        set((s) => ({
+          canvasFilters: swap(s.canvasFilters),
+          braindumpFilters: swap(s.braindumpFilters),
+        }));
+      },
       setTypeMode: (typeMode) => set({ typeMode }),
       setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
       // Clamped on the way IN, so nothing downstream has to defend against a
@@ -236,6 +280,19 @@ export const useViewStore = create<ViewStore>()(
           ...p,
           braindumpFilters: normalizeFilters(p.braindumpFilters),
           canvasFilters: normalizeFilters(p.canvasFilters),
+          // Scalars, so the shallow spread already supplies the default for a
+          // blob that predates them. Coerced anyway because the value reaches a
+          // COMPARATOR: an unrecognised string falls through sortRows' branches
+          // to the priority arm and silently reorders the list, and a persisted
+          // payload is user-editable in devtools.
+          canvasSortBy: isSortBy(p.canvasSortBy) ? p.canvasSortBy : 'default',
+          braindumpSortBy: isSortBy(p.braindumpSortBy) ? p.braindumpSortBy : 'default',
+          // Same reason, one release later: 'status' WAS a legal GroupBy and is
+          // sitting in real payloads. It falls through groupRows' branches to the
+          // container arm, so a stale blob would silently group by project — and
+          // the Grouping row would render "None" over it, because no option
+          // matches, while the trigger counted it as one active clause.
+          canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
         };
       },
     }
@@ -269,7 +326,57 @@ export function adoptLegacyViewPrefs() {
   useViewStore.setState({
     scope: legacy.viewMode,
     typeFilter: legacy.timelineItemFilter,
-    canvasGroupBy: legacy.groupBy,
+    // The second door 'status' can come through: planner-storage partializes
+    // `groupBy`, so a blob written before Phase 5a deleted the member rehydrates
+    // planner-store with it and this copies it across on first mount. The
+    // declared type says that cannot happen; the stored JSON disagrees.
+    canvasGroupBy: isGroupBy(legacy.groupBy) ? legacy.groupBy : 'none',
     adoptedLegacy: true,
   });
 }
+
+/**
+ * Keep the persisted filter refs following their containers' names.
+ *
+ * DRIVEN BY THE STORE, not by the rename call site, and that difference is the
+ * whole point. Called optimistically from the Organize console, the remap had no
+ * inverse: undo restored the container's old name and the localStorage ref kept
+ * the new one, so a single ⌘Z after a rename emptied the canvas — a NEW way to
+ * cause exactly the harm the remap was added to prevent, and a worse one,
+ * because localStorage survives the reload that would have fixed it.
+ *
+ * Comparing the id's name against its PREVIOUS name makes rename, undo and redo
+ * one case instead of three: whatever moves a container's name, the refs follow.
+ *
+ * Known gap, and it is narrow: if the container UPDATE is rejected by the DB the
+ * store stays optimistic, so refs and store agree until a reload re-reads the
+ * old name — and the ref is then stale. Nothing here can see that rejection.
+ * Carrying ids in the refs instead of names is the real fix and is a persisted-
+ * format change; `takenBy` already refuses the collision that causes almost
+ * every such rejection.
+ */
+const remapRefs = (
+  kind: 'project' | 'group',
+  before: { id: string; name: string }[],
+  after: { id: string; name: string }[],
+) => {
+  for (const now of after) {
+    const was = before.find((b) => b.id === now.id);
+    if (was && was.name !== now.name) {
+      useViewStore.getState().renameContainerRef(kind, was.name, now.name);
+    }
+  }
+};
+
+// Optional-called because this runs at IMPORT time, and a unit test that mocks
+// `@/lib/planner-store` with only the members it needs has no `subscribe` — the
+// module-level call then throws while the mocked module is being evaluated, and
+// the failure surfaces as an unrelated suite collecting zero tests. Real zustand
+// always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
+// drives the actual store.
+usePlannerStore.subscribe?.((state, prev) => {
+  if (state.projects !== prev.projects) remapRefs('project', prev.projects, state.projects);
+  if (state.habitGroups !== prev.habitGroups) {
+    remapRefs('group', prev.habitGroups, state.habitGroups);
+  }
+});

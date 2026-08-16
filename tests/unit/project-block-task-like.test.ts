@@ -16,6 +16,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  *
  * These pin the widened behaviour AND the db type that goes with it — widening
  * the lookup alone would still write against the wrong `type` column.
+ *
+ * `removeProject` is here too. It is a different verb but the same widening,
+ * and it needs this file's store mocks; splitting it out would duplicate thirty
+ * lines of them to say one thing.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -98,7 +102,13 @@ const store = () => usePlannerStore.getState();
  * habit branch has no `inProjectBlock` — so reading them off the raw union
  * needs narrowing at every call site. One view type instead.
  */
-type TaskLikeView = { inProjectBlock?: boolean; startTime?: string; title: string };
+type TaskLikeView = {
+  inProjectBlock?: boolean;
+  startTime?: string;
+  title: string;
+  project?: string;
+  group?: string;
+};
 const byId = (id: string) =>
   store().items.find((i) => i.id === id)! as unknown as TaskLikeView;
 
@@ -197,5 +207,49 @@ describe('moveTaskOutOfProjectBlock', () => {
 
     expect(getActionLog().length).toBe(before + 1);
     expect(getActionLog()[0].label).toContain('Ship the thing');
+  });
+});
+
+describe('removeProject clears the deleted name off every type that holds one', () => {
+  it('reaches a custom item, not just a plain task', () => {
+    seed([item('t1'), goal('g1')]);
+
+    store().removeProject('p-work');
+
+    expect(byId('t1').project).toBeUndefined();
+    // The defect the widening fixes: under `type === 'task'` the custom item
+    // kept `project: 'Work'` after the project row was gone. Every container
+    // question then filed it under a project that no longer exists — the
+    // filter offers no such option, so it becomes unreachable by container.
+    expect(byId('g1').project).toBeUndefined();
+    expect(store().projects).toHaveLength(0);
+  });
+
+  it('leaves a habit alone — its container is a group, and groups are not projects', () => {
+    // The fixture is deliberately a habit that ALSO carries a project, which is
+    // why it needs the cast: habitShape has `group` and no `project`
+    // (packages/types/src/schemas.ts:209), so the schema forbids this state.
+    // The `type !== 'habit'` guard at planner-store.ts:2030 is therefore
+    // insurance rather than load-bearing — but insurance you can delete without
+    // a test going red is insurance nobody will keep.
+    seed([{ ...item('h1'), type: 'habit', group: 'Health' } as Item]);
+
+    store().removeProject('p-work');
+
+    // `project`, not `group`. removeProject has one set() and writes exactly two
+    // things: the projects array, and `project: undefined` on the rows it
+    // reaches. It never touches `group` — that is removeHabitGroup's verb — so
+    // asserting `group` here was true under every possible implementation,
+    // including one with the guard deleted.
+    expect(byId('h1').project).toBe('Work');
+    expect(byId('h1').group).toBe('Health');
+  });
+
+  it('leaves an item in a different project alone', () => {
+    seed([goal('g1', { project: 'Side' } as Partial<Item>)]);
+
+    store().removeProject('p-work');
+
+    expect(byId('g1').project).toBe('Side');
   });
 });
