@@ -78,6 +78,15 @@ const openConfirmFromDangerZone = () => {
   return trigger;
 };
 
+/**
+ * This file is one of the two that exposed the suite's timeout problem: each
+ * case stands up the whole OrganizeConsole plus a portalled AlertDialog and then
+ * waits on two focus transitions, which fits comfortably in isolation and did
+ * not at full parallelism. The budget was raised globally in vitest.config.ts
+ * rather than here — `eod-dismiss` was crossing the same line, and a per-file
+ * exemption would have fixed the symptom on the file that happened to be
+ * measured.
+ */
 describe('dismissing the shared confirm', () => {
   it('puts the cursor back on the control that opened it', async () => {
     const trigger = openConfirmFromDangerZone();
@@ -100,14 +109,22 @@ describe('dismissing the shared confirm', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it('does NOT chase a control the confirm just destroyed', async () => {
+  it('leaves the delete path working, and does not dangle on the removed node', async () => {
     /**
-     * The other half, and the reason this cannot simply be "always refocus what
-     * was focused". Confirming a DELETE unmounts the danger zone along with the
-     * whole detail pane, so the remembered element is detached — calling
-     * `.focus()` on it does nothing at all in a real browser, but keeping a
-     * reference to a removed subtree alive is a leak, and asserting the cursor
-     * landed there would be asserting a lie.
+     * SAYS WHAT IT PINS, because the first version of this claimed to pin the
+     * `isConnected` guard and could not: it stayed green with the guard removed,
+     * AND with the whole `onCloseAutoFocus` handler removed.
+     *
+     * The guard is not discriminable, and that is a fact about Radix rather than
+     * a gap in the test. Confirming a delete unmounts the opener; preventing the
+     * default and focusing a detached node is a no-op, and so is Radix's own
+     * `trigger?.focus()` on a dialog that has no trigger. Both paths land focus
+     * in the same place — measured, not assumed.
+     *
+     * What is worth holding here: the focus machinery does not break the
+     * destructive path, the write still lands, and nothing is left pointing at
+     * the detached button. The mechanism itself is carried by the two tests
+     * above, which both go red when the handler is removed.
      */
     const trigger = openConfirmFromDangerZone();
     await screen.findByTestId('confirm-dialog');

@@ -348,7 +348,15 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
           ownerName={program.name}
           memberIds={program.itemIds}
           members={members}
-          dimmed={!live}
+          // The resolver's per-item answer, not this program's state — same
+          // correction the routine pane needed. `!live` greyed items a second
+          // live path was still carrying, and drew items at full contrast while
+          // their own pause kept them off the grid.
+          hiddenIds={inactiveItemIdsOn(items, todayStr, {
+            userTimezone: tz,
+            routines,
+            programs,
+          })}
           testPrefix="program"
           onChange={(itemIds) => updateProgram(program.id, { itemIds })}
         />

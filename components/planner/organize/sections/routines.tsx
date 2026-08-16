@@ -8,7 +8,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 // as every other destructive prompt in the app — and keeps the plate free of a
 // second dismissable layer competing for Escape.
 import { useUIStore } from '@/lib/ui-store';
-import { programResumeDate, routineStandingOn } from '@/lib/active';
+import {
+  inactiveItemIdsOn,
+  membersRevealedByRemoving,
+  programResumeDate,
+  routineStandingOn,
+} from '@/lib/active';
 import {
   byName,
   countLive,
@@ -50,10 +55,13 @@ import type { Item, Program, Routine } from '@/lib/planner-types';
 function ProgramHolders({
   holders,
   blockerIds,
+  routineOn,
   onOpen,
 }: {
   holders: readonly Program[];
   blockerIds: ReadonlySet<string>;
+  /** The routine's own switch. A program cannot carry a routine that is paused. */
+  routineOn: boolean;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -69,6 +77,10 @@ function ProgramHolders({
       <div className="max-h-32 space-y-px overflow-y-auto">
         {holders.map((program) => {
           const off = blockerIds.has(program.id);
+          // THREE states, not two. A program that is on but whose routine is
+          // paused is neither off nor carrying — saying "carrying" there
+          // contradicted the pause note directly above it.
+          const state = off ? 'off' : routineOn ? 'carrying' : 'idle';
           return (
             <button
               key={program.id}
@@ -76,7 +88,7 @@ function ProgramHolders({
               onClick={() => onOpen(program.id)}
               data-testid="routine-holder"
               data-program-id={program.id}
-              data-holder-state={off ? 'off' : 'on'}
+              data-holder-state={state}
               className="hover:bg-accent focus-visible:outline-ring flex h-[30px] w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left focus-visible:outline-1 focus-visible:outline-solid"
             >
               <span className="flex w-[18px] shrink-0 justify-center">
@@ -91,7 +103,7 @@ function ProgramHolders({
                 {program.name}
               </span>
               <span className="text-muted-foreground w-[64px] shrink-0 text-right text-2xs">
-                {off ? 'off' : 'carrying'}
+                {state === 'idle' ? 'on' : state}
               </span>
             </button>
           );
@@ -125,6 +137,9 @@ export function RoutinesSection({
   focusNew: boolean;
 }) {
   const routines = usePlannerStore((s) => s.routines);
+  // For the pill: a routine held off by a program is not "Paused", and saying
+  // nothing at all made the list column disagree with the detail beside it.
+  const programs = usePlannerStore((s) => s.programs);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
@@ -184,7 +199,7 @@ export function RoutinesSection({
               color={routine.color}
               name={routine.name}
               selected={selectedId === routine.id}
-              pill={routinePillLabel(routine, todayStr, tz)}
+              pill={routinePillLabel(routine, todayStr, tz, programs)}
               pillTestId="routine-paused-pill"
               count={countLive(routine.itemIds, liveIds)}
               onSelect={() => onSelect(routine.id)}
@@ -219,6 +234,9 @@ function RoutineDetail({
 }) {
   const items = usePlannerStore((s) => s.items);
   const programs = usePlannerStore((s) => s.programs);
+  // The WHOLE list, not just this one: the resolver has to see every path a
+  // member might reach the day by, or it re-answers the container's question.
+  const routines = usePlannerStore((s) => s.routines);
   const updateRoutine = usePlannerStore((s) => s.updateRoutine);
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
   const removeRoutine = usePlannerStore((s) => s.removeRoutine);
@@ -236,12 +254,20 @@ function RoutineDetail({
    * reading the same store.
    *
    * The segmented control still writes and shows LOCAL, because that is the
-   * value it owns; everything about what is actually happening — the note, the
-   * member greying, the delete consequence — reads EFFECTIVE, because that is
-   * what the rest of the app obeys.
+   * value it owns.
+   *
+   * BUT `standing` IS NOT AN ANSWER ABOUT THE ITEMS, and the first version of
+   * this pane spent it as though it were. `effectiveOn` says whether this
+   * ROUTINE is carrying anything; whether a given MEMBER is on the user's day is
+   * a different question, and it differs precisely when the item has a second
+   * live path — the situation the disjunctive rule exists to create. So the
+   * greying and the delete consequence go through the resolver per item
+   * (`hiddenIds`, `revealed`), and only the note — a statement about the routine
+   * — reads `standing`.
    */
   const standing = routineStandingOn(routine, programs, todayStr, tz);
   const paused = !standing.localOn;
+  const ctx = { userTimezone: tz, routines, programs };
   // Local noon, so the picker's bound is a calendar day rather than an instant
   // — and derived from the USER's today, not the browser's.
   const today = parseDay(todayStr)!;
@@ -255,8 +281,18 @@ function RoutineDetail({
   // answering for it.
   const heldBy = standing.holders;
   const liveCount = countLive(routine.itemIds, liveIds);
-  /** Would deleting this routine put its items back on screen? */
-  const reappear = !standing.effectiveOn;
+
+  /** Members not on the user's day right now — the resolver's answer, per item. */
+  const hiddenIds = inactiveItemIdsOn(items, todayStr, ctx);
+  /**
+   * The members deleting this routine would actually put back — a delta, not a
+   * flag. Items another routine is already carrying do not "come back", and
+   * neither do items the same program holds directly.
+   */
+  const revealed = membersRevealedByRemoving(routine.id, routine.itemIds, items, ctx, todayStr);
+  const reappear = revealed.length > 0;
+  /** Of this routine's members, the ones its being held off is actually costing. */
+  const hiddenHere = routine.itemIds.filter((id) => hiddenIds.has(id)).length;
 
   return (
     <div className="flex flex-col" data-testid="routine-detail" data-routine-id={routine.id}>
@@ -351,27 +387,45 @@ function RoutineDetail({
           split. The switch above says Active and is telling the truth about the
           value it writes; this says what that value is currently achieving,
           which is nothing. Rendered only when the two disagree — a routine that
-          is simply on has nothing to explain. */}
+          is simply on has nothing to explain.
+
+          TWO SENTENCES, AND THEY ARE ABOUT DIFFERENT SUBJECTS. The first is
+          about the ROUTINE and is always true here: every program holding it is
+          off, so it is not carrying anything. The second is about its ITEMS, and
+          is only true of the ones actually off the grid — the first version ran
+          them together as "so its items are hidden anyway", which lied for every
+          member some other routine was still carrying. */}
       {standing.localOn && !standing.effectiveOn && standing.soonestBlocker && (
         <p
           className="text-muted-foreground mt-3 max-w-[62ch] text-xs"
           data-testid="routine-held-note"
         >
           {standing.blockers.length === 1 ? (
-            <>&ldquo;{standing.soonestBlocker.name}&rdquo; is off, so its items are hidden anyway.</>
+            <>
+              &ldquo;{standing.soonestBlocker.name}&rdquo; is off, so this routine isn&rsquo;t
+              carrying anything right now.
+            </>
           ) : (
             <>
               All <span className="font-num">{standing.blockers.length}</span> programs holding it
-              are off, so its items are hidden anyway.
+              are off, so this routine isn&rsquo;t carrying anything right now.
             </>
           )}{' '}
           {/* The soonest holder to return, because the rule is disjunctive: the
               FIRST program back carries the routine, whatever the others do. A
               program with no scheduled return says nothing rather than
               promising a date it does not have. */}
-          {programResumeDate(standing.soonestBlocker, todayStr)
-            ? `They come back on ${formatShort(programResumeDate(standing.soonestBlocker, todayStr)!)}.`
-            : 'They come back when one of those programs does.'}
+          {hiddenHere === 0 ? (
+            <>Its items are still on your day another way.</>
+          ) : (
+            <>
+              <span className="font-num">{hiddenHere}</span>{' '}
+              {hiddenHere === 1 ? 'item is' : 'items are'} hidden.{' '}
+              {programResumeDate(standing.soonestBlocker, todayStr)
+                ? `Back on ${formatShort(programResumeDate(standing.soonestBlocker, todayStr)!)}.`
+                : 'They come back when one of those programs does.'}
+            </>
+          )}
         </p>
       )}
 
@@ -380,6 +434,10 @@ function RoutineDetail({
           <ProgramHolders
             holders={heldBy}
             blockerIds={new Set(standing.blockers.map((p) => p.id))}
+            // A live program carries this routine only if the routine's own
+            // switch is on. Without this the pane said "Its items are hidden
+            // until you resume" and "carrying" three lines apart.
+            routineOn={standing.localOn}
             onOpen={onOpenProgram}
           />
         </div>
@@ -391,10 +449,10 @@ function RoutineDetail({
           ownerName={routine.name}
           memberIds={routine.itemIds}
           members={members}
-          // EFFECTIVE, not local. The greying answers "is this item showing up
-          // in my day?", and the resolver — not this routine's own switch — is
-          // what decides that.
-          dimmed={!standing.effectiveOn}
+          // PER ITEM. The greying answers "is this item showing up in my day?"
+          // — and no property of this routine answers that, because a member can
+          // reach the day through another routine or a program of its own.
+          hiddenIds={hiddenIds}
           testPrefix="routine"
           orderable
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}

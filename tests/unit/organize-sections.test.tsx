@@ -4,6 +4,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { accentColorForName } from '@/lib/accent-colors';
+import { ITEM_TYPES } from '@/lib/item-registry';
 import type { Item, Program, Project, Routine } from '@/lib/planner-types';
 
 /**
@@ -280,7 +281,11 @@ describe('a routine a program is holding off', () => {
     click('routine-row');
     const note = id('routine-held-note');
     expect(note).toHaveTextContent('“Summer” is off');
-    expect(note).toHaveTextContent('hidden anyway');
+    // Two subjects, two sentences: the ROUTINE is not carrying, and a counted
+    // number of its ITEMS are actually hidden. Running them together is what
+    // made this note lie about members another path was still carrying.
+    expect(note).toHaveTextContent('this routine isn’t carrying anything');
+    expect(note).toHaveTextContent('1 item is hidden');
     expect(note).toHaveTextContent('Sep 1');
   });
 
@@ -350,6 +355,80 @@ describe('a routine a program is holding off', () => {
   });
 });
 
+describe('a member the routine is NOT the only path to', () => {
+  /**
+   * The review's HIGH, and it is the branch's signature failure again: the false
+   * claim was inside the longest comment the phase added.
+   *
+   * `routineStandingOn` answers "is THIS ROUTINE carrying anything". The pane
+   * spent that answer as "is THIS ITEM on the grid". Those differ exactly when
+   * an item has a second live path — which is the situation the disjunctive rule
+   * exists to create, so it is not an exotic case.
+   *
+   * The repo already had the right shape twice over: `ScopeRow.flips` and
+   * `wouldHide` in programs.tsx both answer with an `inactiveItemIdsOn` DELTA
+   * rather than a container's own state.
+   */
+  const twoRoutines = () =>
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [
+        routine('r1', 'Morning', { itemIds: ['i1'] }),
+        routine('r2', 'Evening', { itemIds: ['i1'] }),
+      ],
+      // Holds Morning only, and is out of season.
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+      ],
+    });
+
+  it('does not grey an item that another routine is still carrying', () => {
+    twoRoutines();
+    open('routines');
+    fireEvent.click(screen.getAllByTestId('routine-row')[0]); // Morning
+    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-foreground');
+  });
+
+  it('does not promise a delete will bring back what never left', () => {
+    twoRoutines();
+    open('routines');
+    fireEvent.click(screen.getAllByTestId('routine-row')[0]);
+    const zone = id('routine-delete').closest('div')?.parentElement;
+    expect(zone).not.toHaveTextContent('come back into view');
+  });
+
+  it('says the routine is not carrying them, without claiming they are hidden', () => {
+    twoRoutines();
+    open('routines');
+    fireEvent.click(screen.getAllByTestId('routine-row')[0]);
+    const note = id('routine-held-note');
+    // Both halves have to be true at once: the ROUTINE really is held off (that
+    // is the local/effective split, and it is worth saying), and its items
+    // really are still on the user's day.
+    expect(note).toHaveTextContent('“Summer” is off');
+    expect(note).not.toHaveTextContent('hidden');
+    expect(note).toHaveTextContent('still on your day');
+  });
+
+  it('does not promise a return for an item a SECOND path keeps hidden', () => {
+    // The other direction: deleting this routine changes nothing, because the
+    // program holds the item directly too.
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+      programs: [
+        program('p1', 'Summer', { routineIds: ['r1'], itemIds: ['i1'], state: 'paused' }),
+      ],
+    });
+    open('routines');
+    click('routine-row');
+    const zone = id('routine-delete').closest('div')?.parentElement;
+    expect(zone).not.toHaveTextContent('come back into view');
+    // …and it IS greyed, because it is genuinely not on the grid.
+    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-muted-foreground');
+  });
+});
+
 describe('IN N PROGRAMS — the reverse view', () => {
   const seeded = () =>
     seed({
@@ -369,7 +448,23 @@ describe('IN N PROGRAMS — the reverse view', () => {
     const rows = screen.getAllByTestId('routine-holder');
     expect(rows.map((r) => r.getAttribute('data-program-id'))).toEqual(['p1', 'p2']);
     expect(rows[0]).toHaveAttribute('data-holder-state', 'off');
-    expect(rows[1]).toHaveAttribute('data-holder-state', 'on');
+    expect(rows[1]).toHaveAttribute('data-holder-state', 'carrying');
+  });
+
+  it('never says a live program is CARRYING a routine the user switched off', () => {
+    // Both on one pane, three lines apart: "Its items are hidden until you
+    // resume" above, and a holder row claiming to carry them below.
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'], pausedAt: PAUSED_AT })],
+      programs: [program('p1', 'Term', { routineIds: ['r1'], state: 'active' })],
+    });
+    open('routines');
+    click('routine-row');
+    expect(id('routine-paused-note')).toBeInTheDocument();
+    const row = id('routine-holder');
+    expect(row).toHaveAttribute('data-holder-state', 'idle');
+    expect(row).not.toHaveTextContent('carrying');
   });
 
   it('is absent entirely for a routine no program holds', () => {
@@ -1092,15 +1187,33 @@ describe('a member row', () => {
     });
 
   it('carries a type glyph, so two items with ONE title are two rows', () => {
-    // Both are called "Stretch". Without the glyph these rows are identical,
-    // here and in the search that adds them — and picking the wrong one is a
-    // silent write that only diverges later, when the habit keeps recurring.
+    /**
+     * Both are called "Stretch". Without the glyph these rows are identical,
+     * here and in the search that adds them — and picking the wrong one is a
+     * silent write that only diverges later, when the habit keeps recurring.
+     *
+     * ASSERTED AGAINST THE REGISTRY TOKEN, not merely "the two differ". The
+     * first version compared the two svg class attributes, and passed with BOTH
+     * `glyph` entries deleted from ITEM_TYPES — because CategoryIcon's
+     * name-hash fallback already yields different icons for "Task" and "Habit".
+     * It tested the fallback and called it a test of the feature.
+     */
     mixed();
     open('routines');
     click('routine-row');
     const rows = screen.getAllByTestId('routine-member');
-    const glyphOf = (row: HTMLElement) => row.querySelector('svg')?.getAttribute('class');
-    expect(glyphOf(rows[0])).not.toEqual(glyphOf(rows[1]));
+    const glyphOf = (row: HTMLElement) => row.querySelector('svg');
+    // lucide stamps `lucide-<kebab>` from the icon's own name, so the registry's
+    // token is checkable end to end without hard-coding a class here.
+    const fromToken = (type: 'task' | 'habit') => {
+      const token = ITEM_TYPES[type].glyph;
+      expect(token).toBeDefined();
+      return `lucide-${token!.replace('icon:', '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}`;
+    };
+
+    expect(glyphOf(rows[0])).toHaveClass(fromToken('habit'));
+    expect(glyphOf(rows[1])).toHaveClass(fromToken('task'));
+    expect(fromToken('habit')).not.toEqual(fromToken('task'));
   });
 
   it('shows a clock time in tabular figures and a bucket name in prose', () => {
@@ -1178,10 +1291,18 @@ describe('the member picker', () => {
     // a four-item routine four round trips through a button 30px away.
     three();
     openPicker();
-    fireEvent.keyDown(id('routine-member-search'), { key: 'ArrowDown' });
+    // TYPES FIRST. The original drove this with ↓↵ alone, so `toHaveValue('')`
+    // was true before the add as well as after — the "query cleared" half of the
+    // claim was unpinned, and deleting `setQuery('')` from add() left the whole
+    // suite green. Playwright cannot cover it either: `.fill()` focuses the
+    // field itself, so the refocus half is invisible there too.
+    fireEvent.change(id('routine-member-search'), { target: { value: 'read' } });
     fireEvent.keyDown(id('routine-member-search'), { key: 'Enter' });
 
     expect(id('routine-member-search')).toHaveValue('');
+    // And the cursor is back in the field, so the next one is ↓↵ away rather
+    // than a click away.
+    expect(document.activeElement).toBe(id('routine-member-search'));
     const rows = screen.getAllByTestId('routine-member-candidate');
     // The added one is gone from the pool, and the highlight is back at the top
     // rather than sitting on whatever slid into index 1.
@@ -1253,6 +1374,31 @@ describe('the member picker', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveAttribute('data-active');
     fireEvent.keyDown(field, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i1']);
+  });
+
+  it('survives ↓ against an empty list, which used to park it at -1', () => {
+    /**
+     * `Math.min(active + 1, candidates.length - 1)` is `Math.min(1, -1)` when
+     * the list is empty, and the original clamp only bounded the TOP — so the
+     * cursor stuck at -1 and stayed there once the list refilled. Reachable
+     * without leaving the pane: open the picker on a routine that already holds
+     * everything, press ↓, then free an item with its trash button.
+     */
+    seed({
+      items: [habit('i1', 'Stretch')],
+      routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
+    });
+    openPicker();
+    expect(id('routine-member-none')).toHaveTextContent('Everything is already in here.');
+
+    fireEvent.keyDown(id('routine-member-search'), { key: 'ArrowDown' });
+    // Free the item again, which refills the pool.
+    click('routine-member-remove');
+
+    const rows = screen.getAllByTestId('routine-member-candidate');
+    expect(rows[0]).toHaveAttribute('data-active');
+    fireEvent.keyDown(id('routine-member-search'), { key: 'Enter' });
     expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i1']);
   });
 

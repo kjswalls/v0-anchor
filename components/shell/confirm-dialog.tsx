@@ -47,11 +47,16 @@ export function ConfirmDialog() {
         }}
         onCloseAutoFocus={(event) => {
           const target = returnTo.current;
+          // Released either way, so a confirmed delete cannot pin the detail
+          // pane's removed subtree in memory behind this ref.
           returnTo.current = null;
-          // `isConnected` is the whole guard. Confirming a delete unmounts the
-          // control that opened it — the danger zone goes with the detail pane —
-          // and focusing a detached node does nothing while keeping the removed
-          // subtree alive. Falling through to Radix there is the honest outcome.
+          // `isConnected` costs one property read and is skipped rather than
+          // "guarded against": confirming a delete unmounts the control that
+          // opened it, and both branches then land focus in the same place —
+          // preventing the default and focusing a detached node is a no-op, and
+          // so is Radix's own `trigger?.focus()` on a dialog with no trigger.
+          // Verified by measuring `document.activeElement` both ways. It is here
+          // to keep this handler's contract readable, not for an effect.
           if (!target?.isConnected) return;
           event.preventDefault();
           target.focus();

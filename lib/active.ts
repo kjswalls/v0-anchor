@@ -515,6 +515,40 @@ export function routineStandingOn(
 }
 
 /**
+ * Of `memberIds`, which would come back onto the day if `routineId` did not
+ * exist — the resolver DELTA, not the routine's own state.
+ *
+ * WHY A DELTA AND NOT A FLAG. "Is this routine carrying anything" and "is this
+ * ITEM on the grid" are different questions, and a surface that answers the
+ * first while phrasing the second is wrong exactly when an item has a second
+ * live path — which the disjunctive rule exists to create. The Organize console
+ * shipped that mistake in a delete confirm: a routine held off by an out-of-
+ * season program promised "and they come back into view" for items another
+ * routine was carrying the whole time, and for items the same program also held
+ * directly. Nothing left; nothing came back.
+ *
+ * `ScopeRow.flips` and `wouldHide` in the console's programs section already
+ * reason this way. This is the third caller, so it stops being copied.
+ *
+ * Cost is two `inactiveItemIdsOn` passes, linear in items + memberships, on a
+ * pane rendering at most a few dozen members.
+ */
+export function membersRevealedByRemoving(
+  routineId: string,
+  memberIds: readonly string[],
+  items: readonly Item[],
+  ctx: ActivationContext,
+  dateStr: string,
+): string[] {
+  const before = inactiveItemIdsOn(items, dateStr, ctx);
+  const after = inactiveItemIdsOn(items, dateStr, {
+    ...ctx,
+    routines: (ctx.routines ?? EMPTY_ROUTINES).filter((r) => r.id !== routineId),
+  });
+  return memberIds.filter((id) => before.has(id) && !after.has(id));
+}
+
+/**
  * For a path that is NOT carrying the item: when it would, and which of its
  * containers to blame.
  *

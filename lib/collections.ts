@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
-import { isPausedOn, isProgramActiveOn } from '@/lib/active';
+import {
+  isPausedOn,
+  isProgramActiveOn,
+  programResumeDate,
+  routineStandingOn,
+} from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import type { Program, Routine } from '@/lib/planner-types';
 
@@ -93,10 +98,29 @@ export const countLive = (ids: readonly string[], live: Set<string>) =>
  * A LIVE container wears no marker at all — only the exception is labelled.
  * This is the guilt-free law (overlap-blocks decision 1): never a warning
  * colour, never a badge, never a dotted border.
+ *
+ * `programs` is optional so the callers that genuinely have no container context
+ * keep working, but the console passes it — without it this answered the LOCAL
+ * pause only, so a routine held off by a program wore no pill and read as live
+ * in the list while the detail pane beside it said held and the rail dimmed its
+ * row. Three views of one routine, two answers.
  */
-export function routinePillLabel(routine: Routine, todayStr: string, tz: string): string | null {
-  if (!isPausedOn(routine, todayStr, tz)) return null;
-  return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
+export function routinePillLabel(
+  routine: Routine,
+  todayStr: string,
+  tz: string,
+  programs?: readonly Program[],
+): string | null {
+  if (isPausedOn(routine, todayStr, tz)) {
+    return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
+  }
+  if (!programs?.length) return null;
+  // Its own switch is on and nothing is carrying it — a different sentence from
+  // "Paused", because the user did not do this and resuming is not the fix.
+  const { effectiveOn, soonestBlocker } = routineStandingOn(routine, programs, todayStr, tz);
+  if (effectiveOn || !soonestBlocker) return null;
+  const back = programResumeDate(soonestBlocker, todayStr);
+  return back ? `Held · ${formatShort(back)}` : 'Held';
 }
 
 /** The same, for a program's three ways of being off. */

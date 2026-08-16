@@ -91,14 +91,20 @@ function RailButton({
  *
  * The token comes off the REGISTRY rather than a `type === 'habit'` ternary, so
  * a user-defined type brings its own glyph with it and this component never
- * learns the type list. `name` is the label, which is what CategoryIcon hashes
- * if a custom type has no icon set — stable per type, and never blank.
+ * learns the type list.
+ *
+ * The fallback hashes the SLUG, not the label, and the distinction is real now
+ * that Phase 3 made labels editable: `accentColorForName(def.name)` hashes the
+ * slug, so hashing the label here would let a rename silently change a type's
+ * glyph on every member row while its colour stayed put. One string decides
+ * both.
  */
 function TypeGlyph({ item, className }: { item: Item; className?: string }) {
-  const config = getItemTypeConfig(itemTypeName(item));
+  const name = itemTypeName(item);
+  const config = getItemTypeConfig(name);
   return (
     <span className="flex w-[18px] shrink-0 justify-center">
-      <CategoryIcon glyph={config.glyph} name={config.label} className={cn('h-3.5 w-3.5', className)} />
+      <CategoryIcon glyph={config.glyph} name={name} className={cn('h-3.5 w-3.5', className)} />
     </span>
   );
 }
@@ -149,7 +155,7 @@ export function ItemMemberList({
   ownerName,
   memberIds,
   members,
-  dimmed,
+  hiddenIds,
   testPrefix,
   orderable = false,
   onChange,
@@ -159,7 +165,18 @@ export function ItemMemberList({
   ownerName: string;
   memberIds: string[];
   members: Item[];
-  dimmed: boolean;
+  /**
+   * The members NOT on the user's day right now — the resolver's own per-item
+   * answer, never the owning container's state.
+   *
+   * This was a single boolean, and that was wrong in both directions. A routine
+   * held off by a program greyed an item that a SECOND routine was still
+   * carrying, and a live routine drew an item at full contrast while the item's
+   * own pause kept it off the grid. The container's state is not the item's:
+   * the whole point of the disjunctive rule is that an item can have another
+   * way onto the day.
+   */
+  hiddenIds: ReadonlySet<string>;
   testPrefix: string;
   /**
    * Routines only, and not a taste call: `routine_items` carries a `sort_order`
@@ -243,10 +260,23 @@ export function ItemMemberList({
     PICKER_LIMIT
   );
 
-  // Clamped during render, not in an effect. `candidates` shrinks as the user
-  // types and as items are added, and a cursor left past the end would paint one
-  // frame with no highlight anywhere — and, worse, arm Enter on `undefined`.
-  const active = Math.min(cursor, Math.max(0, candidates.length - 1));
+  /**
+   * Clamped during render, not in an effect, and at BOTH ends.
+   *
+   * The top clamp is for the list shrinking underneath the cursor — an item
+   * deleted in another tab, an agent write, a redo — which the picker staying
+   * open across adds made a much longer window.
+   *
+   * The bottom clamp is for ↓ on an EMPTY list, which is not a hypothetical:
+   * `Math.min(active + 1, candidates.length - 1)` is `Math.min(1, -1)` there, so
+   * one press against "Everything is already in here." parks the cursor at -1
+   * and it stays there when the list refills — remove a member with its trash
+   * button and the pool grows back with no row highlighted, no
+   * `aria-activedescendant`, and Enter doing nothing until ↑ is pressed. The
+   * first version of this clamped only the top and its own comment claimed the
+   * user could not move the cursor out of range; ↓ is a user move.
+   */
+  const active = Math.max(0, Math.min(cursor, candidates.length - 1));
 
   // Keep the highlight on screen. Without this the cursor walks off the bottom
   // of the 148px window and ↓ appears to stop working — the selection is moving,
@@ -285,7 +315,7 @@ export function ItemMemberList({
               title={item.title}
               className={cn(
                 'font-content text-content min-w-0 flex-1 truncate',
-                dimmed ? 'text-muted-foreground' : 'text-foreground'
+                hiddenIds.has(item.id) ? 'text-muted-foreground' : 'text-foreground'
               )}
             >
               {item.title}
@@ -451,6 +481,25 @@ export function ItemMemberList({
               </p>
             )}
           </div>
+
+          {/* THE WAY OUT, and it became load-bearing when the picker started
+              staying open across adds. Before that, adding something closed it;
+              now the only other exits are the Escape rung and switching
+              container — and the console is a vaul bottom SHEET below `md`,
+              where there is no Escape key at all. RoutineMemberList has shipped
+              this row since Phase 2 for the same reason. */}
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(false);
+              setQuery('');
+              setCursor(0);
+            }}
+            className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center self-start rounded-[5px] px-[7px] text-left text-sm"
+            data-testid={`${testPrefix}-member-add-done`}
+          >
+            Done
+          </button>
         </div>
       ) : (
         <button
