@@ -42,7 +42,10 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 
-const toastFn = vi.fn(() => 'toast-id');
+// Typed args, not `vi.fn(() => …)`: with no declared parameters the recorded
+// calls are a zero-length tuple, so `mock.calls[0][0]` is a tsc error. It went
+// unnoticed because tsc is not gated in CI (`ignoreBuildErrors`).
+const toastFn = vi.fn((_message?: unknown, _opts?: unknown) => 'toast-id');
 const dismiss = vi.fn();
 vi.mock('sonner', () => ({
   toast: Object.assign((...a: unknown[]) => toastFn(...(a as [])), {

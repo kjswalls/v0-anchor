@@ -77,14 +77,24 @@ describe('a brand-new account', () => {
     }
   });
 
-  it('skips a starter name the BIN is still holding', () => {
-    // The unique indexes have no `WHERE deleted_at IS NULL`, so a soft-deleted
-    // container reserves its name for thirty days while being invisible to
-    // every fetch the store makes. Creating it anyway is 23505 and a phantom.
-    const plan = planSeed({ ...empty, trashedProjectNames: ['Work'], trashedGroupNames: ['Morning'] });
-    expect(plan.projects.map((p) => p.name)).not.toContain('Work');
-    expect(plan.groups.map((g) => g.name)).not.toContain('Morning');
-    expect(plan.projects.length).toBe(DEFAULT_PROJECTS.length - 1);
+  it('is not new at all once the BIN holds a container', () => {
+    /**
+     * An account with trashed containers and no live ones has created
+     * containers and then deleted them — it has answered the question, and a
+     * starter set contradicts the rule the whole phase rests on. The e2e
+     * account is a live instance: five trashed projects, zero live.
+     *
+     * This also removes the 23505 hazard by construction rather than by filter.
+     * The unique indexes have no `WHERE deleted_at IS NULL`, so a soft-deleted
+     * container reserves its name for thirty days while being invisible to
+     * every fetch the store makes.
+     */
+    expect(planSeed({ ...empty, trashedProjectNames: ['Anything'] })).toEqual({
+      reason: 'none',
+      projects: [],
+      groups: [],
+    });
+    expect(planSeed({ ...empty, trashedGroupNames: ['Anything'] }).reason).toBe('none');
   });
 });
 
@@ -139,12 +149,20 @@ describe('an account with items but no containers — the adopt case', () => {
     expect(plan.projects).toEqual([]);
   });
 
-  it('trims, so " Personal" and "Personal" are one container', () => {
+  it('does NOT trim, because the adopting UPDATE cannot', () => {
+    /**
+     * This trimmed, on the theory that " Personal" and "Personal" are one
+     * container. They are not, to the only judge that matters: the unique index
+     * is over the raw text and the adopting UPDATE filters on the name it is
+     * given. Trimming made the store link the padded item while the database
+     * matched nothing — a link that looked right until the next reload silently
+     * dropped it.
+     */
     const plan = planSeed({
       ...empty,
       items: [habit({ group: ' Personal' }), habit({ id: 'h2', group: 'Personal' })],
     });
-    expect(plan.groups.map((g) => g.name)).toEqual(['Personal']);
+    expect(plan.groups.map((g) => g.name).sort()).toEqual([' Personal', 'Personal']);
   });
 
   it('skips a name the bin is holding, and adopts the rest', () => {
@@ -194,19 +212,28 @@ describe('runFirstRunSeed', () => {
       }),
       commit: vi.fn(() => {
         calls.push('commit');
+        return 'committed' as const;
       }),
       ...over,
     };
     return { deps, calls };
   };
 
-  it('LATCHES BEFORE COMMITTING, so a failed write cannot become a re-seed', async () => {
-    // Latch afterwards and a failure in between leaves a load that seeds again.
-    // The store's de-dupe would catch most of that, and "most" is not the
-    // standard for a write the user never asked for.
+  it('LATCHES ON THE OUTCOME, after the commit has reported back', async () => {
+    /**
+     * The first version latched first, reasoning that a failed write must not
+     * become a re-seed. It had it backwards: `commit` can REFUSE (the store
+     * moved under the awaits), the refusal was invisible because commit
+     * returned void, and the account ended latched with zero containers and no
+     * path that could ever retry.
+     *
+     * Inverting is safe because the durable idempotence guard was never the
+     * latch — it is `projects.length > 0` read back from the database. Rows
+     * landing without the latch self-heal on the next load.
+     */
     const { deps, calls } = harness();
     await runFirstRunSeed('u1', deps);
-    expect(calls).toEqual(['read-latch', 'read-bin', 'set-latch', 'commit']);
+    expect(calls).toEqual(['read-latch', 'read-bin', 'commit', 'set-latch']);
   });
 
   it('reads the latch FIRST, so every later load is one SELECT and out', async () => {
@@ -234,11 +261,106 @@ describe('runFirstRunSeed', () => {
     expect(deps.commit).not.toHaveBeenCalled();
   });
 
-  it('drops out if the account switched under the awaits', async () => {
+  it('drops out if the account had already switched', async () => {
     const { deps } = harness({}, { userId: 'someone-else' });
     expect(await runFirstRunSeed('u1', deps)).toBe('none');
     expect(deps.markSeeded).not.toHaveBeenCalled();
     expect(deps.commit).not.toHaveBeenCalled();
+  });
+
+  /**
+   * THE RACE THE PREVIOUS VERSION OF THIS SUITE COULD NOT REACH.
+   *
+   * The old harness gave `snapshot` a constant thunk, so nothing ever changed
+   * under any await — it proved the guard EXISTED and never that it fires. The
+   * defect shipped straight through it.
+   *
+   * The window is real and the codebase already treats it as such: the provider
+   * handles "a bare SIGNED_IN for a different user" in two other places, because
+   * Supabase can deliver one with no intervening SIGNED_OUT. Two awaits remain
+   * after the userId check — the bin read and the latch write — and an account
+   * switch inside either of them used to carry A's plan into B's account.
+   */
+  const switching = (at: 'bin' | 'latch') => {
+    let userId = 'u1';
+    const { deps } = harness({}, {});
+    deps.snapshot = () => ({
+      userId,
+      isLoading: false,
+      items: [] as Item[],
+      projects: [] as { name: string }[],
+      habitGroups: [] as { name: string }[],
+    });
+    const flip = () => {
+      userId = 'u2';
+    };
+    if (at === 'bin') {
+      deps.trashedNames = vi.fn(async () => {
+        flip();
+        return { projects: [], groups: [] };
+      });
+    } else {
+      deps.markSeeded = vi.fn(async () => flip());
+    }
+    return deps;
+  };
+
+  it('does not commit A’s plan into B’s account — switch during the BIN read', async () => {
+    const deps = switching('bin');
+    await runFirstRunSeed('u1', deps);
+    // Either it refused outright, or it handed the commit the account the plan
+    // was computed FOR so the store can refuse. What it must never do is commit
+    // blind into whoever is loaded now.
+    for (const call of vi.mocked(deps.commit).mock.calls) expect(call[1]).toBe('u1');
+  });
+
+  it('does not commit A’s plan into B’s account — switch during the LATCH write', async () => {
+    const deps = switching('latch');
+    await runFirstRunSeed('u1', deps);
+    for (const call of vi.mocked(deps.commit).mock.calls) expect(call[1]).toBe('u1');
+  });
+
+  /**
+   * THE LATCH MUST NOT BE SPENT ON A REFUSAL.
+   *
+   * `commit` used to return void, so every guard inside the store action was a
+   * silent refusal the orchestrator could not see — and the latch had already
+   * been written. The account ends latched with zero containers and no code
+   * path that can ever retry: recovery is a hand-written UPDATE.
+   *
+   * The trigger is ordinary. `isLoading` turning true after the pre-await check
+   * is a SIGNED_IN re-emit re-entering initializeStore, which this file's own
+   * comments call an ordinary event.
+   */
+  it('does NOT latch when the commit refuses, so the next load retries', async () => {
+    const { deps } = harness({ commit: vi.fn(() => 'refused' as const) });
+    await runFirstRunSeed('u1', deps);
+    expect(deps.markSeeded).not.toHaveBeenCalled();
+  });
+
+  it('DOES latch when there was genuinely nothing to create', async () => {
+    // A stable answer, unlike a refusal — asking again on every load forever
+    // would never produce a different one.
+    const { deps } = harness({ commit: vi.fn(() => 'nothing-to-do' as const) });
+    await runFirstRunSeed('u1', deps);
+    expect(deps.markSeeded).toHaveBeenCalledOnce();
+  });
+
+  it('treats an account with TRASHED containers as not new', async () => {
+    // 5 trashed projects and no live ones is an account that has managed
+    // containers and emptied them — the opposite of brand new. Giving it a
+    // starter set contradicts the whole rule this phase is built on.
+    const { deps } = harness({
+      trashedNames: vi.fn(async () => ({
+        projects: [{ name: 'Old' }, { name: 'Older' }],
+        groups: [],
+      })),
+    });
+    await runFirstRunSeed('u1', deps);
+    const plan = vi.mocked(deps.commit).mock.calls[0][0];
+    expect(plan.reason).toBe('none');
+    expect(plan.projects).toEqual([]);
+    expect(plan.groups).toEqual([]);
   });
 
   it('feeds the bin into the plan, so a held name is never created', async () => {
@@ -250,15 +372,17 @@ describe('runFirstRunSeed', () => {
     expect(plan.projects.map((p) => p.name)).not.toContain('Work');
   });
 
-  it('propagates a latch-write failure instead of committing anyway', async () => {
+  it('surfaces a latch-write failure rather than swallowing it', async () => {
+    // The containers are already committed at this point, and that is fine: the
+    // next load reads them back from the database and takes the 'none' branch,
+    // latching then. What must not happen is the failure disappearing, because
+    // an account that stays unlatched with containers present is exactly the
+    // state the 'none' branch is there to resolve.
     const { deps } = harness({
       markSeeded: vi.fn(async () => {
         throw new Error('offline');
       }),
     });
     await expect(runFirstRunSeed('u1', deps)).rejects.toThrow('offline');
-    // The latch is what makes this one-shot. Committing without it would seed
-    // again on the next load, and again after that.
-    expect(deps.commit).not.toHaveBeenCalled();
   });
 });

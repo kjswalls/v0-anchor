@@ -63,7 +63,7 @@ import {
   adoptContainerMembers,
   type TrashEntry,
 } from './db';
-import type { SeedPlan } from './seed-containers';
+import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
@@ -268,7 +268,7 @@ interface PlannerStore {
   // Project actions
   addProject: (name: string, emoji: string) => void;
   /** First-run starter containers. See seedStarterContainers for the guards. */
-  seedStarterContainers: (plan: SeedPlan) => void;
+  seedStarterContainers: (plan: SeedPlan, forUserId: string) => CommitResult;
   updateProject: (id: string, updates: Partial<Project>) => void;
   removeProject: (id: string) => void;
   getProjectEmoji: (name: string) => string;
@@ -724,16 +724,27 @@ const neverCreated = new Set<string>();
 /** True for a container this store seated and the database then rejected. */
 export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
 
-const undoFailedCreate = (
-  error: unknown,
-  entryId: string | null,
+/**
+ * Take a refused container back out of the store and out of history.
+ *
+ * Extracted so first-run seeding gets the SAME rollback a hand-made create gets.
+ * Its inserts can be refused for a reason no fault is needed to reach: two tabs
+ * opening a first run both read the seeding latch as false, both plan the same
+ * names, and the second one's insert meets `projects_user_id_name_key`. Left
+ * behind, that tab holds six containers that do not exist — and because
+ * `items_project_id_fkey` is composite, the first item filed into one has its
+ * own INSERT rejected in full.
+ *
+ * Everything careful here was paid for twice (see the fix-commit table in
+ * memory/plans/organize-console.md); duplicating it for the seed path would have
+ * been the third time.
+ */
+const removeRefusedContainer = (
   kind: 'project' | 'group',
   id: string,
-  name: string,
+  entryId: string | null,
+  label: string,
 ) => {
-  const noun = kind === 'project' ? 'project' : 'habit group';
-  console.error(`create ${noun} failed`, error);
-
   // BEFORE the setState below, not after. The history subscriber and
   // useTrashedNames' both run synchronously inside set(), so a watcher that
   // asks "was this real?" while reacting to the removal has to be able to get
@@ -778,7 +789,7 @@ const undoFailedCreate = (
         ),
       };
     });
-    forgetFailedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
+    forgetFailedContainer(kind, id, entryId, label);
     // The baseline has to follow the rollback, or the next real change is
     // diffed against a snapshot that still holds the phantom.
     const s = usePlannerStore.getState();
@@ -813,6 +824,43 @@ const undoFailedCreate = (
       historyIndex: info.currentIndex,
     });
   }
+};
+
+/**
+ * A seed container the database refused.
+ *
+ * Same rollback, and deliberately SILENT. `undoFailedCreate` says it out loud
+ * because a hand-made create is something the user just did and is watching for;
+ * this one is a starter set they never asked for, and "Couldn't create Work"
+ * would be the first thing a brand-new account ever said to its owner. Nothing
+ * is lost by the silence: the row simply is not there, which is the state the
+ * account was in a second earlier.
+ *
+ * `null` for the entry id because the seed pushes no history entry at all —
+ * there is nothing to relabel, and `forgetFailedContainer` still strips the id
+ * from every snapshot, which is the half that matters.
+ */
+const rollbackSeedContainer = (
+  error: unknown,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  console.error(`seed ${kind} failed`, name, error);
+  removeRefusedContainer(kind, id, null, '');
+};
+
+const undoFailedCreate = (
+  error: unknown,
+  entryId: string | null,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  const noun = kind === 'project' ? 'project' : 'habit group';
+  console.error(`create ${noun} failed`, error);
+
+  removeRefusedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
 
   // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
   // survived: the container looks created for the rest of the session. 23505 is
@@ -2392,12 +2440,22 @@ export const usePlannerStore = create<PlannerStore>()(
        * while the database has just linked them, and the next edit writes the
        * stale shape back.
        */
-      seedStarterContainers: (plan) => {
+      seedStarterContainers: (plan, forUserId) => {
         const state = get();
         const userId = state.userId;
-        if (!userId || state.isLoading) return;
-        if (state.projects.length > 0 || state.habitGroups.length > 0) return;
-        if (plan.projects.length === 0 && plan.groups.length === 0) return;
+        // THE OWNER CHECK, and it is not redundant with the caller's. The plan
+        // is computed across two more awaits after the caller looked, and
+        // Supabase delivers a bare SIGNED_IN for a different user with no
+        // intervening SIGNED_OUT — the provider handles that case in two other
+        // places. Without this, one account's plan was committed into another
+        // account's store, and with adoption in the mix that meant creating a
+        // container named after someone else's data.
+        if (!userId || userId !== forUserId || state.isLoading) return 'refused';
+        if (state.projects.length > 0 || state.habitGroups.length > 0) return 'refused';
+        // Distinguished from a refusal on purpose: this is a stable answer, and
+        // the caller latches on it so the account stops being asked. A refusal
+        // is "ask again next load".
+        if (plan.projects.length === 0 && plan.groups.length === 0) return 'nothing-to-do';
 
         const projects: Project[] = plan.projects.map((p) => ({
           id: crypto.randomUUID(),
@@ -2410,41 +2468,109 @@ export const usePlannerStore = create<PlannerStore>()(
           emoji: g.emoji,
         }));
 
-        setNextActionLabel(
-          plan.reason === 'adopt' ? 'Add missing containers' : 'Add starter containers'
-        );
-
         const projectByName = new Map(projects.map((p) => [p.name, p]));
         const groupByName = new Map(groups.map((g) => [g.name, g]));
 
-        set((s) => ({
-          projects: [...s.projects, ...projects],
-          habitGroups: [...s.habitGroups, ...groups],
-          ...projectItems(
-            s.items.map((item) => {
-              if (item.type === 'habit') {
-                const g = item.group ? groupByName.get(item.group.trim()) : undefined;
-                return g && !item.groupId ? { ...item, groupId: g.id } : item;
-              }
-              const p = item.project ? projectByName.get(item.project.trim()) : undefined;
-              return p && !item.projectId ? { ...item, projectId: p.id } : item;
-            })
-          ),
-        }));
+        /**
+         * NO HISTORY ENTRY, and this is a change of mind the review earned.
+         *
+         * The plan asked for the seed to be "undoable like anything else", and
+         * the first version obliged with one entry. Two consequences neither of
+         * us had costed: a brand-new account arrives with `canUndo: true` and a
+         * logged action its owner did not perform, and pressing ⌘Z — the very
+         * first thing many people try — SOFT-DELETES all six rows, which puts
+         * six containers the user never made into a Trash they have never opened
+         * and reserves all six names for thirty days, because the unique indexes
+         * have no `WHERE deleted_at IS NULL`.
+         *
+         * Decision 2 asks for "fully deletable", and they are: every one goes
+         * through the console's ordinary delete. It does not ask for undoable,
+         * and a seed is not a user action — the same reasoning `undoFailedCreate`
+         * already applies to itself two hundred lines up.
+         *
+         * Suppressed the way the rollback suppresses: save and restore the flag
+         * rather than clearing it, because `initializeStore` holds it true
+         * across its whole fetch and a hard `false` here would hand it back
+         * unblocked mid-load.
+         */
+        const wasSuppressed = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set((s) => ({
+            projects: [...s.projects, ...projects],
+            habitGroups: [...s.habitGroups, ...groups],
+            ...projectItems(
+              s.items.map((item) => {
+                // Matched on the EXACT stored text, never a trimmed copy. The
+                // adopting UPDATE filters on the name it is given, so a store
+                // that links " Personal" while the database matches "Personal"
+                // produces a link that looks right until the next reload drops
+                // it. planSeed keeps names exact for the same reason.
+                if (item.type === 'habit') {
+                  const g = item.group ? groupByName.get(item.group) : undefined;
+                  return g && !item.groupId ? { ...item, groupId: g.id } : item;
+                }
+                const p = item.project ? projectByName.get(item.project) : undefined;
+                return p && !item.projectId ? { ...item, projectId: p.id } : item;
+              })
+            ),
+          }));
+          /**
+           * BOTH BASELINES, and the second one is not optional — the first
+           * version updated only `prevStateJson` and undo walked straight past
+           * the seed.
+           *
+           * `updatePrevStateBaseline` sets what the NEXT change is diffed
+           * against. But history is a stack of whole snapshots, and the one at
+           * `historyIndex` is still 'Session start' from before the seed. The
+           * user's first real edit pushes a snapshot on top of that, so one ⌘Z
+           * lands on the pre-seed state and takes the containers with it — the
+           * suppression having made sure there was no entry in between to stop
+           * at.
+           *
+           * Rewriting that snapshot in place is the honest fix rather than a
+           * patch: the seed is part of what this session STARTED with, which is
+           * exactly what 'Session start' is supposed to name. Length and index
+           * are untouched, so it cannot break the invariant that `historyIndex`
+           * names the state the store holds.
+           */
+          const s = get();
+          const seeded = {
+            items: s.items,
+            projects: s.projects,
+            habitGroups: s.habitGroups,
+            routines: s.routines,
+            programs: s.programs,
+          };
+          updatePrevStateBaseline(seeded);
+          if (historyStack[historyIndex]) {
+            historyStack[historyIndex] = JSON.parse(JSON.stringify(seeded));
+          }
+        } finally {
+          isUpdatingUndoRedo = wasSuppressed;
+        }
 
         // Sequential per container: the adopt UPDATE must not go out before the
         // INSERT it depends on, or `items_project_id_fkey` rejects it — the
         // composite key means a bad id takes the whole statement down.
+        //
+        // A REFUSED INSERT IS ROLLED BACK, exactly as a hand-made one is. Two
+        // tabs opening a first run both read the latch as false and both plan
+        // the same names; the second one's insert hits the unique index, and
+        // without this the tab keeps six containers that do not exist — and the
+        // first item filed into one is rejected by the composite FK and lost.
         for (const project of projects) {
           dbCreateProject(userId, project)
             .then(() => adoptContainerMembers(userId, 'project_id', project.id, project.name))
-            .catch((error) => console.error('seed project failed', project.name, error));
+            .catch((error) => rollbackSeedContainer(error, 'project', project.id, project.name));
         }
         for (const group of groups) {
           dbCreateHabitGroup(userId, group)
             .then(() => adoptContainerMembers(userId, 'group_id', group.id, group.name))
-            .catch((error) => console.error('seed habit group failed', group.name, error));
+            .catch((error) => rollbackSeedContainer(error, 'group', group.id, group.name));
         }
+
+        return 'committed';
       },
 
       updateProject: (id, updates) => {

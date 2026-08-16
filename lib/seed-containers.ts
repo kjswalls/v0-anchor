@@ -72,16 +72,27 @@ export function planSeed(input: {
   const heldProjects = new Set(input.trashedProjectNames ?? []);
   const heldGroups = new Set(input.trashedGroupNames ?? []);
 
+  /**
+   * A BIN WITH CONTAINERS IN IT MEANS THIS ACCOUNT IS NOT NEW, and the live
+   * data is why this branch exists: the e2e account holds five trashed projects
+   * and zero live ones, so "no containers" was true and "brand new" was not.
+   * Someone who has created containers and deleted them has answered the
+   * question, and handing them a starter set contradicts the rule the whole
+   * phase rests on.
+   *
+   * Adoption still runs — an item naming a container it lost is a repair, not
+   * an invention — and the held names are filtered out of it below.
+   */
+  const everHadContainers = heldProjects.size > 0 || heldGroups.size > 0;
+
   if (items.length === 0) {
-    return {
-      reason: 'new-account',
-      // Filtered even here. A genuinely new account has an empty bin, but
-      // "genuinely new" is an inference and 23505 is not — and the whole branch
-      // is reachable by anyone who deletes every container AND every item
-      // before the latch is set.
-      projects: DEFAULT_PROJECTS.filter((p) => !heldProjects.has(p.name)),
-      groups: DEFAULT_HABIT_GROUPS.filter((g) => !heldGroups.has(g.name)),
-    };
+    if (everHadContainers) return NOTHING;
+    // No per-name bin filter here, and its absence is the point: the branch
+    // above already returned for ANY held name, so a filter would be unreachable
+    // code dressed as a safety net. (It was there, and writing the test for the
+    // new rule is what exposed it.) The starter set is only ever handed to an
+    // account whose bin holds no container at all.
+    return { reason: 'new-account', projects: DEFAULT_PROJECTS, groups: DEFAULT_HABIT_GROUPS };
   }
 
   return {
@@ -94,22 +105,26 @@ export function planSeed(input: {
 /**
  * The container names this account's items actually reference.
  *
- * Trimmed and de-duped EXACTLY, never case-folded, because the unique index is
- * case-sensitive: "personal" and "Personal" are two legal rows, and folding them
- * here would adopt one name for items that reference the other, leaving half of
- * them still dangling with no sign of why.
+ * EXACT, and that now means untrimmed as well as un-case-folded.
  *
- * Blank and whitespace-only values are dropped rather than adopted. They exist —
- * a cleared container used to write `''` rather than NULL — and a container
- * named "" is not something any surface can render or the user can delete.
+ * The first version trimmed, on the theory that " Personal" and "Personal" are
+ * one container. They are not, to the only judge that matters: the unique index
+ * is over the raw text, so both are legal rows — and the adopting UPDATE filters
+ * on the name it is given. Trimming made the store link the padded item while
+ * the database matched nothing, so the link looked right until the next reload
+ * silently dropped it. The store and the write have to agree about what the name
+ * IS, and the database's answer is the only one that survives.
+ *
+ * Blank and whitespace-only values are still dropped, because a container named
+ * " " is not something any surface can render or the user can delete. Their
+ * items keep dangling on text, exactly as today.
  */
 function namesUsed(items: readonly Item[], field: 'project' | 'group'): string[] {
   const seen = new Set<string>();
   for (const item of items) {
     const raw = (item as unknown as Record<string, unknown>)[field];
-    if (typeof raw !== 'string') continue;
-    const name = raw.trim();
-    if (name) seen.add(name);
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    seen.add(raw);
   }
   return [...seen];
 }
@@ -145,16 +160,37 @@ function adoptable(names: readonly string[], held: ReadonlySet<string>): Contain
  *      `WHERE deleted_at IS NULL`, so a soft-deleted row holds its name for
  *      thirty days while being invisible to the store; creating it anyway is
  *      23505 and a phantom container, out of a write nobody asked for.
- *   4. LATCH BEFORE CREATING. If the writes then fail, the account is never
- *      seeded and its owner sees the empty sections they would have seen
- *      anyway. Latch afterwards and a failure in between leaves a load that
- *      seeds again — the store's de-dupe would catch most of it, and "most" is
- *      not the standard for an automatic write.
+ *   4. LATCH ON THE OUTCOME, not before it. See below — this is the half the
+ *      first version got backwards.
  *
  * An account that HAS containers is latched too. It needs nothing, but it has
  * now been considered, and leaving it unlatched would spend a SELECT on every
  * load forever asking a question whose answer cannot change.
+ *
+ * THE COMMIT REPORTS BACK, AND `userId` TRAVELS WITH THE PLAN. Both of those are
+ * corrections to a first version that reasoned about the awaits and then wrote
+ * the checks where they could not cover them:
+ *
+ *   - The account-switch check ran BEFORE two more awaits (the bin read and the
+ *     latch write) and nothing re-checked afterwards, so a bare SIGNED_IN for a
+ *     different user — which the provider handles in two other places precisely
+ *     because Supabase delivers them — carried one account's plan into another
+ *     account's store. Passing `userId` into `commit` lets the writer refuse.
+ *   - `commit` returned void, so every guard inside it was a silent refusal this
+ *     function could not see, and the latch had already been spent. The account
+ *     ended latched with zero containers and NO PATH THAT COULD EVER RETRY;
+ *     recovery was a hand-written UPDATE. Latching only on a real outcome makes
+ *     a refusal cost one wasted load instead of the feature.
+ *
+ * That inverts the original ordering argument, and the inversion is safe because
+ * the durable idempotence guard was never the latch: it is `projects.length > 0`
+ * READ BACK FROM THE DATABASE. If the containers landed and the latch write did
+ * not, the next load fetches them and takes the 'none' branch — self-healing.
+ * The latch's real job is narrower and still intact: remembering that an account
+ * which DELETED its starter set must not be given another one.
  */
+export type CommitResult = 'committed' | 'nothing-to-do' | 'refused';
+
 export interface SeedDeps {
   hasSeeded: (userId: string) => Promise<boolean>;
   markSeeded: (userId: string) => Promise<void>;
@@ -166,7 +202,7 @@ export interface SeedDeps {
     projects: readonly { name: string }[];
     habitGroups: readonly { name: string }[];
   };
-  commit: (plan: SeedPlan) => void;
+  commit: (plan: SeedPlan, forUserId: string) => CommitResult;
 }
 
 export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<SeedReason> {
@@ -189,7 +225,12 @@ export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<S
     trashedGroupNames: trashed.groups.map((t) => t.name),
   });
 
+  const result = deps.commit(plan, userId);
+  // A refusal means the store moved under us — a load re-entered, the account
+  // switched, containers appeared. Nothing was written and nothing is known, so
+  // the account stays unlatched and the next load asks again.
+  if (result === 'refused') return 'none';
+
   await deps.markSeeded(userId);
-  deps.commit(plan);
   return plan.reason;
 }

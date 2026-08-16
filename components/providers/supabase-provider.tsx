@@ -133,7 +133,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         markSeeded: markContainersSeeded,
         trashedNames: fetchTrashedNames,
         snapshot: () => usePlannerStore.getState(),
-        commit: (plan) => usePlannerStore.getState().seedStarterContainers(plan),
+        commit: (plan, forUserId) =>
+          usePlannerStore.getState().seedStarterContainers(plan, forUserId),
       }).catch((error) => console.error('first-run container seeding failed', error));
 
     /**

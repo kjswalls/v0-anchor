@@ -174,8 +174,11 @@ describe('explicit None values', () => {
 
 describe('habit groups compare case-insensitively, projects exactly', () => {
   it("matches 'personal' against 'Personal'", () => {
-    // makeAddDraft seeds a lowercase 'personal'; DEFAULT_HABIT_GROUPS ships
-    // capitalised 'Personal'. Both exist in real data.
+    // makeAddDraft falls back to a lowercase 'personal' when an account has no
+    // groups, and 119 habits on the live database carry a capitalised
+    // 'Personal' from before that. Both exist in real data, which is why the
+    // comparison folds. (The starter set no longer ships either — Phase 6
+    // renamed the defaults — but the rows that do are still out there.)
     const lower = habit({ group: 'personal' });
     const upper = habit({ group: 'Personal' });
 

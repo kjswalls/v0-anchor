@@ -14,10 +14,13 @@ import { getItemTypeConfig } from './item-registry';
  * A container reference is `<kind>:<name>`.
  *
  * Prefixed because Project and Habit Group are ONE filter axis with two
- * namespaces, and the namespaces collide: DEFAULT_PROJECTS and
- * DEFAULT_HABIT_GROUPS both seed Work / Wellness / Personal, so a bare "Work"
- * cannot say which one it means. The prefix is also what lets a single
- * `containers: string[]` carry both without a discriminated shape.
+ * namespaces, and a bare name cannot say which one it means. The starter sets
+ * used to make that concrete — DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both
+ * shipped Work / Wellness / Personal — and Phase 6 gave them disjoint names so a
+ * new account no longer starts life with three ambiguous ones. The prefix stays:
+ * nothing stops a user naming a project and a group the same thing, and it is
+ * also what lets a single `containers: string[]` carry both without a
+ * discriminated shape.
  */
 export type ContainerKind = 'project' | 'group';
 

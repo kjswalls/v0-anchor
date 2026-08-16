@@ -20,6 +20,14 @@ const updates: { table: string; payload: Record<string, unknown>; filters: strin
 let settingsRow: Record<string, unknown> | null = null;
 let selectFails = false;
 let updateReturns: { id: string }[] = [];
+/**
+ * The fake used to be incapable of failing, which made every "this THROWS"
+ * claim in db.ts untestable — and both were provably vacuous: replacing
+ * `if (error) throw error` with `void error` in either function left the whole
+ * file green. A fake that can only succeed tests only the happy path while
+ * reading as if it covered the contract.
+ */
+let writeFails = false;
 
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
@@ -34,7 +42,7 @@ vi.mock('@/lib/supabase', () => ({
       }),
       upsert: (payload: Record<string, unknown>, opts?: unknown) => {
         upserts.push({ table, payload, opts });
-        return Promise.resolve({ error: null });
+        return Promise.resolve(writeFails ? { error: { message: 'boom' } } : { error: null });
       },
       update: (payload: Record<string, unknown>) => {
         const filters: string[] = [];
@@ -49,7 +57,9 @@ vi.mock('@/lib/supabase', () => ({
           },
           select: async () => {
             updates.push({ table, payload, filters });
-            return { data: updateReturns, error: null };
+            return writeFails
+              ? { data: null, error: { message: 'boom' } }
+              : { data: updateReturns, error: null };
           },
         };
         return chain;
@@ -69,6 +79,7 @@ beforeEach(() => {
   updates.length = 0;
   settingsRow = null;
   selectFails = false;
+  writeFails = false;
   updateReturns = [];
 });
 
@@ -104,9 +115,21 @@ describe('markContainersSeeded', () => {
     expect(upserts[0].opts).toEqual({ onConflict: 'user_id' });
   });
 
-  it('writes only its own two columns, so it cannot clobber settings', async () => {
+  it('sends only its own two columns', async () => {
+    // Deliberately narrowed from "so it cannot clobber settings". PostgREST's
+    // merge-duplicates builds `ON CONFLICT DO UPDATE SET` from the payload keys,
+    // so a two-key payload cannot touch theme or timezone — but that is a fact
+    // about PostgREST which a hand-rolled fake cannot demonstrate. The old name
+    // claimed evidence this test does not have.
     await markContainersSeeded('u1');
     expect(Object.keys(upserts[0].payload).sort()).toEqual(['containers_seeded', 'user_id']);
+  });
+
+  it('THROWS when the write fails, because the caller latches on it', async () => {
+    // Swallowed, `runFirstRunSeed` would treat an unlatched account as latched
+    // and the seed would be re-planned on every load forever.
+    writeFails = true;
+    await expect(markContainersSeeded('u1')).rejects.toBeDefined();
   });
 });
 
@@ -135,5 +158,12 @@ describe('adoptContainerMembers — 027 backfill, re-run for one container', () 
 
   it('reports zero rather than throwing when nothing matched', async () => {
     expect(await adoptContainerMembers('u1', 'group_id', 'g1', 'Nobody')).toBe(0);
+  });
+
+  it('THROWS on a real failure, so the caller can tell it apart from zero rows', async () => {
+    // Zero rows matched and the statement failing are different answers, and
+    // the seed's rollback needs to distinguish them.
+    writeFails = true;
+    await expect(adoptContainerMembers('u1', 'group_id', 'g1', 'Personal')).rejects.toBeDefined();
   });
 });
