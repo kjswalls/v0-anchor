@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { setLayout, setScope, waitForAppReady } from './helpers/app';
-import { createTestTask, cleanupByTitlePrefix, testTitle } from './helpers/api';
+import { createTestTask, cleanupByTitlePrefix, specScope } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
 
 /**
@@ -26,6 +26,14 @@ test.use({ viewport: { width: 1440, height: 1200 } });
 
 const today = () => getTodayStr();
 
+/**
+ * Under its own prefix. Every assertion here resolves through `data-item-id` on
+ * ids this spec created, so it never needed an empty board — only its own rows
+ * gone between tests. The bare `'e2e_'` it swept before was also the one call
+ * site that spelled the prefix as a literal rather than importing it.
+ */
+const scope = specScope('overlap');
+
 async function seed(
   page: Page,
   items: { title: string; startTime: string; duration: number; bucket: string }[]
@@ -34,7 +42,7 @@ async function seed(
   for (const i of items) {
     ids.push(
       await createTestTask(page, {
-        title: testTitle(i.title),
+        title: scope.title(i.title),
         isScheduled: true,
         startDate: today(),
         startTime: i.startTime,
@@ -83,10 +91,10 @@ async function blockAt(page: Page, x: number, y: number): Promise<string | null>
 const centre = (b: Box) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
 
 test.beforeEach(async ({ page }) => {
-  await cleanupByTitlePrefix(page, 'e2e_');
+  await cleanupByTitlePrefix(page, scope.prefix);
 });
 test.afterEach(async ({ page }) => {
-  await cleanupByTitlePrefix(page, 'e2e_');
+  await cleanupByTitlePrefix(page, scope.prefix);
 });
 
 test.describe('overlapping schedule blocks', () => {

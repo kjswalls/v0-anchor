@@ -36,17 +36,23 @@ import { getTodayStr, getDateStr } from './helpers/dates';
  *  - Habits are un-anchored: they render on every matching day, with no start
  *    date to gate them.
  */
-test.describe('Habits', () => {
+test.describe('Habits', { tag: '@exclusive-habits' }, () => {
   // Serial, on a CLEARED board.
   //
-  // These are the geometry-sensitive tests. closestCenter resolves drops by
-  // comparing rect CENTRES, and which zones exist at all is data-dependent:
-  // scheduled:{bucket}:empty only renders when the bucket has no timed items, and
-  // the height of unscheduled:{bucket} depends on how many untimed rows sit in it.
-  // So leftovers from other specs silently move every centre on the board and a
-  // drop lands one zone off. Sweeping the suite-prefixed fixtures first makes the
-  // geometry a function of this test alone. Safe because the fixtures all carry
-  // TEST_TITLE_PREFIX and the account is a dedicated test user.
+  // Three tests here drag (bucket, timed, and the braindump no-op), and
+  // closestCenter resolves drops by comparing rect CENTRES: which zones exist at
+  // all is data-dependent — scheduled:{bucket}:empty only renders when the bucket
+  // has no timed items, and the height of unscheduled:{bucket} depends on how
+  // many untimed rows sit in it. So leftovers from other specs silently move
+  // every centre on the board and a drop lands one zone off.
+  //
+  // The bare sweep is therefore correct here for the same reason it is in
+  // dnd.spec — an empty board is the requirement, not a clean prefix — and safe
+  // for the same reason: `@exclusive-habits` puts this file in its own project,
+  // sequenced by `dependencies` after every other project INCLUDING dnd, so
+  // nothing is running concurrently when it fires. The two of them would
+  // otherwise delete each other, which a per-file `mode: 'serial'` cannot
+  // prevent.
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {

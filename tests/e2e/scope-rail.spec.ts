@@ -2,15 +2,13 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { reloadApp, itemCardIn } from './helpers/app';
 import {
-  testTitle,
   createTestHabit,
   cleanupTestData,
   cleanupByTitlePrefix,
   cleanupTestCollections,
-  collectionScope,
+  specScope,
   fetchTestCollections,
 } from './helpers/api';
-import { TEST_TITLE_PREFIX } from './helpers/env';
 
 /**
  * The Scope Rail (memory/plans/programs-routines.md, Phase 5).
@@ -31,18 +29,18 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  * Serial, for the same reason programs.spec is: every test creates containers
  * on a SHARED test user and the rail is not scoped to the running spec.
  */
-// Its own container prefix: cleanupTestCollections is a hard DELETE across the
-// shared test user, and programs.spec sweeps containers too. Two files sweeping
-// the bare TEST_TITLE_PREFIX delete each other's rows mid-test under
-// `fullyParallel` + 4 workers, and describe-serial is file-scoped.
-const scope = collectionScope('rail');
+// Its own prefix, for ITEMS as well as containers: both cleanups are hard
+// DELETEs across the shared test user, and programs.spec creates here too. Two
+// files sweeping the bare TEST_TITLE_PREFIX delete each other's rows mid-test
+// under `fullyParallel` + 4 workers, and describe-serial is file-scoped.
+const scope = specScope('rail');
 
 test.describe('scope rail', () => {
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
-    await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
+    await cleanupByTitlePrefix(page, scope.prefix);
     await cleanupTestCollections(scope.prefix);
     await reloadApp(page);
   });
@@ -143,7 +141,7 @@ test.describe('scope rail', () => {
   });
 
   test('its switch takes work off the grid and puts it back, through the DB', async ({ page }) => {
-    const title = testTitle('rail-member');
+    const title = scope.title('member');
     const name = scope.title('Summer');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 4 });
     try {
@@ -202,8 +200,8 @@ test.describe('scope rail', () => {
    * so it is pinned where it is visible rather than where it is typed.
    */
   test('reordering is offered on a routine and withheld from a program', async ({ page }) => {
-    const first = testTitle('rail-order-a');
-    const second = testTitle('rail-order-b');
+    const first = scope.title('order-a');
+    const second = scope.title('order-b');
     const routineName = scope.title('Order');
     const programName = scope.title('Holder');
     const idA = await createTestHabit(page, { title: first, timeBucket: 'morning' });
@@ -247,7 +245,7 @@ test.describe('scope rail', () => {
   });
 
   test('a routine held off by its program keeps its own switch on', async ({ page }) => {
-    const title = testTitle('rail-split');
+    const title = scope.title('split');
     const routineName = scope.title('Mornings');
     const programName = scope.title('Term');
     // A fixture and a baseline assertion, and NOT only so the consequence is

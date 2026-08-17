@@ -8,10 +8,9 @@ import {
   cleanupTestData,
   cleanupTestLabels,
   cleanupTestCollections,
-  cleanupByTitlePrefix,
-  collectionScope,
+  specScope,
+  fetchTestItemTypePlural,
 } from './helpers/api';
-import { TEST_TITLE_PREFIX } from './helpers/env';
 
 /**
  * The Organize console's LABEL half — projects, item types and habit groups
@@ -40,7 +39,7 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  * Sweeping the bare TEST_TITLE_PREFIX from two files hard-DELETEs the other's
  * rows mid-test under `fullyParallel` + 4 workers.
  */
-const scope = collectionScope('org');
+const scope = specScope('org');
 
 test.describe('organize — projects, types and groups', () => {
   // Same reasoning as programs.spec.ts: each test drives the console through
@@ -212,8 +211,16 @@ test.describe('organize — projects, types and groups', () => {
 
     await page.getByTestId('type-plural').fill(`${name}es`);
     await page.getByTestId('type-plural').press('Enter');
-    await closeConsole(page);
 
+    // WAIT FOR THE ROW, not for the keystroke. `updateItemType` fires its PATCH
+    // fire-and-forget (`.catch(console.error)`), so Enter proves only that the
+    // optimistic store write ran; reloading on the strength of that aborts the
+    // request still in flight. Without this the test read the CREATION default
+    // `${name}s` back and failed — which it did, on the first full parallel run,
+    // after passing 10/10 in isolation for a whole phase.
+    await expect.poll(() => fetchTestItemTypePlural(id)).toBe(`${name}es`);
+
+    await closeConsole(page);
     await reloadApp(page);
     await openConsole(page, 'Item types');
     await page.locator(`[data-testid="type-row"][data-type-id="${id}"]`).click();

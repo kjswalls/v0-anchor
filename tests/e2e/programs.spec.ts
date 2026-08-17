@@ -2,14 +2,12 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { reloadApp, itemCardIn, runCommand } from './helpers/app';
 import {
-  testTitle,
   createTestHabit,
   cleanupTestData,
   cleanupByTitlePrefix,
   cleanupTestCollections,
-  collectionScope,
+  specScope,
 } from './helpers/api';
-import { TEST_TITLE_PREFIX } from './helpers/env';
 
 /**
  * Programs (memory/plans/programs-routines.md, Phase 3).
@@ -31,11 +29,11 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  * the manager's list is not scoped to the running spec.
  *
  * Serial is file-scoped, though, and this file is no longer the only one that
- * sweeps containers — so its names and its cleanup live under a prefix it owns.
- * Sweeping the bare TEST_TITLE_PREFIX from two files hard-DELETEs the other's
- * containers mid-test under `fullyParallel` + 4 workers.
+ * sweeps — so its names and its cleanup live under a prefix it owns, for ITEMS
+ * as well as containers. Sweeping the bare TEST_TITLE_PREFIX from two files
+ * hard-DELETEs the other's rows mid-test under `fullyParallel` + 4 workers.
  */
-const scope = collectionScope('prog');
+const scope = specScope('prog');
 
 test.describe('programs', () => {
   // Longer than the 60s default because every test here drives the manager
@@ -47,7 +45,7 @@ test.describe('programs', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
-    await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
+    await cleanupByTitlePrefix(page, scope.prefix);
     await cleanupTestCollections(scope.prefix);
     await reloadApp(page);
   });
@@ -136,7 +134,7 @@ test.describe('programs', () => {
   test('turning a program off hides its members; turning it on brings them back', async ({
     page,
   }) => {
-    const title = testTitle('program-member');
+    const title = scope.title('member');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 5 });
     try {
       await reloadApp(page);
@@ -184,7 +182,7 @@ test.describe('programs', () => {
    * shows.
    */
   test('a program reaches items through a routine it holds', async ({ page }) => {
-    const title = testTitle('program-indirect');
+    const title = scope.title('indirect');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning' });
     try {
       await reloadApp(page);
@@ -230,7 +228,7 @@ test.describe('programs', () => {
    * real app rather than only in the resolver's table.
    */
   test('a second live path keeps an item on the grid', async ({ page }) => {
-    const title = testTitle('program-union');
+    const title = scope.title('union');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning' });
     try {
       await reloadApp(page);

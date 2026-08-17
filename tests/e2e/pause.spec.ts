@@ -2,8 +2,6 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { reloadApp, itemCardIn, runEntityCommand } from './helpers/app';
 import {
-
-  testTitle,
   createTestHabit,
   createTestTask,
   cleanupTestData,
@@ -11,9 +9,9 @@ import {
   fetchTestItem,
   setUserSetting,
   resetUserSettings,
+  specScope,
 } from './helpers/api';
 import { getTodayStr, getDateStr } from './helpers/dates';
-import { TEST_TITLE_PREFIX } from './helpers/env';
 
 /**
  * Pausing (memory/plans/programs-routines.md, Phase 1).
@@ -24,13 +22,20 @@ import { TEST_TITLE_PREFIX } from './helpers/env';
  * last part is what separates "paused" from "lost".
  *
  * Serial, because two tests flip a user_settings flag on a SHARED test user.
+ *
+ * Under its own prefix: this file's assertions are all id-scoped, so it never
+ * needed an empty board — only its own leftovers gone. Sweeping the bare
+ * TEST_TITLE_PREFIX bought it nothing and hard-DELETEd every concurrent spec's
+ * fixtures mid-test under `fullyParallel` + 4 workers.
  */
+const scope = specScope('pause');
+
 test.describe('pausing', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
-    await cleanupByTitlePrefix(page, TEST_TITLE_PREFIX);
+    await cleanupByTitlePrefix(page, scope.prefix);
     await reloadApp(page);
   });
 
@@ -55,7 +60,7 @@ test.describe('pausing', () => {
   test('a paused habit leaves the grid, keeps its streak, and is reachable in Paused', async ({
     page,
   }) => {
-    const title = testTitle('pause-habit');
+    const title = scope.title('habit');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 4 });
     try {
       await reloadApp(page);
@@ -92,7 +97,7 @@ test.describe('pausing', () => {
   });
 
   test('resuming puts it back exactly where it was', async ({ page }) => {
-    const title = testTitle('resume-habit');
+    const title = scope.title('resume-habit');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 2 });
     try {
       await reloadApp(page);
@@ -126,7 +131,7 @@ test.describe('pausing', () => {
    * was already answered keeps its row even though the item is paused.
    */
   test('a day already marked keeps its row after the item is paused', async ({ page }) => {
-    const title = testTitle('pause-marked');
+    const title = scope.title('marked');
     const habitId = await createTestHabit(page, {
       title,
       timeBucket: 'morning',
@@ -152,14 +157,14 @@ test.describe('pausing', () => {
     // The bar is disabled in the seeded settings, so a naive assertion would
     // pass vacuously — prove it renders the item FIRST.
     await setUserSetting(page, { morning_check_enabled: true });
-    const title = testTitle('pause-overdue');
+    const title = scope.title('overdue');
     const taskId = await createTestTask(page, { title, startDate: getDateStr(-3) });
     // An anchor, so the bar survives the pause. At count 0 with the tray shut,
     // `visible` goes false (morning-check.tsx) and the ENTIRE bar unmounts —
     // there would be nothing left to click, and the test would die on the
     // timeout rather than report anything about pausing.
     const anchorId = await createTestTask(page, {
-      title: testTitle('pause-anchor'),
+      title: scope.title('anchor'),
       startDate: getDateStr(-2),
     });
     try {
@@ -191,7 +196,7 @@ test.describe('pausing', () => {
   });
 
   test('@mobile pause and resume from the action sheet', async ({ page }) => {
-    const title = testTitle('pause-mobile');
+    const title = scope.title('mobile');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 3 });
     try {
       await reloadApp(page);

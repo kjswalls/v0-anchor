@@ -65,24 +65,39 @@ export function testTitle(label: string): string {
 }
 
 /**
- * A container-name prefix owned by ONE spec file, and the titles under it.
+ * A title prefix owned by ONE spec file, covering everything it creates —
+ * items, containers and labels alike.
  *
- * `cleanupTestCollections` is a hard DELETE of every matching row on the shared
- * test user, so two spec files that both sweep `TEST_TITLE_PREFIX` delete each
- * other's containers — and with `fullyParallel` + 4 local workers they run at
- * the same time. `test.describe.configure({mode:'serial'})` is file-scoped and
- * does nothing about it. Both files pass alone and fail non-deterministically in
- * a full run, which is the residue class playwright.config.ts already documents.
+ * `cleanupTestCollections` and `cleanupByTitlePrefix` are both hard DELETEs
+ * across the shared test user, so two spec files that sweep `TEST_TITLE_PREFIX`
+ * delete each other's rows — and with `fullyParallel` + 4 local workers they run
+ * at the same time. `test.describe.configure({mode:'serial'})` is file-scoped
+ * and does nothing about it. Both files pass alone and fail
+ * non-deterministically in a full run, which is the residue class
+ * playwright.config.ts documents.
+ *
+ * Was `collectionScope`, and containers were the only half it covered — which
+ * left `programs.spec` and `scope-rail.spec` scoping their containers correctly
+ * while still calling `cleanupByTitlePrefix(TEST_TITLE_PREFIX)` on the line
+ * above and deleting every other spec's ITEMS. Half a fix reads like a whole one
+ * at the call site, so the scope now spans both and there is no bare-prefix
+ * sweep left to pair it with.
  *
  * Every prefix still starts with TEST_TITLE_PREFIX, so globalSetup's litter
  * sweep keeps catching all of them.
  *
+ * The two specs that genuinely need an EMPTY BOARD rather than merely their own
+ * rows — dnd and habits, whose drop targets resolve by comparing rect centres —
+ * cannot use this: another spec's fixtures move their geometry even when nothing
+ * is deleted. They are isolated by execution order instead; see the `dnd` and
+ * `habits` projects in playwright.config.ts.
+ *
  * @example
- *   const scope = collectionScope('rail');
+ *   const scope = specScope('rail');
  *   await cleanupTestCollections(scope.prefix);
  *   await createContainer(page, 'program', scope.title('Summer'));
  */
-export function collectionScope(spec: string): { prefix: string; title: (label: string) => string } {
+export function specScope(spec: string): { prefix: string; title: (label: string) => string } {
   const prefix = `${TEST_TITLE_PREFIX}${spec}_`;
   return { prefix, title: (label: string) => testTitle(`${spec}_${label}`) };
 }
@@ -113,6 +128,37 @@ export async function fetchTestCollections(
   return ((await res.json()) as { id: string; name: string }[]).filter((row) =>
     row.name?.startsWith(prefix)
   );
+}
+
+/**
+ * One item type as STORED, or null while it does not yet hold `expect`.
+ *
+ * The sibling of fetchTestCollections, for the same reason and against the same
+ * hazard: `updateItemType` sets the store and then fires
+ * `dbUpdateItemType(id, updates).catch(console.error)` without awaiting it
+ * (planner-store.ts). Typing into the Plural field and pressing Enter therefore
+ * proves only that the keystroke reached the store — the PATCH is still in
+ * flight, and `page.reload()` aborts it.
+ *
+ * That is not hypothetical. organize.spec's plural test did exactly this and
+ * passed 10/10 in isolation for a whole phase, then failed on the first full
+ * parallel run: the row came back holding `${name}s`, the value createLabel
+ * writes at creation, because the update never landed. The app was correct at
+ * every layer — store, allowlist, UPDATE — and the test was asserting a
+ * keystroke while reading like it asserted persistence.
+ *
+ * Returns null rather than throwing on a mismatch so callers can drive it from
+ * `expect.poll`, which supplies the waiting and the eventual failure message.
+ */
+export async function fetchTestItemTypePlural(id: string): Promise<string | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(`${url}/rest/v1/item_types?id=eq.${id}&select=label_plural`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!res.ok) throw new Error(`[fetchTestItemTypePlural] ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { label_plural?: string }[];
+  return rows[0]?.label_plural ?? null;
 }
 
 function authHeaders() {

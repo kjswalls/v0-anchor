@@ -69,8 +69,9 @@ export default defineConfig({
         // unlinked places.
         timezoneId: TEST_TZ,
       },
-      // Mobile-tagged tests run in the mobile project below (touch + phone metrics).
-      grepInvert: /@mobile/,
+      // Mobile-tagged tests run in the mobile project below (touch + phone
+      // metrics); the two board-exclusive files run in the projects after it.
+      grepInvert: /@mobile|@exclusive-/,
     },
     {
       // iPhone-14 metrics + touch, kept on Chromium so CI needs no WebKit install.
@@ -81,6 +82,67 @@ export default defineConfig({
         timezoneId: TEST_TZ,
       },
       grep: /@mobile/,
+    },
+
+    /**
+     * THE BOARD-EXCLUSIVE TAIL.
+     *
+     * dnd.spec and habits.spec resolve drop targets by comparing rect CENTRES,
+     * so they need an EMPTY board — not merely their own fixtures cleaned up.
+     * Every other spec now sweeps a prefix it owns (`specScope` in
+     * helpers/api.ts); these two cannot, because the problem is not whose rows
+     * get deleted but whose rows EXIST while they measure. Another spec's
+     * fixture moves their geometry without either file touching the other.
+     *
+     * So they are separated in TIME instead of by prefix. `dependencies` runs a
+     * project only after its dependencies have fully finished, which is the one
+     * ordering primitive that crosses file boundaries — `mode: 'serial'` is
+     * file-scoped and `workers` is config-global, so neither can express "these
+     * two files, never at the same time as anything else".
+     *
+     * The chain is total: chromium+mobile → dnd → habits. dnd depends on BOTH
+     * front projects because mobile-tagged tests create fixtures too (pause,
+     * scope-rail, eod-review, recurring), and habits depends on dnd because both
+     * sweep the bare prefix and would otherwise delete each other — the exact
+     * failure this whole arrangement exists to prevent, one level down.
+     *
+     * COST, AND THE ESCAPE HATCH. `dependencies` means "after that project
+     * SUCCEEDS", not "after it finishes", so a single red test anywhere in
+     * chromium skips this whole tail. Measured, not predicted: the first full
+     * run under this config reported `23 did not run` — these 15 plus 8 serial
+     * siblings — while 13 unrelated chromium tests were failing. A suite that
+     * silently stops running its drag coverage whenever anything else is red is
+     * worse than one that runs it noisily, so the tail is also reachable on its
+     * own:
+     *
+     *     pnpm e2e:board
+     *
+     * which selects both projects with `--no-deps --workers=1`. Every word of
+     * that is load-bearing. `--no-deps` is what makes the tail reachable while
+     * chromium is red — it is the entire point. But it ALSO drops habits'
+     * dependency on dnd, so the two would run in parallel and sweep the bare
+     * prefix out from under each other; `--workers=1` is what puts them back in
+     * sequence. Chaining two invocations with `&&` instead looks equivalent and
+     * is not: a failure in dnd short-circuits habits, which is the same
+     * "dependency failed, so it never ran" hole this script exists to escape,
+     * one level down. (Observed, not reasoned about — the `&&` version was
+     * written first and skipped habits on its first run.)
+     *
+     * The other cost is wall clock: the tail is serial, so a full run is longer
+     * than a fully parallel one by roughly these two files' runtime. That is the
+     * price of measuring an empty board at all.
+     */
+    {
+      name: 'dnd',
+      use: { ...devices['Desktop Chrome'], timezoneId: TEST_TZ },
+      grep: /@exclusive-dnd/,
+      dependencies: ['chromium', 'mobile'],
+    },
+    {
+      name: 'habits',
+      use: { ...devices['Desktop Chrome'], timezoneId: TEST_TZ },
+      grep: /@exclusive-habits/,
+      dependencies: ['dnd'],
     },
   ],
 
