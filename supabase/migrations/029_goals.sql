@@ -30,13 +30,17 @@
 -- PostgREST rejects an INSERT naming a column missing from its schema cache
 -- (PGRST204). This migration touches no existing table's columns at all, so
 -- every pre-existing write path is byte-identical against a pre-029 database.
--- The only new surface is fetchGoals, which returns null on a missing table so
--- the store gates the whole feature — including its write path — off. Do not
--- "simplify" that availability gate away.
+-- The only new surface is fetchGoals, which returns null on a missing table
+-- (42P01/PGRST205) so that the store can latch the whole feature off. Note the
+-- CAN: the store slice, its `goalsAvailable` flag and the write-path gating
+-- land with Phase 1 — this migration ships the read-side null and nothing else,
+-- and the goal writers are simply uncalled until then. Do not "simplify" the
+-- null-on-missing-table contract away; the gate is built on it.
 --
--- LEDGER: the number must match the remote ledger's tip. 028's header records
--- why (versions 025/026 arrived from branches whose files are not in this
--- worktree — ledger first, directory second). Check `pnpm db:list` before
+-- LEDGER: the number must match the remote ledger's TIP, which is not the same
+-- question as the highest number in this directory. 028's header records the
+-- rule — ledger first, directory second — after versions arrived on the remote
+-- from branches that had not merged here yet. Check `pnpm db:list` before
 -- applying, and if this is applied out of band via the SQL editor or MCP,
 -- record version 029 in supabase_migrations.schema_migrations immediately or
 -- `db push` will try to replay it later.
@@ -143,15 +147,8 @@ create trigger goals_updated_at before update on public.goals
 -- NEW.updated_at, so attaching it to a table without the column makes every
 -- UPDATE throw at runtime — and role changes UPDATE this table.
 --
--- Both FKs are composite (id, user_id) and ON DELETE CASCADE. Composite because
--- Postgres validates foreign keys with table-owner privileges and IGNORES row
--- level security, so `references items(id)` plus own-row RLS would still let a
--- user insert a membership row pointing at another user's item uuid — a
--- cross-tenant existence oracle plus junk rows the real owner can never see.
--- CASCADE because a RESTRICT/NO ACTION reference from a membership row would
--- abort the whole nightly purge transaction (the hazard that made
--- items_parent_item_id_fkey choose ON DELETE SET NULL back in 019). Membership
--- rows are derived data, not user content, so cascading them is lossless.
+-- Both FKs are composite (id, user_id) and ON DELETE CASCADE — see the guarded
+-- block below, where they are added and the reasoning lives.
 
 create table if not exists public.goal_items (
   goal_id uuid not null,
@@ -165,11 +162,55 @@ create table if not exists public.goal_items (
   -- checkpoints). Item `order` is a per-type sequence and cannot serve here —
   -- cross-type values collide — so membership carries its own, exactly as
   -- routine_items does. Null for non-milestone roles.
-  sort_order int,
-  primary key (goal_id, item_id),
-  foreign key (goal_id, user_id) references public.goals (id, user_id) on delete cascade,
-  foreign key (item_id, user_id) references public.items (id, user_id) on delete cascade
+  sort_order int
 );
+
+-- Everything structural about this table is added SEPARATELY and guarded, not
+-- declared inline above — including the primary key and both foreign keys.
+--
+-- This departs from routine_items/program_items in 024, deliberately. The rest
+-- of this file argues that `create table if not exists` skips inline
+-- constraints silently on a table that already exists; leaving the PK and the
+-- FKs inline would exempt from that argument the three constraints it matters
+-- most for. A missing PK at least fails loudly (the first upsert's
+-- `on_conflict=goal_id,item_id` raises 42P10), but a missing composite FK fails
+-- SILENTLY, and those two FKs are the entire reason a membership row cannot be
+-- forged across tenants (see the note below). A file that reports success on a
+-- table with no cross-tenant protection is worse than one that fails.
+
+alter table public.goal_items add column if not exists role text not null default 'member';
+alter table public.goal_items add column if not exists sort_order int;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'goal_items_pkey') then
+    alter table public.goal_items add constraint goal_items_pkey primary key (goal_id, item_id);
+  end if;
+
+  -- Composite (id, user_id) rather than plain id, in BOTH directions. Postgres
+  -- validates foreign keys with table-owner privileges and IGNORES row level
+  -- security, so `references items(id)` plus own-row RLS would still let a user
+  -- insert a membership row pointing at another user's item uuid — the insert
+  -- succeeding or raising 23503 depending on whether that uuid exists, which is
+  -- a cross-tenant existence oracle, and it leaves junk rows the real owner can
+  -- never see or clean up. Pairing each id with user_id makes a cross-tenant
+  -- membership unrepresentable rather than merely invisible.
+  --
+  -- CASCADE because a RESTRICT/NO ACTION reference from a membership row would
+  -- abort the whole nightly purge transaction (the hazard that made
+  -- items_parent_item_id_fkey choose ON DELETE SET NULL back in 019).
+  -- Membership rows are derived data, not user content, so cascading them is
+  -- lossless.
+  if not exists (select 1 from pg_constraint where conname = 'goal_items_goal_fkey') then
+    alter table public.goal_items add constraint goal_items_goal_fkey
+      foreign key (goal_id, user_id) references public.goals (id, user_id) on delete cascade;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'goal_items_item_fkey') then
+    alter table public.goal_items add constraint goal_items_item_fkey
+      foreign key (item_id, user_id) references public.items (id, user_id) on delete cascade;
+  end if;
+end$$;
 
 -- Guarded, not inline — see goals_state_check above. This is the CHECK whose
 -- silent absence is worst: the app splits rows three ways by this column, so an
@@ -213,11 +254,18 @@ end$$;
 -- table the 024 version purged is re-listed here — dropping one would silently
 -- strand its trash forever.
 
+-- NOTE the asymmetry, because the guard below reads like more protection than
+-- it is: the unschedule tolerates a missing job, but the `cron.schedule` that
+-- follows is UNGUARDED, so a database with no pg_cron extension fails this
+-- whole file and neither table lands. That is not an oversight to fix here —
+-- 019 and 024 have the identical shape, and 013 does `create extension if not
+-- exists pg_cron`, so any ordered replay has it. It is written down so nobody
+-- reads the exception handler as "safe on a bare database".
 do $$
 begin
   perform cron.unschedule('purge-deleted-items');
 exception when others then
-  null; -- job absent (fresh database) — nothing to unschedule
+  null; -- job absent (already-unscheduled, or a replay) — nothing to undo
 end$$;
 
 select cron.schedule('purge-deleted-items', '0 0 * * *', $$

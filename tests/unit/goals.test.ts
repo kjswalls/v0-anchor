@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { goalMemberRows, type GoalMembers } from '@/lib/db';
-import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
-import type { Item } from '@/lib/planner-types';
+import { fetchGoals, goalMemberRows, updateGoal, type GoalMembers } from '@/lib/db';
+import {
+  hydrateCustomTypes,
+  isCheckinEligible,
+  isCollectible,
+  isMilestoneEligible,
+} from '@/lib/item-registry';
+import type { Item, ItemTypeDef } from '@/lib/planner-types';
 
 /**
  * Phase 0 of memory/plans/long-term-goals.md — the two pieces of goal logic
@@ -73,6 +78,29 @@ describe('who may hold which role', () => {
     expect(isCheckinEligible(task({ repeatFrequency: 'none' }))).toBe(false);
   });
 
+  it('lets a CUSTOM type be a milestone, including one whose type row is gone', () => {
+    // Both paths resolve through buildCustomTypeConfig — a hydrated custom type
+    // and the fallback template getItemTypeConfig mints for an item whose
+    // item_types row was deleted. The template is task-shaped (dateAnchored,
+    // TASK_FIELDS), so the "startDate IS the target date" premise holds for it,
+    // and neither path had an assertion before.
+    hydrateCustomTypes([
+      { id: 'ty1', name: 'errand', label: 'Errand', labelPlural: 'Errands' } as ItemTypeDef,
+    ]);
+    const custom = (customType: string, over: Partial<Extract<Item, { type: 'custom' }>> = {}): Item => ({
+      ...(task() as Extract<Item, { type: 'task' }>),
+      type: 'custom',
+      customType,
+      ...over,
+    });
+    expect(isMilestoneEligible(custom('errand'))).toBe(true);
+    expect(isMilestoneEligible(custom('deleted-type'))).toBe(true);
+    // The recurrence rule still governs both.
+    expect(isMilestoneEligible(custom('errand', { repeatFrequency: 'daily' }))).toBe(false);
+    expect(isCheckinEligible(custom('deleted-type', { repeatFrequency: 'daily' }))).toBe(true);
+    hydrateCustomTypes([]);
+  });
+
   it('never lets one item satisfy both roles — they are opposites', () => {
     for (const item of [task(), task({ repeatFrequency: 'daily' }), habit()]) {
       expect(isMilestoneEligible(item) && isCheckinEligible(item)).toBe(false);
@@ -138,5 +166,233 @@ describe('flattening the three role arrays into join rows', () => {
 
   it('is empty for a goal with no members, so create can skip the write', () => {
     expect(goalMemberRows(members())).toEqual([]);
+  });
+});
+
+/* ── the membership write, against a fake PostgREST ──────────────────────── */
+
+/**
+ * `reconcileGoalMembers` is where the two properties the pre-build review
+ * pinned actually live, and both are invisible to a type checker: the write is
+ * ONE pass (so a demotion never opens a delete window) and it is SCOPED to the
+ * roles the caller named (so a partial patch does not empty the roles it never
+ * mentioned). The second is the one that bites — `syncContainers` patches only
+ * the fields that differ and swallows rejections with `.catch(console.error)`,
+ * so a reconcile that demanded all three arrays would make membership undo a
+ * silent no-op.
+ *
+ * Enough of PostgREST to answer honestly, including the projection rule: a mock
+ * that hands back whole rows lets a function look correct while reading a
+ * column its own query never asked for — which is exactly the bug this fix
+ * repaired (the reconcile used to `select('item_id')` and then need a role it
+ * had not fetched).
+ */
+interface Row { [k: string]: unknown }
+
+function makeClient(seed: Record<string, Row[]>) {
+  const tables: Record<string, Row[]> = seed;
+  const log: { op: string; table: string; rows?: Row[]; filters: [string, unknown][] }[] = [];
+
+  const build = (table: string, kind: string, payload?: Row | Row[], columns?: string) => {
+    const filters: [string, unknown][] = [];
+    const project = (row: Row): Row => {
+      if (!columns || columns.trim() === '*') return { ...row };
+      return Object.fromEntries(columns.split(',').map((c) => c.trim()).map((c) => [c, row[c]]));
+    };
+    const match = (row: Row) =>
+      filters.every(([col, val]) => (Array.isArray(val) ? val.includes(row[col]) : row[col] === val));
+    const run = () => {
+      const rows = tables[table] ?? (tables[table] = []);
+      if (kind === 'select') return Promise.resolve({ data: rows.filter(match).map(project), error: null });
+      if (kind === 'upsert') {
+        const incoming = (Array.isArray(payload) ? payload : [payload!]) as Row[];
+        log.push({ op: 'upsert', table, rows: incoming, filters });
+        for (const row of incoming) {
+          const existing = rows.find((r) => r.goal_id === row.goal_id && r.item_id === row.item_id);
+          if (existing) Object.assign(existing, row);
+          else rows.push({ ...row });
+        }
+        return Promise.resolve({ data: null, error: null });
+      }
+      if (kind === 'delete') {
+        const doomed = rows.filter(match);
+        log.push({ op: 'delete', table, rows: doomed.map((r) => ({ ...r })), filters });
+        tables[table] = rows.filter((r) => !doomed.includes(r));
+        return Promise.resolve({ data: null, error: null });
+      }
+      // update
+      log.push({ op: 'update', table, rows: [payload as Row], filters });
+      for (const row of rows.filter(match)) Object.assign(row, payload);
+      return Promise.resolve({ data: null, error: null });
+    };
+    const chain: Record<string, unknown> = {
+      eq: (c: string, v: unknown) => (filters.push([c, v]), chain),
+      is: (c: string, v: unknown) => (filters.push([c, v]), chain),
+      in: (c: string, v: unknown[]) => (filters.push([c, v]), chain),
+      order: () => chain,
+      then: (resolve: (v: unknown) => unknown) => run().then(resolve),
+    };
+    return chain;
+  };
+
+  return {
+    tables,
+    log,
+    client: {
+      from: (table: string) => ({
+        select: (columns?: string) => build(table, 'select', undefined, columns),
+        update: (payload: Row) => build(table, 'update', payload),
+        upsert: (payload: Row | Row[]) => build(table, 'upsert', payload),
+        delete: () => build(table, 'delete'),
+        insert: (payload: Row) => build(table, 'upsert', payload),
+      }),
+    },
+  };
+}
+
+const G = 'g1';
+const U = 'u1';
+const join = (item_id: string, role: string, sort_order: number | null = null): Row => ({
+  goal_id: G, item_id, user_id: U, role, sort_order,
+});
+
+describe('reconcileGoalMembers', () => {
+  const seeded = () =>
+    makeClient({
+      goals: [{ id: G, user_id: U, name: 'Learn Chinese', state: 'active' }],
+      goal_items: [join('s1', 'milestone', 0), join('c1', 'checkin'), join('m1', 'member')],
+    });
+
+  it('leaves roles the patch never mentions completely alone', async () => {
+    // The failure this replaced: undo of "added a milestone" arrives as
+    // {milestoneIds} alone. Read as a whole-set replacement it would delete
+    // the check-in and the plain member too — and syncContainers swallows the
+    // rejection, so nobody would ever see it happen.
+    const { client, tables, log } = seeded();
+    await updateGoal(U, G, { milestoneIds: ['s1', 's2'] }, client);
+    expect(tables.goal_items.map((r) => r.item_id).sort()).toEqual(['c1', 'm1', 's1', 's2']);
+    expect(log.filter((l) => l.op === 'delete')).toHaveLength(0);
+  });
+
+  it('removes only within the roles it was given', async () => {
+    const { client, tables } = seeded();
+    await updateGoal(U, G, { milestoneIds: [] }, client);
+    expect(tables.goal_items.map((r) => r.item_id).sort()).toEqual(['c1', 'm1']);
+  });
+
+  it('demotes a milestone to member as ONE upsert, with no delete in between', async () => {
+    // A demotion always changes two arrays, so both roles are in scope and the
+    // union resolves it as an UPDATE of one row. Three per-role passes would
+    // have deleted this row in the milestone pass and re-inserted it in the
+    // member pass — and lost the membership outright if anything interrupted
+    // between two requests with no transaction to hold them.
+    const { client, tables, log } = seeded();
+    await updateGoal(U, G, { milestoneIds: [], memberIds: ['m1', 's1'] }, client);
+    expect(log.filter((l) => l.op === 'delete')).toHaveLength(0);
+    const row = tables.goal_items.find((r) => r.item_id === 's1')!;
+    expect(row.role).toBe('member');
+    expect(row.sort_order).toBeNull();
+  });
+
+  it('promotes a member to milestone without deleting it first', async () => {
+    const { client, tables, log } = seeded();
+    // Both arrays carry their full new contents — s1 STAYS a milestone. Send
+    // `{milestoneIds: ['m1']}` instead and s1 is genuinely gone from the goal,
+    // which is the next test.
+    await updateGoal(U, G, { milestoneIds: ['s1', 'm1'], memberIds: [] }, client);
+    expect(log.filter((l) => l.op === 'delete')).toHaveLength(0);
+    const row = tables.goal_items.find((r) => r.item_id === 'm1')!;
+    expect(row.role).toBe('milestone');
+    expect(row.sort_order).toBe(1);
+  });
+
+  it('treats an id dropped from a supplied array, and named in no other, as removed', async () => {
+    // The semantic the scoping rule implies, pinned because it is the one place
+    // "leave unmentioned roles alone" and "this array is the whole truth for
+    // its role" meet. s1 leaves the milestone array and appears nowhere else in
+    // the patch, so it leaves the goal — while c1, whose role the patch never
+    // mentions, survives untouched.
+    const { client, tables } = seeded();
+    await updateGoal(U, G, { milestoneIds: ['m2'], memberIds: ['m1'] }, client);
+    expect(tables.goal_items.map((r) => r.item_id).sort()).toEqual(['c1', 'm1', 'm2']);
+  });
+
+  it('honours a full three-array replacement as a whole-set write', async () => {
+    const { client, tables } = seeded();
+    await updateGoal(U, G, { milestoneIds: ['s1'], checkinIds: [], memberIds: [] }, client);
+    expect(tables.goal_items.map((r) => r.item_id)).toEqual(['s1']);
+  });
+
+  it('refuses a contradictory patch BEFORE writing the column half', async () => {
+    // Otherwise a rename persists and the membership throws, so a caller that
+    // rolls back its optimistic state on the rejection diverges from the DB on
+    // the name it already wrote.
+    const { client, tables } = seeded();
+    await expect(
+      updateGoal(U, G, { name: 'Renamed', milestoneIds: ['x'], memberIds: ['x'] }, client),
+    ).rejects.toThrow(/two roles at once/);
+    expect(tables.goals[0].name).toBe('Learn Chinese');
+  });
+
+  it('writes nothing at all when the patch is empty', async () => {
+    const { client, log } = seeded();
+    await updateGoal(U, G, {}, client);
+    expect(log).toHaveLength(0);
+  });
+});
+
+describe('fetchGoals', () => {
+  it('splits one join table into three arrays by role', async () => {
+    const { client } = makeClient({
+      goals: [{ id: G, user_id: U, name: 'Learn Chinese', state: 'active', deleted_at: null }],
+      goal_items: [join('s1', 'milestone', 0), join('c1', 'checkin'), join('m1', 'member')],
+    });
+    const goals = await fetchGoals(U, client);
+    expect(goals![0]).toMatchObject({
+      milestoneIds: ['s1'], checkinIds: ['c1'], memberIds: ['m1'],
+    });
+  });
+
+  it('files an unrecognised role as a plain member rather than dropping it', async () => {
+    // Unreachable under 029's CHECK, and deliberate: a membership that vanishes
+    // from every array is unrecoverable, while one that degrades is editable.
+    const { client } = makeClient({
+      goals: [{ id: G, user_id: U, name: 'G', state: 'active', deleted_at: null }],
+      goal_items: [join('x1', 'some-future-role')],
+    });
+    const goals = await fetchGoals(U, client);
+    expect(goals![0].memberIds).toEqual(['x1']);
+  });
+
+  it('gives every memberless goal its OWN arrays', async () => {
+    // One hoisted `empty` object spread into each row would share three array
+    // references across every memberless goal, so the first in-place push would
+    // appear on all of them at once.
+    const { client } = makeClient({
+      goals: [
+        { id: 'a', user_id: U, name: 'A', state: 'active', deleted_at: null },
+        { id: 'b', user_id: U, name: 'B', state: 'active', deleted_at: null },
+      ],
+      goal_items: [],
+    });
+    const goals = await fetchGoals(U, client);
+    expect(goals![0].memberIds).not.toBe(goals![1].memberIds);
+  });
+
+  it('returns null — not [] — when the table is not there yet', async () => {
+    // The availability contract Phase 1's `goalsAvailable` is built on. `[]`
+    // would say "you have no goals" to a store that would then offer to create
+    // one against a table that does not exist.
+    const client = {
+      from: () => ({
+        select: () => ({
+          eq: function () { return this; },
+          is: function () { return this; },
+          order: function () { return this; },
+          then: (r: (v: unknown) => unknown) => r({ data: null, error: { code: '42P01' } }),
+        }),
+      }),
+    };
+    expect(await fetchGoals(U, client)).toBeNull();
   });
 });

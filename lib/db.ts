@@ -958,17 +958,28 @@ export async function setUserExtensionEnabled(
 // create would otherwise appear to succeed and vanish on reload.
 
 /**
- * A missing table means "migration 024 hasn't been applied here" — return null
- * so the store can gate the whole feature off, the fetchItemTypes contract.
- * ANY OTHER error rethrows: a transient network blip or an RLS misconfiguration
- * must not be indistinguishable from "the feature does not exist", because the
- * null latches the feature off (including its write path) until a reload. This
- * discriminates on the error code the way missingEventsTable already does,
- * rather than the looser catch-all fetchItemTypes uses.
+ * A missing table means the feature's migration hasn't been applied here —
+ * return null so the store can gate the whole feature off, the fetchItemTypes
+ * contract. ANY OTHER error rethrows: a transient network blip or an RLS
+ * misconfiguration must not be indistinguishable from "the feature does not
+ * exist", because the null latches the feature off (including its write path)
+ * until a reload. This discriminates on the error code the way
+ * missingEventsTable already does, rather than the looser catch-all
+ * fetchItemTypes uses.
+ *
+ * The migration is a PARAMETER because this helper is shared. It used to
+ * hardcode "024 … programs/routines disabled", so the day goals arrived the one
+ * diagnostic anybody sees during a deploy window pointed at the wrong migration
+ * AND the wrong feature — in exactly the window the message exists to explain.
  */
-function unavailable(fn: string, error: { code?: string; message?: string }): null {
+function unavailable(
+  fn: string,
+  error: { code?: string; message?: string },
+  migration: string,
+  feature: string,
+): null {
   if (error.code === '42P01' || error.code === 'PGRST205') {
-    console.warn(`${fn}: migration 024 not applied yet — programs/routines disabled.`);
+    console.warn(`${fn}: migration ${migration} not applied yet — ${feature} disabled.`);
     return null;
   }
   // Anything else rethrows, and from Phase 2 that propagates out of
@@ -1111,7 +1122,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
       .order('item_id', { ascending: true }),
   ]);
   const error = routines.error ?? members.error;
-  if (error) return unavailable('fetchRoutines', error);
+  if (error) return unavailable('fetchRoutines', error, '024', 'programs/routines');
   const itemIdsByRoutine = new Map<string, string[]>();
   for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
     const list = itemIdsByRoutine.get(row.routine_id);
@@ -1232,7 +1243,7 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
       .order('routine_id', { ascending: true }),
   ]);
   const error = programs.error ?? itemMembers.error ?? routineMembers.error;
-  if (error) return unavailable('fetchPrograms', error);
+  if (error) return unavailable('fetchPrograms', error, '024', 'programs/routines');
   const groupBy = (rows: Record<string, string>[], key: string) => {
     const map = new Map<string, string[]>();
     for (const row of rows) {
@@ -1371,11 +1382,40 @@ interface GoalMemberRow {
   sort_order?: number | null;
 }
 
-/** The three role arrays, as every caller passes them. */
+/** The three role arrays, as a goal carries them. */
 export interface GoalMembers {
   memberIds: string[];
   milestoneIds: string[];
   checkinIds: string[];
+}
+
+/**
+ * A membership write, which may name only SOME of the roles.
+ *
+ * An absent array means "leave that role alone", never "empty it". That
+ * distinction is the whole reason this type exists: `syncContainers` diffs
+ * container fields one at a time and patches only what changed, so undo of
+ * "added a milestone" arrives as `{ milestoneIds }` and nothing else. Read as
+ * "empty the other two", it would delete every plain member the goal has.
+ */
+export type GoalMemberPatch = Partial<GoalMembers>;
+
+/**
+ * The role each array carries, and whether that role is ordered.
+ *
+ * Milestones are ordered because the timeline has a sequence; the other two
+ * sort by id (see fetchGoals). Declared once so the flattener and the
+ * reconciler cannot disagree about which arrays exist.
+ */
+const GOAL_ROLE_ARRAYS = [
+  { key: 'milestoneIds', role: 'milestone', ordered: true },
+  { key: 'checkinIds', role: 'checkin', ordered: false },
+  { key: 'memberIds', role: 'member', ordered: false },
+] as const satisfies readonly { key: keyof GoalMembers; role: GoalRole; ordered: boolean }[];
+
+/** Which roles a patch actually speaks to. */
+export function goalRolesInPatch(members: GoalMemberPatch): Set<GoalRole> {
+  return new Set(GOAL_ROLE_ARRAYS.filter((a) => members[a.key] !== undefined).map((a) => a.role));
 }
 
 /**
@@ -1396,10 +1436,14 @@ export interface GoalMembers {
  * that kept its old sort_order would perturb the order its new array comes back
  * in.
  */
-export function goalMemberRows(members: GoalMembers): { itemId: string; role: GoalRole; sortOrder: number | null }[] {
+export function goalMemberRows(
+  members: GoalMemberPatch,
+): { itemId: string; role: GoalRole; sortOrder: number | null }[] {
   const rows: { itemId: string; role: GoalRole; sortOrder: number | null }[] = [];
   const seen = new Map<string, GoalRole>();
-  const push = (ids: string[], role: GoalRole, ordered: boolean) => {
+  for (const { key, role, ordered } of GOAL_ROLE_ARRAYS) {
+    const ids = members[key];
+    if (ids === undefined) continue;
     // Dedupe WITHIN an array quietly (a multi-add UI produces repeats trivially,
     // and one id twice in one array is not a contradiction) — the same guard
     // reconcileMembership carries. Across arrays it is a contradiction, below.
@@ -1416,46 +1460,64 @@ export function goalMemberRows(members: GoalMembers): { itemId: string; role: Go
       rows.push({ itemId, role, sortOrder: ordered ? i : null });
       i += 1;
     }
-  };
-  push(members.milestoneIds, 'milestone', true);
-  push(members.checkinIds, 'checkin', false);
-  push(members.memberIds, 'member', false);
+  }
   return rows;
 }
 
 /**
- * Reconcile one goal's membership as a SINGLE union, never once per role.
+ * Reconcile one goal's membership in a SINGLE pass over the roles the caller
+ * named, never one pass per role.
  *
- * Three per-role passes look equivalent and are not. A milestone demoted to a
- * plain member appears as "removed" to the milestone pass and "added" to the
- * member pass, so whichever runs first DELETEs the row the other is about to
- * insert — and with no cross-request transaction, an interruption between them
- * loses the membership outright. That inverts the add-before-remove guarantee
- * reconcileMembership documents. Worse, an unscoped per-role DELETE can remove
- * a row another pass has just re-roled.
+ * Two properties, and they pull in opposite directions until you read the rows'
+ * roles — which is why this reads them.
  *
- * Reading every row for the goal once and diffing the whole desired set makes a
- * demotion what it actually is: an UPDATE of one row's role, expressed as an
- * upsert on the primary key.
+ * ONE PASS, because three per-role passes are not equivalent: a milestone
+ * demoted to a plain member appears as "removed" to the milestone pass and
+ * "added" to the member pass, so whichever runs first DELETEs the row the other
+ * is about to insert. With no cross-request transaction, an interruption
+ * between them loses the membership outright — inverting the add-before-remove
+ * guarantee reconcileMembership documents — and an unscoped per-role DELETE can
+ * remove a row another pass has just re-roled. Diffing the whole desired set at
+ * once makes a demotion what it actually is: an UPDATE of one row's role,
+ * expressed as an upsert on the primary key.
+ *
+ * SCOPED TO THE ROLES SUPPLIED, because the caller this exists for does not
+ * send all three arrays. `syncContainers` diffs container fields one at a time
+ * and patches only what changed (planner-store.ts), so undo of "added a
+ * milestone" arrives as `{ milestoneIds }` alone — and it fires the write as
+ * `update(...).catch(console.error)`, so anything thrown here is swallowed and
+ * the undo silently never reaches the database. That is the exact failure the
+ * comment above the routines call site records having already shipped once.
+ * Deletions therefore consider only rows whose role the caller spoke to; a role
+ * the patch is silent about keeps every row it had.
+ *
+ * The two properties compose: a demotion always changes TWO arrays, so both
+ * roles are in scope and the union still resolves it in one statement.
  */
 async function reconcileGoalMembers(
   supabase: DbClient,
   goalId: string,
   userId: string,
-  members: GoalMembers,
+  members: GoalMemberPatch,
 ): Promise<void> {
+  const roles = goalRolesInPatch(members);
+  if (roles.size === 0) return;
   const desired = goalMemberRows(members);
 
   const { data, error } = await supabase
     .from('goal_items')
-    .select('item_id')
+    // The role is read, not just the id: without it a partial patch cannot tell
+    // "this row belongs to a role I was not asked about" from "this row is gone".
+    .select('item_id, role')
     .eq('goal_id', goalId)
     .eq('user_id', userId);
   if (error) throw error;
 
-  const current = new Set((data as { item_id: string }[] ?? []).map((r) => r.item_id));
+  const current = (data as { item_id: string; role: string }[] ?? []);
   const desiredIds = new Set(desired.map((r) => r.itemId));
-  const removed = [...current].filter((id) => !desiredIds.has(id));
+  const removed = current
+    .filter((r) => roles.has(r.role as GoalRole) && !desiredIds.has(r.item_id))
+    .map((r) => r.item_id);
 
   // Additions and re-roles BEFORE removals — the sets are disjoint by
   // construction, so this can never collide, and an interruption leaves a
@@ -1520,7 +1582,7 @@ export async function fetchGoals(userId: string, client?: DbClient): Promise<Goa
       .order('item_id', { ascending: true }),
   ]);
   const error = goals.error ?? members.error;
-  if (error) return unavailable('fetchGoals', error);
+  if (error) return unavailable('fetchGoals', error, '029', 'goals');
 
   const membersByGoal = new Map<string, GoalMembers>();
   for (const row of (members.data ?? []) as GoalMemberRow[]) {
@@ -1534,12 +1596,21 @@ export async function fetchGoals(userId: string, client?: DbClient): Promise<Goa
     // by a newer client (or by hand) must degrade to the harmless role instead
     // of dropping the membership out of every array — silent disappearance is
     // how a member becomes unrecoverable.
+    //
+    // The MEMBERSHIP survives; the unknown role does not survive a later write
+    // that names the member role, because the reconcile upserts an explicit
+    // `role` on every desired row. That is the accepted trade: keeping a role
+    // this build cannot name would mean never rewriting a row it cannot
+    // interpret, which is a worse failure — a membership nothing can edit.
     if (row.role === 'milestone') entry.milestoneIds.push(row.item_id);
     else if (row.role === 'checkin') entry.checkinIds.push(row.item_id);
     else entry.memberIds.push(row.item_id);
   }
 
-  const empty: GoalMembers = { memberIds: [], milestoneIds: [], checkinIds: [] };
+  // A fresh literal per goal, never one hoisted `empty` object spread into all
+  // of them: spreading copies the three ARRAY REFERENCES, so every memberless
+  // goal would share one set and the first in-place push would appear on all of
+  // them at once. fetchRoutines avoids this by construction (`?? []`).
   return (goals.data as GoalRow[]).map((row) => ({
     id: row.id,
     name: row.name,
@@ -1551,7 +1622,7 @@ export async function fetchGoals(userId: string, client?: DbClient): Promise<Goa
     targetOn: row.target_on ?? undefined,
     achievedAt: row.achieved_at ?? undefined,
     sortOrder: row.sort_order ?? undefined,
-    ...(membersByGoal.get(row.id) ?? empty),
+    ...(membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
   }));
 }
 
@@ -1603,7 +1674,12 @@ export async function updateGoal(
   if ('why' in updates) row.why = updates.why ?? null;
   if ('icon' in updates) row.icon = updates.icon ?? null;
   if ('color' in updates) row.color = updates.color ?? null;
-  if ('state' in updates) row.state = updates.state;
+  // `!= null`, matching updateProgram on the identical NOT NULL + CHECK column.
+  // Every other field here is `?? null`, which is right for a nullable column;
+  // state is the one where null is illegal, so a `{ state: undefined }` patch
+  // (trivially produced by spreading an optional) would otherwise serialise to
+  // an empty body and drop the write with no error.
+  if ('state' in updates && updates.state != null) row.state = updates.state;
   if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
   if ('targetOn' in updates) row.target_on = updates.targetOn ?? null;
   // IN the allowlist, unlike Program.updatedAt — see GoalSchema.achievedAt. Undo
@@ -1612,31 +1688,26 @@ export async function updateGoal(
   // on a goal that is active again.
   if ('achievedAt' in updates) row.achieved_at = updates.achievedAt ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  // Validate membership BEFORE committing the column half, so a patch that
+  // renames a goal AND carries a contradictory role assignment persists
+  // neither. createGoal hoists the same call for the same reason; without it a
+  // caller that rolls back optimistic state on the rejection would diverge from
+  // the database on the name it had already written.
+  const memberPatch: GoalMemberPatch = {};
+  if ('memberIds' in updates) memberPatch.memberIds = updates.memberIds;
+  if ('milestoneIds' in updates) memberPatch.milestoneIds = updates.milestoneIds;
+  if ('checkinIds' in updates) memberPatch.checkinIds = updates.checkinIds;
+  const touchesMembers = goalRolesInPatch(memberPatch).size > 0;
+  if (touchesMembers) goalMemberRows(memberPatch);
+
   if (Object.keys(row).length > 0) {
     const { error } = await supabase.from('goals').update(row).eq('id', id).eq('user_id', userId);
     if (error) throw error;
   }
 
-  // Membership is reconciled when ANY role array is present, and all three are
-  // read together: the union diff needs the full desired set, so a patch
-  // carrying only `milestoneIds` must be told what the other two are rather
-  // than treating them as empty (which would delete every plain member).
-  // Callers patching one array pass the other two from the store's copy.
-  const touchesMembers =
-    'memberIds' in updates || 'milestoneIds' in updates || 'checkinIds' in updates;
-  if (touchesMembers) {
-    if (!updates.memberIds || !updates.milestoneIds || !updates.checkinIds) {
-      throw new Error(
-        'goal membership: pass all three role arrays together — the reconcile is a ' +
-          'union diff, so a partial set would delete the roles it was not told about.',
-      );
-    }
-    await reconcileGoalMembers(supabase, id, userId, {
-      memberIds: updates.memberIds,
-      milestoneIds: updates.milestoneIds,
-      checkinIds: updates.checkinIds,
-    });
-  }
+  // A patch may name one role array or all three; absent roles are left
+  // untouched rather than emptied. See reconcileGoalMembers.
+  if (touchesMembers) await reconcileGoalMembers(supabase, id, userId, memberPatch);
 }
 
 export async function deleteGoal(userId: string, id: string, client?: DbClient): Promise<void> {

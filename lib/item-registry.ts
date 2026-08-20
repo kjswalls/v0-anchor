@@ -617,14 +617,20 @@ export function isMilestoneEligible(item: Item): boolean {
  * May this item be a goal's CHECK-IN — a recurring review of how the goal is
  * going?
  *
- * The mirror image of the rule above, and it needs no capability flag: any
- * collectible type that CAN recur can serve, habits included ("Weekly Chinese
- * review" is a perfectly good habit). What it cannot be is one-shot — a
- * check-in that happens once is just a task — so this is capability-free and
- * recurrence-only, and it is asked through the registry anyway so a future type
- * that forbids recurrence answers correctly for free.
+ * The mirror image of the rule above: any collectible type that CAN recur may
+ * serve, habits included ("Weekly Chinese review" is a perfectly good habit).
+ * What it cannot be is one-shot — a check-in that happens once is just a task.
+ *
+ * There is no `checkinEligible` flag because the registry already answers the
+ * type half of the question: `allowedFrequencies` says whether the type can
+ * recur at all, so a future type declaring `['none']` is refused here without
+ * anyone remembering to add a capability for it. Asking the ITEM alone would
+ * miss that, and would also trust a stale `repeatFrequency` on an item whose
+ * type has since stopped allowing recurrence.
  */
 export function isCheckinEligible(item: Item): boolean {
   if (!isCollectible(item)) return false
+  const config = getItemTypeConfig(itemTypeName(item))
+  if (!config.allowedFrequencies.some((f) => f !== 'none')) return false
   return isRecurring(item)
 }

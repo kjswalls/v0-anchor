@@ -1,7 +1,7 @@
 # Long-term Goals — an aspiration container over unified items
 
-**Status (2026-08-20): APPROVED DIRECTION, round-1 adversarially reviewed, findings
-folded in. No code written.** Product direction from Kirby's brief ("long term
+**Status (2026-08-20): BUILDING. Phase 0 shipped and reviewed** (see the phase
+ledger). Round-1 design review folded in below. Product direction from Kirby's brief ("long term
 learning plans and goals with milestones, habits, certain things that need to be
 scheduled, date check-ins — like learning Chinese with fluency goals along the way,
 or building a $3m business in 3 years"). **All eight open questions answered by Kirby
@@ -505,19 +505,28 @@ table as ONE set. Four rules, each closing a found defect:
   factories carry `fetchGoals` so Phase 1's `initializeStore` wiring does not break
   the suite at module-mock resolution. Zero UI; app behavior unchanged.
   **Gates:** 1332 unit tests green (77 files), lint 0 errors, `pnpm build` clean,
-  types dist matches src, tsc error count unchanged from baseline (23 pre-existing,
-  none in changed files).
-  **Migration NOT applied** — `supabase` CLI is absent from this environment and
-  `pnpm db:list` cannot reach the ledger, so the number 029 is unverified against
-  the remote tip. Verify it before applying (028's header records why: versions
-  arrived out of band from branches whose files are not in this worktree). Deploy
-  order is safe either way: no existing table gains a column, so every pre-existing
-  write path is byte-identical against a pre-029 database.
-  **Carried into Phase 1, deliberately:** the untyped history-baseline literal at
-  planner-store.ts:3370 must gain `goals` in the SAME commit as the store slice —
-  it cannot be fixed earlier (the field does not exist yet) and missed later, undo
-  to session start soft-deletes every goal. `listDeleted`'s goal arm (role-aware
-  bin snapshot) lands with the console's Trash section for the same reason.
+  types dist matches src, tsc error count unchanged from baseline — 23 both sides,
+  distributed identically file-by-file. (Two files this commit edits carry
+  pre-existing errors, `pause.test.ts` and `sweep-receipt.test.ts`; the claim is
+  that nothing was introduced, not that the touched files were clean.)
+  **Migration NOT applied.** The number 029 is unverified against the remote tip:
+  the Supabase CLI resolves via `npx` but the project is not linked
+  (`LegacyProjectNotLinkedError`), and the Supabase MCP — the tool 024's ledger
+  entry records using to apply and verify — is unauthenticated in this session.
+  Verify the tip before applying. Deploy order is safe either way: no existing
+  table gains a column, so every pre-existing write path is byte-identical
+  against a pre-029 database.
+  **Carried into Phase 1, deliberately:**
+  - the untyped history-baseline literal at planner-store.ts:3370 must gain
+    `goals` in the SAME commit as the store slice — it cannot be fixed earlier
+    (the field does not exist yet) and missed later, undo to session start
+    soft-deletes every goal;
+  - **`goalsAvailable`** — the store flag the whole feature gates on, analogue of
+    `collectionsAvailable`. `fetchGoals` already returns null on a missing table,
+    which is the contract it is built from, but the flag itself is a planner-store
+    field and lands with the slice;
+  - `listDeleted`'s goal arm, whose bin snapshot must carry `{itemId, role,
+    sortOrder}` and not bare ids — it ships with the console's Trash section.
 - **Phase 1 — goals end-to-end, console section.** Store slice + history + undo
   (incl. the demotion mechanism and the item→roles index); console Goals section
   (list + detail + wind-down + trash with the role-aware bin arm); Goal chip
@@ -620,6 +629,96 @@ rides normal past-due quietly (amended by review: sweep/bulk-verb exclusions
 protect the target date, see decision 4); no numeric targets in v1; no
 auto-achieve (celebrate receipt, gated); check-ins default weekly, the item owns
 its recurrence; no ScopeRail or Display-menu presence.
+
+## Phase 0 implementation review (2026-08-20)
+
+Four lenses over the committed diff (SQL correctness — which dry-ran the migration
+against a real PostgreSQL 16 cluster with a pg_cron stub, fresh / twice / twice in
+one transaction / three partial states; db.ts runtime; type + registry coherence;
+scope audit and plan fidelity). **No blocker. 1 defect found by three lenses
+independently, plus 9 smaller findings — all fixed in the follow-up commit.**
+
+**The one that mattered, and it was latent rather than live.** `updateGoal` threw
+unless a patch carried all three role arrays. The caller that consumes it in Phase
+1 is `syncContainers`, which builds a patch of only the fields that DIFFER and
+fires it as `update(...).catch(console.error)` — so undoing "added a milestone"
+would have arrived as `{ milestoneIds }` alone, thrown, been swallowed, and left
+membership undo a silent no-op. That is the exact failure the comment three lines
+above the routines call site records having already shipped once. The fix is
+better than the guard it removes: `reconcileGoalMembers` was already reading the
+rows it needed and discarding their `role` (`select('item_id')`), so reading the
+role lets deletions be **scoped to the roles the caller actually named**. A
+partial patch is now correct, a demotion still reconciles as one union with no
+delete window (it always changes two arrays, so both roles are in scope), and a
+full three-array write behaves exactly as before.
+
+**The migration's own idempotency argument did not cover its worst case.** The
+file argues at length that `create table if not exists` skips inline constraints
+silently, pulls the UNIQUE and both CHECKs into guarded blocks on that basis — and
+left `goal_items`' primary key and both composite FKs inline. Verified by
+execution rather than reading: over a hand-made `goal_items`, the committed
+version exited 0 having applied only the role CHECK, with **no primary key, no
+foreign keys and no `sort_order` column**. By the file's own loud/silent taxonomy
+those FKs are the worst thing to lose — a missing PK raises 42P10 at the first
+upsert, a missing FK fails silently, and the two composite FKs are the entire
+reason a membership row cannot be forged across tenants. Now every structural
+piece is guarded, and the repair is proven: the same partial table comes out with
+all four constraints plus the column, and a cross-tenant insert is refused with
+23503. (This deliberately departs from 024, which has the same gap for
+`routine_items`/`program_items`.)
+
+**Three claims in prose that the code did not support** — the class this codebase
+punishes hardest, since a later reader trusts them rather than re-deriving:
+`unavailable()` hardcoded "migration 024 … programs/routines disabled", so a
+missing `goals` table pointed the operator at the wrong migration and the wrong
+feature during exactly the deploy window the header spends ten lines on (now
+parameterised); the migration header claimed the store gates the write path off,
+which is Phase 1 code (now says so); `isCheckinEligible`'s docblock claimed it
+asked the registry so "a future type that forbids recurrence answers correctly for
+free" while the body only read the item's own `repeatFrequency` (now it asks
+`allowedFrequencies`, making the sentence true rather than deleting it); and the
+LEDGER paragraph justified itself with 025/026 "not in this worktree" when both
+files are (`7cfeb4a`, an ancestor) — the instruction was right, the reason stale.
+
+**Smaller, all fixed:** `updateGoal` committed the column half before validating
+membership, so a rename-plus-contradiction persisted the rename (validation
+hoisted, matching `createGoal`); `state` lost the `!= null` guard its sibling
+`updateProgram` carries on the identical NOT NULL column, so `{ state: undefined }`
+would serialise to an empty body and drop the write silently; `fetchGoals` spread
+one hoisted `empty` object into every memberless goal, sharing three array
+references across all of them; and the read-side unknown-role degradation now
+records the write-side consequence it cannot avoid rather than implying
+permanence.
+
+**Tests added for the two behaviors the ledger claimed but nothing pinned** —
+`reconcileGoalMembers`'s union diff and role scoping, and `fetchGoals`'s splitting
+and null-on-missing-table — against a fake PostgREST that honours projection, so
+a function cannot look correct while reading a column its own query never asked
+for (which is precisely how the fixed defect hid). Plus `milestoneEligible` on the
+custom-type and deleted-type-fallback configs. 24 tests in the file, from 11.
+**One of the new tests failed on first run and the code was right**: a fixture
+dropped a milestone from its array without naming it anywhere else, and the
+reconcile correctly removed it from the goal. That semantic — "an unmentioned
+ROLE is left alone, but an id dropped from a SUPPLIED array is gone" — is now
+pinned as its own case.
+
+**Refuted and not to be re-raised** (each checked against the code, several by
+execution): the one-union property itself holds for demotion, promotion, add,
+remove, reorder and no-op; cross-array refusal is symmetric; the three-array fetch
+ordering IS deterministic despite two roles carrying a null `sort_order`, because
+`(sort_order NULLS LAST, item_id)` restricted to one goal is a total order;
+`createGoal` really does validate before inserting and its compensating hard
+delete matches `createRoutine`; composite-FK ordering within the file is correct;
+the cron DELETE list drops nothing 024 purged; the index set covers every query
+db.ts issues; no external contract moved (`AnchorContextResponseSchema`,
+`TaskSchema`/`HabitSchema`, both FIELDS lists and the plugin's payload are
+byte-identical); no goal leaks into filters, grouping, the scope rail, search,
+commands, the console or trash — verified by grep AND by the fact that every
+consumer narrows to `CLASSIFY_KINDS`/`GateKind` first; the "widening
+ContainerKind produces exactly one compiler error" claim in the registry header is
+empirically true (a sixth kind yields precisely one TS2741); no goal path reads or
+writes `items` or any item field; and all 22 mock edits are additive and change no
+existing assertion.
 
 ## Pre-build adversarial review (round 1, 2026-08-20)
 
