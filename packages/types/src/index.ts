@@ -11,6 +11,9 @@ export {
   ProgramStateSchema,
   RoutineSchema,
   ProgramSchema,
+  GoalStateSchema,
+  GoalRoleSchema,
+  GoalSchema,
   TaskSchema,
   HabitSchema,
   TaskItemSchema,
@@ -38,6 +41,7 @@ export {
   HABIT_GROUP_FIELDS,
   ROUTINE_FIELDS,
   PROGRAM_FIELDS,
+  GOAL_FIELDS,
 } from './schemas.js'
 
 // Types (inferred from schemas — no duplication)
@@ -54,6 +58,9 @@ import {
   ProgramStateSchema,
   RoutineSchema,
   ProgramSchema,
+  GoalStateSchema,
+  GoalRoleSchema,
+  GoalSchema,
   TaskSchema,
   HabitSchema,
   TaskItemSchema,
@@ -76,6 +83,10 @@ export type HabitGroupType   = z.infer<typeof HabitGroupSchema>
 export type ProgramState     = z.infer<typeof ProgramStateSchema>
 export type Routine          = z.infer<typeof RoutineSchema>
 export type Program          = z.infer<typeof ProgramSchema>
+export type GoalState        = z.infer<typeof GoalStateSchema>
+/** What a member does for its goal: ordinary work, a checkpoint, or a recurring review. */
+export type GoalRole         = z.infer<typeof GoalRoleSchema>
+export type Goal             = z.infer<typeof GoalSchema>
 export type Task             = z.infer<typeof TaskSchema>
 export type Habit            = z.infer<typeof HabitSchema>
 export type TaskItem         = z.infer<typeof TaskItemSchema>

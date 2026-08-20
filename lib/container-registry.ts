@@ -8,11 +8,11 @@ import type { ItemTypeConfig } from './item-registry';
  * used to ask "is this a project or a habit group?" asks the registry a
  * capability question instead. Adding a kind means adding config.
  *
- * ── the two roles ────────────────────────────────────────────────────────────
+ * ── the three roles ──────────────────────────────────────────────────────────
  *
- * Anchor has four container tables and they are not four of a kind. Two say
- * what an item IS ABOUT and two say WHEN IT COUNTS, and that difference decides
- * every question anyone asks about them:
+ * Anchor has five container tables and they are not five of a kind. Two say
+ * what an item IS ABOUT, two say WHEN IT COUNTS, and one says WHY IT MATTERS —
+ * and that difference decides every question anyone asks about them:
  *
  *   CLASSIFY — projects, habit groups. Exactly one per item, stored as a name on
  *     the item itself (`items.project` / `items.group`). One item, one answer, so
@@ -27,10 +27,29 @@ import type { ItemTypeConfig } from './item-registry';
  *     deliberately offers no routine FILTER because the scope rail already owns
  *     that question per-date, through the DB, with a resume date.
  *
+ *   ASPIRE — goals. Many-to-many like a gate, but membership switches NOTHING:
+ *     a goal says why work matters, and a goal you are behind on is the last
+ *     thing that should quietly hide its work. Its members carry a ROLE
+ *     (`member` | `milestone` | `checkin`, on goal_items), which is the one
+ *     thing no other kind has — and the reason it is a role of its own rather
+ *     than a gate with suppression turned off: an item can sit in a goal AND a
+ *     program at once (the Chinese habit inside the school-year program), so
+ *     the two questions have to be asked separately or the answers merge.
+ *
  * The seam is enforced by types, not by convention: `ClassifyKind` is what a ref
  * can name and what `containerRefOf` returns; `GateKind` is what `ScopeKind` is
- * and what `ActivationContext` carries. Neither union widens to the other, so a
- * routine cannot leak into a filter clause and a project cannot gate a day.
+ * and what `ActivationContext` carries; `AspireKind` is neither, and nothing
+ * downstream widens to it. So a routine cannot leak into a filter clause, a
+ * project cannot gate a day, and a goal can do neither — which is why adding
+ * this kind needed no edit in filters.ts, grouping.ts or scope-rail.ts.
+ *
+ * A NOTE ON DISCOVERY, because the obvious assumption is wrong: widening
+ * `ContainerKind` does NOT light up the codebase with exhaustive-switch errors.
+ * There are no switches over it — every consumer narrows to `ClassifyKind` or
+ * `GateKind` first, which is exactly the property above. The compiler forces
+ * one edit (the `CONTAINER_KINDS` record) and the role-partition test in
+ * tests/unit/container-registry.test.ts forces the rest of the thinking. A
+ * sixth kind's real touchpoints are hand-wired and listed in its plan.
  *
  * ── what is deliberately NOT here ────────────────────────────────────────────
  *
@@ -39,9 +58,9 @@ import type { ItemTypeConfig } from './item-registry';
  * would make "which container does this item answer with" ambiguous at the one
  * call site that has to be unambiguous (`containerRefOf`).
  *
- * CUSTOM container kinds are not v1. The four below are the four tables that
- * exist; `CONTAINER_KINDS` is a closed record so adding a fifth is a type error
- * at every exhaustive switch rather than a silent fallthrough.
+ * CUSTOM container kinds are not v1. The five below are the five tables that
+ * exist; `CONTAINER_KINDS` is a closed record, so a sixth is a type error at
+ * the record itself rather than a silent fallthrough.
  *
  * The table names and the id columns are not here either. Migration 027
  * (`feat/organize-console`, organize-console.md Phase 0) gives items
@@ -61,9 +80,14 @@ import type { ItemTypeConfig } from './item-registry';
 export type ClassifyKind = 'project' | 'group';
 /** Kinds that switch items off. Many-to-many; the scope rail's axis. */
 export type GateKind = 'routine' | 'program';
-export type ContainerKind = ClassifyKind | GateKind;
+/**
+ * Kinds that say why work matters. Many-to-many, and they suppress NOTHING —
+ * deliberately not a `GateKind`, so a goal can never reach a resolver.
+ */
+export type AspireKind = 'goal';
+export type ContainerKind = ClassifyKind | GateKind | AspireKind;
 
-export type ContainerRole = 'classify' | 'gate';
+export type ContainerRole = 'classify' | 'gate' | 'aspire';
 
 /** The `ItemTypeConfig.containerKind` vocabulary, read from the source so it cannot drift. */
 type ItemTypeContainerKind = ItemTypeConfig['containerKind'];
@@ -159,6 +183,23 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
     itemTypeKey: null,
     caseFold: false,
   },
+  goal: {
+    kind: 'goal',
+    role: 'aspire',
+    label: 'Goal',
+    labelPlural: 'Goals',
+    // No unset state, like the gates: an item serves a goal or it does not.
+    unsetLabel: null,
+    // Membership lives in goal_items, never on the item — which is what lets it
+    // carry a role, and what keeps `items` (and therefore the pinned legacy
+    // projections) untouched by this whole feature.
+    itemField: null,
+    // No item TYPE resolves against goals. `containerKind` on an item type
+    // answers "which container does this type file itself under", and a goal
+    // files nothing — every type may join one.
+    itemTypeKey: null,
+    caseFold: false,
+  },
 };
 
 export const getContainerKindConfig = (kind: ContainerKind): ContainerKindConfig =>
@@ -176,6 +217,10 @@ export const GATE_KINDS: readonly GateKind[] = Object.values(CONTAINER_KINDS)
   .filter((c): c is ContainerKindConfig & { kind: GateKind } => c.role === 'gate')
   .map((c) => c.kind);
 
+export const ASPIRE_KINDS: readonly AspireKind[] = Object.values(CONTAINER_KINDS)
+  .filter((c): c is ContainerKindConfig & { kind: AspireKind } => c.role === 'aspire')
+  .map((c) => c.kind);
+
 /* ── the ref grammar ────────────────────────────────────────────────────────*/
 
 /**
@@ -190,8 +235,8 @@ export const GATE_KINDS: readonly GateKind[] = Object.values(CONTAINER_KINDS)
  * a user naming a project and a group the same thing, and it is also what lets a
  * single `containers: string[]` carry both without a discriminated shape.
  *
- * Only CLASSIFY kinds have refs. A routine is referenced by id, because its
- * name is not unique and rename ships from day one.
+ * Only CLASSIFY kinds have refs. Routines, programs and goals are referenced by
+ * id, because their names are not unique and rename ships from day one.
  */
 export const containerRef = (kind: ClassifyKind, name: string): string => `${kind}:${name}`;
 

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program } from './planner-types';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 
@@ -1338,6 +1338,325 @@ export async function restoreProgram(userId: string, id: string, client?: DbClie
   const supabase = client ?? createClient();
   const { error } = await supabase
     .from('programs')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+// ---- Goals (migration 029) ----
+//
+// The third container role: goals say why work matters and suppress nothing.
+// Their one structural difference from routines/programs is that membership
+// carries a ROLE, which is why they do not reuse reconcileMembership.
+
+interface GoalRow {
+  id: string;
+  user_id: string;
+  name: string;
+  why?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  state: string;
+  starts_on?: string | null;
+  target_on?: string | null;
+  achieved_at?: string | null;
+  sort_order?: number | null;
+}
+
+interface GoalMemberRow {
+  goal_id: string;
+  item_id: string;
+  role: string;
+  sort_order?: number | null;
+}
+
+/** The three role arrays, as every caller passes them. */
+export interface GoalMembers {
+  memberIds: string[];
+  milestoneIds: string[];
+  checkinIds: string[];
+}
+
+/**
+ * Flatten the three role arrays into the rows the join table actually holds,
+ * rejecting an id that appears in more than one of them.
+ *
+ * The three-array shape is a READ convenience — the primary key (goal_id,
+ * item_id) guarantees disjointness coming OUT of the database. Going in it
+ * guarantees nothing: the same id in two arrays is two contradictory
+ * instructions about one row, and there is no honest way to pick. As one upsert
+ * batch Postgres would abort the whole statement with 21000 ("ON CONFLICT DO
+ * UPDATE command cannot affect row a second time"); as separate statements it
+ * would be last-write-wins, silently. So this refuses, the way the agent API
+ * refuses `paused: false` with a `pausedUntil` rather than honouring half of it.
+ *
+ * `sort_order` is emitted on EVERY row, explicitly null off the milestone
+ * array. PostgREST bulk upserts need homogeneous keys, and a demoted milestone
+ * that kept its old sort_order would perturb the order its new array comes back
+ * in.
+ */
+export function goalMemberRows(members: GoalMembers): { itemId: string; role: GoalRole; sortOrder: number | null }[] {
+  const rows: { itemId: string; role: GoalRole; sortOrder: number | null }[] = [];
+  const seen = new Map<string, GoalRole>();
+  const push = (ids: string[], role: GoalRole, ordered: boolean) => {
+    // Dedupe WITHIN an array quietly (a multi-add UI produces repeats trivially,
+    // and one id twice in one array is not a contradiction) — the same guard
+    // reconcileMembership carries. Across arrays it is a contradiction, below.
+    let i = 0;
+    for (const itemId of new Set(ids)) {
+      const already = seen.get(itemId);
+      if (already && already !== role) {
+        throw new Error(
+          `goal membership: item ${itemId} was given two roles at once (${already} and ${role}). ` +
+            'An item holds exactly one role per goal.',
+        );
+      }
+      seen.set(itemId, role);
+      rows.push({ itemId, role, sortOrder: ordered ? i : null });
+      i += 1;
+    }
+  };
+  push(members.milestoneIds, 'milestone', true);
+  push(members.checkinIds, 'checkin', false);
+  push(members.memberIds, 'member', false);
+  return rows;
+}
+
+/**
+ * Reconcile one goal's membership as a SINGLE union, never once per role.
+ *
+ * Three per-role passes look equivalent and are not. A milestone demoted to a
+ * plain member appears as "removed" to the milestone pass and "added" to the
+ * member pass, so whichever runs first DELETEs the row the other is about to
+ * insert — and with no cross-request transaction, an interruption between them
+ * loses the membership outright. That inverts the add-before-remove guarantee
+ * reconcileMembership documents. Worse, an unscoped per-role DELETE can remove
+ * a row another pass has just re-roled.
+ *
+ * Reading every row for the goal once and diffing the whole desired set makes a
+ * demotion what it actually is: an UPDATE of one row's role, expressed as an
+ * upsert on the primary key.
+ */
+async function reconcileGoalMembers(
+  supabase: DbClient,
+  goalId: string,
+  userId: string,
+  members: GoalMembers,
+): Promise<void> {
+  const desired = goalMemberRows(members);
+
+  const { data, error } = await supabase
+    .from('goal_items')
+    .select('item_id')
+    .eq('goal_id', goalId)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const current = new Set((data as { item_id: string }[] ?? []).map((r) => r.item_id));
+  const desiredIds = new Set(desired.map((r) => r.itemId));
+  const removed = [...current].filter((id) => !desiredIds.has(id));
+
+  // Additions and re-roles BEFORE removals — the sets are disjoint by
+  // construction, so this can never collide, and an interruption leaves a
+  // visible superset rather than silently dropping members. (Same reasoning,
+  // and same ordering, as reconcileMembership.)
+  if (desired.length > 0) {
+    const rows = desired.map((r) => ({
+      goal_id: goalId,
+      item_id: r.itemId,
+      user_id: userId,
+      role: r.role,
+      sort_order: r.sortOrder,
+    }));
+    const onConflict = 'goal_id,item_id';
+    const { error: upsertError } = await supabase.from('goal_items').upsert(rows, { onConflict });
+    if (upsertError) {
+      // Exactly one survivable failure class, for the same reason as every
+      // other membership write: a member hard-purged since the store last read
+      // it (23503), which an undo replaying a snapshot hits when the item left
+      // the 30-day trash meanwhile. Everything else is systemic and must
+      // surface, or optimistic state diverges silently until the next reload.
+      if (upsertError.code !== '23503') throw upsertError;
+      for (const row of rows) {
+        const { error: rowError } = await supabase.from('goal_items').upsert(row, { onConflict });
+        if (!rowError) continue;
+        if (rowError.code !== '23503') throw rowError;
+        console.warn('goal_items: member no longer exists, membership skipped', row);
+      }
+    }
+  }
+
+  if (removed.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('goal_items')
+      .delete()
+      .eq('goal_id', goalId)
+      .eq('user_id', userId)
+      .in('item_id', removed);
+    if (deleteError) throw deleteError;
+  }
+}
+
+export async function fetchGoals(userId: string, client?: DbClient): Promise<Goal[] | null> {
+  const supabase = client ?? createClient();
+  const [goals, members] = await Promise.all([
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('goal_items')
+      .select('goal_id, item_id, role, sort_order')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      // The tiebreak matters for ALL THREE arrays, not just the ordered one:
+      // member and checkin rows carry a null sort_order, so without this their
+      // order is heap order — unspecified, free to reshuffle between identical
+      // fetches, and read by a membership diff as a real change to write back.
+      .order('item_id', { ascending: true }),
+  ]);
+  const error = goals.error ?? members.error;
+  if (error) return unavailable('fetchGoals', error);
+
+  const membersByGoal = new Map<string, GoalMembers>();
+  for (const row of (members.data ?? []) as GoalMemberRow[]) {
+    let entry = membersByGoal.get(row.goal_id);
+    if (!entry) {
+      entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
+      membersByGoal.set(row.goal_id, entry);
+    }
+    // An unrecognised role files as a plain member rather than vanishing. The
+    // CHECK constraint makes this unreachable through the app, but a role added
+    // by a newer client (or by hand) must degrade to the harmless role instead
+    // of dropping the membership out of every array — silent disappearance is
+    // how a member becomes unrecoverable.
+    if (row.role === 'milestone') entry.milestoneIds.push(row.item_id);
+    else if (row.role === 'checkin') entry.checkinIds.push(row.item_id);
+    else entry.memberIds.push(row.item_id);
+  }
+
+  const empty: GoalMembers = { memberIds: [], milestoneIds: [], checkinIds: [] };
+  return (goals.data as GoalRow[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    why: row.why ?? undefined,
+    icon: row.icon ?? undefined,
+    color: row.color ?? undefined,
+    state: (row.state as Goal['state']) ?? 'active',
+    startsOn: row.starts_on ?? undefined,
+    targetOn: row.target_on ?? undefined,
+    achievedAt: row.achieved_at ?? undefined,
+    sortOrder: row.sort_order ?? undefined,
+    ...(membersByGoal.get(row.id) ?? empty),
+  }));
+}
+
+export async function createGoal(userId: string, goal: Goal, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  // Validate membership BEFORE the insert: goalMemberRows throws on a
+  // cross-array contradiction, and throwing here costs nothing, while throwing
+  // after the insert would need the compensating delete below.
+  const hasMembers = goalMemberRows(goal).length > 0;
+
+  const { error } = await supabase.from('goals').insert({
+    id: goal.id,
+    user_id: userId,
+    name: goal.name,
+    why: goal.why ?? null,
+    icon: goal.icon ?? null,
+    color: goal.color ?? null,
+    state: goal.state,
+    starts_on: goal.startsOn ?? null,
+    target_on: goal.targetOn ?? null,
+    achieved_at: goal.achievedAt ?? null,
+    sort_order: goal.sortOrder ?? null,
+  });
+  if (error) throw error;
+
+  if (hasMembers) {
+    try {
+      await reconcileGoalMembers(supabase, goal.id, userId, goal);
+    } catch (membershipError) {
+      // The goal row is already committed and PostgREST offers no
+      // cross-request transaction, so compensate by hand rather than leaving a
+      // goal the user never asked for. Hard delete, not soft: as far as anyone
+      // outside this function is concerned it never existed.
+      await supabase.from('goals').delete().eq('id', goal.id).eq('user_id', userId);
+      throw membershipError;
+    }
+  }
+}
+
+export async function updateGoal(
+  userId: string,
+  id: string,
+  updates: Partial<Goal>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('name' in updates) row.name = updates.name;
+  if ('why' in updates) row.why = updates.why ?? null;
+  if ('icon' in updates) row.icon = updates.icon ?? null;
+  if ('color' in updates) row.color = updates.color ?? null;
+  if ('state' in updates) row.state = updates.state;
+  if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
+  if ('targetOn' in updates) row.target_on = updates.targetOn ?? null;
+  // IN the allowlist, unlike Program.updatedAt — see GoalSchema.achievedAt. Undo
+  // of "Mark achieved" has to clear this stamp in the same replay that restores
+  // the state, and an allowlist that filtered it out would strand the timestamp
+  // on a goal that is active again.
+  if ('achievedAt' in updates) row.achieved_at = updates.achievedAt ?? null;
+  if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if (Object.keys(row).length > 0) {
+    const { error } = await supabase.from('goals').update(row).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  // Membership is reconciled when ANY role array is present, and all three are
+  // read together: the union diff needs the full desired set, so a patch
+  // carrying only `milestoneIds` must be told what the other two are rather
+  // than treating them as empty (which would delete every plain member).
+  // Callers patching one array pass the other two from the store's copy.
+  const touchesMembers =
+    'memberIds' in updates || 'milestoneIds' in updates || 'checkinIds' in updates;
+  if (touchesMembers) {
+    if (!updates.memberIds || !updates.milestoneIds || !updates.checkinIds) {
+      throw new Error(
+        'goal membership: pass all three role arrays together — the reconcile is a ' +
+          'union diff, so a partial set would delete the roles it was not told about.',
+      );
+    }
+    await reconcileGoalMembers(supabase, id, userId, {
+      memberIds: updates.memberIds,
+      milestoneIds: updates.milestoneIds,
+      checkinIds: updates.checkinIds,
+    });
+  }
+}
+
+export async function deleteGoal(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  // Soft delete only. Membership rows deliberately survive so a restore within
+  // the 30-day window brings the goal back intact — with its ROLES, which is
+  // the part a bin snapshot must not flatten: restoring a goal whose members
+  // came back as plain 'member' would silently zero its progress denominator.
+  const { error } = await supabase
+    .from('goals')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function restoreGoal(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('goals')
     .update({ deleted_at: null })
     .eq('id', id)
     .eq('user_id', userId);

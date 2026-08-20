@@ -142,6 +142,69 @@ export const ProgramSchema = z.object({
      */
     updatedAt: z.string().optional(),
 });
+// ── Goals (migration 029) ──────────────────────────────────────────────────────
+// The third container role. Projects and habit groups CLASSIFY (what an item is
+// about); routines and programs GATE (when it counts); a goal ASPIRES — it says
+// why the work matters and switches nothing off. See lib/container-registry.ts,
+// which states that seam in types, and memory/plans/long-term-goals.md.
+//
+// Members are ids carrying a ROLE, split app-side into three arrays because
+// every consumer wants one role's ids at a time: progress counts milestones,
+// the timeline orders them, the check-in bridge asks for checkins. The DB keeps
+// one normalized table (goal_items) whose primary key guarantees the arrays are
+// disjoint on read — the WRITE side must reconcile them as one union, or a
+// milestone demoted to member races itself. See lib/db.ts reconcileGoalMembers.
+export const GoalStateSchema = z.enum(['active', 'achieved', 'abandoned']);
+/**
+ * What a member does for its goal.
+ *
+ * A `milestone` is a one-shot item whose `startDate` IS its target date, so it
+ * renders on the grid that day and goes past due when missed; a `checkin` is a
+ * recurring review. Both requirements are capability questions the registry
+ * answers (`isMilestoneEligible` / recurrence), and a later item edit that
+ * invalidates a held role DEMOTES it to 'member' rather than blocking the edit
+ * — a recurring item's scalar status is frozen by design, so a recurring
+ * "milestone" would make progress lie forever.
+ */
+export const GoalRoleSchema = z.enum(['member', 'milestone', 'checkin']);
+export const GoalSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    /** The motivation line — why this goal exists. Rendered on the goal surface, handed to Beacon. */
+    why: z.string().optional(),
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.string().optional(),
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.string().optional(),
+    sortOrder: z.number().optional(),
+    state: GoalStateSchema,
+    /** Optional horizon (yyyy-MM-dd). `targetOn` is what the countdown and the behind/ahead read measure against. */
+    startsOn: z.string().optional(),
+    targetOn: z.string().optional(),
+    /**
+     * Stamped when `state` becomes 'achieved', cleared when it returns to
+     * 'active'.
+     *
+     * App-written and IN db.ts's update allowlist — the deliberate opposite of
+     * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+     * owns it. The reason is undo: this field rides GOAL_FIELDS into the
+     * container diff, which is what makes one ⌘Z after "Mark achieved" restore
+     * `state: 'active'` AND clear the stamp together. Left out, undo would
+     * restore the state and strand the timestamp.
+     *
+     * A write that does not CHANGE the state must never restamp it: re-achieving
+     * an achieved goal would drag a multi-year achievement date forward, and
+     * retried PATCHes are expected traffic (whole-array membership replacement is
+     * designed for retry idempotence). The rule lives beside the state verb.
+     */
+    achievedAt: z.string().optional(),
+    /** Ordinary supporting work — the daily practice habit, the odd task. */
+    memberIds: z.array(z.string()),
+    /** Achievement checkpoints, in timeline order (goal_items.sort_order). */
+    milestoneIds: z.array(z.string()),
+    /** Recurring reviews. */
+    checkinIds: z.array(z.string()),
+});
 // Field shapes are shared between the legacy per-kind schemas (TaskSchema /
 // HabitSchema — the pinned external contract the OpenClaw plugin validates
 // against) and the unified ItemSchema branches. Task and Habit deliberately
@@ -242,6 +305,7 @@ export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape);
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape);
 export const ROUTINE_FIELDS = Object.keys(RoutineSchema.shape);
 export const PROGRAM_FIELDS = Object.keys(ProgramSchema.shape);
+export const GOAL_FIELDS = Object.keys(GoalSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
 // One entity, discriminated by `type`. The task/habit branches are structurally
 // identical to Task/Habit so projections (item → legacy shape) are plain field

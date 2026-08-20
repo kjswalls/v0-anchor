@@ -177,6 +177,85 @@ export declare const ProgramSchema: z.ZodObject<{
     endsOn?: string | undefined;
     updatedAt?: string | undefined;
 }>;
+export declare const GoalStateSchema: z.ZodEnum<["active", "achieved", "abandoned"]>;
+/**
+ * What a member does for its goal.
+ *
+ * A `milestone` is a one-shot item whose `startDate` IS its target date, so it
+ * renders on the grid that day and goes past due when missed; a `checkin` is a
+ * recurring review. Both requirements are capability questions the registry
+ * answers (`isMilestoneEligible` / recurrence), and a later item edit that
+ * invalidates a held role DEMOTES it to 'member' rather than blocking the edit
+ * — a recurring item's scalar status is frozen by design, so a recurring
+ * "milestone" would make progress lie forever.
+ */
+export declare const GoalRoleSchema: z.ZodEnum<["member", "milestone", "checkin"]>;
+export declare const GoalSchema: z.ZodObject<{
+    id: z.ZodString;
+    name: z.ZodString;
+    /** The motivation line — why this goal exists. Rendered on the goal surface, handed to Beacon. */
+    why: z.ZodOptional<z.ZodString>;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodString>;
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.ZodOptional<z.ZodString>;
+    sortOrder: z.ZodOptional<z.ZodNumber>;
+    state: z.ZodEnum<["active", "achieved", "abandoned"]>;
+    /** Optional horizon (yyyy-MM-dd). `targetOn` is what the countdown and the behind/ahead read measure against. */
+    startsOn: z.ZodOptional<z.ZodString>;
+    targetOn: z.ZodOptional<z.ZodString>;
+    /**
+     * Stamped when `state` becomes 'achieved', cleared when it returns to
+     * 'active'.
+     *
+     * App-written and IN db.ts's update allowlist — the deliberate opposite of
+     * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+     * owns it. The reason is undo: this field rides GOAL_FIELDS into the
+     * container diff, which is what makes one ⌘Z after "Mark achieved" restore
+     * `state: 'active'` AND clear the stamp together. Left out, undo would
+     * restore the state and strand the timestamp.
+     *
+     * A write that does not CHANGE the state must never restamp it: re-achieving
+     * an achieved goal would drag a multi-year achievement date forward, and
+     * retried PATCHes are expected traffic (whole-array membership replacement is
+     * designed for retry idempotence). The rule lives beside the state verb.
+     */
+    achievedAt: z.ZodOptional<z.ZodString>;
+    /** Ordinary supporting work — the daily practice habit, the odd task. */
+    memberIds: z.ZodArray<z.ZodString, "many">;
+    /** Achievement checkpoints, in timeline order (goal_items.sort_order). */
+    milestoneIds: z.ZodArray<z.ZodString, "many">;
+    /** Recurring reviews. */
+    checkinIds: z.ZodArray<z.ZodString, "many">;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    name: string;
+    state: "active" | "achieved" | "abandoned";
+    memberIds: string[];
+    milestoneIds: string[];
+    checkinIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    startsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    achievedAt?: string | undefined;
+}, {
+    id: string;
+    name: string;
+    state: "active" | "achieved" | "abandoned";
+    memberIds: string[];
+    milestoneIds: string[];
+    checkinIds: string[];
+    color?: string | undefined;
+    icon?: string | undefined;
+    sortOrder?: number | undefined;
+    startsOn?: string | undefined;
+    why?: string | undefined;
+    targetOn?: string | undefined;
+    achievedAt?: string | undefined;
+}>;
 export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
@@ -475,6 +554,7 @@ export declare const PROJECT_FIELDS: (keyof z.infer<typeof ProjectSchema>)[];
 export declare const HABIT_GROUP_FIELDS: (keyof z.infer<typeof HabitGroupSchema>)[];
 export declare const ROUTINE_FIELDS: (keyof z.infer<typeof RoutineSchema>)[];
 export declare const PROGRAM_FIELDS: (keyof z.infer<typeof ProgramSchema>)[];
+export declare const GOAL_FIELDS: (keyof z.infer<typeof GoalSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the

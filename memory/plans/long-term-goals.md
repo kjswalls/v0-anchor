@@ -493,13 +493,31 @@ table as ONE set. Four rules, each closing a found defect:
 
 ## Phasing (app must work at every step)
 
-- **Phase 0 — foundations.** Ledger-tip check, then migration 029 (role CHECK in a
-  DO block); GoalSchema + dist rebuild (achievedAt in, updatedAt out); db.ts
-  CRUD/mappers per the membership-semantics section + `goalsAvailable`;
-  container-registry `aspire` role + `goal` kind + the container-registry.test.ts
-  three-role-partition update; registry `milestoneEligible` + predicates. Zero UI.
-  Fix the ~20 vi.mock db enumerations and the untyped history-baseline literal
-  before wiring initializeStore.
+- [x] **Phase 0 — foundations** (built 2026-08-20). Migration 029 (both CHECKs in
+  guarded DO blocks); `GoalSchema`/`GoalRoleSchema`/`GoalStateSchema` + `GOAL_FIELDS`
+  + committed dist rebuilt (achievedAt in, updatedAt out); db.ts goal CRUD with
+  `goalMemberRows` + `reconcileGoalMembers` (one union reconcile, cross-array
+  refusal, homogeneous sort_order, deterministic fetch order for all three arrays);
+  container-registry `aspire` role + `goal` kind + `ASPIRE_KINDS`, with the
+  discovery note corrected in the header; registry `milestoneEligible` +
+  `isMilestoneEligible`/`isCheckinEligible`; tests/unit/goals.test.ts (11) and the
+  three-role partition rewrite in container-registry.test.ts. All 22 db-mock
+  factories carry `fetchGoals` so Phase 1's `initializeStore` wiring does not break
+  the suite at module-mock resolution. Zero UI; app behavior unchanged.
+  **Gates:** 1332 unit tests green (77 files), lint 0 errors, `pnpm build` clean,
+  types dist matches src, tsc error count unchanged from baseline (23 pre-existing,
+  none in changed files).
+  **Migration NOT applied** — `supabase` CLI is absent from this environment and
+  `pnpm db:list` cannot reach the ledger, so the number 029 is unverified against
+  the remote tip. Verify it before applying (028's header records why: versions
+  arrived out of band from branches whose files are not in this worktree). Deploy
+  order is safe either way: no existing table gains a column, so every pre-existing
+  write path is byte-identical against a pre-029 database.
+  **Carried into Phase 1, deliberately:** the untyped history-baseline literal at
+  planner-store.ts:3370 must gain `goals` in the SAME commit as the store slice —
+  it cannot be fixed earlier (the field does not exist yet) and missed later, undo
+  to session start soft-deletes every goal. `listDeleted`'s goal arm (role-aware
+  bin snapshot) lands with the console's Trash section for the same reason.
 - **Phase 1 — goals end-to-end, console section.** Store slice + history + undo
   (incl. the demotion mechanism and the item→roles index); console Goals section
   (list + detail + wind-down + trash with the role-aware bin arm); Goal chip
