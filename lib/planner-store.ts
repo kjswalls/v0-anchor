@@ -25,8 +25,16 @@ import type {
   ItemTypeDef,
   Routine,
   Program,
+  Goal,
+  GoalRole,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
+import {
+  goalRolesByItem,
+  milestoneItemIds,
+  resolveGoalStateWrite,
+  roleStillValid,
+} from './goals';
 import {
   fetchItems,
   fetchProjects,
@@ -55,6 +63,11 @@ import {
   deleteRoutine as dbDeleteRoutine,
   restoreRoutine as dbRestoreRoutine,
   fetchPrograms,
+  fetchGoals,
+  createGoal as dbCreateGoal,
+  updateGoal as dbUpdateGoal,
+  deleteGoal as dbDeleteGoal,
+  restoreGoal as dbRestoreGoal,
   createProgram as dbCreateProgram,
   updateProgram as dbUpdateProgram,
   deleteProgram as dbDeleteProgram,
@@ -76,7 +89,13 @@ import {
 } from './active';
 import { programStateForSwitch } from './scope-rail';
 import { recordReleased } from './sweep-grace';
-import { PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS } from '@anchor-app/types';
+import {
+  PROJECT_FIELDS,
+  HABIT_GROUP_FIELDS,
+  ROUTINE_FIELDS,
+  PROGRAM_FIELDS,
+  GOAL_FIELDS,
+} from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
@@ -330,6 +349,30 @@ interface PlannerStore {
    */
   swapToProgram: (id: string) => void;
 
+  // Goals (migration 029). The third container role: a goal says WHY work
+  // matters and suppresses nothing, so unlike routines and programs it never
+  // reaches lib/active.ts. Its members carry a ROLE — plain member, milestone
+  // (a one-shot checkpoint whose startDate is its target date) or check-in (a
+  // recurring review) — and the role belongs to the membership, not the item.
+  goals: Goal[];
+  /** False when migration 029's tables are unreachable. Same contract as
+   *  `collectionsAvailable`: every goal surface gates on it, or a write looks
+   *  like it landed and vanishes on reload. */
+  goalsAvailable: boolean;
+  addGoal: (goal: Omit<Goal, 'id'> & { id?: string }) => string;
+  updateGoal: (id: string, updates: Partial<Omit<Goal, 'id'>>) => void;
+  removeGoal: (id: string) => void;
+  /**
+   * Move a goal between active / achieved / abandoned.
+   *
+   * Separate from `updateGoal` for the reason `setProgramState` is — it stamps
+   * its own action-log label — and because the `achievedAt` rule belongs in one
+   * place: resolveGoalStateWrite (lib/goals.ts) decides what a state change
+   * actually writes, so a same-state write never restamps an achievement date
+   * and a return to 'active' clears it.
+   */
+  setGoalState: (id: string, state: Goal['state']) => void;
+
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
@@ -431,6 +474,19 @@ const groupIdFor = (name: string | undefined, groups: HabitGroupType[]) =>
 export interface Memberships {
   routineIds?: string[];
   programIds?: string[];
+  goalIds?: string[];
+  /**
+   * The role the new item takes in every goal named by `goalIds`.
+   *
+   * ONE role for the whole payload, not a per-goal map, because there are
+   * exactly two flows that create a pre-linked item — the Goal chip in the add
+   * dialog (plain member) and the console's "new milestone" — and neither
+   * creates one item as a milestone here and a check-in there. Deliberately NOT
+   * generalised into `{id, role}[]`: routineIds/programIds are flat arrays and
+   * `withMembership` is generic over a single `itemIds`, so widening the shape
+   * would ripple through both other chips for a case nothing asks for.
+   */
+  goalRole?: GoalRole;
 }
 
 /**
@@ -454,7 +510,8 @@ function persistNewItem(
 
   const routineIds = memberships?.routineIds ?? [];
   const programIds = memberships?.programIds ?? [];
-  if (routineIds.length === 0 && programIds.length === 0) return;
+  const goalIds = memberships?.goalIds ?? [];
+  if (routineIds.length === 0 && programIds.length === 0 && goalIds.length === 0) return;
 
   created
     .then(() =>
@@ -468,6 +525,20 @@ function persistNewItem(
         ...programIds.map((pid) => {
           const program = get().programs.find((p) => p.id === pid);
           return program ? dbUpdateProgram(userId, pid, { itemIds: program.itemIds }) : undefined;
+        }),
+        // All three role arrays, even though only one of them changed: the
+        // reconcile diffs whichever roles it is given, so sending the whole
+        // membership is the cheapest way to be certain the new item lands in
+        // the role the payload asked for without the other two drifting.
+        ...goalIds.map((gid) => {
+          const goal = get().goals.find((g) => g.id === gid);
+          return goal
+            ? dbUpdateGoal(userId, gid, {
+                memberIds: goal.memberIds,
+                milestoneIds: goal.milestoneIds,
+                checkinIds: goal.checkinIds,
+              })
+            : undefined;
         }),
       ]),
     )
@@ -488,6 +559,28 @@ function withMembership<T extends { id: string; itemIds: string[] }>(
   const want = new Set(containerIds);
   return containers.map((c) =>
     want.has(c.id) && !c.itemIds.includes(itemId) ? { ...c, itemIds: [...c.itemIds, itemId] } : c,
+  );
+}
+
+/**
+ * The goal-side counterpart to `withMembership`.
+ *
+ * Its own function rather than a generalisation, because a goal's membership is
+ * three arrays and a role, not one `itemIds`. Widening the generic to carry a
+ * role would touch the routine and program chips — which have no roles — for a
+ * case only goals have.
+ */
+function withGoalMembership(
+  goals: Goal[],
+  itemId: string,
+  goalIds: string[] | undefined,
+  role: GoalRole = 'member',
+): Goal[] {
+  if (!goalIds?.length) return goals;
+  const key = role === 'milestone' ? 'milestoneIds' : role === 'checkin' ? 'checkinIds' : 'memberIds';
+  const want = new Set(goalIds);
+  return goals.map((g) =>
+    want.has(g.id) && !g[key].includes(itemId) ? { ...g, [key]: [...g[key], itemId] } : g,
   );
 }
 
@@ -562,6 +655,11 @@ interface HistoryState {
   // since applyHistoryState writes the whole snapshot back.
   routines: Routine[];
   programs: Program[];
+  // Goals join for the same reason, with one extra: their membership carries a
+  // ROLE, so an undo that restored bare ids would flatten every milestone and
+  // check-in back to a plain member — changing a goal's progress denominator
+  // with no visible cause.
+  goals: Goal[];
 }
 
 export type ActionLogEntry = {
@@ -639,6 +737,7 @@ const saveToHistory = (state: HistoryState) => {
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
     routines: JSON.parse(JSON.stringify(state.routines)),
     programs: JSON.parse(JSON.stringify(state.programs)),
+    goals: JSON.parse(JSON.stringify(state.goals)),
   };
 
   historyStack.push(snapshot);
@@ -801,6 +900,7 @@ const removeRefusedContainer = (
       habitGroups: s.habitGroups,
       routines: s.routines,
       programs: s.programs,
+      goals: s.goals,
     });
   } finally {
     isUpdatingUndoRedo = wasSuppressed;
@@ -1031,6 +1131,75 @@ export const usePlannerStore = create<PlannerStore>()(
        * suppresses the DB write (old code issued it blindly, which could touch
        * soft-deleted trash rows).
        */
+      /**
+       * Locked decision 3: an item edit that invalidates a goal role DEMOTES
+       * the role, and never blocks the edit.
+       *
+       * The registry predicates guard the role at GRANT time, but they cannot
+       * see a later edit — the item dialog and the agent PATCH route both flip
+       * `repeatFrequency` freely, long after the role was given. And the
+       * consequence is silent: a recurring item's scalar status is frozen by
+       * design (per-date completion is the truth), so a milestone made
+       * recurring can never be counted achieved and its goal reads permanently
+       * behind, with nothing to click and no explanation.
+       *
+       * Blocking the edit was the other option and is worse: it would let a
+       * goal constrain its members, which is the one thing goals must never do.
+       * So the membership yields instead — one join-row write, a normal undo
+       * entry, and a receipt naming the goal so the user learns what changed
+       * rather than discovering it in a progress count weeks later.
+       *
+       * Runs on the item that is ALREADY updated, not on the patch, so it asks
+       * the same question the reader will: is this role still true of this item?
+       */
+      const demoteInvalidGoalRoles = (item: Item) => {
+        const goals = get().goals;
+        if (goals.length === 0) return;
+        const demoted: { goal: Goal; from: GoalRole }[] = [];
+        const next = goals.map((goal) => {
+          for (const role of ['milestone', 'checkin'] as const) {
+            const key = role === 'milestone' ? 'milestoneIds' : 'checkinIds';
+            if (!goal[key].includes(item.id)) continue;
+            if (roleStillValid(role, item)) continue;
+            demoted.push({ goal, from: role });
+            return {
+              ...goal,
+              [key]: goal[key].filter((mid) => mid !== item.id),
+              memberIds: goal.memberIds.includes(item.id)
+                ? goal.memberIds
+                : [...goal.memberIds, item.id],
+            };
+          }
+          return goal;
+        });
+        if (demoted.length === 0) return;
+
+        const { goal, from } = demoted[0];
+        const noun = from === 'milestone' ? 'milestone' : 'check-in';
+        const why =
+          from === 'milestone'
+            ? 'it repeats now, and a repeating item never finishes'
+            : 'it no longer repeats, and a check-in is a rhythm';
+        setNextActionLabel(
+          `Edit ${item.title}`,
+          demoted.length === 1
+            ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
+            : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
+        );
+        set({ goals: next });
+
+        const userId = get().userId;
+        if (!userId) return;
+        for (const { goal: g } of demoted) {
+          const live = next.find((n) => n.id === g.id)!;
+          dbUpdateGoal(userId, g.id, {
+            memberIds: live.memberIds,
+            milestoneIds: live.milestoneIds,
+            checkinIds: live.checkinIds,
+          }).catch(console.error);
+        }
+      };
+
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
@@ -1038,6 +1207,14 @@ export const usePlannerStore = create<PlannerStore>()(
           state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
         ));
         dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
+        // Only recurrence can invalidate a role, so only a patch that touches
+        // it needs the check — every other field edit skips a scan of every
+        // goal's arrays. `in` rather than a truthiness test: clearing the field
+        // (`repeatFrequency: undefined`) is exactly the edit that turns a
+        // check-in back into a one-shot task.
+        if ('repeatFrequency' in updates) {
+          demoteInvalidGoalRoles({ ...found, ...updates } as Item);
+        }
       };
 
       const resolveDateStr = (date?: Date): string => {
@@ -1377,6 +1554,60 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
+      // ── Goals (029) ────────────────────────────────────────────────────────
+      goals: [],
+      goalsAvailable: true,
+      addGoal: (goal) => {
+        const userId = get().userId;
+        const full: Goal = { ...goal, id: goal.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add goal: ${full.name}`);
+        set({ goals: [...get().goals, full] });
+        if (userId) dbCreateGoal(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateGoal: (id, updates) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+        setNextActionLabel(`Edit goal: ${updates.name ?? goal.name}`);
+        set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...updates } : g)) });
+        // No withReleaseGrace, unlike updateRoutine: a goal suppresses nothing,
+        // so no membership change here can release an item back onto the canvas.
+        // That grace exists for the resolver's benefit and goals never reach it.
+        if (userId) dbUpdateGoal(userId, id, updates).catch(console.error);
+      },
+      removeGoal: (id) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+        // Soft delete, and the MEMBERS ARE UNTOUCHED: they are ordinary items
+        // that exist for their own sake, and only the goal and its links go to
+        // the bin. The delete confirm has to say so — "delete Learn Chinese"
+        // sounds like it takes a year of work with it.
+        setNextActionLabel(`Delete goal: ${goal.name}`);
+        set({ goals: get().goals.filter((g) => g.id !== id) });
+        if (userId) dbDeleteGoal(userId, id).catch(console.error);
+      },
+      setGoalState: (id, state) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+        // One definition of what a state change writes, shared with Phase 4's
+        // agent route. Empty for a same-state write, so a retry can never drag
+        // a multi-year achievement date forward.
+        const patch = resolveGoalStateWrite(goal, state, new Date().toISOString());
+        if (Object.keys(patch).length === 0) return;
+        const verb =
+          state === 'achieved' ? 'Achieve' : state === 'abandoned' ? 'Abandon' : 'Reopen';
+        setNextActionLabel(`${verb} goal: ${goal.name}`);
+        set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) });
+        // `achievedAt: undefined` must reach the DB as a CLEAR rather than be
+        // dropped as an absent key. db.ts tests `'achievedAt' in updates` and
+        // writes `?? null`, and the spread preserves the key — which is what
+        // makes reopening a goal actually erase the stamp.
+        if (userId) dbUpdateGoal(userId, id, patch).catch(console.error);
+      },
+
       initializeStore: async (userId: string) => {
         // Re-initializing the account that is already loaded is never a
         // refresh — it is a reset. It refetches six tables, flips isLoading
@@ -1407,7 +1638,15 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups, itemTypesResult, routinesResult, programsResult] =
+          const [
+            items,
+            projects,
+            habitGroups,
+            itemTypesResult,
+            routinesResult,
+            programsResult,
+            goalsResult,
+          ] =
             await Promise.all([
               fetchItems(userId),
               fetchProjects(userId),
@@ -1421,17 +1660,26 @@ export const usePlannerStore = create<PlannerStore>()(
               // list, reads every member of an inactive program as unprotected,
               // and unschedules them in one silent batch. See use-overdue-sweep.
               fetchPrograms(userId),
+              // Goals ride the same Promise.all, and for the sweep's sake as
+              // much as the programs above: the auto-age sweep subtracts
+              // milestone-role items before unscheduling anything, and its only
+              // hydration gate is the `!isLoading` that the single set() below
+              // clears. Fetch goals anywhere else and the sweep runs against an
+              // empty goal list, reads every milestone as unprotected, and
+              // erases a year of target dates in one silent batch.
+              fetchGoals(userId),
             ]);
           const itemTypes = itemTypesResult ?? [];
           // null means the table is unreachable, NOT "no rows" — the flag gates
           // the UI so a write can't look like it landed and vanish.
           const routines = routinesResult ?? [];
           const programs = programsResult ?? [];
+          const goals = goalsResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, habitGroups, routines, programs };
+          const snapshot = { items, projects, habitGroups, routines, programs, goals };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -1458,6 +1706,8 @@ export const usePlannerStore = create<PlannerStore>()(
             // unreachable means the same thing: the whole collections feature
             // is not deployed and its UI must stay hidden.
             collectionsAvailable: routinesResult !== null && programsResult !== null,
+            goals,
+            goalsAvailable: goalsResult !== null,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -1530,6 +1780,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, item]),
           routines: withMembership(state.routines, item.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
           programs: withMembership(state.programs, item.id, memberships?.programIds),
         }));
 
@@ -1554,6 +1805,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, task]),
           routines: withMembership(state.routines, task.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
           programs: withMembership(state.programs, task.id, memberships?.programIds),
         }));
 
@@ -1730,7 +1982,19 @@ export const usePlannerStore = create<PlannerStore>()(
         // Resolved before the label is set: setNextActionLabel arms a pending
         // label consumed by the NEXT history save, so labelling a no-op would
         // mislabel whatever the user does next.
-        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        //
+        // MILESTONES ARE EXCLUDED, exactly as recurring items already are from
+        // EOD's carry. For an ordinary task `startDate` is a scheduling
+        // intention and "move all to tomorrow" is a kindness; for a milestone
+        // it is the TARGET DATE — the one field that says when the checkpoint
+        // was meant to happen — and a habitual bulk tap would silently walk a
+        // goal's deadline forward a day at a time. Moving one deliberately is
+        // still allowed everywhere (the dialog's date chip, the tray's "pick a
+        // new date"); it is only the sweeping verb that must not.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && idSet.has(i.id) && !milestones.has(i.id),
+        );
         if (targets.length === 0) return;
         // 'Move all tasks' is already in SIGNIFICANT_ACTIONS; this is its first producer.
         setNextActionLabel(
@@ -1777,7 +2041,17 @@ export const usePlannerStore = create<PlannerStore>()(
       /** Batched unscheduleTask (bulk "move to Braindump", auto-age sweep). */
       unscheduleTasks: (ids, opts) => {
         const idSet = new Set(ids);
-        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        // Milestones excluded, and here it matters most: this verb CLEARS
+        // startDate, and its heaviest caller is the unattended auto-age sweep.
+        // Left in, a milestone thirty days behind would lose its target date
+        // overnight — leaving the past-due bar (so the goal stops looking
+        // behind), sinking below every dated checkpoint in nextMilestone's
+        // ordering, and giving the goal timeline nothing to annotate. The
+        // behind-ness would be laundered into "undated" rather than shown.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && idSet.has(i.id) && !milestones.has(i.id),
+        );
         if (targets.length === 0) return;
         // The prefix must stay exactly 'Unschedule task:' — that is the string in
         // hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS. A plural 'Unschedule tasks:'
@@ -1808,8 +2082,15 @@ export const usePlannerStore = create<PlannerStore>()(
         };
 
         // One set() => one history entry => one undo (see moveTasksToDate).
+        //
+        // Keyed on `targetIds`, NOT on the caller's `idSet`. They used to be
+        // interchangeable; the milestone exclusion above made them different,
+        // and re-deriving from `idSet` here would clear a milestone's date in
+        // the store while writing nothing for it — so it would look unscheduled
+        // until the next reload silently put it back.
+        const targetIds = new Set(targets.map((t) => t.id));
         set((state) => projectItems(state.items.map((i) => (
-          i.type !== 'habit' && idSet.has(i.id) ? ({ ...i, ...updates } as Item) : i
+          targetIds.has(i.id) ? ({ ...i, ...updates } as Item) : i
         ))));
 
         targets.forEach((item) =>
@@ -2286,6 +2567,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           ...projectItems([...state.items, habit]),
           routines: withMembership(state.routines, habit.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
           programs: withMembership(state.programs, habit.id, memberships?.programIds),
         }));
 
@@ -2564,6 +2846,7 @@ export const usePlannerStore = create<PlannerStore>()(
             habitGroups: s.habitGroups,
             routines: s.routines,
             programs: s.programs,
+            goals: s.goals,
           };
           updatePrevStateBaseline(seeded);
           if (historyStack[historyIndex]) {
@@ -3205,13 +3488,10 @@ export const usePlannerStore = create<PlannerStore>()(
  */
 function applyHistoryState(
   target: HistoryState,
-  currentState: {
-    items: Item[];
-    projects: Project[];
-    habitGroups: HabitGroupType[];
-    routines: Routine[];
-    programs: Program[];
-  },
+  // HistoryState itself, rather than a hand-repeated structural copy: the two
+  // lists were identical and the copy was a second place to forget a slice.
+  // Callers pass the whole store, which is assignable.
+  currentState: HistoryState,
   flags: { canUndo: boolean; canRedo: boolean },
   userId: string | null,
   set: (partial: Partial<PlannerStore>) => void,
@@ -3225,6 +3505,7 @@ function applyHistoryState(
   // Every key of HistoryState must be snapshotted; this only softens the crash.
   const restoredRoutines: Routine[] = JSON.parse(JSON.stringify(target.routines ?? []));
   const restoredPrograms: Program[] = JSON.parse(JSON.stringify(target.programs ?? []));
+  const restoredGoals: Goal[] = JSON.parse(JSON.stringify(target.goals ?? []));
 
   const info = getHistoryInfo();
   set({
@@ -3233,6 +3514,7 @@ function applyHistoryState(
     habitGroups: restoredGroups,
     routines: restoredRoutines,
     programs: restoredPrograms,
+    goals: restoredGoals,
     canUndo: flags.canUndo,
     canRedo: flags.canRedo,
     actionLog: info.actionLog,
@@ -3245,6 +3527,7 @@ function applyHistoryState(
     habitGroups: restoredGroups,
     routines: restoredRoutines,
     programs: restoredPrograms,
+    goals: restoredGoals,
   });
 
   if (!userId) return;
@@ -3324,6 +3607,19 @@ function applyHistoryState(
     (id, patch) => dbUpdateProgram(userId, id, patch),
     (id) => dbDeleteProgram(userId, id),
   );
+  // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
+  // reconciles whichever of them the diff produced — a patch naming one role
+  // leaves the other two alone rather than emptying them. That property is the
+  // whole reason this call site works: syncContainers patches only the fields
+  // that differ, so undoing "added a milestone" arrives as {milestoneIds} and
+  // nothing else, and it fires as .catch(console.error) — anything thrown here
+  // would be a silent no-op rather than a visible failure.
+  syncContainers(
+    currentState.goals, restoredGoals, GOAL_FIELDS,
+    (id) => dbRestoreGoal(userId, id),
+    (id, patch) => dbUpdateGoal(userId, id, patch),
+    (id) => dbDeleteGoal(userId, id),
+  );
 }
 
 function syncContainers<T extends { id: string }>(
@@ -3366,13 +3662,23 @@ let hasInitializedHistory = false;
 // Initialize prevStateJson eagerly with the store's initial state
 // This captures the "before" state so we can properly undo the first action
 const initialStoreState = usePlannerStore.getState();
-let prevStateJson: string | null = JSON.stringify({
-  items: initialStoreState.items,
-  projects: initialStoreState.projects,
-  habitGroups: initialStoreState.habitGroups,
-  routines: initialStoreState.routines,
-  programs: initialStoreState.programs,
+// ANNOTATED, and that is the point: this literal used to be untyped, so it was
+// the one place a new history slice could be forgotten silently. Every other
+// site is forced by the compiler (saveToHistory takes a HistoryState), but a
+// bare object handed to JSON.stringify accepts anything. Miss a slice here and
+// the session-start baseline holds no goals, so undoing back to it reads every
+// goal as "present in current, absent in restored" — which syncContainers
+// executes as a DELETE of all of them.
+const historySlice = (s: HistoryState): HistoryState => ({
+  items: s.items,
+  projects: s.projects,
+  habitGroups: s.habitGroups,
+  routines: s.routines,
+  programs: s.programs,
+  goals: s.goals,
 });
+
+let prevStateJson: string | null = JSON.stringify(historySlice(initialStoreState));
 
 // Function to update baseline from undo/redo actions
 const updatePrevStateBaseline = (state: HistoryState) => {
@@ -3382,13 +3688,7 @@ const updatePrevStateBaseline = (state: HistoryState) => {
 usePlannerStore.subscribe((state) => {
   if (isUndoRedoAction || isUpdatingUndoRedo) return;
 
-  const currentState = {
-    items: state.items,
-    projects: state.projects,
-    habitGroups: state.habitGroups,
-    routines: state.routines,
-    programs: state.programs,
-  };
+  const currentState = historySlice(state);
 
   const currentStateJson = JSON.stringify(currentState);
 

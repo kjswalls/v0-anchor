@@ -203,6 +203,15 @@ export function useOverdueSweep() {
     // container list: every member of a paused routine or an off-season program
     // reads as unprotected and gets unscheduled in one silent batch. If they
     // ever move out of that Promise.all, they need their own gate here FIRST.
+    //
+    // GOALS joined that list for a third reason, and it is the sharpest of the
+    // three. This sweep clears `startDate`, and on a milestone that field is
+    // not stale scheduling residue — it is the target date, the only record of
+    // when the checkpoint was meant to happen. `unscheduleTasks` subtracts
+    // milestone-role items before it writes, so it needs the goal list to be
+    // populated; hydrate goals separately and the sweep sees none, reads every
+    // milestone as an ordinary stale task, and erases a year of target dates in
+    // one unattended batch that no toast even announces.
     if (!userId || isLoading || loadError) return;
 
     // ── Gate 2: the SETTINGS in memory demonstrably belong to THIS user ───────
