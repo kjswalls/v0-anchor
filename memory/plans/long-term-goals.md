@@ -1,16 +1,19 @@
 # Long-term Goals — an aspiration container over unified items
 
-**Status (2026-08-20): APPROVED DIRECTION, pre-build adversarial review pending.**
-Product direction from Kirby's brief ("long term learning plans and goals with
-milestones, habits, certain things that need to be scheduled, date check-ins — like
-learning Chinese with fluency goals along the way, or building a $3m business in 3
-years"). **All eight open questions answered by Kirby 2026-08-20: the recommendations
-stand as written** — the noun is **Goal**; membership is many-to-many; milestones are
-items-with-a-role; behind-on-a-milestone rides the normal past-due machinery quietly;
-no numeric targets in v1; no auto-achieve; check-ins default weekly with the item
-owning its recurrence; no ScopeRail or Display-menu presence. No code written. Read
-[unified-items.md](unified-items.md) and [programs-routines.md](programs-routines.md)
-first — this plan builds on their locked decisions and amends none of them.
+**Status (2026-08-20): APPROVED DIRECTION, round-1 adversarially reviewed, findings
+folded in. No code written.** Product direction from Kirby's brief ("long term
+learning plans and goals with milestones, habits, certain things that need to be
+scheduled, date check-ins — like learning Chinese with fluency goals along the way,
+or building a $3m business in 3 years"). **All eight open questions answered by Kirby
+2026-08-20: the recommendations stand as written** — the noun is **Goal**; membership
+is many-to-many; milestones are items-with-a-role; behind-on-a-milestone rides the
+normal past-due machinery quietly; no numeric targets in v1; no auto-achieve;
+check-ins default weekly with the item owning its recurrence; no ScopeRail or
+Display-menu presence. The pre-build review ran 2026-08-20 (5 lenses; 2 blockers,
+~18 should-fixes, ~12 notes — all folded in below; see the review section at the
+end). Read [unified-items.md](unified-items.md) and
+[programs-routines.md](programs-routines.md) first — this plan builds on their
+locked decisions and amends none of them.
 
 **Goal:** A **Goal** is a long-horizon container — "Learn Chinese", "Build a $3m
 business by 2029" — that holds the work serving it: **milestones** (the achievement
@@ -47,8 +50,6 @@ sit in a goal AND a program simultaneously — the Chinese habit inside the scho
 program, serving the fluency goal. So goals join the container registry as a **third
 role** — neither `classify` (one per item, the filter/group axis) nor `gate`
 (activation) — call it **`aspire`**: many-to-many, no suppression, no unset state.
-`CONTAINER_KINDS` is a closed record on purpose, so adding the kind is a type error
-at every exhaustive switch — that is the designed way to find every touchpoint.
 
 **Not a project.** Projects are `classify`: exactly one per item, and habits don't
 carry the axis at all (they classify by group). A goal must hold habits and tasks
@@ -57,7 +58,24 @@ Marathon). That is the join-table shape routines/programs already built — comp
 FKs, RLS, soft-delete-survives-membership, reconciliation, the dangling-id rule —
 and goals reuse all of it.
 
-## Locked design decisions (proposed)
+**How touchpoints are actually found (corrected by review).** The draft claimed
+"adding the kind is a type error at every exhaustive switch." That is nearly
+vacuous: there are ZERO switches over `ContainerKind` in the codebase — every
+consumer narrows to `ClassifyKind` or `GateKind` first (which is exactly why
+filters/grouping/ScopeRail need no edits). The compile-forced edit is the
+`Record<ContainerKind, …>` entry alone. The real tripwires are:
+`tests/unit/container-registry.test.ts:39-51` (asserts the two role lists and that
+every kind has exactly one of the two roles — all three assertions fail on `aspire`
+and must be updated to assert the THREE-way partition), and a hand-wired list this
+plan carries so nothing is discovered by accident: the console section vocab
+(`console-rail.tsx` `CONSOLE_SECTIONS` + `ConsoleSection`), ui-store's `organize`
+dialog payload, `Memberships` and the history-baseline literal (store plan below),
+the omnibar channel, and the plugin. Also: `lib/agent-api.ts:519` declares its OWN
+unrelated `ContainerKind = 'routine' | 'program'` driving `CONTAINER_API` — Phase 4
+must rename one of the two before adding goals there, or the identical name with
+different meanings will mislead every later reader.
+
+## Locked design decisions
 
 1. **Goals are a new container table (`goals`) + one join table (`goal_items`),
    id-referenced.** The modern container pattern (programs-routines locked decision
@@ -71,306 +89,568 @@ and goals reuse all of it.
    grid that day, goes past-due when missed (being behind on a milestone *should*
    show up in the past-due bar), completes through the normal paths, narrates through
    Beacon, and undoes through the normal history. A check-in is a *recurring* item
-   ("Weekly Chinese review", every Sunday) — recurrence, reminders (`reminder_at`),
-   per-date completion, skips: all existing machinery. A dedicated `milestones` table
-   was rejected because it would re-implement dates, completion, overdue, Beacon,
-   undo, and grid presence — the exact parallel-code-path smell the item registry
-   exists to kill.
+   ("Weekly Chinese review", every Sunday) — recurrence, per-date completion, and
+   skips: all existing machinery. (NOT reminders: `reminder_at` is a dead column —
+   migrations 007/019 only, read by no code — so the honest nag story is the EOD
+   review on the due day and nothing else. Guilt-free silence is the v1 posture,
+   claimed rather than implied; a reminder would be a new subsystem and is
+   deliberately out of scope.) A dedicated `milestones` table was rejected because
+   it would re-implement dates, completion, overdue, Beacon, undo, and grid presence.
    - The PK `(goal_id, item_id)` means an item holds exactly ONE role per goal —
      it can't be both member and milestone of the same goal, by construction.
    - Role is a property of the MEMBERSHIP, not the item: "HSK 3 exam" can be a
      milestone of Learn Chinese and a plain member of Q3 Admin. No item column, no
      schema drift, nothing for the OpenClaw plugin to choke on.
 
-3. **Eligibility is registry capability, per the house rule.** New `ItemTypeConfig`
-   flag `milestoneEligible` (task: true; habit: false — a habit has no single "done"
-   event to hang an achievement on; custom template: true). Milestone role
-   additionally requires NOT `isRecurring(item)` — a recurring milestone is
-   meaningless — asked via a predicate `isMilestoneEligible(item)` like
-   `isSkippable`. Check-in role requires `isRecurring(item)` (a check-in is periodic
-   by definition). Plain `member` role reuses `isCollectible(item)` unchanged —
-   including its subtask exclusion, for the same reason it exists there.
+3. **Role shape is enforced at grant time AND survives item edits by demotion, never
+   by blocking.** (Review blocker, found by two lenses independently.) The registry
+   predicates guard the role WRITE — `isMilestoneEligible(item)` = capability
+   (`milestoneEligible`: task true, habit false, custom-template true) AND NOT
+   `isRecurring(item)`; check-in role requires `isRecurring(item)`; plain `member`
+   reuses `isCollectible` with its subtask exclusion. But a predicate asked at
+   role-write time cannot see a LATER item edit, and the item dialog + agent PATCH
+   freely flip `repeatFrequency`. A recurring item's scalar status is frozen by
+   design (migration 016 semantics), so a milestone made recurring becomes
+   permanently un-achievable (or stays stale-'completed' forever) and progress lies
+   silently. The mechanism, decided pre-build: **an item write that invalidates a
+   held role auto-demotes that role to `member`, with a standard receipt toast
+   naming the goal** ("No longer a milestone of Learn Chinese — it repeats now").
+   Blocking the edit would make goals constrain their members (against decision 4's
+   spirit); tolerating leaves progress lying. Demotion is one join-row write, rides
+   the normal undo, and fires from the store's item-update path (which must consult
+   a memoized item→roles index — the same index the milestone row flag needs) and
+   from the agent item PATCH handler. Symmetric: a check-in edited to
+   `repeatFrequency: 'none'` demotes to `member`. `switchType` in the add dialog
+   drops a draft role the target type is ineligible for (keeping the plain
+   membership) — the Phase-3 "switchType discarding membership" lesson, extended to
+   roles.
 
-4. **Goals never suppress and never write member fields.** No `lib/active.ts`
-   changes, no `inactiveItemIdsOn` involvement, no ScopeRail row. Goal state changes
-   are one container-row write (one undo entry), and no goal operation ever touches
-   member `status`, `streak`, `completedDates`, `startDate`, `repeat*`, `timeBucket`
-   — the programs-routines invariant, inherited verbatim. "Shelve a goal and hide
-   its work" is deliberately NOT built: that job belongs to programs, and an item
-   can be in both. (Recorded under Deferred with the revisit trigger.)
+4. **Goals never suppress and never write member fields — with two narrow,
+   protective exceptions to "zero special casing" in the past-due machinery.**
+   No `lib/active.ts` changes, no `inactiveItemIdsOn` involvement, no ScopeRail row.
+   Goal state changes are one container row (one undo entry); no goal operation ever
+   touches member `status`/`streak`/`completedDates`/`startDate`/`repeat*`/
+   `timeBucket`. But the review found the converse hazard: the past-due machinery
+   WRITES `startDate`, which for a milestone is semantic goal data, not stale
+   scheduling residue. So:
+   - **The auto-age sweep excludes milestone-role items.** `unscheduleTasks` sets
+     `startDate: undefined` — it would silently erase a milestone's target date, and
+     with it the plan's whole behind-ness story (the overdue milestone leaves the
+     bar, demotes to undated in `nextMilestone`, and the goal timeline has nothing
+     to annotate). The exclusion is safe against the sweep's hydration hazard only
+     because goals load in `initializeStore`'s same `Promise.all`/`set()` as items
+     (the documented use-overdue-sweep gate contract) — moving goals out of that
+     Promise.all would silently unprotect every milestone; recorded as a trap.
+   - **Bulk date verbs skip milestone-role items** the way they already skip
+     recurring ones: EOD "Move all to tomorrow", morning "Move all to today".
+     Single-item date edits (the dialog's date chip, the tray's "pick a new date")
+     remain fully allowed — deliberately rescheduling a milestone is legitimate —
+     with the decision-11-style receipt ("Moved the Learn Chinese milestone to
+     Jul 15").
 
-5. **Goal lifecycle is its own tri-state, not a status vocabulary.**
-   `state ∈ ('active','achieved','abandoned')`, default `active`, plus `achieved_at`.
-   Achieved/abandoned goals leave the active lists and chips but keep their history
-   browsable (they are a record of a multi-year effort — closer to an archive than a
-   trash). Completing the last milestone does NOT auto-achieve — it surfaces a
-   celebratory prompt; achieving is the user's deliberate act (mirrors the "convert
-   an item's type is a data decision, not a control" reasoning). Soft-delete +
-   30-day purge apply as usual and are a separate axis from `abandoned`.
+5. **Goal lifecycle is its own tri-state, with pinned `achieved_at` semantics and a
+   wind-down step.** `state ∈ ('active','achieved','abandoned')`, default `active`.
+   - `achievedAt` is IN the schema and IN the update allowlist, stamped by
+     `setGoalState` app-side (UI path) and derived server-side on the agent path
+     (never client-supplied there — the `pausedAt` doctrine). Allowlisted
+     deliberately, against the `updatedAt`-stays-out pattern: it sits in GOAL_FIELDS
+     and therefore in undo's container diff, which is exactly what makes undo of
+     "Mark achieved" restore `state: 'active'` AND clear the stamp in one replay.
+     Idempotence rules, pinned now because retried PATCHes are expected traffic:
+     a state write to a goal ALREADY in that state is an empty patch (never
+     restamps — a retry must not move a multi-year goal's achievement date);
+     `state: 'active'` clears `achieved_at`. (`updatedAt` is dropped from GoalSchema
+     entirely — programs carry it solely for the sweep grace, which goals don't
+     grant; a field no consumer reads is a field that drifts.)
+   - **Achieving or abandoning runs a wind-down step.** Ended goals leave the active
+     lists and chips — but their recurring members (the check-in this goal created,
+     the practice habit) keep firing forever with the WHY stripped away: a
+     contextless weekly nag in every Sunday EOD. The achieve/abandon flow therefore
+     lists the goal's recurring members with keep / delete / "move to a program to
+     pause" affordances (writes are the user's, per-item, through normal actions —
+     the goal itself still writes nothing). And the item side keeps the thread: the
+     Goal chip lists ended-goal memberships under a muted "Ended" divider, so a
+     still-scheduled milestone of an abandoned goal is never an unexplained row.
+   - Ended goals stay browsable in the console list, sunk below active goals under
+     a quiet divider (the Trash rail-rule precedent) — not interleaved in
+     `sort_order` where they read as clutter by year two.
+   - Completing the last milestone does NOT auto-achieve. **The celebrate prompt is
+     a toast-style receipt, not a dialog** (`ActiveDialog` is a single slot — a
+     dialog fired during EOD would destructively replace it), with a "Mark
+     achieved" action. It fires only on a live user completion (never on agent
+     writes, never on undo/redo replay), only when the goal has ≥1 milestone and no
+     un-achieved dated milestone remains, and its copy respects a distant
+     `targetOn` ("All 2 milestones so far — target is 2029" offers review, not
+     achievement).
+   - Soft-delete + 30-day purge are a separate axis from `abandoned`. **Accepted
+     decay, stated so it never reads as a bug:** an achieved goal's history is
+     stored in deletable item rows; trash an achieved milestone and after the purge
+     its join row CASCADEs — 7/7 becomes 6/6, and the timeline entry vanishes.
+     `item_events` survives purge but carries no role, so it cannot reconstruct the
+     list. An achievement snapshot at achieve-time is the fix if this chafes;
+     recorded under Deferred.
 
-6. **Progress is derived, never stored.** `achieved milestones / total milestones`,
-   counted against the live-item index (dangling-id rule — `countLive` precedent in
-   lib/collections.ts). A milestone counts achieved when its scalar status is its
-   type's `doneStatus` (milestones are one-shot by rule 3, so scalar status is
-   truthful — the recurring-items-never-mutate-status trap doesn't apply). No stored
-   percent to drift; no numeric key-result metrics in v1 (the milestone TITLE carries
-   "$1m ARR" — see open question 5).
+6. **Progress is derived, never stored — with display rules, because the fraction is
+   the only signal.** `achieved / total` over live (dangling-id-filtered),
+   non-cancelled milestone-role items; achieved = scalar status === the type's
+   `doneStatus` (truthful because decision 3 keeps milestones one-shot).
+   - **Cancelled milestones leave BOTH sides of the fraction** — a cancelled
+     milestone is a dropped checkpoint, not a failure to count forever: it is
+     status-writable by the agent API, excluded from `selectOverdue`, and reversible
+     from no UI, so counting it in the denominator makes the goal read permanently
+     behind with no visible cause and no exit. The timeline shows it quietly as
+     dropped (never struck-through — struck-through means done).
+   - **Zero milestones suppresses the bar** ("No milestones yet" copy) — every goal
+     is born 0/0 and a habit-only goal stays there legitimately; "0/0" reads as
+     broken.
+   - **"All done" is not "done":** while `state` is active and `targetOn` is ahead,
+     a full fraction renders as "2/2 so far" — the plan's own $3m example defines
+     2 near-term milestones and would otherwise flash a full bar years early.
+     `timeElapsed(goal, todayStr)` renders beside the fraction on the goal surface
+     as the behind/ahead read; the two are never merged into one number.
 
-7. **External surface is additive-only, on the established schedule.**
-   `goals[]` (optional) joins `/api/agent/context` with a schemaVersion bump;
-   `tasks[]`/`habits[]`/`items[]` are untouched — goal membership travels ONLY in
-   `goals[]` (member ids + roles), never as item fields, so the frozen legacy
-   projections can't drift. No new webhook event names (notifyPlugins drops
-   unregistered names). Agent write routes follow Kirby's Phase-4 posture ("agents
-   should have all or most of the control the user has") but land in their own
-   phase, after the UI proves the model.
+7. **External surface is additive-only, on the established schedule — with the wire
+   rules pinned.** `goals[]` (optional) joins `/api/agent/context` at
+   **schemaVersion 5** (4 is current, taken by programs; "+1" was ambiguous against
+   this plan's own phase numbering). `tasks[]`/`habits[]`/`items[]` untouched; goal
+   membership travels ONLY in `goals[]` (member ids + roles), never as item fields.
+   **`goals[]` is OMITTED, never `[]`, when the table is unreachable** — `[]`
+   asserts "you have no goals" to an agent whose natural repair is "shall I set some
+   up?" (the routines/programs spread-omit rule, verbatim). No new webhook event
+   names. Agent write routes follow Kirby's Phase-4 posture but land in their own
+   phase; their refusal doctrine is specified in the Phase 4 section.
 
 8. **The Organize console is the goal's management home; the goal's *reading* home
-   is its own surface.** Goals become a console section (the console's rail order
-   already anticipates growth), which also solves the no-unconditional-entry-point
-   failure programs shipped with — the console has permanent doors. But a goal is
-   the one container whose DETAIL is a destination in itself (progress, milestone
-   timeline, check-in history), so it also gets a deep-linkable page,
-   `/goal/[id]`, following the `/item/[id]` precedent (Beacon can answer with a
-   URL). The console detail pane and the page render the same sections — growth is
-   a presentation, not a fork (item-surface-growth's rule).
+   is its own surface.** Goals become a console section (which also solves the
+   no-unconditional-entry-point failure programs shipped with — the console has
+   permanent doors, reachable at zero goals via the braindump folder button, the
+   palette, and settings). But a goal is the one container whose DETAIL is a
+   destination in itself, so it also gets a deep-linkable page, `/goal/[id]`,
+   following the `/item/[id]` precedent (Beacon can answer with a URL). The console
+   detail pane and the page render the same sections — growth is a presentation,
+   not a fork.
 
 ## Target DB shape (migration 029)
 
+**Before committing to the number: check the remote ledger tip (`pnpm db:list`).**
+028's own header records renumbering because the ledger carried versions from
+branches not in the worktree — "ledger first, directory second."
+
 All idempotent, house RLS pattern, dates as `yyyy-MM-dd` text, tz app-side.
-`updated_at` trigger on `goals` ONLY — never the join table (the house trigger
-throws on tables without the column; programs-routines learned this).
+`updated_at` trigger on `goals` ONLY — never the join table.
 
 - `goals`: id uuid PK gen_random_uuid(), user_id uuid NOT NULL FK auth.users
-  CASCADE, name text NOT NULL, `why` text (the motivation line — rendered on the
-  goal surface and fed to Beacon), icon text, color text,
-  state text NOT NULL default 'active' CHECK (state in
+  CASCADE, name text NOT NULL, `why` text (the motivation line), icon text,
+  color text, state text NOT NULL default 'active' CHECK (state in
   ('active','achieved','abandoned')), starts_on text, target_on text,
   achieved_at timestamptz, sort_order int, created_at/updated_at now(), deleted_at.
-  Guarded `UNIQUE (id, user_id)` (composite-FK target, in a DO block — the 024
+  Guarded `UNIQUE (id, user_id)` in a DO block (composite-FK target — the 024
   lesson about `create table if not exists` skipping inline constraints).
 - `goal_items`: goal_id uuid NOT NULL, item_id uuid NOT NULL, user_id uuid NOT NULL
-  FK auth.users CASCADE, role text NOT NULL default 'member' CHECK (role in
-  ('member','milestone','checkin')), sort_order int (milestone ordering),
-  PK (goal_id, item_id), composite FKs `(goal_id, user_id) → goals(id, user_id)`
-  and `(item_id, user_id) → items(id, user_id)`, both ON DELETE CASCADE (join rows
-  are derived data; RESTRICT would abort the nightly purge). Index
-  `(user_id, item_id)` for the reverse lookup + hydration fetch. No timestamps, no
-  trigger.
-- Purge cron: extend `purge-deleted-items` with the `goals` line (join rows go by
-  CASCADE).
+  FK auth.users CASCADE, role text NOT NULL default 'member', sort_order int
+  (milestone ordering), PK (goal_id, item_id), composite FKs
+  `(goal_id, user_id) → goals(id, user_id)` and `(item_id, user_id) →
+  items(id, user_id)`, both ON DELETE CASCADE (join rows are derived data; RESTRICT
+  would abort the nightly purge). **The role CHECK goes in a guarded DO block, NOT
+  inline** (review finding): on a partially-applied table a skipped inline PK fails
+  loudly at the first upsert, but a skipped inline CHECK fails SILENTLY — junk role
+  strings become storable and the three-way split quietly drops those rows. 024 put
+  `programs_state_check` in a DO block for exactly this reason. Index
+  `(user_id, item_id)`. No timestamps, no trigger.
+- Purge cron: extend `purge-deleted-items` with the `goals` line (re-list all seven
+  existing DELETEs — the job is replaced whole).
 - No `items` columns. Nothing item-side changes — that is the point of role-on-join.
-- Ledger: if applied out-of-band, record version `029` immediately.
+- Ledger: if applied out-of-band, record the version immediately.
 
 **Deploy-order tolerance, by construction (the 024 rule):** `fetchGoals` returns
 null on a missing table ⇒ `goalsAvailable = false` gates every goal surface off; no
 item-write path changes at all this time (no new item columns), so there is no
 PGRST204 hazard to guard. Do not "simplify" the availability gate away.
 
+## Membership write semantics (pinned by review — do not improvise these)
+
+The three role arrays are a READ convenience; the write side must treat the join
+table as ONE set. Four rules, each closing a found defect:
+
+1. **One union reconcile per goal, never three per-role passes.** Read all of the
+   goal's rows once; build the desired union as `{itemId, role, sortOrder}`; upsert
+   with `onConflict: 'goal_id,item_id'`; delete only ids absent from the WHOLE
+   union. Three per-role passes make a milestone→member demotion order-dependent
+   (the milestone pass DELETEs the row before the member pass re-inserts — a
+   failure between the two loses the membership, inverting add-before-remove's
+   superset guarantee) and let one role's unscoped DELETE remove a row another pass
+   just role-updated. The bulk upsert's rows must carry homogeneous keys —
+   `sort_order` present on EVERY row, explicitly null for non-milestone roles, so a
+   demoted milestone doesn't keep a stale sort_order perturbing fetch order.
+2. **Cross-array overlap is rejected at the boundary, never resolved by
+   precedence.** The PK guarantees disjointness only DB→arrays; arrays→DB, the
+   same id in two role arrays is two contradictory instructions — as one upsert
+   batch it aborts with 21000 ("cannot affect row a second time"), as separate
+   statements it's last-write-wins roulette. Store actions throw; the agent route
+   400s naming both arrays (reject-don't-pick, the `rejectResumeWithDate`
+   doctrine). Per-array dedupe stays too (the existing 21000 guard).
+3. **Trashed-member keeping is per-role.** `withTrashedMembersKept` re-adds members
+   invisible to the caller; for goals its current-rows read must select `role` and
+   route each kept id back into its CURRENT role — applied at the union level with
+   a defaulted role, a restore would demote every trashed milestone to `member`,
+   silently changing the progress denominator.
+4. **The trash bin's goal arm fetches roles.** The console's `listDeleted` joins
+   membership because a trashed container has no other member source (the recorded
+   Phase-4 near-miss); a goal bin arm copied from the routine arm gets ids WITHOUT
+   roles, and restore-then-reconcile rewrites every milestone and check-in as
+   `member` while the visible gate stays green. The bin snapshot for goals is
+   `{itemId, role, sortOrder}[]`.
+5. **Fetch ordering is deterministic for all three arrays**, not just milestones:
+   `order('sort_order', nullsLast).order('item_id')` across the goal's rows — the
+   024 heap-order finding; ids reshuffling between identical fetches read to the
+   membership diff as a real change and get written back.
+
 ## packages/types (same commit as the migration, dist rebuilt)
 
 - `GoalSchema`: id, name, why?, icon?, color?, state, startsOn?, targetOn?,
-  achievedAt?, plus app-side member arrays split BY ROLE — `memberIds: string[]`,
-  `milestoneIds: string[]` (ordered by sort_order), `checkinIds: string[]`. Three
-  arrays rather than one array of `{id, role}` objects: every consumer
-  (`countLive`, pickers, progress) wants one role's ids, and disjointness is
-  guaranteed by the PK. db.ts maps join rows ↔ the three arrays; `updatedAt`
-  read-only (the sweep-grace precedent does not apply — goals grant no grace —
-  but the pattern of keeping it out of the update allowlist does, because it sits
-  in GOAL_FIELDS and therefore in undo's container diff).
-- `AnchorContextResponseSchema`: optional `goals[]`, schemaVersion +1 (Phase 4;
-  optional-only so old plugin builds strip it — the locked additive rule).
+  achievedAt?, plus the three role arrays — `memberIds`, `milestoneIds` (ordered),
+  `checkinIds`. Three arrays rather than `{id, role}[]`: every consumer wants one
+  role's ids and disjointness holds on read. `achievedAt` IS in the shape and the
+  update allowlist (decision 5's undo argument); `updatedAt` is NOT in the shape at
+  all. db.ts maps join rows ↔ arrays per the membership-semantics section.
+- Goal date fields validate through `DateOnlySchema` at the agent boundary, and an
+  inverted range (`targetOn < startsOn`) is refused (the programs
+  `rejectInvertedRange` precedent) — every derived helper compares these LEXICALLY
+  against `toDateStr` output, so a sloppy date doesn't error, it lands on the wrong
+  side of every comparison forever.
+- `AnchorContextResponseSchema`: optional `goals[]`, schemaVersion 5 (Phase 4;
+  extend the version-meaning comment chain).
 - **No item-shape changes.** TASK_FIELDS/HABIT_FIELDS untouched; db.ts item
-  allowlists untouched; the OpenClaw plugin parses today's payloads unchanged
-  until Phase 4.
+  allowlists untouched; the OpenClaw plugin parses today's payloads unchanged until
+  Phase 4 (verified: the response schema is strip-mode, so a current build strips
+  `goals[]`).
 
 ## Store plan
 
-- New slice: `goals: Goal[]`, CRUD + `setGoalState`, hydrated in
-  `initializeStore`'s Promise.all (**update the six unit-test files that
-  hand-enumerate `lib/db` in vi.mock factories FIRST** — programs-routines Phase 2
-  broke 63 tests at once on exactly this, and Phase 3 hit it again).
+- New slice: `goals: Goal[]`, CRUD + `setGoalState` (stamps/clears `achievedAt` per
+  decision 5), hydrated in `initializeStore`'s Promise.all. **~20 unit-test files
+  hand-enumerate `lib/db` in vi.mock factories and import planner-store — update
+  them FIRST** (the "six" in programs-routines.md is stale; a builder who fixes six
+  and sees the suite still red will assume something else broke).
+- **The history-baseline literal at planner-store.ts:3370 is untyped and must gain
+  `goals` by hand** — `HistoryState` and `saveToHistory` force the other sites via
+  types, but the module-load `prevStateJson = JSON.stringify({...})` literal does
+  not; missed, undoing to session start reads every goal as deleted and
+  `syncContainers` soft-deletes them all (the exact failure the file's own comment
+  records shipping once for routines).
 - `goalsAvailable` availability flag, item_types/collections precedent.
-- Membership writes ride the existing join reconciliation (`reconcileMembership`
-  generalized to carry `role` + `sort_order`): add-then-remove ordering, dedupe,
-  only 23503 survives, everything else rethrows. Role changes (promote a member to
-  milestone) are an upsert on the same PK — one write, no delete+insert window.
-- `HistoryState` gains `goals`; `syncContainers` gains the goal callback pair
-  (join reconciliation, NOT a column mapper — the drift programs-routines warned
-  about).
-- Create-with-membership: the add actions' `memberships` payload gains
-  `goalIds?` (and the goal-side "new milestone" flow passes
-  `{goalIds: [id], role: 'milestone'}`) so item + join rows land in one set(), one
-  undo entry.
+- Membership writes per the membership-semantics section. Role changes are an
+  upsert on the PK — one write, no delete+insert window.
+- `HistoryState` gains `goals`; `syncContainers` gains the goal callback pair (join
+  reconciliation, NOT a column mapper).
+- Create-with-membership: `Memberships` gains `goalIds?` (plain id array, role
+  supplied alongside as a single `goalRole?` for the whole payload — the two
+  designed flows are "add member from chip" and "inline-create milestone from the
+  console"; mixed-role creation is not a flow). **Do NOT "generalize" `Memberships`
+  into `{id, role}[]`** — the routine/program chips and `withMembership` (generic
+  over single-`itemIds` containers) depend on the flat shape; goals get their own
+  optimistic helper and a role-aware `persistNewItem` arm.
+- **The item-update path consults a memoized item→goal-roles index** to fire the
+  decision-3 demotion; the same index drives the row flag and the sweep exclusion.
+  The sweep exclusion is safe ONLY because goals ride the same Promise.all/set() as
+  items — recorded in use-overdue-sweep.ts alongside the existing routines note.
 - Dangling-id rule extends verbatim: all three arrays may name trashed items;
-  consumers filter against the live index (`useLiveItemIds`); progress counts live
-  milestones only.
-- Derived helpers in a new pure module **`lib/goals.ts`** (the lib/overdue.ts "ONE
-  definition" pattern): `goalProgress(goal, liveItems)`,
-  `nextMilestone(goal, itemsById, todayStr)` (earliest un-achieved by target date,
-  undated ones after dated, then sort_order), `checkinStanding(goal, itemsById,
-  todayStr)` (next due date from recurrence + last completed date), `timeElapsed
-  (goal, todayStr)` (startsOn→targetOn fraction, for the behind/ahead read). Every
-  surface asks this module; no surface re-derives.
+  consumers filter against the live index; progress counts live milestones only.
+- Derived helpers in pure **`lib/goals.ts`**: `goalProgress` (decision 6's rules),
+  `nextMilestone` (earliest un-achieved by target date, undated after dated, then
+  sort_order), `checkinStanding`, `timeElapsed`. Every surface asks this module.
 
 ## UI plan
 
-- **Organize console — "Goals" section** in the CONTAINERS group. List rows:
-  CategoryIcon + name + quiet progress fraction ("3/7") + state pill (`Achieved` /
-  `Abandoned` — active goals wear nothing, the guilt-free law). Detail pane: name
-  (buffered rename via `useNameDraft`), why, icon/color, starts/target date
-  pickers, state control, **progress bar** (derived), **Milestones** (ordered list
-  with the by-id swap-reorder precedent, add via the entity picker filtered by
-  `isMilestoneEligible` OR inline-create a new dated task pre-linked as milestone),
-  **Members** (picker filtered by `isCollectible`), **Check-ins** (see Phase 3).
-  Delete → AlertDialog naming what actually happens: members and milestones are
-  ordinary items and SURVIVE — only the goal and its links go to the trash (the
-  "say what deleting actually does" lesson, commit `2c2caa5`).
-- **`/goal/[id]` page**: the reading surface. Header (name, why, state, progress,
-  target countdown), milestone timeline (achieved ✓ / next highlighted / overdue
-  quietly annotated — never a warning color; guilt-free law applies to being
-  behind on a goal MORE than anywhere else in this app), member list grouped by
-  type, check-in history (from `completedDates` + `item_events`). Console detail
-  and page share section components.
-- **Item dialog/panel — "Goal" PropertyChip**, cloned from the Routine chip
-  (multi-membership check-rows, "Chinese +1" collapse, draft-held in add mode via
-  the memberships payload, live join-reconciliation in edit/panel). Gated on
-  `isCollectible` and `goalsAvailable`. The chip's popover carries a "Manage
-  goals…" row into the console section (`openDialog({type:'console', tab:'goals'})`).
-- **Milestone marking on rows:** a small flag glyph in the row's identity area for
-  items that are a milestone of any live goal — resolved via a memoized
-  item→milestone-goals index, quiet (muted ink, honey only on hover tooltip naming
-  the goal via RailTooltip). Deliberately NOT a rail column — the rail is full and
-  its columns are budgeted (the Phase-6 row-rail note).
-- **Palette:** static `app.goals` (open console section); dynamic "Open goal: X"
-  per goal (customTypeCommands pattern — memoized on list identity, alias-guarded,
-  no shortcuts on dynamic commands). Omnibar: goals join `groupResults` as a
-  section; a `goal:<name>` search-grammar filter is deferred (it filters by a
-  many-to-many, which the grammar has no precedent for — routines don't have one
-  either).
+- **Organize console — "Goals" section** in the CONTAINERS group: add `'goals'` to
+  `ConsoleSection` + `CONSOLE_SECTIONS` (console-rail.tsx) and one SectionBody arm.
+  Openers use the REAL API: `openDialog({ type: 'organize', section: 'goals' })`
+  (the draft's `{type:'console', tab}` was fiction — that variant does not exist).
+  List rows: CategoryIcon + name + quiet progress fraction + state pill (Achieved /
+  Abandoned — active goals wear nothing); ended goals sink below active under a
+  quiet divider. Empty state gets its one-sentence definition per the console's
+  empty-state law; **no seeded example goal** — a goal is the most personal
+  container in the app, and an example one would be noise a user has to delete
+  (recorded as a decision, since the console's seeding law exists to prevent empty
+  sections). Detail pane: name (`useNameDraft`), why, icon/color, starts/target
+  date pickers, state control (+ wind-down per decision 5), progress bar (decision
+  6's display rules), **Milestones** (ordered, by-id swap-reorder — the touch-sized
+  24px controls from the scope-rail review, visible below `md`; add via the entity
+  picker with its pool filter PARAMETERIZED — it currently hardcodes
+  `isCollectible` — or inline-create a dated task pre-linked as milestone, **seeded
+  with `timeBucket: 'anytime'`**: deriveDayItems drops bucketless tasks from every
+  bucket, so without it the milestone is invisible on its own target day),
+  **Members**, **Check-ins** (Phase 3). Delete → AlertDialog saying what actually
+  happens: members and milestones are ordinary items and SURVIVE — only the goal
+  and its links go to the trash.
+- **`/goal/[id]` page**: the reading surface. Header (name, why, state, progress
+  fraction + time-elapsed read, target countdown), milestone timeline (achieved ✓ /
+  next highlighted / overdue quietly annotated / cancelled shown as dropped —
+  never struck-through, never a warning color), member list grouped by type,
+  check-in history. Console detail and page share section components. **Members
+  suppressed by a paused routine/program are annotated** with the existing
+  `suppressionLabel` line (quiet, guilt-free) — the goal surface is a brand-new
+  reading surface for exactly the items the programs checklist warned about; a
+  timeline naming "due Friday" for an item rendering on no Friday column is a
+  silent lie. The annotation is read-only; goal surfaces stay activation-BLIND for
+  writes (goals never suppress).
+- **Item dialog/panel — "Goal" PropertyChip**, cloned from the Routine chip with
+  ONE deliberate divergence, stated so the implementer doesn't copy the template's
+  gate: **the chip renders at zero goals** (gated on `isCollectible` +
+  `goalsAvailable` ONLY — the Routine chip's `routines.length > 0` gate is the
+  programs no-entry-point failure, and on mobile, where there is no palette or
+  omnibar, the chip's "Manage goals…" row is a load-bearing door). The popover's
+  check-rows carry each goal's **next milestone + date** as a quiet second line —
+  the one permitted ambient forward-pressure surface (a dated milestone is
+  otherwise invisible between creation and its target day, and the first
+  unprompted encounter would be the waiting tray after it is already missed).
+  Ended-goal memberships render under a muted "Ended" divider (decision 5).
+- **Role marking on rows:** a small flag glyph for milestone-role items, a small
+  loop glyph for check-in-role items, both resolved against LIVE goals via the
+  item→roles index. Desktop attribution via RailTooltip (hover); **on touch the
+  glyph is inert and attribution lives in the edit sheet's Goal chip** — stated
+  because RailTooltip never fires on touch and an unexplained glyph is the
+  alternative. Not a rail column (the rail is budgeted).
+- **The check-in bridge (review blocker):** the check-in's value — note, history,
+  pull-back to the goal — must reach the surface where check-ins are actually
+  completed, which is the grid row and the EOD review, NOT the goal page. So:
+  completing a check-in-role item ANYWHERE fires a receipt toast — "Checked in on
+  Learn Chinese · Add a note · View goal" — whose actions capture the note inline
+  and deep-link `/goal/[id]`. Without this bridge, Phase 3 ships a recurring task
+  with extra bookkeeping and its differentiating features reachable only by users
+  who spontaneously visit the goal page first.
+- **Undated milestones live in the braindump, deliberately.** They pass the
+  braindump's membership predicate today and the alternative — excluding them —
+  recreates "hidden entirely = data loss wearing a feature's clothes" (the Paused
+  section's own lesson): an undated milestone of a rarely-opened goal would exist
+  nowhere ambient. They wear the flag; the goal page is their primary home; if
+  braindump squatting chafes, a quiet sub-grouping is the follow-up, not exclusion.
+- **Omnibar: goals get a PARALLEL result channel, not a `groupResults` section.**
+  `groupResults` is typed to `Item`s, keyed by item type, rendered with
+  `data-item-type`/`doneStatus`/`openEditFor` — a goal is none of that, needs a
+  navigate action, and the section key `'goal'` would collide with a user's custom
+  item type literally named `goal`. A `goalResults` channel beside it, rendered as
+  its own section with a navigate row, keeps both namespaces honest.
+- **Vocabulary cleanup ships in Phase 1, unconditionally** (not the draft's hedge —
+  which also mis-aimed at a "seed" that doesn't exist; nothing seeds item types):
+  the Types section's create placeholder literally coaches "New type… (e.g. Goal)"
+  (labels.tsx:273), and `goal` is the canonical custom-type example in the search
+  grammar docs, palette entity copy, and Beacon's system prompt. Once the container
+  ships, a user following the app's own example creates exactly the wrong thing.
+  Change the placeholder (e.g. "New type… (e.g. Errand)") and sweep the
+  user-facing example copy; for users who ALREADY have a custom type named `goal`,
+  both keep working (disjoint namespaces) and Beacon's noun list already speaks
+  hydrated labels — no migration, just stop coaching the collision.
+- **Palette:** static `app.goals` (opens the console section); dynamic "Open goal:
+  X" per goal (customTypeCommands pattern). `goal:<name>` search grammar stays
+  deferred.
+- **On mobile** (one paragraph, per the house rule that every surface decision
+  needs a touch path): the console's Goals section renders in the existing vaul
+  bottom sheet (fit is pre-existing console behavior; milestone reorder uses the
+  visible 24px arrow controls); role glyphs are inert, attribution via the edit
+  sheet's Goal chip; `/goal/[id]` is reachable from the console row's open-as-page
+  affordance (the `/item/[id]` ⤢ precedent) since mobile has no palette or omnibar;
+  the completion receipt toast is the check-in bridge there too.
 - **Copy rules:** article + name ("your Learn Chinese goal"). "Milestone" and
-  "Check-in" are membership words, never type names — the item stays "a task" in
-  every type-facing surface.
+  "Check-in" are membership words, never type names.
 
 ## Beacon + agent (Phase 4)
 
-- Beacon context gains a `### Goals` section (active goals only): name, why,
-  progress fraction, next milestone with its date, days to target, check-in
-  standing ("check-in due Sunday" / "last check-in Aug 17"). Emitted only when
-  goals exist, so every byte-pinned context test stays exact (the `### Paused`
-  precedent). Achieved/abandoned goals stay out of the prompt.
-- `/api/agent/context` serves `goals[]` (id, name, why, state, dates, three
-  role-arrays), schemaVersion +1. Additive-optional; old plugin builds strip it.
-- Agent writes (same phase or a fast follow, per the Phase-4 posture):
-  `POST/PATCH/DELETE /api/agent/goals`, membership with roles, with the
-  refusal-over-silent-no-op doctrine: role writes validate eligibility through the
-  registry predicates (a recurring item as milestone → 400 naming the rule, never
-  a stored-but-meaningless row); `withTrashedMembersKept` applies to goal
-  membership replacement identically (the projection-blind-caller bug is the same
-  bug here); achieved_at is derived server-side from a state write, never
-  client-supplied (the pausedAt precedent — an agent-chosen timestamp is wrong in
-  both directions).
+- Beacon context gains a `### Goals` section — guarded on **active goals with
+  rendered content**, double-guarded like `### Paused` (the draft's "when goals
+  exist" would print a header over nothing for a user whose only goals are
+  achieved). Per goal: name, why, progress fraction, next milestone + date, days to
+  target, check-in standing. **Suppression-aware:** `nextMilestone` and the
+  check-in line SKIP items currently suppressed by a paused routine/program, or
+  annotate the cause — otherwise `### Goals` recommends the exact item `### Paused`
+  forbids three sections earlier, two contradictory instructions in one prompt.
+  The **focused-item section names goal membership**: a per-item thread on "HSK 3
+  exam" must know it is the next milestone of Learn Chinese — that is the single
+  most relevant fact about it, and the addition is additive (base no-focus output
+  stays byte-identical; the pinned tests pass no goals).
+- `/api/agent/context` serves `goals[]` at schemaVersion 5; omitted, never `[]`,
+  when the table is unreachable (decision 7).
+- Agent writes: `POST/PATCH/DELETE /api/agent/goals`, membership with roles.
+  Refusals, each because the silent alternative is worse than a 400:
+  - **`paused`/`pausedUntil` are carried on the goal schemas solely to be
+    REFUSED**, with a message naming `state` and pointing shelving at programs —
+    the exact `rejectProgramPauseVerb` pattern, because `paused: true` works on
+    items and routines and a goal is precisely what an agent will try to "shelve";
+    Zod's silent strip would 200-and-do-nothing, the bug class the programs review
+    escalated.
+  - Role writes validate through the registry predicates (recurring item as
+    milestone → 400 naming the rule); cross-array overlap → 400 (membership
+    semantics rule 2); `achieved_at` derived server-side, empty-patch on same-state
+    writes, cleared by `state:'active'` (decision 5); dates through
+    `DateOnlySchema` + inverted-range refusal; ownership pre-checks per
+    `verifyContainerOwnership` (service role bypasses RLS); per-role
+    `withTrashedMembersKept`.
+  - Rename the `lib/agent-api.ts` `ContainerKind` type before extending
+    `CONTAINER_API` (it shadows the registry union with a different meaning).
 - OpenClaw plugin: goals in context + a `kind: 'goal'` arm on the collections
-  tools; ships on the next deliberate republish (0.2.0 is already sitting
-  unpublished — do not force a release for this).
+  tools; ships on the next deliberate republish (0.2.0 already sits unpublished —
+  do not force a release).
 
 ## Phasing (app must work at every step)
 
-- **Phase 0 — foundations.** Migration 029; GoalSchema + dist rebuild; db.ts
-  CRUD/mappers (role-aware reconciliation) + `goalsAvailable`; container-registry
-  `aspire` role + `goal` kind (every exhaustive-switch error fixed = every
-  touchpoint found); registry `milestoneEligible` + predicates. Zero UI; app
-  behavior unchanged. Fix the six vi.mock db enumerations before wiring
-  initializeStore.
-- **Phase 1 — goals end-to-end, console section.** Store slice + history + undo;
-  console Goals section (list + detail: identity, dates, state, members,
-  milestones with ordering); item dialog/panel Goal chip; create-with-membership;
-  delete/restore + trash participation. Progress derivation (lib/goals.ts) lands
-  here because the detail pane shows it.
-- **Phase 2 — the goal surface.** `/goal/[id]` page + shared section components;
-  milestone flag on rows + tooltip; palette + omnibar; the celebrate-on-last-
-  milestone prompt (offers "Mark achieved", never auto-writes).
+- **Phase 0 — foundations.** Ledger-tip check, then migration 029 (role CHECK in a
+  DO block); GoalSchema + dist rebuild (achievedAt in, updatedAt out); db.ts
+  CRUD/mappers per the membership-semantics section + `goalsAvailable`;
+  container-registry `aspire` role + `goal` kind + the container-registry.test.ts
+  three-role-partition update; registry `milestoneEligible` + predicates. Zero UI.
+  Fix the ~20 vi.mock db enumerations and the untyped history-baseline literal
+  before wiring initializeStore.
+- **Phase 1 — goals end-to-end, console section.** Store slice + history + undo
+  (incl. the demotion mechanism and the item→roles index); console Goals section
+  (list + detail + wind-down + trash with the role-aware bin arm); Goal chip
+  (renders at zero goals, next-milestone line, Ended divider);
+  create-with-membership (`goalIds` + `goalRole`); sweep + bulk-verb milestone
+  exclusions with receipts; the vocabulary cleanup (placeholder + example copy);
+  `lib/goals.ts` + progress display rules.
+- **Phase 2 — the goal surface.** `/goal/[id]` + shared sections (suppression
+  annotations included); role glyphs on rows + touch story; palette + omnibar
+  parallel channel; the celebrate receipt (gated per decision 5).
 - **Phase 3 — check-ins.** Role `'checkin'` UI: console "Check-in schedule" block
-  (creates a recurring task pre-linked, frequency picker seeded weekly) or link an
-  existing recurring item; goal surface check-in history; completing a check-in
-  from the goal surface offers a note, stored as an `item_events` row with
-  `action: 'checkin'`, payload `{goalId, note}` (the action column is open text
-  precisely so this is additive — 023's design paying off). A fuller guided
-  check-in flow (EOD-style dialog) is deferred until the plain one proves itself.
-- **Phase 4 — external/AI.** Beacon section; context `goals[]` + schemaVersion
-  bump; agent routes; plugin arm (unpublished until the next release).
-- Each phase gets the house adversarial review before its commit lands; Phases
-  1–3 each ship with their e2e spec (goals.spec: create → add milestone → complete
-  it on the grid → progress updates → achieve; TEST_TITLE_PREFIX fixtures, own
-  cleanup prefix — the two-files-sharing-a-DELETE lesson from scope-rail.spec).
+  (creates a recurring task pre-linked, weekly seeded, editable) or link an
+  existing recurring item; **the completion receipt bridge on every completion
+  surface**; check-in history on the goal page; the note stored as an `item_events`
+  row `action: 'checkin'`, payload `{goalId, dateStr, note}` — **the occurrence
+  date goes IN the payload** (created_at is the wrong key the moment someone
+  completes Sunday's check-in on Wednesday), orphaned notes (completion undone)
+  stay in history annotated rather than deleted, and `checkin` events render in
+  the item's own ActivitySection so the note isn't invisible item-side. A fuller
+  guided flow stays deferred.
+- **Phase 4 — external/AI.** Beacon section + focused-item goal line; context
+  `goals[]` at schemaVersion 5; agent routes with the full refusal set; plugin arm
+  (unpublished until the next release). Verified by live calls against a running
+  server, not just types — the programs Phase-4 standard.
+- Each phase gets the house adversarial review before its commit lands.
 
 ## Behavioral invariants to preserve (regression traps)
 
 - **Goals never suppress.** No goal state or membership ever feeds
-  `inactiveItemIdsOn` / `isOpenLoopSuppressedOn`. If a future "shelve goal hides
-  work" ships, it must go through lib/active.ts as a first-class path — never a
-  side channel.
-- **No goal operation writes member item fields.** State changes are one container
-  row; role changes are one join row. Never status/streak/completedDates/
-  startDate/repeat*/timeBucket.
-- **Milestones are one-shot; check-ins are recurring** — enforced at every write
-  path (UI, store, agent), via the registry predicates, not scattered conditions.
-- **Progress is derived and live-filtered** — never stored, never counts trashed
-  milestones, never reads `completedDates` for one-shot status (and never scalar
-  status for anything recurring).
+  `inactiveItemIdsOn` / `isOpenLoopSuppressedOn`. If "shelve goal hides work" ever
+  ships, it goes through lib/active.ts as a first-class path.
+- **No goal operation writes member item fields** — except the decision-3 role
+  DEMOTION, which writes only the join row (never the item), and the wind-down
+  step's per-item actions, which are the USER's writes through normal actions.
+- **Milestones are one-shot; check-ins are recurring** — at grant time via the
+  registry predicates, and across later item edits via the demotion mechanism
+  (never by blocking the item edit).
+- **The sweep and bulk date verbs never touch a milestone's startDate**; single
+  deliberate date edits always may, with a receipt. The sweep exclusion depends on
+  goals hydrating in initializeStore's Promise.all — moving that fetch silently
+  unprotects every milestone.
+- **Progress is derived and live-filtered** — never stored, never counts trashed or
+  cancelled milestones, never reads `completedDates` for one-shot status (and never
+  scalar status for anything recurring).
 - tasks[]/habits[]/items[] element shapes unchanged; goal membership travels only
-  in `goals[]`. schemaVersion bumps are additive-optional.
+  in `goals[]`; `goals[]` omitted (not `[]`) when unreachable; schemaVersion bumps
+  additive-optional.
 - `goal_items` has no updated_at column and must never get the house trigger.
-- Frozen e2e text contracts survive all new UI; `data-item-type` and row testids
-  untouched by the milestone flag.
+- Membership writes are ONE union reconcile per goal; cross-array overlap is
+  rejected, never resolved; trash-keeping and the bin arm are role-aware.
+- `achievedAt` restamps never (same-state writes are empty patches); undo of
+  achieve round-trips state AND stamp.
+- Frozen e2e text contracts survive all new UI; role glyphs add no rail column.
 - Dist-matches-src CI gate: every types change rebuilds the committed dist in the
   same commit.
 
+## Verification gates
+
+Unit: NEW tests/unit/goals.test.ts (table-driven: progress rules incl. cancelled/
+zero/all-done-early; nextMilestone ordering; demotion on recurrence flip both
+directions; union reconcile incl. demotion-no-delete-window and overlap rejection;
+per-role trash keep); container-registry.test.ts three-role partition; the ~20
+repaired vi.mock files stay green; db-allowlists auto-covers GoalSchema;
+ai-context.test.ts extended with a goals fixture (re-read deliberately if pinned
+output changes). E2E: goals.spec (create goal → inline-create dated milestone →
+complete it on the grid → progress updates → celebrate receipt → achieve →
+wind-down; TEST_TITLE_PREFIX fixtures, its OWN cleanup prefix — the
+two-files-sharing-a-DELETE lesson), check-in bridge case in Phase 3. Phase 4: live
+calls against a running server (the programs 39-call standard) + plugin-context
+tests in THIS repo (CI does not gate the plugin — the ten-tests precedent). Plugin
+smoke: context parses with the OLD published schema while goals[] is present.
+CLAUDE.md's Plans paragraph gains this plan alongside unified-items.md once
+approved.
+
 ## Deferred for a decision (recorded, not designed)
 
-- **Shelving a goal to hide its work** — use a program for now (an item can be in
-  both). Revisit if users keep creating shadow programs mirroring goals.
-- **Goals holding routines/projects** (`goal_routines`, project-level membership) —
-  items-only in v1; a routine's items can be added individually. The join-table
-  precedent makes this cheap later if the chafe is real.
-- **Numeric key results** ("$1.2m of $3m", "HSK 3 of 5") — v1 milestones carry it
-  in the title. A `target_value`/`current_value` pair on the join row would be
-  additive. This is OKR territory; wait for the pull.
-- **Guided check-in flow** (EOD-style dialog: note + confidence + "still on
-  track?") — after Phase 3's plain version proves the cadence.
-- **Sub-goals / goal hierarchy** — not designed; milestones cover the tree's first
-  level and most real goals are one level deep.
+- **Shelving a goal to hide its work** — use a program (an item can be in both).
+  Revisit if users keep creating shadow programs mirroring goals.
+- **Achievement snapshot at achieve-time** — freezes the milestone list against the
+  purge decay decision 5 accepts. Add if the decay chafes.
+- **Goals holding routines/projects** — items-only in v1; the join-table precedent
+  makes this cheap later.
+- **Numeric key results** ("$1.2m of $3m") — v1 milestones carry it in the title; a
+  `target_value`/`current_value` pair on the join row would be additive.
+- **Reminders for check-ins** — `reminder_at` is a dead column; a real reminder is
+  a new subsystem (push machinery exists, the wiring doesn't).
+- **Guided check-in flow** (EOD-style dialog) — after Phase 3's receipt+note proves
+  the cadence.
+- **Sub-goals / hierarchy** — milestones cover the first level.
 - **`goal:<name>` search grammar; Display-menu group-by-goal** — grouping by a
-  many-to-many needs the first-claim-wins rule routines already carry; adopt
-  together or not at all.
+  many-to-many needs the first-claim-wins rule; adopt together or not at all.
+- **Braindump sub-grouping for undated milestones** — if squatting chafes.
 
-## Open questions for Kirby (each with a recommendation)
+## Product decisions (Kirby, 2026-08-20)
 
-1. **The noun.** "Goal" is the natural word and the recommendation. One wrinkle:
-   unified-items.md uses `goal` as the canonical example of a custom ITEM TYPE, and
-   a user (or the organize-console seed copy at line ~288) may hold a custom type
-   with that slug. The namespaces are disjoint (types vs containers) and the
-   console shows them in different sections, but the words would collide in
-   conversation and in Beacon's vocabulary. Alternatives: "Ambition", "Pursuit",
-   "Quest". **Recommend: Goal**, and if the collision worries you, drop `goal`
-   from the seeded custom-type examples rather than bending the container's name.
-2. **Many-to-many vs one-goal-per-item.** Recommend many-to-many (the morning run
-   serving Health and Marathon is real; the join infra exists; the chip UI
-   handles it like routines).
-3. **Milestone = item-with-role vs dedicated table.** Recommend item-with-role
-   (locked decision 2's reasoning). The cost is that a milestone row on the grid
-   looks like a task with a small flag — if you want milestones to be visually
-   louder on the grid, that's a design pass, not a schema change.
-4. **Should being behind on a milestone shout?** Recommendation: no — milestones
-   join the existing past-due machinery (bar, tray, sweep) with zero special
-   casing, and the goal surface annotates quietly. The guilt-free law holds.
-5. **Numeric targets in v1?** Recommend no (titles carry them); deferred entry
-   records the additive path.
-6. **Auto-achieve on last milestone?** Recommend no — celebrate + offer.
-7. **Check-in default cadence** when creating from the goal surface: weekly?
-   Recommend weekly, seeded editable, no cadence stored on the goal itself (the
-   check-in ITEM owns its recurrence — one timing per item, the membership-only
-   principle from programs-routines decision 2).
-8. **Does the ScopeRail or Display menu ever mention goals?** Recommend no for
-   both in v1: goals don't gate (rail) and don't partition (filter axis). The
-   goal's presence in daily views is the milestone flag and the chips.
+All eight open questions resolved as recommended: the noun is **Goal** (vocabulary
+cleanup shipped unconditionally in Phase 1 instead of the original conditional
+hedge); many-to-many membership; milestones are items-with-a-role; behind-ness
+rides normal past-due quietly (amended by review: sweep/bulk-verb exclusions
+protect the target date, see decision 4); no numeric targets in v1; no
+auto-achieve (celebrate receipt, gated); check-ins default weekly, the item owns
+its recurrence; no ScopeRail or Display-menu presence.
+
+## Pre-build adversarial review (round 1, 2026-08-20)
+
+Five lenses over the approved draft (data model & schema integrity; external
+contract safety; codebase fit / stale premises; product-UX coherence; completeness
+& phasing), each instructed to refute its own candidates against the live code
+before reporting. **2 blockers, ~18 should-fixes, ~12 notes survived; all folded in
+above.** The two blockers converged across lenses independently — cross-lens
+convergence again beat any single lens's severity guess:
+
+- **The role-shape invariant had no enforcement against item-side writes** (2
+  lenses): the predicates guarded role grants, but the item dialog and agent PATCH
+  flip `repeatFrequency` freely, and a recurring milestone's scalar status is
+  frozen by design — progress would lie forever, in either direction. Resolved
+  with the demotion mechanism (decision 3).
+- **The check-in's entire value lived on a surface check-ins never route to**
+  (UX lens): they are completed on the grid and in EOD, while the note/history
+  lived only on the goal page. Resolved with the completion receipt bridge.
+
+The instructive should-fixes: the past-due machinery WRITES startDate (sweep
+erases it, bulk verbs restamp it) — the milestone target date needed protecting
+from the very machinery decision 2 opts into; three role arrays over one join
+table needed one-union-reconcile semantics or role demotions race; the goal write
+surface would have repeated the `paused:true` 200-and-do-nothing bug the programs
+review already paid for; `achieved_at` needed the pausedAt idempotence rules or
+retries move a multi-year achievement date; the bin arm and trashed-member keeping
+needed to be role-aware or restores demote milestones silently; ended goals
+orphaned their recurring members with the why stripped away (wind-down step);
+sparse/empty progress misled ("2/2" on a 3-year goal — display rules); and the
+plan had NO mobile section while its one attribution affordance was hover-only.
+
+Stale premises corrected (the #205 lesson, again): `openDialog({type:'console'})`
+does not exist (`organize`/`section` does); "six vi.mock files" is now ~20;
+"exhaustive-switch errors find every touchpoint" finds exactly one (the real
+tripwire is container-registry.test.ts plus a hand-wired list); `groupResults`
+cannot host goals (typed to Items, and the `'goal'` key collides with the
+custom-type slug); nothing seeds an item type named `goal` (the collision surface
+is the placeholder + example copy, now a Phase-1 task); `reminder_at` is a dead
+column, so decision 2's reminder claim was vaporware.
+
+Refuted, and not to be re-raised (each checked against the code by the reporting
+lens): the deploy-order PGRST204 hazard (no item columns — the claim's logic holds);
+one-shot scalar status being unreliable (it is truthful while the item stays
+one-shot — the blocker was about it not staying so); far-future milestones leaking
+into today's views; trashed items polluting the live index; check-ins colliding
+with EOD/morning bulk verbs (recurring rows are already excluded); the guilt-free
+law being unimplementable for overdue milestones (today's past-due surfaces are
+already warning-free); from-zero users hitting the programs dead end (the console
+has permanent doors; the surviving risk was only the chip gate, fixed); goal-slug
+DB collision (items.type and the goals table are disjoint namespaces); the purge
+cron, composite-FK, updated_at-trigger, and 23503-swallow patterns all inheriting
+cleanly from 024.
