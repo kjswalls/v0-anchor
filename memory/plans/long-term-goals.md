@@ -1,10 +1,14 @@
 # Long-term Goals — an aspiration container over unified items
 
-**Status (2026-08-20): DRAFT for Kirby review. No code written.** Product direction
-proposed here from Kirby's brief ("long term learning plans and goals with milestones,
-habits, certain things that need to be scheduled, date check-ins — like learning
-Chinese with fluency goals along the way, or building a $3m business in 3 years").
-Open questions for Kirby are collected at the end, each with a recommendation. Read
+**Status (2026-08-20): APPROVED DIRECTION, pre-build adversarial review pending.**
+Product direction from Kirby's brief ("long term learning plans and goals with
+milestones, habits, certain things that need to be scheduled, date check-ins — like
+learning Chinese with fluency goals along the way, or building a $3m business in 3
+years"). **All eight open questions answered by Kirby 2026-08-20: the recommendations
+stand as written** — the noun is **Goal**; membership is many-to-many; milestones are
+items-with-a-role; behind-on-a-milestone rides the normal past-due machinery quietly;
+no numeric targets in v1; no auto-achieve; check-ins default weekly with the item
+owning its recurrence; no ScopeRail or Display-menu presence. No code written. Read
 [unified-items.md](unified-items.md) and [programs-routines.md](programs-routines.md)
 first — this plan builds on their locked decisions and amends none of them.
 
