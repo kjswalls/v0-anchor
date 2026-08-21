@@ -67,6 +67,7 @@ import {
   createGoal as dbCreateGoal,
   updateGoal as dbUpdateGoal,
   deleteGoal as dbDeleteGoal,
+  recordCheckin as dbRecordCheckin,
   restoreGoal as dbRestoreGoal,
   createProgram as dbCreateProgram,
   updateProgram as dbUpdateProgram,
@@ -1298,6 +1299,51 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       };
 
+      /**
+       * The check-in bridge.
+       *
+       * A check-in is completed where every recurring item is completed — a row
+       * on the grid, a line in the EOD review — and NOT on the goal page. So
+       * the note, the history and the trip back to the goal have to come to the
+       * completion rather than wait at a surface the user has no reason to
+       * visit. Without this, Phase 3's differentiating features were reachable
+       * only by someone who happened to open the goal first, at which point the
+       * check-in item added nothing over just visiting the page.
+       *
+       * A toast with two actions, for the same single-slot reason the
+       * achievement offer is one: a dialog fired from a completion inside the
+       * EOD review would replace the review the user is in the middle of.
+       *
+       * The note is written against the OCCURRENCE date, not the moment of
+       * typing — see recordCheckin.
+       */
+      const offerCheckinNote = (item: Item, dateStr: string) => {
+        const state = get();
+        const goal = state.goals.find(
+          (g) => g.state === 'active' && g.checkinIds.includes(item.id),
+        );
+        if (!goal) return;
+        toast(`Checked in on ${goal.name}`, {
+          description: 'Anything worth remembering about this one?',
+          action: {
+            label: 'Add a note',
+            onClick: () => {
+              // A prompt, deliberately: the alternative is a dialog, and the
+              // single ActiveDialog slot is exactly what makes that unsafe from
+              // inside the EOD review. A richer capture is the deferred guided
+              // check-in flow, which gets its own surface rather than borrowing
+              // one that is already occupied.
+              const note = typeof window !== 'undefined' ? window.prompt(
+                `How is ${goal.name} going?`,
+              ) : null;
+              if (!note?.trim()) return;
+              dbRecordCheckin(item.id, dbTypeOf(item), goal.id, dateStr, note.trim());
+            },
+          },
+          duration: 8000,
+        });
+      };
+
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
@@ -2037,7 +2083,10 @@ export const usePlannerStore = create<PlannerStore>()(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
-          if (!alreadyDone) celebrateCompletion();
+          if (!alreadyDone) {
+            celebrateCompletion();
+            offerCheckinNote(task, dateStr);
+          }
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
@@ -2811,7 +2860,13 @@ export const usePlannerStore = create<PlannerStore>()(
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
         const { completedDates: _cd, streak: _st, ...rest } = optimistic;
         dbUpdateItem(id, 'habit', rest).catch(console.error);
-        if (status === 'done' && !wasCompleted) celebrateCompletion();
+        if (status === 'done' && !wasCompleted) {
+          celebrateCompletion();
+          // Habits can serve as check-ins too — `isCheckinEligible` asks only
+          // that the item recurs — so the bridge belongs on both completion
+          // verbs, not just the task one.
+          offerCheckinNote(habit, dateStr);
+        }
       },
 
       scheduleHabit: (id, bucket, time) => {

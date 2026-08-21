@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ChevronLeft, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
+  CheckinHistory,
   GoalMemberGroups,
   GoalMemberNote,
   GoalSummary,
@@ -171,6 +172,8 @@ export default function GoalPage() {
           <Section title="Milestones">
             <MilestoneTimeline goal={goal} itemsById={itemsById} />
           </Section>
+
+          <CheckinHistory goal={goal} itemsById={itemsById} />
 
           <Section title="Supporting work">
             <GoalMemberGroups

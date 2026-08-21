@@ -1,9 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { format } from 'date-fns';
 import { CalendarClock, Flag, Moon, Target } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
+import { fetchCheckins, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { goalProgress, isAchieved, isGoalActive, nextMilestone, timeElapsed } from '@/lib/goals';
@@ -306,6 +309,76 @@ export function GoalMemberGroups({
         );
       })}
     </div>
+  );
+}
+
+/* ── check-in history ─────────────────────────────────────────────────────── */
+
+/**
+ * The notes a goal has collected, newest first.
+ *
+ * Each row is keyed on the OCCURRENCE the note was written for, not the moment
+ * it was typed — those part company as soon as someone completes Sunday's
+ * check-in on Wednesday, and keyed on the wrong one a note files itself into
+ * the wrong week forever.
+ *
+ * A note whose occurrence has since been un-completed is NOT deleted. Undoing a
+ * completion says "that did not happen today"; it does not say "I never wrote
+ * this". So the note stays, annotated, rather than vanishing — the same posture
+ * the whole feature takes towards history it did not create.
+ */
+export function CheckinHistory({
+  goal,
+  itemsById,
+}: {
+  goal: Goal;
+  itemsById: Map<string, Item>;
+}) {
+  const [events, setEvents] = useState<ItemEvent[] | null>(null);
+  const ids = goal.checkinIds;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCheckins(ids, goal.id).then((rows) => {
+      if (!cancelled) setEvents(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ids, goal.id]);
+
+  // Quiet when the table is not deployed or nothing has been written — the
+  // ActivitySection convention: a bonus surface, never an empty state. It owns
+  // its own heading for exactly that reason: a caller that wrapped it in one
+  // would render the heading over nothing.
+  if (!getItemEventsAvailable() || !events || events.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3" data-testid="goal-checkin-history">
+      <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+        Check-in history
+      </h2>
+      {events.slice(0, 8).map((e) => {
+        const dateStr = typeof e.payload.dateStr === 'string' ? e.payload.dateStr : null;
+        const note = typeof e.payload.note === 'string' ? e.payload.note : '';
+        const item = itemsById.get(e.itemId);
+        // "Orphaned" = the occurrence it was written for is no longer marked
+        // done. The note is still true; only the completion was taken back.
+        const orphaned =
+          !!item && !!dateStr && 'completedDates' in item
+            ? !(item.completedDates ?? []).includes(dateStr)
+            : false;
+        return (
+          <div key={e.id} className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground flex items-center gap-2 text-[11px]">
+              {dateStr ? formatShort(dateStr) : format(new Date(e.createdAt), 'MMM d')}
+              {orphaned && <span data-testid="goal-checkin-orphan">· since un-marked</span>}
+            </span>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">{note}</p>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 

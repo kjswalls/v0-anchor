@@ -689,16 +689,64 @@ table as ONE set. Four rules, each closing a found defect:
   value namespace; `cachedGoals` needing a day key like programs (goal liveness
   is `state` alone); RailTooltip inside a `<p>` being invalid DOM; and the
   `goals` palette alias colliding with anything.
-- **Phase 3 — check-ins, and the wind-down.** Role `'checkin'` UI: console "Check-in schedule" block
-  (creates a recurring task pre-linked, weekly seeded, editable) or link an
-  existing recurring item; **the completion receipt bridge on every completion
-  surface**; check-in history on the goal page; the note stored as an `item_events`
-  row `action: 'checkin'`, payload `{goalId, dateStr, note}` — **the occurrence
-  date goes IN the payload** (created_at is the wrong key the moment someone
-  completes Sunday's check-in on Wednesday), orphaned notes (completion undone)
-  stay in history annotated rather than deleted, and `checkin` events render in
-  the item's own ActivitySection so the note isn't invisible item-side. A fuller
-  guided flow stays deferred.
+- [x] **Phase 3 — check-ins, and the wind-down** (built 2026-08-21).
+
+  **The bridge is the phase.** A check-in is completed where every recurring
+  item is completed — a row on the grid, a line in the EOD review — and NOT on
+  the goal page, so the note, the history and the trip back to the goal come to
+  the completion rather than waiting at a surface the user has no reason to
+  visit. `offerCheckinNote` fires from BOTH completion verbs (a habit can serve
+  as a check-in; `isCheckinEligible` asks only that the item recurs) as a toast
+  with an "Add a note" action — a toast for the same single-slot reason the
+  achievement offer is one.
+
+  **The note is written against the OCCURRENCE date, not the moment of typing.**
+  `recordCheckin` puts `dateStr` in the payload; `created_at` is when the note
+  was typed, and the two part company the moment someone completes Sunday's
+  check-in on Wednesday. Keyed on `created_at` a note would file itself into the
+  wrong week, silently and forever. Rides `item_events` with `action:
+  'checkin'` — additive, because 023 made that column open text for exactly this.
+
+  **A note whose occurrence is later un-completed is annotated, never deleted.**
+  Undoing a completion says "that did not happen today"; it does not say "I
+  never wrote this". `CheckinHistory` marks those "· since un-marked" and keeps
+  them, and `checkin` events also read in the item's own ActivitySection — an
+  item whose notes live exclusively on another surface is an item whose own page
+  lies about its history.
+
+  **Check-in creation seeds weekly-on-Sunday** (Kirby's answer to open question
+  7), and it is a DEFAULT, not a policy: the cadence lives on the item and its
+  own repeat control edits it afterwards. Sunday because a weekly review wants
+  the seam between weeks — a weekday would put it inside the week it reviews.
+  Bucketed, unlike a milestone and for the exact reason a milestone is not:
+  a recurring item lands on a column with no `startDate` at all, so the bucket
+  is what decides WHERE in that column, and without one deriveDayItems drops it.
+
+  **The wind-down affordances land here**, carried from Phase 1 via Phase 2. An
+  ended goal's notice now lists each still-recurring member with a link to the
+  item and a Delete, and performs NEITHER on the goal's behalf — Delete is the
+  ordinary store action and the link goes to the item surface, where the Program
+  chip is how you park something without losing its history. The confirm says
+  so. A goal that quietly deleted a year of habits because you marked it
+  achieved would be the single worst thing this feature could do.
+
+  **`tests/e2e/goals.spec.ts` — six cases, and it is UNRUN.** There is no
+  `.env.test` in this environment and migration 029 is not applied, so it cannot
+  execute here; every prior phase's review recorded that running an e2e is what
+  finds its defects, and that step has not happened. What IS verified: `tsc`
+  and eslint clean, every one of its fifteen `getByTestId` selectors audited
+  against the source, and the helpers/`specScope` conventions matched. Treat it
+  as unproven until it runs. It carries its own `goal` prefix (the
+  two-files-sharing-a-DELETE lesson) and globalSetup's litter sweep now covers
+  `goals`. The cases were chosen for the boundary the unit suite cannot see, and
+  two of them exist because a shipped blocker lived exactly there: the goal
+  page's Organize button responding at all, and an inline milestone being
+  findable in the braindump.
+
+  **Gates:** 1376 unit tests green (78 files), lint 0 errors, `pnpm build`
+  clean, tsc at baseline 23.
+
+
 - **Phase 4 — external/AI.** **Decision 3's agent-PATCH demotion** lands here
   with the rest of the write-path validation — until it does, an OpenClaw write
   can make a milestone recurring with nothing taking the role back. Beacon

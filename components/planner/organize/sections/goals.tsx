@@ -6,6 +6,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isMilestoneEligible } from '@/lib/item-registry';
+import { isRecurring } from '@/lib/recurrence';
 import { goalProgress, isGoalActive, nextMilestone, sortGoalsForDisplay } from '@/lib/goals';
 import { GoalProgressTrack, progressLabel } from '@/components/planner/goal-sections';
 import {
@@ -125,6 +126,8 @@ export function GoalsSection({
   const items = usePlannerStore((s) => s.items);
   const addGoal = usePlannerStore((s) => s.addGoal);
   const addTask = usePlannerStore((s) => s.addTask);
+  const deleteTask = usePlannerStore((s) => s.deleteTask);
+  const deleteHabit = usePlannerStore((s) => s.deleteHabit);
   const updateGoal = usePlannerStore((s) => s.updateGoal);
   const removeGoal = usePlannerStore((s) => s.removeGoal);
   const setGoalState = usePlannerStore((s) => s.setGoalState);
@@ -170,6 +173,39 @@ export function GoalsSection({
    * chose. So it lands in the braindump — which is where the plan already says
    * undated milestones live — carrying its flag, until it is given a day.
    */
+  /**
+   * A weekly check-in, created and linked in one gesture.
+   *
+   * Weekly is the seeded default (Kirby's answer to open question 7) and it is
+   * a DEFAULT, not a policy: the cadence lives on the item, so the row's own
+   * repeat control edits it afterwards like any other recurring task. Nothing
+   * about the cadence is stored on the goal — one timing per item, the
+   * membership-only principle programs-routines locked.
+   *
+   * Bucketed, unlike a milestone, and for the reason the milestone is not: a
+   * check-in is recurring, so `shouldShowOnDate` puts it on a column with no
+   * `startDate` at all — the bucket is what decides WHERE in that column it
+   * lands, and without one deriveDayItems drops it from every bucket.
+   */
+  const createCheckin = (goal: Goal, title: string) => {
+    addTask(
+      {
+        title,
+        status: 'pending',
+        isScheduled: false,
+        order: 0,
+        timeBucket: 'anytime',
+        repeatFrequency: 'custom',
+        // Sunday. A weekly review wants the seam between weeks, and picking a
+        // weekday would put it inside the week it is meant to be reviewing.
+        repeatDays: [0],
+        completedDates: [],
+        skippedDates: [],
+      } as never,
+      { goalIds: [goal.id], goalRole: 'checkin' },
+    );
+  };
+
   const createMilestone = (goal: Goal, title: string) => {
     addTask(
       {
@@ -289,6 +325,20 @@ export function GoalsSection({
             onChange={(updates) => updateGoal(selected.id, updates)}
             onState={(state) => setGoalState(selected.id, state)}
             onCreateMilestone={(title) => createMilestone(selected, title)}
+            onCreateCheckin={(title) => createCheckin(selected, title)}
+            onRetire={(item) =>
+              confirm({
+                title: `Delete ${item.title}?`,
+                description:
+                  'It stops repeating and moves to the trash for 30 days. Its history goes ' +
+                  'with it. To keep the history and just pause it, open the item and put it ' +
+                  'in a program instead.',
+                confirmLabel: 'Delete',
+                destructive: true,
+                onConfirm: () =>
+                  item.type === 'habit' ? deleteHabit(item.id) : deleteTask(item.id),
+              })
+            }
             onDelete={() =>
               confirm({
                 title: `Delete ${selected.name}?`,
@@ -328,12 +378,16 @@ function GoalDetail({
   onChange,
   onState,
   onCreateMilestone,
+  onCreateCheckin,
+  onRetire,
   onDelete,
 }: {
   goal: Goal;
   itemsById: Map<string, Item>;
   onBack: () => void;
   onCreateMilestone: (title: string) => void;
+  onCreateCheckin: (title: string) => void;
+  onRetire: (item: Item) => void;
   onChange: (updates: Partial<Goal>) => void;
   onState: (state: Goal['state']) => void;
   onDelete: () => void;
@@ -480,7 +534,9 @@ function GoalDetail({
             Set aside
           </SegmentedOption>
         </Segmented>
-        {goal.state !== 'active' && <EndedNotice goal={goal} itemsById={itemsById} />}
+        {goal.state !== 'active' && (
+          <EndedNotice goal={goal} itemsById={itemsById} onDelete={onRetire} />
+        )}
       </div>
 
       {/*
@@ -528,6 +584,14 @@ function GoalDetail({
         eligible={(i) => isCheckinEligible(i) && !heldElsewhere(goal, 'checkinIds', i.id)}
         emptyPool="Nothing eligible yet — a check-in is a repeating item."
         onChange={(ids) => members({ checkinIds: ids })}
+        footer={
+          <DraftRow
+            placeholder="New weekly check-in…"
+            addLabel="Add check-in"
+            testPrefix="goal-new-checkin"
+            onAdd={(title) => onCreateCheckin(title)}
+          />
+        }
       />
 
       <RoleList
@@ -553,31 +617,71 @@ function GoalDetail({
 }
 
 /**
- * The wind-down prompt.
+ * The wind-down (decision 5).
  *
  * An ended goal stops appearing in chips and lists, but its RECURRING members
  * do not stop: the weekly check-in it created keeps arriving in every Sunday
  * EOD with the reason stripped away, and nothing else in the app will ever
- * mention the goal again. Naming them here — where the state was just changed —
- * is the one moment the connection is still obvious.
+ * mention the goal again. Naming them here — at the moment the state was
+ * changed — is the only point where the connection is still obvious.
  *
- * It only names them. The goal writes nothing to its members, ever; acting on
- * this is the user's own edit, through the ordinary surfaces.
+ * It names them and offers the two verbs that actually end a recurrence, and it
+ * performs NEITHER on the goal's behalf: the goal writes nothing to its members
+ * ever, so Delete is the ordinary store action and "Open" is the ordinary item
+ * surface, where the Program chip is how you park something without losing it.
+ * A goal that quietly deleted a year of habits because you marked it achieved
+ * would be the single worst thing this feature could do.
  */
-function EndedNotice({ goal, itemsById }: { goal: Goal; itemsById: Map<string, Item> }) {
+function EndedNotice({
+  goal,
+  itemsById,
+  onDelete,
+}: {
+  goal: Goal;
+  itemsById: Map<string, Item>;
+  onDelete: (item: Item) => void;
+}) {
   const recurring = [...goal.checkinIds, ...goal.memberIds, ...goal.milestoneIds]
     .map((id) => itemsById.get(id))
-    .filter((i): i is Item => !!i && !!i.repeatFrequency && i.repeatFrequency !== 'none');
+    .filter((i): i is Item => !!i && isRecurring(i));
 
   if (recurring.length === 0) return null;
 
   return (
-    <TeachingLine>
-      {recurring.length === 1
-        ? `“${recurring[0].title}” still repeats on its own schedule. `
-        : `${recurring.length} of its items still repeat on their own schedules. `}
-      Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'} goal
-      never edits its members. Keep them, or retire them where they live.
-    </TeachingLine>
+    <div className="flex flex-col gap-2" data-testid="goal-wind-down">
+      <TeachingLine>
+        {recurring.length === 1
+          ? 'This still repeats on its own schedule.'
+          : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
+        Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'}{' '}
+        goal never edits its members. Keep them, or retire them here.
+      </TeachingLine>
+      <div className="flex flex-col gap-1">
+        {recurring.map((item) => (
+          <div
+            key={item.id}
+            className="flex items-center gap-2 text-[13px]"
+            data-testid="goal-wind-down-row"
+          >
+            {/* The item's own surface, where the Program chip is how you park
+                something for a season without losing its history. */}
+            <Link
+              href={`/item/${item.id}`}
+              className="hover:text-foreground min-w-0 flex-1 truncate transition-colors"
+            >
+              {item.title}
+            </Link>
+            <button
+              type="button"
+              onClick={() => onDelete(item)}
+              data-testid="goal-wind-down-delete"
+              className="text-muted-foreground hover:text-destructive shrink-0 text-[11px] transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

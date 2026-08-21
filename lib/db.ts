@@ -431,6 +431,73 @@ function recordItemEvent(
     );
 }
 
+/**
+ * Record a check-in against a goal.
+ *
+ * The one event this app writes on PURPOSE rather than as a trace of a
+ * mutation — but it is still filed as a trace, in the same table, because 023
+ * made `action` open text precisely so a later action could be additive rather
+ * than a migration.
+ *
+ * `dateStr` is in the PAYLOAD, and that is the whole design. `created_at` is
+ * when the note was typed; the occurrence it belongs to is a different fact,
+ * and they part company the moment someone completes Sunday's check-in on
+ * Wednesday. Keyed on created_at, that note would file itself into the wrong
+ * week — silently, and forever.
+ *
+ * Fire-and-forget like every other event write: a note is worth keeping, and it
+ * is never worth failing a completion over.
+ */
+export function recordCheckin(
+  itemId: string,
+  itemType: string,
+  goalId: string,
+  dateStr: string,
+  note: string,
+): void {
+  recordItemEvent(itemId, itemType, 'checkin', { goalId, dateStr, note });
+}
+
+/**
+ * Every check-in note a goal has collected, newest first.
+ *
+ * Read across the goal's check-in ITEMS rather than by goal id, because
+ * `item_events` is keyed on the item — it deliberately carries no FK to
+ * anything, so a note survives its item's hard delete. The goal filter is
+ * applied on the payload afterwards: an item can serve two goals, and a note
+ * belongs to the one it was written for.
+ */
+export async function fetchCheckins(
+  itemIds: readonly string[],
+  goalId: string,
+  client?: DbClient,
+): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable || itemIds.length === 0) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('id, item_id, item_type, action, payload, created_at')
+    .in('item_id', [...itemIds])
+    .eq('action', 'checkin')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events checkin fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((row) => ({
+      id: row.id as string,
+      itemId: row.item_id as string,
+      itemType: row.item_type as string,
+      action: row.action as string,
+      payload: (row.payload ?? {}) as Record<string, unknown>,
+      createdAt: row.created_at as string,
+    }))
+    .filter((e) => e.payload.goalId === goalId);
+}
+
 export async function fetchItemEvents(itemId: string, client?: DbClient): Promise<ItemEvent[]> {
   if (!itemEventsAvailable) return [];
   const supabase = client ?? createClient();
