@@ -14,6 +14,9 @@
 
 import { resolveEnabled } from '../extension-registry'
 import { pushChannel } from './channels/push'
+import { voiceChannel } from './channels/voice'
+import { callChannel } from './channels/call'
+import { smsChannel } from './channels/sms'
 import type { ChannelContext, ChannelResult, NudgeChannel } from './channels/types'
 import type { Nudge } from './nudge'
 
@@ -24,7 +27,7 @@ import type { Nudge } from './nudge'
  * extension the user has to switch on themselves — the default for a feature
  * that can phone you is off.
  */
-export const CHANNELS: NudgeChannel[] = [pushChannel]
+export const CHANNELS: NudgeChannel[] = [pushChannel, voiceChannel, smsChannel, callChannel]
 
 export interface DeliveryReport {
   channel: string
@@ -41,9 +44,15 @@ export interface DeliverOptions {
    * by accident.
    */
   extensionEnabled: Record<string, boolean>
-  /** Per-channel non-secret settings, keyed by channel slug. */
+  /**
+   * Per-channel non-secret settings — user_extensions.config, keyed by slug.
+   * Browser-readable by RLS, which is what lets the settings page show them.
+   */
   configs: Record<string, Record<string, unknown>>
-  /** Per-channel credentials, keyed by channel slug. Never leaves the server. */
+  /**
+   * Per-channel credentials — user_secrets.reminder_secrets, keyed by the same
+   * slug. service_role only; this map must never be serialised to a client.
+   */
   secrets: Record<string, Record<string, string>>
 }
 

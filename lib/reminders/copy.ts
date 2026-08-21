@@ -24,6 +24,7 @@
 
 import type { ReminderCandidate } from './due'
 import { streakOf } from './due'
+import type { Nudge } from './nudge'
 import type { Item } from '../planner-types'
 
 /** Interpunct with hair spaces — the separator the app's chips already use. */
@@ -92,10 +93,13 @@ export function reminderCopy(
  * Returns null when nothing is open — the caller must send nothing at all
  * rather than a cheerful "all done!", which is a notification the user did not
  * ask for and cannot act on.
+ *
+ * Takes no TimeFormat, unlike reminderCopy: this message names items and a
+ * streak and never a clock time, so a parameter for one would be an unused
+ * argument that every call site has to keep passing correctly.
  */
 export function lastCallCopy(
   items: readonly Item[],
-  timeFormat: TimeFormat = '12h',
 ): { title: string; body: string } | null {
   if (items.length === 0) return null
 
@@ -115,4 +119,55 @@ export function lastCallCopy(
       : list
 
   return { title: items.length === 1 ? 'Still open today' : `${items.length} still open`, body }
+}
+
+/* ── Other registers ─────────────────────────────────────────────────────── */
+
+/**
+ * The nudge as a sentence to be READ ALOUD.
+ *
+ * A notification and a speaker are not the same medium and must not share a
+ * string. A notification has a title line and a body line and the reader
+ * controls the pace; a speaker gets one shot, in passing, from across a room,
+ * and the listener cannot scroll back. So this joins into one spoken sentence,
+ * drops the interpunct (which a TTS engine reads as a pause at best and as
+ * nothing at worst), and puts the item FIRST — by the time someone has looked
+ * up from what they were doing, the first word is already gone.
+ *
+ * It also stays short on purpose. A speaker announcement that outstays its
+ * welcome is the fastest way to have the whole extension switched off.
+ */
+export function spokenLine(nudge: Nudge): string {
+  if (nudge.kind === 'last-call') {
+    const names = nudge.items.map((i) => i.title)
+    const list =
+      names.length <= 1
+        ? names[0] ?? ''
+        : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    const top = nudge.items[0]?.streak ?? 0
+    const stake = top > 0 ? ` ${streakPhrase(top)} on the line.` : ''
+    return `Still open today: ${list}.${stake}`
+  }
+
+  const item = nudge.items[0]
+  const streak = item?.streak ?? 0
+  // The body already reads as a clause ("you pour your coffee", "7:30 am"), so
+  // it is spoken as one — "Vitamins. After you pour your coffee." Prefixing
+  // "After" only when there is an anchor is what keeps the time variant from
+  // becoming "After 7:30 am".
+  const tail = nudge.body && !/^\d/.test(nudge.body) ? ` After ${nudge.body}.` : ''
+  const stake = streak > 0 ? ` ${streakPhrase(streak)} so far.` : ''
+  return `${nudge.title}.${tail}${stake}`
+}
+
+/**
+ * The nudge as a text message.
+ *
+ * One line, because a two-line SMS is two notifications on most phones. No link
+ * by default: a shortened-looking URL in an unexpected text is exactly the shape
+ * of a phishing message, and training yourself to tap those is a bad habit to
+ * install while installing good ones.
+ */
+export function smsLine(nudge: Nudge): string {
+  return nudge.body ? `${nudge.title} — ${nudge.body}` : nudge.title
 }

@@ -1,0 +1,42 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 030_reminder_channels.sql — credentials for the Tier 2 delivery channels
+--
+-- Phase 1 could reach one place: a browser that had accepted push. Phase 2 adds
+-- channels that reach the room the habit happens in (a speaker), and the pocket
+-- (a call, an SMS). Every one of them needs a credential, and where those live
+-- is the whole content of this migration.
+--
+-- THE SPLIT, and why it is not one table.
+--
+--   user_extensions.config (migration 026) holds the NON-SECRET half — a Home
+--   Assistant base URL, which speakers to talk through, a phone number. That
+--   table is RLS'd to the owner, so the browser can read and write it, which is
+--   exactly what the settings page needs.
+--
+--   user_secrets (migration 012) holds the credentials. It has no policies for
+--   anon or authenticated and its grants are revoked from both: ONLY service_role
+--   reaches it. The settings page therefore cannot read a token back — it is told
+--   which keys are SET and nothing more.
+--
+-- That asymmetry is the point. A long-lived Home Assistant token is a key to
+-- someone's house, and a Twilio auth token is a key to their money; neither
+-- should be one XSS away from being read out of a store. Migration 012 moved the
+-- OpenClaw gateway token off user_settings for this exact reason, and this
+-- follows its posture rather than inventing a second one.
+--
+-- One jsonb rather than a column per credential: the set of channels is meant to
+-- grow, and "add a channel" must not mean "write a migration".
+--
+-- Safe to re-run.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+alter table user_secrets
+  -- Shape: { "<channel-slug>": { "<key>": "<value>" } }, e.g.
+  --   { "voice": { "token": "…" }, "call": { "accountSid": "…", "authToken": "…" } }
+  -- Validated app-side on read (the item_types.config / user_extensions.config
+  -- pattern) — an unknown channel or key is ignored rather than fatal, so a
+  -- credential left behind by a removed channel cannot break delivery.
+  add column if not exists reminder_secrets jsonb not null default '{}'::jsonb;
+
+-- user_secrets predates the reminder feature and a row may not exist for a user
+-- who never connected OpenClaw. Nothing to backfill: the write path upserts.

@@ -6,10 +6,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // must gate writes when migration 026 hasn't landed.
 vi.mock('@/lib/db', () => ({
   fetchUserExtensions: vi.fn(async () => ({})),
+  // Fetched in the SAME Promise.all as fetchUserExtensions, so it has to be
+  // mocked here even for the tests that only care about the toggles: an
+  // undefined import rejects the batch, and the store reads that as the
+  // transient-failure path — every availability assertion below would then be
+  // testing the retry branch by accident.
+  fetchUserExtensionConfigs: vi.fn(async () => ({})),
   setUserExtensionEnabled: vi.fn(async () => {}),
+  setUserExtensionConfig: vi.fn(async () => {}),
 }));
 
-import { fetchUserExtensions, setUserExtensionEnabled } from '@/lib/db';
+import {
+  fetchUserExtensionConfigs,
+  fetchUserExtensions,
+  setUserExtensionConfig,
+  setUserExtensionEnabled,
+} from '@/lib/db';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import {
   EXT_COMPLETION_CONFETTI,
@@ -19,7 +31,9 @@ import {
 } from '@/lib/extension-registry';
 
 const mockFetch = vi.mocked(fetchUserExtensions);
+const mockFetchConfigs = vi.mocked(fetchUserExtensionConfigs);
 const mockSet = vi.mocked(setUserExtensionEnabled);
+const mockSetConfig = vi.mocked(setUserExtensionConfig);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -157,5 +171,63 @@ describe('extensions store', () => {
     expect(s.available).toBe(true);
     expect(s.isEnabled(EXT_HABIT_HEATMAP)).toBe(false);
     expect(s.hydratedUserId).toBeNull();
+  });
+});
+
+describe('extensions store — per-extension config', () => {
+  it('hydrates config beside the toggles', async () => {
+    mockFetch.mockResolvedValueOnce({ 'phone-call': true });
+    mockFetchConfigs.mockResolvedValueOnce({ 'phone-call': { to: '+15551234567' } });
+    await useExtensionsStore.getState().hydrate('user-1');
+
+    expect(useExtensionsStore.getState().configs['phone-call']).toEqual({ to: '+15551234567' });
+  });
+
+  it('writes one key without disturbing the others', () => {
+    useExtensionsStore.setState({ available: true, configs: { 'phone-call': { to: '+1', from: '+2' } } });
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'voice', 'alice');
+
+    expect(useExtensionsStore.getState().configs['phone-call']).toEqual({
+      to: '+1', from: '+2', voice: 'alice',
+    });
+    expect(mockSetConfig).toHaveBeenCalledWith('user-1', 'phone-call', {
+      to: '+1', from: '+2', voice: 'alice',
+    });
+  });
+
+  // '' has to DELETE rather than store, or every channel's requireString has to
+  // decide whether '' means unset — which is what makes "I cleared the number
+  // and it still called me" possible.
+  it('clearing a field removes the key rather than storing an empty string', () => {
+    useExtensionsStore.setState({ available: true, configs: { 'phone-call': { to: '+1', voice: 'alice' } } });
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'voice', '');
+
+    expect(useExtensionsStore.getState().configs['phone-call']).toEqual({ to: '+1' });
+    expect(mockSetConfig).toHaveBeenCalledWith('user-1', 'phone-call', { to: '+1' });
+  });
+
+  it('gates config writes on the same availability latch as the toggles', async () => {
+    mockFetch.mockResolvedValueOnce(null);
+    mockFetchConfigs.mockResolvedValueOnce(null);
+    await useExtensionsStore.getState().hydrate('user-1');
+
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'to', '+1');
+    expect(mockSetConfig).not.toHaveBeenCalled();
+  });
+
+  it('a field typed during the first hydrate survives it', async () => {
+    let resolve!: (v: Record<string, Record<string, unknown>>) => void;
+    mockFetchConfigs.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    mockFetch.mockResolvedValueOnce({});
+
+    const inFlight = useExtensionsStore.getState().hydrate('user-1');
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'to', '+1-typed');
+    resolve({ 'phone-call': { to: '+1-server', from: '+2-server' } });
+    await inFlight;
+
+    // The local write is already on the wire; the server read predates it.
+    expect(useExtensionsStore.getState().configs['phone-call']).toEqual({
+      to: '+1-typed', from: '+2-server',
+    });
   });
 });

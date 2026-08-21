@@ -17,7 +17,9 @@ import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP } from '@/lib/extension-registry';
+import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
+import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { CHANNEL_SETTINGS } from '@/lib/reminders/channel-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
@@ -135,6 +137,22 @@ export interface SettingCtx {
 
 export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info';
 
+/**
+ * Which shape a `text` control takes.
+ *
+ * Replaces a hardcoded `record.id === 'beacon.apiKey'` in setting-row: that
+ * test was fine while exactly one record needed a single-line input, and became
+ * a growing list of ids the moment the channel credentials arrived. A record
+ * says what it IS; the row decides how to draw it.
+ *
+ *   line      — one-line input.
+ *   secret    — one-line password input that never renders its stored value.
+ *               `read` returns '' by contract; the placeholder says whether
+ *               something is saved.
+ *   multiline — a textarea, and the only variant that takes the full width.
+ */
+export type TextVariant = 'line' | 'secret' | 'multiline';
+
 export interface SettingOption {
   value: string;
   label: string;
@@ -155,6 +173,14 @@ export interface SettingRecord {
   /** Exact-hit tokens that outrank everything. Lowercase, single word. */
   aliases?: string[];
   options?: SettingOption[];
+  /** `text` controls only. Defaults to 'multiline' for backwards compatibility. */
+  textVariant?: TextVariant;
+  /**
+   * Input placeholder. A function when it has to reflect state the value
+   * cannot — a write-only credential renders empty whether or not one is
+   * stored, so "Saved — type to replace" is the only place that fact fits.
+   */
+  placeholder?: string | ((ctx: SettingCtx) => string);
   /** Behind the per-pane Advanced disclosure, and excluded from search unless opted in. */
   advanced?: boolean;
   /** Renders indented under its parent and is disabled while the parent is off. */
@@ -185,6 +211,7 @@ const eod = () => useEODStore.getState();
 const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const ext = () => useExtensionsStore.getState();
+const channelSecrets = () => useChannelSecretsStore.getState();
 const palette = () => usePaletteStore.getState();
 
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
@@ -194,6 +221,99 @@ const extUnavailable = () =>
 function labelFor(options: SettingOption[] | undefined, value: string | boolean): string {
   const hit = options?.find((o) => o.value === String(value));
   return hit ? hit.label : String(value);
+}
+
+/**
+ * The reminder delivery channels, as settings records.
+ *
+ * GENERATED rather than hand-written, which is the one place this manifest
+ * bends its own rule that every setting is declared here explicitly. The reason
+ * is that these records are not independent settings — they are the fields a
+ * channel declares in lib/reminders/channel-config.ts, and that declaration
+ * already has to be exact because the API validates writes against it. Two
+ * hand-maintained copies of the same field list would drift, and the failure
+ * mode of drifting is silent: a field the settings page offers and the API
+ * rejects, or a credential the page never asks for and the channel then waits
+ * for forever.
+ *
+ * Ids are `extensions.<slug>` for the toggle and `extensions.<slug>.<key>` for
+ * each field, and they are PERMANENT — they are the deep links and the e2e
+ * handles, exactly like a hand-written record's.
+ *
+ * The secret fields are the unusual ones: `read` returns '' unconditionally,
+ * because the server will not tell us the value and a store that held one would
+ * defeat the point of keeping it in user_secrets. The placeholder carries the
+ * only state there is — saved, or not.
+ */
+function channelRecords(): SettingRecord[] {
+  const records: SettingRecord[] = [];
+
+  for (const spec of CHANNEL_SETTINGS) {
+    const manifest = extensionManifest(spec.slug);
+    if (!manifest) continue;
+    const toggleId = `extensions.${spec.slug}`;
+
+    records.push({
+      id: toggleId,
+      pane: 'extensions',
+      label: manifest.name,
+      description: manifest.description,
+      control: 'switch',
+      keywords: [...spec.keywords, 'remind', 'nudge', 'notification'],
+      unavailable: extUnavailable,
+      read: () => ext().isEnabled(spec.slug),
+      write: (v, ctx) => {
+        if (ctx.userId) ext().setEnabled(ctx.userId, spec.slug, Boolean(v));
+      },
+      defaultValue: false,
+    });
+
+    for (const field of spec.config) {
+      records.push({
+        id: `${toggleId}.${field.key}`,
+        pane: 'extensions',
+        label: field.label,
+        description: field.description,
+        control: 'text',
+        textVariant: 'line',
+        placeholder: field.placeholder,
+        dependsOn: toggleId,
+        // The channel's hand-authored terms, plus any the field declares. NOT
+        // derived from the label: search already indexes labels, and a keyword
+        // that merely restates one is what the manifest's own rule forbids.
+        keywords: [...spec.keywords, ...(field.keywords ?? [])],
+        unavailable: extUnavailable,
+        read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
+        write: (v, ctx) => {
+          if (ctx.userId) ext().setConfigValue(ctx.userId, spec.slug, field.key, String(v).trim());
+        },
+        defaultValue: '',
+      });
+    }
+
+    for (const field of spec.secrets) {
+      records.push({
+        id: `${toggleId}.${field.key}`,
+        pane: 'extensions',
+        label: field.label,
+        description: field.description,
+        control: 'text',
+        textVariant: 'secret',
+        placeholder: () =>
+          channelSecrets().isSet(spec.slug, field.key) ? 'Saved — type to replace' : 'Not set',
+        dependsOn: toggleId,
+        keywords: [...spec.keywords, 'token', 'secret', 'credential', 'key', 'password'],
+        unavailable: () =>
+          channelSecrets().available ? null : 'Needs a database update that has not landed here yet.',
+        // Write-only: there is nothing to read back, by design.
+        read: () => '',
+        write: (v) => channelSecrets().setSecret(spec.slug, field.key, String(v).trim()),
+        defaultValue: '',
+      });
+    }
+  }
+
+  return records;
 }
 
 /* ---------------------------------------------------------------- records */
@@ -597,6 +717,8 @@ export const SETTINGS: SettingRecord[] = [
     label: 'Custom instructions',
     description: 'What Beacon should know about how you work. Sent with every message.',
     control: 'text',
+    textVariant: 'multiline',
+    placeholder: "I plan in two-hour blocks and I'd rather you were blunt…",
     keywords: ['system prompt', 'personality', 'context', 'about me', 'profile', 'memory'],
     read: () => ai().systemPrompt,
     write: (v) => ai().setSystemPrompt(String(v)),
@@ -608,6 +730,9 @@ export const SETTINGS: SettingRecord[] = [
     label: 'OpenAI key',
     description: 'Stored on this device only, never synced.',
     control: 'text',
+    // Was selected by `record.id === 'beacon.apiKey'` inside setting-row.
+    textVariant: 'secret',
+    placeholder: 'sk-…',
     advanced: true,
     keywords: ['api key', 'token', 'credential', 'openai', 'sk'],
     unavailable: () => (ai().provider === 'openai' ? null : 'only used by Beacon (OpenAI)'),
@@ -717,6 +842,9 @@ export const SETTINGS: SettingRecord[] = [
     },
     defaultValue: false,
   },
+
+  // The delivery channels and their fields — see channelRecords().
+  ...channelRecords(),
 ];
 
 /**

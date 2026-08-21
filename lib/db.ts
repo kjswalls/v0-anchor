@@ -961,6 +961,62 @@ export async function fetchUserExtensions(
   );
 }
 
+/**
+ * Per-extension settings (user_extensions.config), keyed by slug.
+ *
+ * A SEPARATE call from fetchUserExtensions rather than a wider select on it,
+ * deliberately. That function's `Record<string, boolean> | null` return is the
+ * availability latch the extensions store gates every write on, and widening it
+ * would mean re-deriving "is the table there" from a different shape at the one
+ * place that must never get it wrong. The two run in the same Promise.all, so
+ * the extra call costs no wall-clock.
+ *
+ * Same missing-table contract as its sibling: null means "not deployed".
+ */
+export async function fetchUserExtensionConfigs(
+  userId: string,
+  client?: DbClient,
+): Promise<Record<string, Record<string, unknown>> | null> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('user_extensions')
+    .select('slug, config')
+    .eq('user_id', userId);
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return null;
+    throw error;
+  }
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const row of data as { slug: string; config: unknown }[]) {
+    if (row.config && typeof row.config === 'object') {
+      out[row.slug] = row.config as Record<string, unknown>;
+    }
+  }
+  return out;
+}
+
+/**
+ * Replace one extension's config blob.
+ *
+ * Whole-object, not a merge: the caller (the store) already holds the merged
+ * value, and a server-side merge would need a read-modify-write that races the
+ * next keystroke. `enabled` is omitted from the upsert payload on purpose — the
+ * column has a DB default of false, so naming it here would silently switch an
+ * extension OFF whenever someone edited its settings before toggling it on.
+ */
+export async function setUserExtensionConfig(
+  userId: string,
+  slug: string,
+  config: Record<string, unknown>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('user_extensions')
+    .upsert({ user_id: userId, slug, config }, { onConflict: 'user_id,slug', ignoreDuplicates: false });
+  if (error) throw error;
+}
+
 export async function setUserExtensionEnabled(
   userId: string,
   slug: string,

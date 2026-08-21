@@ -202,16 +202,48 @@ function ControlFor({
         />
       );
 
-    case 'text':
-      // The one control that needs more than 132px; it drops to its own line.
-      return record.id === 'beacon.apiKey' ? (
+    case 'text': {
+      // Selected by the record's declared variant, not by its id. The old test
+      // was `record.id === 'beacon.apiKey'`, which was fine at one record and
+      // would have become a growing list of ids the moment the channel
+      // credentials arrived.
+      const variant = record.textVariant ?? 'multiline';
+      const placeholder =
+        typeof record.placeholder === 'function' ? record.placeholder(ctx) : record.placeholder;
+
+      // Multiline is the only variant that needs more than 132px; it drops to
+      // its own line (see `wide` below, which must agree with this).
+      if (variant === 'multiline') {
+        return (
+          <Textarea
+            id={controlId}
+            aria-describedby={describedBy}
+            value={draft}
+            disabled={disabled}
+            rows={4}
+            placeholder={placeholder}
+            onChange={(e) => {
+              dirty.current = true;
+              setDraft(e.target.value);
+            }}
+            onBlur={commit}
+            className="min-h-20 w-full text-xs"
+          />
+        );
+      }
+
+      return (
         <Input
           id={controlId}
-          type="password"
+          // A 'secret' record's read() returns '' by contract, so there is
+          // nothing to mask — the password type is here to stop the browser
+          // offering to remember, and to keep a token off a shared screen while
+          // it is being typed.
+          type={variant === 'secret' ? 'password' : 'text'}
           aria-describedby={describedBy}
           value={draft}
           disabled={disabled}
-          placeholder="sk-…"
+          placeholder={placeholder}
           onChange={(e) => {
             dirty.current = true;
             setDraft(e.target.value);
@@ -219,22 +251,8 @@ function ControlFor({
           onBlur={commit}
           className="h-8 w-[132px] text-xs"
         />
-      ) : (
-        <Textarea
-          id={controlId}
-          aria-describedby={describedBy}
-          value={draft}
-          disabled={disabled}
-          rows={4}
-          placeholder="I plan in two-hour blocks and I'd rather you were blunt…"
-          onChange={(e) => {
-            dirty.current = true;
-            setDraft(e.target.value);
-          }}
-          onBlur={commit}
-          className="min-h-20 w-full text-xs"
-        />
       );
+    }
 
     case 'action':
       return (
@@ -291,7 +309,8 @@ export function SettingRow({
   const unavailableReason = record.unavailable?.(ctx) ?? null;
   const disabled = Boolean(inactive) || unavailableReason !== null;
   const modified = isModified(record, ctx) && !disabled;
-  const wide = record.control === 'text' && record.id !== 'beacon.apiKey';
+  // Must agree with the variant switch above: only the textarea goes full width.
+  const wide = record.control === 'text' && (record.textVariant ?? 'multiline') === 'multiline';
 
   const runs = highlightRuns(record.label, ranges ?? []);
 

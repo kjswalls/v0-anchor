@@ -117,7 +117,33 @@ async function loadChannelState(service: ServiceClient, userId: string) {
     }
   }
 
-  return { extensionEnabled, configs, secrets: {} as Record<string, Record<string, string>> }
+  // Credentials, read with the SERVICE client and never sent anywhere else.
+  // user_secrets has its grants revoked from anon and authenticated (migration
+  // 012), so this is the only kind of client that can see the column at all —
+  // which is the property the whole split exists to buy.
+  const secrets: Record<string, Record<string, string>> = {}
+  const { data: secretRow } = await service
+    .from('user_secrets')
+    .select('reminder_secrets')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const bag = (secretRow as { reminder_secrets?: unknown } | null)?.reminder_secrets
+  if (bag && typeof bag === 'object') {
+    for (const [slug, values] of Object.entries(bag as Record<string, unknown>)) {
+      if (!values || typeof values !== 'object') continue
+      const clean: Record<string, string> = {}
+      for (const [key, value] of Object.entries(values as Record<string, unknown>)) {
+        // Validated on READ rather than trusted, the item_types.config rule: a
+        // credential left behind by a channel that no longer exists, or a value
+        // of the wrong shape, is ignored instead of reaching a fetch.
+        if (typeof value === 'string' && value !== '') clean[key] = value
+      }
+      secrets[slug] = clean
+    }
+  }
+
+  return { extensionEnabled, configs, secrets }
 }
 
 export async function runReminderScan(
@@ -279,7 +305,7 @@ export async function runReminderScan(
 
     if (lastCallDue) {
       const open = lastCallItems(items, clock.dateStr, ctx)
-      const copy = lastCallCopy(open, timeFormat)
+      const copy = lastCallCopy(open)
 
       // Stamp even when there is nothing to say. "Everything is done" is not a
       // notification anyone asked for, but it IS an answered question, and

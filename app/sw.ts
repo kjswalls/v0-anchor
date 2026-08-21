@@ -32,6 +32,17 @@ serwist.addEventListeners();
 const ACTION_DONE = 'done';
 const ACTION_SNOOZE = 'snooze';
 
+/**
+ * `actions` is real on ServiceWorkerRegistration.showNotification but absent
+ * from the DOM lib's NotificationOptions, which is the type that resolves here
+ * (this project's tsconfig has no webworker lib — see the other errors this
+ * file already reports). Declared locally rather than left to `any`, so a typo
+ * in an action id is still caught.
+ */
+interface SwNotificationOptions extends NotificationOptions {
+  actions?: { action: string; title: string }[];
+}
+
 interface PushPayload {
   title?: string;
   body?: string;
@@ -53,7 +64,7 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title ?? 'Anchor';
-  const options: NotificationOptions = {
+  const options: SwNotificationOptions = {
     body: payload.body ?? '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',

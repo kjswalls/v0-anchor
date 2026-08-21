@@ -11,6 +11,7 @@ import { loadSettings, saveSettings } from '@/lib/settings-service';
 import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { useTheme } from 'next-themes';
@@ -298,6 +299,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // gates the overdue sweep, and extensions must never be able to fail
         // the data load.
         useExtensionsStore.getState().hydrate(session.user.id);
+        // Which channel credentials are SET — never their values. Same
+        // fire-and-forget posture: a settings page that cannot say "saved" is a
+        // cosmetic loss; a planner that failed to load is not.
+        useChannelSecretsStore.getState().hydrate(session.user.id);
       }
     });
 
@@ -306,11 +311,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         loadPlanner(session.user.id);
         hydrateSettings(session.user.id);
         useExtensionsStore.getState().hydrate(session.user.id);
+        useChannelSecretsStore.getState().hydrate(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         loadedUserId.current = null;
         clearStore();
         useExtensionsStore.getState().reset();
+        useChannelSecretsStore.getState().reset();
         // clearStore only resets the planner. The morning store holds
         // account-owned settings too — including the auto-age switch, which
         // drives an unattended mutation — and it persists them to a

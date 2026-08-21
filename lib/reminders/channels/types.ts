@@ -46,7 +46,17 @@ export interface ChannelResult {
 }
 
 export interface NudgeChannel {
-  /** Stable machine name, used in logs and in the per-channel secrets map. */
+  /**
+   * Stable machine name. It keys BOTH the config bag (user_extensions.config)
+   * and the secrets bag (user_secrets.reminder_secrets), and for every gated
+   * channel it is IDENTICAL to `extensionSlug`.
+   *
+   * That identity is deliberate. The two bags live in different tables for
+   * security reasons, and giving a channel a short internal name alongside a
+   * longer user-facing extension slug would mean every lookup had to pick the
+   * right one — a silent empty-object on the wrong guess, which reads exactly
+   * like "not configured" and would be diagnosed as a user error for weeks.
+   */
   slug: string
   /**
    * The extension slug in lib/extension-registry.ts that gates this channel, or

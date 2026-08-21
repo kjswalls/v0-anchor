@@ -1,0 +1,276 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { assertSafeUrl, requireString } from '@/lib/reminders/channels/http';
+import { escapeXml } from '@/lib/reminders/channels/twilio';
+import { callTwiml, callChannel } from '@/lib/reminders/channels/call';
+import { smsChannel } from '@/lib/reminders/channels/sms';
+import { voiceChannel } from '@/lib/reminders/channels/voice';
+import { channelIsOn, CHANNELS, deliverNudge } from '@/lib/reminders/deliver';
+import { spokenLine, smsLine } from '@/lib/reminders/copy';
+import type { Nudge } from '@/lib/reminders/nudge';
+import type { ChannelContext } from '@/lib/reminders/channels/types';
+
+const cue = (over: Partial<Nudge> = {}): Nudge => ({
+  kind: 'cue',
+  title: 'Vitamins',
+  body: 'you pour your coffee',
+  url: '/item/h1',
+  dateStr: '2026-08-10',
+  itemId: 'h1',
+  items: [{ id: 'h1', title: 'Vitamins', streak: 12 }],
+  ...over,
+});
+
+const lastCall = (over: Partial<Nudge> = {}): Nudge => ({
+  kind: 'last-call',
+  title: '2 still open',
+  body: 'Reading and Stretch · 12 days riding on it',
+  url: '/',
+  dateStr: '2026-08-10',
+  items: [
+    { id: 'a', title: 'Reading', streak: 12 },
+    { id: 'b', title: 'Stretch', streak: 0 },
+  ],
+  ...over,
+});
+
+const ctx = (over: Partial<ChannelContext> = {}): ChannelContext => ({
+  userId: 'u1',
+  service: {} as never,
+  timeFormat: '12h',
+  timezone: 'America/New_York',
+  config: {},
+  secrets: {},
+  ...over,
+});
+
+/* ── assertSafeUrl ────────────────────────────────────────────────────────── */
+
+describe('assertSafeUrl', () => {
+  it('accepts an ordinary https host', () => {
+    expect(assertSafeUrl('https://home.example.com').hostname).toBe('home.example.com');
+  });
+
+  // Private LAN ranges stay allowed on purpose: Home Assistant lives on them,
+  // a serverless function cannot reach them anyway, and blocking them would
+  // break the honest self-hosted case for no gain.
+  it('allows private LAN addresses', () => {
+    expect(() => assertSafeUrl('http://192.168.1.40:8123')).not.toThrow();
+    expect(() => assertSafeUrl('http://10.0.0.5:8123')).not.toThrow();
+  });
+
+  // The actual escalation this guard exists for: making Anchor's own server
+  // issue requests from inside the hosting provider's network.
+  it('refuses loopback and link-local, where the metadata services answer', () => {
+    expect(() => assertSafeUrl('http://169.254.169.254/latest/meta-data/')).toThrow();
+    expect(() => assertSafeUrl('http://127.0.0.1:8123')).toThrow();
+    expect(() => assertSafeUrl('http://localhost:8123')).toThrow();
+    expect(() => assertSafeUrl('http://[::1]:8123')).toThrow();
+    expect(() => assertSafeUrl('http://0.0.0.0/')).toThrow();
+  });
+
+  it('refuses a non-http scheme', () => {
+    expect(() => assertSafeUrl('file:///etc/passwd')).toThrow();
+    expect(() => assertSafeUrl('gopher://example.com')).toThrow();
+  });
+
+  it('refuses credentials embedded in the URL', () => {
+    expect(() => assertSafeUrl('https://user:pass@example.com')).toThrow(/credentials/);
+  });
+
+  it('refuses something that is not a URL at all', () => {
+    expect(() => assertSafeUrl('home.example.com')).toThrow();
+  });
+});
+
+describe('requireString', () => {
+  it('treats blank and non-strings as absent', () => {
+    expect(requireString({ a: '  x  ' }, 'a')).toBe('x');
+    expect(requireString({ a: '   ' }, 'a')).toBeNull();
+    expect(requireString({ a: 5 }, 'a')).toBeNull();
+    expect(requireString({}, 'a')).toBeNull();
+  });
+});
+
+/* ── TwiML ────────────────────────────────────────────────────────────────── */
+
+describe('TwiML escaping', () => {
+  it('escapes every XML metacharacter', () => {
+    expect(escapeXml(`a & b < c > d " e ' f`)).toBe(
+      'a &amp; b &lt; c &gt; d &quot; e &apos; f',
+    );
+  });
+
+  // The spoken text is an item TITLE, which is free user input. A habit called
+  // `Read <b>more</b>` must not produce malformed XML and a failed call.
+  it('survives a habit title full of markup', () => {
+    const nudge = cue({ title: 'Read <b>more</b> & "relax"', items: [{ id: 'h1', title: 'Read <b>more</b> & "relax"', streak: 0 }] });
+    const xml = callTwiml(nudge, 'alice');
+    expect(xml).not.toMatch(/<b>/);
+    expect(xml).toContain('&lt;b&gt;');
+    expect(xml).toContain('&amp;');
+    // Still exactly the document we meant to emit.
+    expect(xml.match(/<Say /g)).toHaveLength(2);
+  });
+
+  it('escapes the voice attribute too', () => {
+    expect(callTwiml(cue(), 'a"lice')).toContain('voice="a&quot;lice"');
+  });
+
+  // Someone who answers a phone has usually missed the first second of it.
+  it('says the line twice with a pause', () => {
+    const xml = callTwiml(cue(), 'alice');
+    expect(xml.match(/Vitamins/g)).toHaveLength(2);
+    expect(xml).toContain('<Pause length="1"/>');
+  });
+});
+
+/* ── Registers ────────────────────────────────────────────────────────────── */
+
+describe('spokenLine', () => {
+  it('leads with the item and drops the interpunct', () => {
+    const line = spokenLine(cue());
+    expect(line).toBe('Vitamins. After you pour your coffee. 12 days so far.');
+    expect(line).not.toContain('·');
+  });
+
+  // "After 7:30 am" is not a sentence anyone says.
+  it('does not say "After" in front of a time', () => {
+    expect(spokenLine(cue({ body: '7:30 am' }))).toBe('Vitamins. 12 days so far.');
+  });
+
+  it('reads a last call as a list', () => {
+    expect(spokenLine(lastCall())).toBe('Still open today: Reading and Stretch. 12 days on the line.');
+  });
+});
+
+describe('smsLine', () => {
+  it('is one line', () => {
+    expect(smsLine(cue())).toBe('Vitamins — you pour your coffee');
+    expect(smsLine(cue())).not.toContain('\n');
+  });
+
+  // A shortened-looking URL in an unexpected text is the shape of a phishing
+  // message; training yourself to tap those is a bad habit to install.
+  it('carries no link', () => {
+    expect(smsLine(cue())).not.toMatch(/https?:/);
+  });
+});
+
+/* ── Channel gating ───────────────────────────────────────────────────────── */
+
+describe('channel gating', () => {
+  it('every gated channel uses its extension slug as its own slug', () => {
+    for (const channel of CHANNELS) {
+      if (channel.extensionSlug === null) continue;
+      expect(channel.slug, channel.slug).toBe(channel.extensionSlug);
+    }
+  });
+
+  it('push is on without any extension; the rest are off until switched on', () => {
+    const push = CHANNELS.find((c) => c.slug === 'push')!;
+    expect(channelIsOn(push, {})).toBe(true);
+    for (const channel of CHANNELS.filter((c) => c.extensionSlug)) {
+      expect(channelIsOn(channel, {}), channel.slug).toBe(false);
+      expect(channelIsOn(channel, { [channel.slug]: true }), channel.slug).toBe(true);
+    }
+  });
+});
+
+describe('channels decline rather than fail when unconfigured', () => {
+  it('voice skips with no URL, token or speakers', async () => {
+    const result = await voiceChannel.deliver(cue(), ctx());
+    expect(result).toMatchObject({ ok: true, skipped: true });
+  });
+
+  it('sms skips without credentials', async () => {
+    const result = await smsChannel.deliver(cue(), ctx({ config: { to: '+1', from: '+2' } }));
+    expect(result).toMatchObject({ ok: true, skipped: true });
+  });
+
+  it('call skips without credentials', async () => {
+    const result = await callChannel.deliver(lastCall(), ctx({ config: { to: '+1', from: '+2' } }));
+    expect(result).toMatchObject({ ok: true, skipped: true });
+  });
+});
+
+describe('the call channel declines ordinary cues by default', () => {
+  const configured = ctx({
+    config: { to: '+15551234567', from: '+15557654321' },
+    secrets: { accountSid: 'AC1', authToken: 'tok' },
+  });
+
+  it('refuses a cue when kinds is unset', async () => {
+    const result = await callChannel.deliver(cue(), configured);
+    expect(result).toMatchObject({ ok: true, skipped: true });
+    expect(result.detail).toMatch(/declines cue/);
+  });
+
+  it('takes the last call', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await callChannel.deliver(lastCall(), configured);
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('will call for a cue if the user explicitly asks for it', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await callChannel.deliver(
+      cue(),
+      ctx({ ...configured, config: { ...configured.config, kinds: 'cue, last-call' } }),
+    );
+    expect(result.ok).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});
+
+/* ── Isolation ────────────────────────────────────────────────────────────── */
+
+describe('deliverNudge isolation', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // The contract: one integration whose token expired last week must never be
+  // able to stop the push notification that has worked every day.
+  it('a channel that throws does not take the others down', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('DNS exploded'); }));
+
+    const reports = await deliverNudge(
+      lastCall(),
+      { userId: 'u1', service: {} as never, timeFormat: '12h', timezone: 'UTC' },
+      {
+        extensionEnabled: { 'voice-announcements': true, 'phone-call': true },
+        configs: {
+          'voice-announcements': { baseUrl: 'https://home.example.com', players: 'media_player.kitchen' },
+          'phone-call': { to: '+1', from: '+2' },
+        },
+        secrets: {
+          'voice-announcements': { token: 'tok' },
+          'phone-call': { accountSid: 'AC1', authToken: 'tok' },
+        },
+      },
+    );
+
+    const voice = reports.find((r) => r.channel === 'voice-announcements');
+    const call = reports.find((r) => r.channel === 'phone-call');
+    expect(voice?.ok).toBe(false);
+    expect(call?.ok).toBe(false);
+    // …and crucially, the whole fan-out still resolved with a report per channel
+    // rather than rejecting.
+    expect(reports.some((r) => r.channel === 'push')).toBe(true);
+  });
+
+  it('a disabled channel is never dispatched at all', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const reports = await deliverNudge(
+      cue(),
+      { userId: 'u1', service: {} as never, timeFormat: '12h', timezone: 'UTC' },
+      { extensionEnabled: {}, configs: {}, secrets: {} },
+    );
+
+    expect(reports.map((r) => r.channel)).toEqual(['push']);
+  });
+});

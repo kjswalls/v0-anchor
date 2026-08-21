@@ -1,4 +1,11 @@
-import { CalendarRange, PartyPopper, type LucideIcon } from 'lucide-react';
+import {
+  CalendarRange,
+  MessageSquare,
+  PartyPopper,
+  PhoneCall,
+  Speaker,
+  type LucideIcon,
+} from 'lucide-react';
 
 /**
  * The official extensions catalog — Anchor's declarative "plugin" surface.
@@ -29,6 +36,22 @@ export interface ExtensionManifest {
 
 export const EXT_HABIT_HEATMAP = 'habit-heatmap';
 export const EXT_COMPLETION_CONFETTI = 'completion-confetti';
+/**
+ * Reminder delivery channels (Tier 2).
+ *
+ * Each slug is BOTH the extension's identity here and the channel's slug in
+ * lib/reminders/channels — see the note on NudgeChannel.slug for why those are
+ * deliberately the same string rather than a short internal name and a pretty
+ * external one.
+ *
+ * All three default OFF, and that is not the usual caution about new features:
+ * these reach out of the app and into a room or a phone, and two of them spend
+ * the user's money. An integration that could ring you should never arrive
+ * already able to.
+ */
+export const EXT_VOICE_ANNOUNCEMENTS = 'voice-announcements';
+export const EXT_SMS_NUDGE = 'sms-nudge';
+export const EXT_PHONE_CALL = 'phone-call';
 
 export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
   {
@@ -45,6 +68,34 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     description: 'A small burst when you complete something. Purely celebratory.',
     icon: PartyPopper,
     category: 'fun',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_VOICE_ANNOUNCEMENTS,
+    name: 'Speak reminders aloud',
+    // Says what it needs, because the setting is useless without it and finding
+    // that out three screens later is the worst version of this.
+    description: 'Reads reminders through your Home Assistant speakers. Needs a Home Assistant URL and token.',
+    icon: Speaker,
+    category: 'integrations',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_SMS_NUDGE,
+    name: 'Text me',
+    description: 'Sends reminders as a text message through Twilio. Needs a Twilio account.',
+    icon: MessageSquare,
+    category: 'integrations',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_PHONE_CALL,
+    name: 'Call me',
+    // Names the default out loud. A channel that rings a phone must not leave
+    // anyone guessing how often it will.
+    description: 'Rings you through Twilio. Last call only unless you change it — a call for every reminder is a lot.',
+    icon: PhoneCall,
+    category: 'integrations',
     defaultEnabled: false,
   },
 ];
