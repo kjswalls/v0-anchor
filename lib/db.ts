@@ -4,6 +4,7 @@ type DbClient = any;
 import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
+import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
 
 /**
  * DB-level type value for an item: custom items store their user-defined slug
@@ -458,17 +459,59 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
 
 // ---- Item CRUD ----
 
+/**
+ * The relation every full-item READ goes through (migration 031): `items` with
+ * completed_dates/skipped_dates trimmed to COMPLETION_READ_WINDOW_DAYS, and
+ * every other column passed through. security_invoker=true, so the own-rows RLS
+ * policy on items still applies exactly as it does to a direct read.
+ *
+ * WRITES NEVER USE THIS. They target `items`, and per-date writes go through the
+ * intent RPCs — including reconcileDateArrays' read, which needs the UNTRIMMED
+ * arrays to diff against and would otherwise treat everything outside the window
+ * as a retraction.
+ */
+const ITEMS_READ_VIEW = 'items_windowed';
+
+let itemsWindowAvailable = true;
+/** False once a query proved migration 031 isn't applied yet. */
+export function getItemsWindowAvailable(): boolean {
+  return itemsWindowAvailable;
+}
+
+/**
+ * The read relation, degrading to the base table when the view is absent.
+ *
+ * Vercel builds on push while `pnpm db:push` is a manual step, so an app that
+ * hard-required the view would take out every read in that window — the same
+ * hazard 027 documents on the write side, and the reason containerColumns and
+ * pauseColumns exist. Falling back serves untrimmed arrays, which is the old
+ * behaviour: bigger, never wrong.
+ */
+function itemsReadFrom(supabase: DbClient) {
+  return supabase.from(itemsWindowAvailable ? ITEMS_READ_VIEW : 'items');
+}
+
+const missingItemsWindow = (error: { code?: string } | null) =>
+  error?.code === '42P01' || error?.code === 'PGRST205';
+
 export async function fetchItems(userId: string, type?: string, client?: DbClient): Promise<Item[]> {
   const supabase = client ?? createClient();
-  let query = supabase
-    .from('items')
-    .select('*')
-    .eq('user_id', userId)
-    .is('deleted_at', null);
-  if (type) query = query.eq('type', type);
-  const { data, error } = await query
-    .order('order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true });
+  const run = async () => {
+    let query = itemsReadFrom(supabase)
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+    if (type) query = query.eq('type', type);
+    return query
+      .order('order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
+  };
+
+  let { data, error } = await run();
+  if (missingItemsWindow(error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    ({ data, error } = await run());
+  }
   if (error) throw error;
   return (data as ItemRow[]).map(itemFromRow);
 }
@@ -837,30 +880,33 @@ export async function setItemSkip(
  *   * The OpenClaw plugin's update_task sends "the full set of ISO date strings
  *     representing all completion dates" (openclaw-plugin/src/tools.ts) — a set
  *     a model composed from injected context, not one read from this row.
- *   * Any client reading a windowed slice of the arrays rather than all of it,
- *     which is where this codebase is headed.
+ *   * Every client, since migration 031: fetchItems now reads items_windowed,
+ *     so what a browser holds is the last COMPLETION_READ_WINDOW_DAYS of a
+ *     history that may run for years.
  *
- * WHAT THIS DOES AND DOES NOT FIX. The diff is SYMMETRIC: a date in the body
- * that the row lacks is set, a date on the row that the body lacks is cleared.
- * That is byte-for-byte the old outcome, deliberately — this is a mechanism
- * change, not a semantic one — including for `streak`, which a whole-array write
- * never moved and still doesn't (see adjustStreak below). What it buys is that
- * the write now goes through
- * the atomic per-date RPCs, so it no longer clobbers a concurrent toggle, no
- * longer inverts intent against a stale client (migration 020's two flaws,
- * which skipped_dates still had because it never got an RPC), and no longer has
- * a column mapping anything can reach by accident.
+ * HOW IT RESOLVES. Additions are unconditional: a date in the body that the row
+ * lacks is set. Retractions are BOUNDED — a date on the row that the body omits
+ * is cleared only if it falls inside COMPLETION_RETRACTION_WINDOW_DAYS. Outside
+ * that window it is left alone, because "the writer retracted this date" and
+ * "the writer was never sent this date" are indistinguishable in an absolute
+ * array, and only one of those two readings is recoverable if you guess wrong.
  *
- * It does NOT make a partial writer safe, and cannot: "the writer retracted
- * this date" and "the writer never saw this date" are indistinguishable in an
- * absolute array. Making them distinguishable needs a declared window — retract
- * only within the range the writer was actually served, never outside it — and
- * that constant belongs to the read-windowing change, which is where the
- * partial writers come from in the first place. Until then every writer still
- * holds full history, so symmetric is correct.
+ * That bound is the other half of migration 031, which trims reads to
+ * COMPLETION_READ_WINDOW_DAYS. THE TWO MUST NOT BE SEPARATED: windowing reads
+ * without bounding retraction here turns every agent write into silent history
+ * deletion, and the read window is what creates partial writers in the first
+ * place. The retraction window is deliberately the larger of the two so that a
+ * client whose fetch has gone stale can still retract what it was actually
+ * served — see lib/completion-window.ts for why the gap exists.
  *
- * THE OBLIGATION THAT LEAVES: windowing reads without scoping retraction here
- * turns this into silent history deletion. The two must land together.
+ * `streak` is untouched either way: a whole-array write never moved it, and the
+ * reconciled intents pass adjustStreak=false so they don't either.
+ *
+ * What this buys beyond the windowing: the write goes through the atomic
+ * per-date RPCs, so it no longer clobbers a concurrent toggle, no longer inverts
+ * intent against a stale client (migration 020's two flaws, which skipped_dates
+ * still had because it never got an RPC), and no longer has a column mapping
+ * anything can reach by accident.
  *
  * planner-store's undo/redo path has open-coded this diff since the unified
  * items refactor (it deletes completedDates from the patch and replays it as
@@ -900,6 +946,14 @@ async function reconcileDateArrays(
   const row = data as { completed_dates: string[] | null; skipped_dates: string[] | null };
   const intents: Promise<void>[] = [];
 
+  // The retraction bound. A date the body omits is cleared ONLY if it falls
+  // inside the window an absolute writer could plausibly have been served;
+  // anything older is untouchable through this path, because a writer that was
+  // never sent a date cannot be retracting it. Dates are YYYY-MM-DD, so the
+  // string compare is a chronological one.
+  const cutoff = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS);
+  const retractable = (d: string) => d >= cutoff;
+
   if (hasCompleted) {
     const desired = new Set((updates.completedDates as string[] | null) ?? []);
     const current = new Set(row.completed_dates ?? []);
@@ -913,7 +967,9 @@ async function reconcileDateArrays(
       if (!current.has(d)) intents.push(setItemCompletion(id, type, d, true, false, supabase));
     }
     for (const d of current) {
-      if (!desired.has(d)) intents.push(setItemCompletion(id, type, d, false, false, supabase));
+      if (!desired.has(d) && retractable(d)) {
+        intents.push(setItemCompletion(id, type, d, false, false, supabase));
+      }
     }
   }
 
@@ -924,7 +980,9 @@ async function reconcileDateArrays(
       if (!current.has(d)) intents.push(setItemSkip(id, type, d, true, supabase));
     }
     for (const d of current) {
-      if (!desired.has(d)) intents.push(setItemSkip(id, type, d, false, supabase));
+      if (!desired.has(d) && retractable(d)) {
+        intents.push(setItemSkip(id, type, d, false, supabase));
+      }
     }
   }
 
@@ -1909,9 +1967,13 @@ export async function listDeleted(
   const supabase = client ?? createClient();
   const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
 
-  const [items, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
+  const [initialItems, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
     await Promise.all([
-      deleted(supabase.from('items').select('*')).order('deleted_at', { ascending: false }),
+      // Windowed like every other full-item read (031). Deliberately the SAME
+      // relation as fetchItems: a bin serving untrimmed arrays while the live
+      // store holds trimmed ones would put two shapes of the same item in one
+      // store, and a restore-then-undo would diff them against each other.
+      deleted(itemsReadFrom(supabase).select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('projects').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('habit_groups').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('routines').select('*')).order('deleted_at', { ascending: false }),
@@ -1925,6 +1987,16 @@ export async function listDeleted(
       supabase.from('program_routines').select('program_id, routine_id')
         .eq('user_id', userId).order('routine_id', { ascending: true }),
     ]);
+
+  // The view may simply not be deployed yet (see itemsReadFrom). Latch and retry
+  // the one query that used it, rather than failing a bin whose other seven
+  // queries succeeded.
+  let items = initialItems;
+  if (missingItemsWindow(items.error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    items = await deleted(itemsReadFrom(supabase).select('*'))
+      .order('deleted_at', { ascending: false });
+  }
 
   // One failure fails the lot. A partial bin is worse than an error: a user
   // hunting for a deleted routine would find a Trash that renders happily

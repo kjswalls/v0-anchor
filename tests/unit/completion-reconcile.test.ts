@@ -62,6 +62,11 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 
 import { updateItem } from '@/lib/db';
+import {
+  COMPLETION_READ_WINDOW_DAYS,
+  COMPLETION_RETRACTION_WINDOW_DAYS,
+  windowStart,
+} from '@/lib/completion-window';
 
 const datesFor = (fn: string, flag: string, value: boolean) =>
   rpcCalls
@@ -87,24 +92,39 @@ describe('reconciling an absolute completedDates body', () => {
     expect(datesFor('set_item_completion', 'completed', false)).toEqual(['2026-08-19']);
   });
 
-  it('is SYMMETRIC — an omitted date is still a retraction', async () => {
-    // Pinning the deliberate limit of this change, so nobody reads the
-    // reconciler as more protective than it is. A partial writer still clears
-    // history it never saw, because an absolute array cannot distinguish "I
-    // retract this" from "I never knew about this".
-    //
-    // Today that is safe: every writer holds the full array. Windowing reads
-    // creates partial writers, and MUST arrive together with a declared window
-    // that scopes the retraction below to the range the writer was served.
-    // Without that pairing this line becomes silent history deletion.
-    storedCompleted = ['2016-01-01', '2020-06-15', '2026-08-20'];
+  it('retracts inside the window but NEVER outside it', async () => {
+    // The pairing that makes migration 031 safe. A partial writer — the plugin,
+    // or any client served a windowed slice — omits ancient dates because it was
+    // never sent them, not because the user retracted them. Clearing those would
+    // delete history no one can get back, so the retraction half of the diff is
+    // bounded while the addition half is not.
+    const inside = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS - 10);
+    const outside = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS + 10);
+    storedCompleted = [outside, inside];
 
-    await updateItem('item-1', 'task', { completedDates: ['2026-08-20'] });
+    await updateItem('item-1', 'task', { completedDates: [] });
 
-    expect(datesFor('set_item_completion', 'completed', false)).toEqual([
-      '2016-01-01',
-      '2020-06-15',
-    ]);
+    expect(datesFor('set_item_completion', 'completed', false)).toEqual([inside]);
+  });
+
+  it('bounds skip retraction the same way', async () => {
+    const outside = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS + 10);
+    storedSkipped = [outside];
+
+    await updateItem('item-1', 'task', { skippedDates: [] });
+
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it('still ADDS a date older than the window', async () => {
+    // Only retraction is bounded. Backfilling an old completion is an explicit
+    // statement about that date, so it is honoured wherever it falls.
+    const ancient = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS + 500);
+    storedCompleted = [];
+
+    await updateItem('item-1', 'task', { completedDates: [ancient] });
+
+    expect(datesFor('set_item_completion', 'completed', true)).toEqual([ancient]);
   });
 
   it('leaves streak to the caller, exactly as the absolute write did', async () => {
@@ -188,5 +208,35 @@ describe('reconciling an absolute completedDates body', () => {
       'tasks.updated',
       expect.objectContaining({ action: 'update', id: 'item-1' }),
     );
+  });
+});
+
+describe('the two windows', () => {
+  it('reads at least as deep as the deepest history surface', () => {
+    // HEATMAP_WEEKS is 26 in components/planner/item-detail-sections.tsx, and it
+    // aligns to a week start before counting back, so it can reach ~189 days. A
+    // read window under that would blank out the right-hand end of the heatmap
+    // for every long-standing habit.
+    expect(COMPLETION_READ_WINDOW_DAYS).toBeGreaterThan(26 * 7 + 7);
+  });
+
+  it('never retracts a narrower range than it serves', () => {
+    // If retraction were the tighter of the two, a client would be handed dates
+    // it is then not allowed to retract — its own edits would silently no-op as
+    // the fetch aged. The gap is what absorbs client staleness.
+    expect(COMPLETION_RETRACTION_WINDOW_DAYS).toBeGreaterThanOrEqual(COMPLETION_READ_WINDOW_DAYS);
+  });
+
+  it('counts backwards, and formats as the YYYY-MM-DD the arrays store', () => {
+    const now = new Date('2026-08-21T12:00:00Z');
+    expect(windowStart(0, now)).toBe('2026-08-21');
+    expect(windowStart(1, now)).toBe('2026-08-20');
+    expect(windowStart(400, now)).toBe('2025-07-17');
+  });
+
+  it('orders lexicographically the way the date compare relies on', () => {
+    // Both the SQL trim and retractable() compare these strings directly rather
+    // than casting to date. That is only sound while the format is zero-padded.
+    expect(windowStart(400) < windowStart(0)).toBe(true);
   });
 });
