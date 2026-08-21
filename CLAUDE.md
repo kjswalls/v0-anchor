@@ -58,6 +58,31 @@ discriminated-union narrowing keeps working, but the DB stores the bare slug in
 drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 `pending|done|skipped` for habits) are external contracts — don't merge or translate them.
 
+**Reminders reach outward; everything else in the app waits to be opened.** A cue at the
+habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
+from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
+Three rules there are load-bearing and are not obvious from the code shape:
+
+- **Nothing re-derives "does this want doing".** `lib/reminders/due.ts` and
+  `lib/stakes/day.ts` compose `isOpenLoopOn` + `isItemActiveOn` from
+  [lib/active.ts](lib/active.ts). A nudge about a habit the grid has hidden is the app
+  arguing with a decision the user made.
+- **Claim, then act.** Cues are taken with a conditional update and only delivered if the
+  database actually changed a row; stake rows are inserted against a unique index and only
+  the newly-claimed ones reach the outside world. A cron is at-least-once, and the naive
+  order rings a phone twice or charges a pledge twice.
+- **Channels and stake adapters are declarative and isolated.** One is a manifest entry in
+  [lib/extension-registry.ts](lib/extension-registry.ts), a field list in
+  [lib/extension-settings.ts](lib/extension-settings.ts), and a `deliver()`/`plan()`+
+  `commit()`. They must return a failure, never throw it — an expired token in one must
+  not cost the others. Non-secret config lives in `user_extensions.config` (browser-
+  readable); credentials live in `user_secrets`, which is service-role only, and
+  `/api/reminders/secrets` will say which keys are set and never what they are.
+
+Read [habit-reminders.md](memory/plans/habit-reminders.md) before touching any of it — the
+copy contract, the midnight clamp and the snooze day-gate all exist because the obvious
+version was wrong.
+
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
 sidebar, eod, morning, chat, …). `planner-store.ts` is the big one: it holds `items[]`
 with `tasks`/`habits` projections derived off it.
