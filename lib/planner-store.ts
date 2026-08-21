@@ -1222,13 +1222,40 @@ export const usePlannerStore = create<PlannerStore>()(
        * and a background write can't fire it at a screen nobody is looking at.
        */
       const offerAchievementFor = (itemId: string) => {
+        // `Aug 21`, not `2026-08-21`. Local to the store rather than imported
+        // from lib/collections, which is a hooks module — a store importing
+        // React hooks is a cycle waiting to happen. Parsed at local noon, never
+        // `new Date('yyyy-mm-dd')`, which is UTC midnight and formats as the
+        // previous day west of Greenwich.
+        const formatGoalDay = (dateStr: string) => {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          if (!y || !m || !d) return dateStr;
+          return new Date(y, m - 1, d, 12).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+          });
+        };
         const state = get();
         const itemsById = new Map(state.items.map((i) => [i.id, i]));
         for (const goal of state.goals) {
           if (goal.state !== 'active') continue;
           if (!goal.milestoneIds.includes(itemId)) continue;
           const { achieved, total } = goalProgress(goal, itemsById);
-          if (total === 0 || achieved !== total) continue;
+          if (total === 0) continue;
+          // Decision 5's word is DATED: no un-achieved *dated* milestone
+          // remains. Requiring every milestone instead made the offer
+          // unreachable for anyone who uses the feature as designed — inline
+          // creation deliberately produces UNDATED checkpoints, so two jotted
+          // ideas would permanently silence the offer for every dated
+          // milestone finished afterwards. An undated checkpoint is a thought,
+          // not a commitment; it should not hold the goal open.
+          const openDated = goal.milestoneIds.some((mid) => {
+            const m = itemsById.get(mid);
+            if (!m || m.status === 'cancelled') return false;
+            if (!('startDate' in m) || !m.startDate) return false;
+            return m.status !== getItemTypeConfig(itemTypeName(m)).doneStatus;
+          });
+          if (openDated) continue;
 
           // The copy respects a distant target. "All 3 milestones so far" is the
           // honest reading of a three-year goal that has defined two near-term
@@ -1243,11 +1270,23 @@ export const usePlannerStore = create<PlannerStore>()(
               : `Every milestone on ${goal.name} is done`,
             {
               description: far
-                ? `Its target is ${goal.targetOn}. Worth a look — or call it achieved.`
+                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look — or call it achieved.`
                 : 'Ready to call it achieved?',
               action: {
                 label: 'Mark achieved',
-                onClick: () => get().setGoalState(goal.id, 'achieved'),
+                // Re-checked at CLICK time, not trusted from eight seconds ago.
+                // ⌘Z during the toast's life reopens the milestone, and acting
+                // on the stale snapshot would mark a goal achieved with an open
+                // checkpoint under it.
+                onClick: () => {
+                  const now = get();
+                  const live = now.goals.find((g) => g.id === goal.id);
+                  if (!live || live.state !== 'active') return;
+                  const byId = new Map(now.items.map((i) => [i.id, i]));
+                  const p = goalProgress(live, byId);
+                  if (p.total === 0 || p.achieved !== p.total) return;
+                  now.setGoalState(goal.id, 'achieved');
+                },
               },
               duration: 8000,
             },

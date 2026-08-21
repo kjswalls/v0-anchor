@@ -508,40 +508,53 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
       >
         {item.title}
-        {/* The goal role, INLINE with the title rather than as a rail column.
-            The rail's five columns are budgeted and every one of them reserves
-            width on every row of both types — a sixth would cost 20px on every
-            row in the app to say something true of a handful of them.
-
-            Muted ink, never honey: being a milestone is an identity, not a
-            warning, and this is the row of a checkpoint that may well be late.
-            On touch the tooltip never fires, so the glyph is deliberately one
-            a reader can place unaided (a flag for a checkpoint, a loop for a
-            recurring review) and the FULL attribution lives one tap away in the
-            edit sheet's Goal chip. */}
-        {roles.length > 0 && (
-          <RailTooltip
-            label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
-            detail={
-              roles.length === 1
-                ? roles[0].goalName
-                : `${roles[0].goalName} +${roles.length - 1}`
-            }
-          >
-            <span
-              className="text-muted-foreground/70 ml-1.5 inline-flex translate-y-[1px] align-middle"
-              data-testid="item-goal-role"
-              data-goal-role={roles[0].role}
-            >
-              {roles[0].role === 'milestone' ? (
-                <Flag className="size-3" aria-hidden />
-              ) : (
-                <Repeat className="size-3" aria-hidden />
-              )}
-            </span>
-          </RailTooltip>
-        )}
       </p>
+
+      {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
+          column.
+
+          Not inside: the title is `line-clamp`ed, which is `overflow: hidden`,
+          so any title that filled its clamp hid the glyph entirely — and the
+          week columns render compact one-line rows in narrow columns, which is
+          exactly where titles overflow and where a week of checkpoints is most
+          worth scanning. It also sat under the paragraph's `title` attribute on
+          suppressed rows, firing a native tooltip on top of the Radix one that
+          RailTooltip exists to replace.
+
+          Not a rail column: the rail's five columns each reserve width on every
+          row of both types, so a sixth would cost 20px on every row in the app
+          to say something true of a handful of them.
+
+          Muted ink, never honey — being a milestone is an identity, not a
+          warning, and this is the row of a checkpoint that may well be late. On
+          touch the tooltip never fires, so the glyphs are ones a reader can
+          place unaided and the full attribution is one tap away in the edit
+          sheet's Goal chip. The sr-only text is for the reader the tooltip
+          never reaches at all. */}
+      {roles.length > 0 && (
+        <RailTooltip
+          label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
+          detail={
+            roles.length === 1 ? roles[0].goalName : `${roles[0].goalName} +${roles.length - 1}`
+          }
+        >
+          <span
+            className="text-muted-foreground/70 -ml-0.5 flex flex-shrink-0 items-center"
+            data-testid="item-goal-role"
+            data-goal-role={roles[0].role}
+          >
+            {roles[0].role === 'milestone' ? (
+              <Flag className="size-3" aria-hidden />
+            ) : (
+              <Repeat className="size-3" aria-hidden />
+            )}
+            <span className="sr-only">
+              {roles[0].role === 'milestone' ? 'Milestone of ' : 'Check-in for '}
+              {roles[0].goalName}
+            </span>
+          </span>
+        </RailTooltip>
+      )}
 
       {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
           right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].

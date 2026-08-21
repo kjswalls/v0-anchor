@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   GoalMemberGroups,
+  GoalMemberNote,
   GoalSummary,
   MilestoneTimeline,
 } from '@/components/planner/goal-sections';
@@ -15,7 +16,6 @@ import { useUIStore } from '@/lib/ui-store';
 import { checkinStanding, isGoalActive } from '@/lib/goals';
 import { formatShort, useToday } from '@/lib/collections';
 import { accentColorForName } from '@/lib/accent-colors';
-import { cn } from '@/lib/utils';
 
 /**
  * The goal page — a goal's reading surface, and the one container detail that
@@ -59,6 +59,7 @@ export default function GoalPage() {
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
   const openDialog = useUIStore((s) => s.openDialog);
+  const router = useRouter();
   const { todayStr, tz } = useToday();
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -130,14 +131,21 @@ export default function GoalPage() {
               </p>
             )}
           </div>
-          {/* Editing lives in one place. This button is also the page's only
-              route back into the console, which matters on mobile where there
-              is no palette and no omnibar. */}
+          {/* Editing lives in one place, and getting there means NAVIGATING
+              there: OrganizeConsole is mounted once, in AppShell, which this
+              route deliberately does not render — so arming the dialog alone
+              set a field nothing here reads. Worse than a no-op, because
+              ui-store is a module singleton: the armed dialog survived, and the
+              breadcrumb home then sprang the console open unasked. Arm, then
+              push, exactly as the settings page does. */}
           <Button
             variant="outline"
             size="sm"
             data-testid="goal-page-organize"
-            onClick={() => openDialog({ type: 'organize', section: 'goals', focusId: goal.id })}
+            onClick={() => {
+              openDialog({ type: 'organize', section: 'goals', focusId: goal.id });
+              router.push('/');
+            }}
           >
             <Settings2 className="size-3.5" />
             Organize
@@ -178,6 +186,11 @@ export default function GoalPage() {
             {checkin.item ? (
               <div className="flex flex-col gap-1.5 text-sm">
                 <span className="font-medium">{checkin.item.title}</span>
+                {/* The one member surface that skipped this, and it is the one
+                    that makes a claim about a DATE. A check-in inside a paused
+                    routine reads "Due today" while rendering on no column —
+                    the exact silent lie the annotation exists to prevent. */}
+                <GoalMemberNote item={checkin.item} />
                 <span className="text-muted-foreground text-[13px]">
                   {checkin.dueToday
                     ? 'Due today'
@@ -185,7 +198,7 @@ export default function GoalPage() {
                       ? `Next on ${formatShort(checkin.nextDue)}`
                       : 'No upcoming date'}
                 </span>
-                <span className={cn('text-muted-foreground text-[13px]')}>
+                <span className="text-muted-foreground text-[13px]">
                   {checkin.lastDone
                     ? `Last one ${formatShort(checkin.lastDone)}`
                     : 'No check-ins yet'}

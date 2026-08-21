@@ -612,16 +612,84 @@ table as ONE set. Four rules, each closing a found defect:
   looking at. Its copy respects a distant target: "All 3 milestones so far" is
   the honest reading of a three-year goal with two near-term checkpoints.
 
-  **Two Phase-1 deferrals closed here:** inline milestone creation, which gives
-  `Memberships.goalRole` its first producer (seeded `timeBucket: 'anytime'`,
-  because deriveDayItems drops a bucketless task from every bucket, and
-  deliberately undated, because a checkpoint's date is a commitment the app must
-  not guess). The wind-down affordances and the agent-PATCH demotion remain
-  deferred to Phases 3/4.
+  **One Phase-1 deferral closed here:** inline milestone creation, which gives
+  `Memberships.goalRole` its first producer — undated AND unbucketed, so it
+  lands in the braindump where the plan says undated milestones live. (The
+  first version bucketed it on backwards reasoning; see the review below.)
 
-  **Gates:** 1371 unit tests green (78 files), lint 0 errors, `pnpm build`
+  **Still deferred, each with a home now** — the Phase-2 ledger originally said
+  "Phases 3/4" for two of these without either bullet carrying them, which is
+  how a commitment loses its owner:
+  - **Wind-down affordances** (decision 5's keep / delete / move-to-a-program
+    controls on an ended goal) → **Phase 3**, alongside the check-in UI, since
+    the members it acts on are mostly recurring ones.
+  - **The agent-PATCH demotion** (decision 3's second enforcement point) →
+    **Phase 4**, with the rest of the agent write-path validation.
+
+  **Gates:** 1375 unit tests green (78 files), lint 0 errors, `pnpm build`
   clean, tsc at baseline 23. The `/goal/[id]` route builds and is listed.
-- **Phase 3 — check-ins.** Role `'checkin'` UI: console "Check-in schedule" block
+
+  **Phase 2 implementation review (2026-08-21).** Three lenses (the new
+  surfaces; the integration points; store + scope). **Two blockers, both mine,
+  both about a surface that looked right and did nothing.**
+
+  *The inline-created milestone was visible on no planner surface at all* — and
+  the bucket I called load-bearing is what put it there. `deriveDayItems` tests
+  `startDate` BEFORE it looks at a bucket, so the bucket bought nothing on a day
+  column; the braindump excludes on `isScheduled || timeBucket`, and `addTask`
+  derives `isScheduled` from the bucket — so bucketing removed it from the one
+  list undated work lives in and added it to none. The commit message, the
+  ledger entry and the new test all asserted the inverse. Dropping the bucket
+  fixes it, and the timeline's rows are now links, because before this the goal
+  offered no route at all to giving a checkpoint the date it needs.
+
+  *The goal page's Organize button was inert* (2 lenses). `OrganizeConsole` is
+  mounted once, in AppShell, which this route deliberately does not render — so
+  the click set a field nothing here reads. Worse than a no-op: ui-store is a
+  module singleton, so the armed dialog survived and the breadcrumb home then
+  sprang the console open unasked. Arm-then-push, exactly as the settings page
+  does — a precedent that was already in the repo with a comment explaining it.
+
+  **The should-fixes worth recording.** `checkinStanding` — whose first consumer
+  this phase created — was wrong by a whole occurrence, not a day: it built a
+  Date in the RUNTIME's zone and read it back in the user's, so for a user more
+  than 12h east the page reported next week for a check-in due now; and it
+  ignored `isSkippedOnDate`, so it said "Due today" for an occurrence struck off
+  the grid an hour earlier. Both were flagged in Phase 1 as "settle before
+  Beacon reads it"; they acquired a UI consumer first. The role glyph sat inside
+  a `line-clamp`ed (`overflow: hidden`) paragraph, so it vanished on exactly the
+  narrow week rows where scanning matters, and under that paragraph's `title`
+  attribute it fired a native tooltip on top of the Radix one — it is a sibling
+  now, with an sr-only name. Every goal matched TWICE in the omnibar (the
+  parallel channel and the per-goal command, same destination, no dedupe —
+  three lines from where the file already solves this for `create.task`), and
+  all three routes to the page did a full document reload, tearing down the
+  store, in a codebase where every other internal navigation is `router.push`.
+  Decision 5's word DATED was not implemented, which mattered precisely because
+  this phase's inline creation makes undated milestones — two jotted ideas would
+  have silenced the offer permanently. And the toast's action trusted an
+  eight-second-old snapshot, so ⌘Z-then-click could achieve a goal with an open
+  checkpoint.
+
+  Smaller, all fixed: the elapsed hairline was clipped away at exactly 100%;
+  the timeline rendered membership order under a heading claiming date order,
+  and ranked `overdue` above `next` so a slipped goal highlighted no row at all;
+  `milestoneState` re-derived `isAchieved` in the one module whose header
+  promises nobody does; `Repeat` meant two things one commit apart; the
+  countdown said "1 days"; the goal channel ran in `/`, `+` and `?` modes;
+  `searchGoals` matched `why` text the row never shows; ended goals could crowd
+  the live one out of the omnibar's four-row cap; and the per-row index
+  contradicted its own docblock at a measured 34ms for a two-year account (now
+  memoized on the goals array identity).
+
+  **Refuted and not to be re-raised:** hook order across all five new
+  components; dangling ids in the timeline (store `items` is already
+  `deleted_at`-filtered, so `itemsById` IS the live index); the not-found gate;
+  `GoalSummary`'s UTC day math; `goal-${id}` colliding with the item rows'
+  value namespace; `cachedGoals` needing a day key like programs (goal liveness
+  is `state` alone); RailTooltip inside a `<p>` being invalid DOM; and the
+  `goals` palette alias colliding with anything.
+- **Phase 3 — check-ins, and the wind-down.** Role `'checkin'` UI: console "Check-in schedule" block
   (creates a recurring task pre-linked, weekly seeded, editable) or link an
   existing recurring item; **the completion receipt bridge on every completion
   surface**; check-in history on the goal page; the note stored as an `item_events`
@@ -631,7 +699,10 @@ table as ONE set. Four rules, each closing a found defect:
   stay in history annotated rather than deleted, and `checkin` events render in
   the item's own ActivitySection so the note isn't invisible item-side. A fuller
   guided flow stays deferred.
-- **Phase 4 — external/AI.** Beacon section + focused-item goal line; context
+- **Phase 4 — external/AI.** **Decision 3's agent-PATCH demotion** lands here
+  with the rest of the write-path validation — until it does, an OpenClaw write
+  can make a milestone recurring with nothing taking the role back. Beacon
+  section + focused-item goal line; context
   `goals[]` at schemaVersion 5; agent routes with the full refusal set; plugin arm
   (unpublished until the next release). Verified by live calls against a running
   server, not just types — the programs Phase-4 standard.

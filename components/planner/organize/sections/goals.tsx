@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -14,7 +15,6 @@ import {
   matching,
   parseDay,
   useLiveItemIds,
-  useToday,
 } from '@/lib/collections';
 import { Eyebrow, ObjectRow, Segmented, SegmentedOption } from '../primitives';
 import {
@@ -157,15 +157,18 @@ export function GoalsSection({
   /**
    * A new checkpoint, created and linked in one gesture.
    *
-   * `timeBucket: 'anytime'` is load-bearing, not a default worth skipping:
-   * deriveDayItems drops a bucketless task from every bucket, so without it the
-   * milestone would be invisible on its own target day and would sit in the
-   * braindump until it went past due.
+   * NO `timeBucket`, and the first version of this had one on reasoning that
+   * was exactly backwards. `deriveDayItems` tests `startDate` BEFORE it looks
+   * at a bucket, so a bucket buys an undated item nothing on a day column —
+   * while the braindump excludes on `isScheduled || timeBucket`, and `addTask`
+   * derives `isScheduled` from the bucket. So bucketing an undated milestone
+   * removed it from the one list undated work lives in and added it to none:
+   * it was visible on no planner surface at all.
    *
    * Undated on purpose. A checkpoint's date is a commitment, and guessing one
-   * (today? the goal's target?) would put a date on the timeline that the user
-   * never chose — nextMilestone sorts undated last, so an unscheduled milestone
-   * waits at the bottom until it is given a day.
+   * (today? the goal's target?) would put a date on the timeline the user never
+   * chose. So it lands in the braindump — which is where the plan already says
+   * undated milestones live — carrying its flag, until it is given a day.
    */
   const createMilestone = (goal: Goal, title: string) => {
     addTask(
@@ -174,7 +177,6 @@ export function GoalsSection({
         status: 'pending',
         isScheduled: false,
         order: 0,
-        timeBucket: 'anytime',
         completedDates: [],
         skippedDates: [],
       } as never,
@@ -359,14 +361,17 @@ function GoalDetail({
         {/* The console EDITS a goal; the page READS one. On mobile this is also
             the only route to the page — there is no palette and no omnibar
             there — so it is a plain link rather than a hover affordance. */}
-        <a
+        {/* next/link, not a bare <a>: a hard document load would tear down the
+            hydrated store and re-run every fetch — on mobile, inside a bottom
+            sheet, on what is the only route to the page there. */}
+        <Link
           href={`/goal/${goal.id}`}
           data-testid="goal-open-page"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] transition-colors"
         >
           Open as page
           <ArrowUpRight className="size-3" aria-hidden />
-        </a>
+        </Link>
       </div>
 
       <IdentityRow

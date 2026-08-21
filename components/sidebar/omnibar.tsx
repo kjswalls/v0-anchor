@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
   Target,
@@ -17,6 +19,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
+import { sortGoalsForDisplay } from '@/lib/goals';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -88,6 +91,7 @@ export function Omnibar({
     programs,
     goals,
   } = usePlannerStore();
+  const router = useRouter();
   // Today, not selectedDate — the omnibar carries no date of its own.
   const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const searchTodayStr = toDateStr(new Date(), searchTz);
@@ -203,10 +207,18 @@ export function Omnibar({
    * `goal` would collide with a custom item type of that name. See searchGoals.
    */
   const goalHits = useMemo(() => {
+    // Same four-mode gate the item results carry. Without it a `/`, `+` or `?`
+    // prefix still ran a substring search — and since a goal's `why` is
+    // paragraph-shaped, prose containing a slash meant pressing `/` could
+    // render a Goals section above the command palette.
+    if (activeCommand || isCommandMode || isAddMode || isChatMode) return [];
     const trimmed = query.trim();
     if (!trimmed) return [];
-    return searchGoals(trimmed, goals).slice(0, 4);
-  }, [query, goals]);
+    // Ended goals sort last inside the cap. They stay findable — searching by
+    // name is how you reach a record — but four achieved goals must not push
+    // the one you are running off the list.
+    return sortGoalsForDisplay(searchGoals(trimmed, goals)).slice(0, 4);
+  }, [query, goals, activeCommand, isCommandMode, isAddMode, isChatMode]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
   const results = useMemo<SearchGroup[]>(() => {
@@ -244,9 +256,19 @@ export function Omnibar({
     }
 
     // Free text: the inline quick-add and Ask Beacon rows below already ARE
-    // those two commands, so drop the duplicates before capping.
+    // those two commands, so drop the duplicates before capping. Per-goal
+    // "Open X" commands go the same way and for the same reason — the Goals
+    // section above is those rows, with the same destination — and leaving both
+    // in also spent one of a capped four slots on a repeat. In COMMAND mode
+    // they stay: the goal channel is gated off there, so the command row is the
+    // only way to reach a goal by typing.
     return matchCommands(trimmed, ctx, { usage })
-      .filter((row) => row.command.id !== 'create.task' && row.command.id !== 'rituals.chat')
+      .filter(
+        (row) =>
+          row.command.id !== 'create.task' &&
+          row.command.id !== 'rituals.chat' &&
+          !row.command.id.startsWith('goal.open.'),
+      )
       .slice(0, ctx.isMobile ? 3 : FREE_TEXT_COMMAND_LIMIT);
   }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
 
@@ -508,7 +530,7 @@ export function Omnibar({
                         data-goal-id={goal.id}
                         onSelect={() => {
                           closeAndClear();
-                          window.location.href = `/goal/${goal.id}`;
+                          router.push(`/goal/${goal.id}`);
                         }}
                       >
                         <Target className="size-4 shrink-0" />

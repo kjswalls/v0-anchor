@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { fetchGoals, goalMemberRows, updateGoal, type GoalMembers } from '@/lib/db';
+import { checkinStanding } from '@/lib/goals';
 import {
   hydrateCustomTypes,
   isCheckinEligible,
@@ -394,5 +395,57 @@ describe('fetchGoals', () => {
       }),
     };
     expect(await fetchGoals(U, client)).toBeNull();
+  });
+});
+
+describe('check-in standing', () => {
+  const weekly = (over: Partial<Extract<Item, { type: 'task' }>> = {}): Item =>
+    task({ id: 'c1', title: 'Chinese check-in', repeatFrequency: 'daily', ...over });
+
+  const goalWith = (checkinIds: string[]) => ({
+    id: 'g1',
+    name: 'Learn Chinese',
+    state: 'active' as const,
+    memberIds: [],
+    milestoneIds: [],
+    checkinIds,
+  });
+
+  it('walks calendar days in the USER’s zone, not the runtime’s', () => {
+    // The defect this replaced built `new Date(todayStr + 'T12:00:00')` — which
+    // parses in the RUNTIME's zone — and read each day back through the user's.
+    // More than 12h east of the server, offset 0 already formatted as tomorrow,
+    // so today's occurrence was never probed: on a weekly cadence the page
+    // reported NEXT WEEK for a check-in due now.
+    const items = new Map<string, Item>([['c1', weekly()]]);
+    const standing = checkinStanding(goalWith(['c1']), items, '2026-08-21', 'Pacific/Auckland');
+    expect(standing.nextDue).toBe('2026-08-21');
+    expect(standing.dueToday).toBe(true);
+  });
+
+  it('treats a SKIPPED occurrence as answered, not as still due', () => {
+    // A skip is the other per-date terminal mark a recurring item carries.
+    // Counting only completion made the page say "Due today" for an occurrence
+    // the user had struck off the grid an hour earlier.
+    const items = new Map<string, Item>([
+      ['c1', weekly({ skippedDates: ['2026-08-21'] })],
+    ]);
+    const standing = checkinStanding(goalWith(['c1']), items, '2026-08-21', 'UTC');
+    expect(standing.nextDue).toBe('2026-08-22');
+    expect(standing.dueToday).toBe(false);
+  });
+
+  it('reports the last completed occurrence, and nothing when there is none', () => {
+    const done = new Map<string, Item>([
+      ['c1', weekly({ completedDates: ['2026-08-14', '2026-08-07'] })],
+    ]);
+    expect(checkinStanding(goalWith(['c1']), done, '2026-08-21', 'UTC').lastDone).toBe('2026-08-14');
+    const fresh = new Map<string, Item>([['c1', weekly()]]);
+    expect(checkinStanding(goalWith(['c1']), fresh, '2026-08-21', 'UTC').lastDone).toBeNull();
+  });
+
+  it('is empty for a goal with no check-in', () => {
+    const standing = checkinStanding(goalWith([]), new Map(), '2026-08-21', 'UTC');
+    expect(standing).toEqual({ item: null, nextDue: null, lastDone: null, dueToday: false });
   });
 });

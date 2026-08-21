@@ -1,5 +1,10 @@
 import { getItemTypeConfig, itemTypeName } from './item-registry';
-import { isCompletedOnDate, isRecurring, shouldShowOnDate, toDateStr } from './recurrence';
+import {
+  isCompletedOnDate,
+  isRecurring,
+  isSkippedOnDate,
+  shouldShowOnDate,
+} from './recurrence';
 import { toDateOnly } from './overdue';
 import type { Goal, GoalRole, Item } from './planner-types';
 
@@ -15,6 +20,12 @@ import type { Goal, GoalRole, Item } from './planner-types';
  * Pure and store-free by construction: everything takes the items it needs.
  * See memory/plans/long-term-goals.md.
  */
+
+/** `2026-08-21` + 3 → `2026-08-24`, in pure calendar terms. */
+function addDaysToDateStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
 
 /* ── membership ───────────────────────────────────────────────────────────── */
 
@@ -46,10 +57,21 @@ export interface ItemGoalRole {
  * `includeEnded` where the question is "what did this item ever serve" (the
  * item dialog's Ended divider), never where it is "what is this item doing".
  */
+let cachedIndexGoals: readonly Goal[] | null = null;
+let cachedIndexEnded = false;
+let cachedIndex: Map<string, ItemGoalRole[]> = new Map();
+
 export function goalRolesByItem(
   goals: readonly Goal[],
   { includeEnded = false }: { includeEnded?: boolean } = {},
 ): Map<string, ItemGoalRole[]> {
+  // Memoized on the goals array's identity, so the docblock's "built once and
+  // handed down" is true even when the caller is a row that cannot be handed
+  // anything. Every row in a week grid asks this on mount; without the cache
+  // that is N full index builds, which measured at 34ms for a realistic
+  // two-year account and grows with both goals and rows.
+  if (goals === cachedIndexGoals && includeEnded === cachedIndexEnded) return cachedIndex;
+
   const index = new Map<string, ItemGoalRole[]>();
   for (const goal of goals) {
     if (!includeEnded && goal.state !== 'active') continue;
@@ -60,6 +82,9 @@ export function goalRolesByItem(
       else index.set(itemId, [entry]);
     }
   }
+  cachedIndexGoals = goals;
+  cachedIndexEnded = includeEnded;
+  cachedIndex = index;
   return index;
 }
 
@@ -91,8 +116,15 @@ export interface GoalProgress {
   fraction: number | null;
 }
 
-/** Has this one-shot item reached its type's terminal status? */
-function isAchieved(item: Item): boolean {
+/**
+ * Has this one-shot item reached its type's terminal status?
+ *
+ * Exported because the timeline needs the same question, and this module's
+ * header promises that no surface re-derives: a copy would let the timeline
+ * render a checkpoint as still ahead while the fraction above it counted the
+ * same checkpoint as done.
+ */
+export function isAchieved(item: Item): boolean {
   return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
 }
 
@@ -217,14 +249,25 @@ export function checkinStanding(
   const completed: string[] = ('completedDates' in item ? item.completedDates : undefined) ?? [];
   const lastDone = completed.length > 0 ? [...completed].sort().at(-1)! : null;
 
+  // Walked in DATE-STRING space, never by constructing a Date and reading it
+  // back through the user's zone. That round trip was wrong by a whole
+  // occurrence, not a day: `new Date('yyyy-MM-ddT12:00:00')` parses in the
+  // RUNTIME's zone, so for a user more than 12h east of the server, offset 0
+  // already formatted as tomorrow — today's occurrence was never probed, and on
+  // a weekly cadence the page reported next week for a check-in due now.
+  // `todayStr` already arrives resolved in the user's zone; incrementing it
+  // arithmetically keeps it that way. Same reasoning as lib/overdue.ts's
+  // Date.UTC day math.
   let nextDue: string | null = null;
-  const start = new Date(`${toDateOnly(todayStr)}T12:00:00`);
   for (let offset = 0; offset < 35; offset += 1) {
-    const day = new Date(start);
-    day.setDate(day.getDate() + offset);
-    const dateStr = toDateStr(day, userTimezone);
+    const dateStr = addDaysToDateStr(toDateOnly(todayStr), offset);
     if (!shouldShowOnDate(item, dateStr, userTimezone)) continue;
+    // Completed AND skipped. A skip is the other per-date terminal mark a
+    // recurring item can carry — "not this one" — so treating only completion
+    // as answered made the page say "Due today" for an occurrence the user had
+    // explicitly struck off the grid an hour earlier.
     if (isCompletedOnDate(item, dateStr)) continue;
+    if (isSkippedOnDate(item, dateStr)) continue;
     nextDue = dateStr;
     break;
   }

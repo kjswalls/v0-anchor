@@ -144,14 +144,6 @@ const GROUP_LIMIT_DEFAULT = 4;
 const TOTAL_LIMIT = 12;
 
 /**
- * Splits a result set into one section per item type, in registry order
- * (built-ins first, then custom types as the user ordered them).
- *
- * Items whose type is no longer in the registry — a type deleted while its
- * items remain — keep their own section at the end rather than disappearing;
- * getItemTypeConfig falls back to a template for the heading.
- */
-/**
  * Goals, as a channel BESIDE the item groups rather than a group inside them.
  *
  * `groupResults` is typed to `Item`s, keyed by item TYPE, and its rows are
@@ -162,17 +154,31 @@ const TOTAL_LIMIT = 12;
  *
  * Text-only, deliberately: the search grammar's filters (`type:`, `project:`,
  * `priority:`) are all questions about items, and answering them with goals
- * would mean inventing a meaning for "goals with high priority".
+ * would mean inventing a meaning for "goals with high priority". A query that
+ * carries ONE of them and nothing else returns no goals at all, so `type:task`
+ * does not list goals above the task section it asked for.
+ *
+ * Matches the NAME only. Matching `why` as well looked generous and read as a
+ * bug: the row renders the name, so a hit inside a three-sentence motivation
+ * paragraph appeared as a result with no visible reason to be there. The item
+ * rows can match on context because they RENDER their container beside the
+ * title; this row has nowhere to show it.
  */
 export function searchGoals(raw: string, goals: readonly Goal[]): Goal[] {
   const query = parseSearchQuery(raw);
   const text = query.text.trim().toLowerCase();
   if (!text) return [];
-  return goals.filter(
-    (goal) =>
-      goal.name.toLowerCase().includes(text) || (goal.why ?? '').toLowerCase().includes(text),
-  );
+  return goals.filter((goal) => goal.name.toLowerCase().includes(text));
 }
+
+/**
+ * Splits a result set into one section per item type, in registry order
+ * (built-ins first, then custom types as the user ordered them).
+ *
+ * Items whose type is no longer in the registry — a type deleted while its
+ * items remain — keep their own section at the end rather than disappearing;
+ * getItemTypeConfig falls back to a template for the heading.
+ */
 
 export function groupResults(results: SearchResults): SearchGroup[] {
   const byType = new Map<string, Item[]>();

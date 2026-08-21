@@ -1,11 +1,12 @@
 'use client';
 
-import { Flag, Moon, Repeat, Target } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarClock, Flag, Moon, Target } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { goalProgress, isGoalActive, nextMilestone, timeElapsed } from '@/lib/goals';
+import { goalProgress, isAchieved, isGoalActive, nextMilestone, timeElapsed } from '@/lib/goals';
 import { formatShort, useToday } from '@/lib/collections';
 import { toDateOnly } from '@/lib/overdue';
 import { cn } from '@/lib/utils';
@@ -77,9 +78,16 @@ export function GoalProgressTrack({
           style={{ width: `${pct}%` }}
         />
         {elapsed !== null && (
+          // `translateX(-100%)` past the far end, or the 1px span sits at
+          // [100%, 100%+1px] — entirely outside the track's overflow-hidden.
+          // timeElapsed pins at exactly 1 from the target date onward, so the
+          // marker vanished precisely when the ahead/behind read matters most.
           <span
             className="bg-foreground/35 absolute inset-y-0 w-px"
-            style={{ left: `${Math.round(elapsed * 100)}%` }}
+            style={{
+              left: `${Math.round(elapsed * 100)}%`,
+              transform: elapsed >= 0.99 ? 'translateX(-100%)' : undefined,
+            }}
             data-testid="goal-time-marker"
             aria-hidden
           />
@@ -113,7 +121,7 @@ function useSuppression() {
     suppressionReason(item, todayStr, { userTimezone: tz, routines, programs });
 }
 
-function HiddenNote({ item }: { item: Item }) {
+export function GoalMemberNote({ item }: { item: Item }) {
   const reasonFor = useSuppression();
   const reason = reasonFor(item);
   if (!reason) return null;
@@ -134,10 +142,17 @@ type MilestoneState = 'achieved' | 'next' | 'overdue' | 'dropped' | 'ahead';
 
 function milestoneState(item: Item, isNext: boolean, todayStr: string): MilestoneState {
   if (item.status === 'cancelled') return 'dropped';
-  if (item.status === getItemTypeConfig(itemTypeName(item)).doneStatus) return 'achieved';
+  if (isAchieved(item)) return 'achieved';
+  // `next` OUTRANKS `overdue`, which is the opposite of the first version and
+  // the difference between a timeline that points somewhere and one that does
+  // not. The earliest open milestone of a goal that has slipped is BOTH — and
+  // ranking overdue first meant no row was highlighted at all on exactly the
+  // goals where "what now?" is the question. Lateness still shows, in the
+  // caption.
+  if (isNext) return 'next';
   const date = 'startDate' in item && item.startDate ? toDateOnly(item.startDate) : null;
   if (date && date < toDateOnly(todayStr)) return 'overdue';
-  return isNext ? 'next' : 'ahead';
+  return 'ahead';
 }
 
 /**
@@ -155,9 +170,22 @@ function milestoneState(item: Item, isNext: boolean, todayStr: string): Mileston
 export function MilestoneTimeline({ goal, itemsById }: { goal: Goal; itemsById: Map<string, Item> }) {
   const { todayStr } = useToday();
   const next = nextMilestone(goal, itemsById);
+  // Ordered the way `nextMilestone` orders them — dated first, by date, then
+  // the undated in their stored sequence. Rendering the raw membership order
+  // instead made the dates jump around under a heading that claims they are in
+  // the order they are meant to happen, and dropped the "next up" pip into the
+  // middle of the list.
   const rows = goal.milestoneIds
     .map((id) => itemsById.get(id))
-    .filter((i): i is Item => !!i);
+    .filter((i): i is Item => !!i)
+    .sort((a, b) => {
+      const da = 'startDate' in a && a.startDate ? toDateOnly(a.startDate) : null;
+      const db = 'startDate' in b && b.startDate ? toDateOnly(b.startDate) : null;
+      if (da && db) return da < db ? -1 : da > db ? 1 : 0;
+      if (da) return -1;
+      if (db) return 1;
+      return 0;
+    });
 
   if (rows.length === 0) {
     return (
@@ -173,6 +201,7 @@ export function MilestoneTimeline({ goal, itemsById }: { goal: Goal; itemsById: 
       {rows.map((item) => {
         const state = milestoneState(item, item.id === next?.id, todayStr);
         const date = 'startDate' in item ? item.startDate : undefined;
+        const late = !!date && toDateOnly(date) < toDateOnly(todayStr);
         return (
           <li
             key={item.id}
@@ -193,26 +222,35 @@ export function MilestoneTimeline({ goal, itemsById }: { goal: Goal; itemsById: 
               aria-hidden
             />
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span
+              {/* A link, because an undated checkpoint has to be reachable from
+                  here. Inline creation deliberately leaves a milestone without
+                  a date, and before this the goal offered no route at all to
+                  giving it one — the timeline said "No date yet" and could not
+                  be clicked. */}
+              <Link
+                href={`/item/${item.id}`}
                 className={cn(
-                  'text-sm',
+                  'hover:text-foreground text-sm transition-colors',
                   state === 'achieved' && 'text-muted-foreground',
                   state === 'dropped' && 'text-muted-foreground',
                   state === 'next' && 'font-medium',
                 )}
               >
                 {item.title}
-              </span>
+              </Link>
               <span className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-[11px]">
                 {date ? formatShort(date) : 'No date yet'}
                 {state === 'achieved' && <span>· reached</span>}
                 {state === 'next' && <span>· next up</span>}
                 {/* "Still ahead of you", not "Overdue". Same information — the
                     date is right there — in the register the rest of this app
-                    uses for work that has slipped. */}
-                {state === 'overdue' && <span>· still ahead of you</span>}
+                    uses for work that has slipped. Rendered for the NEXT row
+                    too when it is late, since `next` now outranks `overdue`. */}
+                {(state === 'overdue' || (state === 'next' && late)) && (
+                  <span>· still ahead of you</span>
+                )}
                 {state === 'dropped' && <span>· dropped</span>}
-                <HiddenNote item={item} />
+                <GoalMemberNote item={item} />
               </span>
             </span>
           </li>
@@ -261,7 +299,7 @@ export function GoalMemberGroups({
               <span key={item.id} className="flex items-center gap-2 text-sm">
                 <CategoryIcon glyph={config.glyph} name={typeName} className="size-3.5 shrink-0" />
                 <span className="truncate">{item.title}</span>
-                <HiddenNote item={item} />
+                <GoalMemberNote item={item} />
               </span>
             ))}
           </div>
@@ -303,12 +341,12 @@ export function GoalSummary({ goal, itemsById }: { goal: Goal; itemsById: Map<st
         )}
         {days !== null && (
           <span className="inline-flex items-center gap-1.5">
-            <Repeat className="size-3.5" aria-hidden />
+            <CalendarClock className="size-3.5" aria-hidden />
             {days > 0
-              ? `${days} days to ${formatShort(goal.targetOn!)}`
+              ? `${days} ${days === 1 ? 'day' : 'days'} to ${formatShort(goal.targetOn!)}`
               : days === 0
-                ? `target is today`
-                : `${Math.abs(days)} days past ${formatShort(goal.targetOn!)}`}
+                ? 'target is today'
+                : `${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'} past ${formatShort(goal.targetOn!)}`}
           </span>
         )}
       </div>

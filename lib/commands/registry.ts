@@ -1287,8 +1287,14 @@ const goalCommands: CommandProvider = () => {
           group: 'items',
           icon: Target,
           keywords: `goal ${goal.name} milestone progress open`,
-          run: () => {
-            window.location.href = `/goal/${goal.id}`;
+          // Client navigation, with the same fallback app.settings uses. A
+          // hard load would tear down the hydrated store and re-run every
+          // fetch, discarding the undo stack and any in-flight write — for a
+          // move between two sibling client routes.
+          run: (ctx) => {
+            const href = `/goal/${goal.id}`;
+            if (ctx.navigate) ctx.navigate(href);
+            else if (typeof window !== 'undefined') window.location.assign(href);
           },
         }) satisfies Command,
     );

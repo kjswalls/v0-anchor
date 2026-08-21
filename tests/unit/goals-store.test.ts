@@ -449,10 +449,12 @@ describe('Phase 2 — the goal surface', () => {
     expect(db.updateGoal).not.toHaveBeenCalled();
   });
 
-  it('creates a milestone and links it in one gesture, bucketed so it renders', () => {
-    // timeBucket is load-bearing: deriveDayItems drops a bucketless task from
-    // every bucket, so an unbucketed milestone would be invisible on its own
-    // target day and sit in the braindump until it went past due.
+  it('creates a milestone that is findable — undated and UNBUCKETED', () => {
+    // The first version bucketed it, on reasoning that was exactly backwards.
+    // deriveDayItems tests startDate before it looks at a bucket, so a bucket
+    // buys an undated item nothing on a day column — while the braindump
+    // excludes on `isScheduled || timeBucket`. Bucketing therefore removed it
+    // from the only list undated work lives in and added it to none.
     usePlannerStore.setState({ goals: [goal()], items: [] } as never);
     usePlannerStore.getState().addTask(
       {
@@ -460,7 +462,6 @@ describe('Phase 2 — the goal surface', () => {
         status: 'pending',
         isScheduled: false,
         order: 0,
-        timeBucket: 'anytime',
         completedDates: [],
         skippedDates: [],
       } as never,
@@ -468,7 +469,14 @@ describe('Phase 2 — the goal surface', () => {
     );
     const g = usePlannerStore.getState().goals[0];
     expect(g.milestoneIds).toHaveLength(1);
-    const created = usePlannerStore.getState().items[0] as { timeBucket?: string };
-    expect(created.timeBucket).toBe('anytime');
+    const created = usePlannerStore.getState().items[0] as {
+      timeBucket?: string;
+      isScheduled?: boolean;
+      startDate?: string;
+    };
+    // Braindump-visible: no bucket, not scheduled, no date.
+    expect(created.timeBucket).toBeUndefined();
+    expect(created.isScheduled).toBe(false);
+    expect(created.startDate).toBeUndefined();
   });
 });
