@@ -33,7 +33,14 @@ import {
   validateParentItemId,
 } from './db'
 import { resolvePauseWrite, type Pausable } from './active'
-import { isCheckinEligible, isCollectible, isMilestoneEligible, isPausable } from './item-registry'
+import {
+  getItemTypeConfig,
+  isCheckinEligible,
+  isCollectible,
+  isMilestoneEligible,
+  isPausable,
+  itemTypeName,
+} from './item-registry'
 import { toDateStr } from './recurrence'
 import { resolveGoalStateWrite, roleStillValid } from './goals'
 import type {
@@ -323,6 +330,7 @@ async function keepTrashedMembers(
   ownerId: string,
   desired: string[],
   role?: GoalRole,
+  claimedElsewhere?: ReadonlySet<string>,
 ): Promise<string[]> {
   let query = client
     .from(join.table)
@@ -339,7 +347,12 @@ async function keepTrashedMembers(
   )
 
   const asked = new Set(desired)
-  const candidates = current.filter((id) => !asked.has(id))
+  const candidates = current.filter(
+    // An id the SAME body hands to another role array is being MOVED, not
+    // dropped — re-adding it here would put it in two arrays at once, which
+    // goalMemberRows refuses outright. See keepTrashedGoalMembers.
+    (id) => !asked.has(id) && !claimedElsewhere?.has(id),
+  )
   // Nothing is being dropped, so nothing can be dropped WRONGLY — skip the
   // liveness read entirely on the common path (an add, or an unchanged set).
   if (candidates.length === 0) return desired
@@ -352,7 +365,10 @@ async function keepTrashedMembers(
     .in('id', candidates)
   if (liveError) throw liveError
   const liveIds = new Set(((live ?? []) as { id: string }[]).map((r) => r.id))
-  return withTrashedMembersKept(desired, current, liveIds)
+  // `candidates`, not `current`: the exclusion above has already removed the
+  // ids this body is moving to another role, and withTrashedMembersKept would
+  // otherwise re-derive them straight back in.
+  return withTrashedMembersKept(desired, candidates, liveIds)
 }
 
 /**
@@ -512,11 +528,12 @@ export function makeAgentItemHandlers(type: KnownItemType) {
       return errorResponse(err)
     }
 
-    // Only recurrence can invalidate a role, so only a patch that touches it
-    // pays for the scan — `in`, not truthiness, because CLEARING the field is
-    // exactly the edit that turns a check-in back into a one-shot task. The
-    // store's updateItemAction gates on the same key for the same reason.
-    if ('repeatFrequency' in fields) {
+    // Only two fields can invalidate a role, so only a patch touching one pays
+    // for the scan — `in`, not truthiness, because CLEARING either is exactly
+    // the edit that does it: dropping repeatFrequency turns a check-in back
+    // into a one-shot task, and setting parentItemId turns a milestone into a
+    // subtask that no longer appears in the past-due machinery at all.
+    if ('repeatFrequency' in fields || 'parentItemId' in fields) {
       try {
         const demoted = await demoteInvalidGoalRoles(auth.serviceClient, auth.userId, id)
         if (demoted.length > 0) return NextResponse.json({ success: true, demoted })
@@ -651,12 +668,17 @@ async function verifyContainerOwnership(
   id: string,
   userId: string,
 ): Promise<boolean> {
-  const { data } = await client
+  const { data, error } = await client
     .from(table)
     .select('user_id')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle()
+  // A dropped error is how a missing table (PGRST205, the whole pre-migration
+  // deploy window) or a transient PostgREST failure becomes an indistinguishable
+  // 404 — the one status that tells a caller to stop retrying and forget the id.
+  // Thrown, it reaches errorResponse and is reported as the server fault it is.
+  if (error) throw error
   return !!data && data.user_id === userId
 }
 
@@ -886,11 +908,22 @@ interface RoleRow extends MemberRow {
   repeat_frequency: string | null
 }
 
-/** The registry shape a role predicate needs — capability plus recurrence. */
+/**
+ * The registry shape a role predicate needs — capability plus recurrence.
+ *
+ * `repeat_frequency` falls back to the TYPE's default rather than to undefined.
+ * The column is nullable and an agent-created habit leaves it NULL, but every
+ * reader in the app defaults a habit to daily (lib/db.ts's row mapper does it
+ * explicitly), so a NULL habit recurs on every surface the user sees. Read raw,
+ * it would be refused as a check-in — "this item does not repeat" — about an
+ * item the console's own picker offers as eligible.
+ */
 function roleShape(row: RoleRow): Item {
+  const shape = capabilityShape(row) as unknown as Record<string, unknown>
+  const fallback = getItemTypeConfig(itemTypeName(shape as unknown as Item)).defaultFrequency
   return {
-    ...(capabilityShape(row) as unknown as Record<string, unknown>),
-    repeatFrequency: row.repeat_frequency ?? undefined,
+    ...shape,
+    repeatFrequency: row.repeat_frequency ?? fallback,
   } as unknown as Item
 }
 
@@ -957,15 +990,27 @@ async function validateGoalMembers(
     if (!isCheckinEligible(roleShape(byId.get(id)!))) {
       return (
         `item ${id} cannot be a check-in: a check-in is a recurring review, and ` +
-        `this item does not repeat. Set a repeatFrequency on it first, or send it ` +
-        `in milestoneIds if it is a one-shot target.`
+        `this item does not repeat (or is a type that cannot). If it is a task ` +
+        `or a habit, set a repeatFrequency on it first; otherwise send it in ` +
+        `milestoneIds if it is a one-shot target, or memberIds if it is ordinary ` +
+        `work the goal contains.`
       )
     }
   }
   return null
 }
 
-/** Per-role trash keeping across whichever arrays the body carries. */
+/**
+ * Per-role trash keeping across whichever arrays the body carries.
+ *
+ * The three arrays are replaced independently, but they write ONE join table,
+ * so the keeping cannot be decided one array at a time. Moving a TRASHED
+ * milestone to plain membership sends `{milestoneIds: [], memberIds: [X]}`: the
+ * milestone pass sees X dropped and, finding it trashed, dutifully puts it
+ * back — and goalMemberRows then refuses the body for naming X twice, with a
+ * 500 the caller has no way to avoid. Every id the body names anywhere is
+ * therefore off-limits to the keeping in every OTHER array.
+ */
 async function keepTrashedGoalMembers(
   client: DbClient,
   userId: string,
@@ -976,6 +1021,9 @@ async function keepTrashedGoalMembers(
   for (const { key, role } of GOAL_ROLE_KEYS) {
     const desired = body[key]
     if (!desired) continue
+    const claimedElsewhere = new Set(
+      GOAL_ROLE_KEYS.filter((k) => k.key !== key).flatMap((k) => body[k.key] ?? []),
+    )
     kept[key] = await keepTrashedMembers(
       client,
       userId,
@@ -983,6 +1031,7 @@ async function keepTrashedGoalMembers(
       goalId,
       desired,
       role,
+      claimedElsewhere,
     )
   }
   return kept
@@ -1002,12 +1051,14 @@ async function goalStatePatch(
   id: string,
   state: Goal['state'],
 ): Promise<Partial<Goal> | { error: string }> {
-  const { data } = await client
+  const { data, error } = await client
     .from('goals')
     .select('state, achieved_at')
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle()
+  // Same reason as verifyContainerOwnership: a failed READ is not a missing row.
+  if (error) throw error
   if (!data) return { error: 'Not found' }
   const row = data as { state: Goal['state']; achieved_at: string | null }
   const current = { state: row.state, achievedAt: row.achieved_at ?? undefined } as Goal
@@ -1046,15 +1097,14 @@ async function demoteInvalidGoalRoles(
 
   const { data: item, error: itemError } = await client
     .from('items')
-    .select('repeat_frequency')
+    .select('id, type, parent_item_id, repeat_frequency')
     .eq('id', itemId)
     .eq('user_id', userId)
     .maybeSingle()
   if (itemError) throw itemError
   if (!item) return []
-  const shape = {
-    repeatFrequency: (item as { repeat_frequency: string | null }).repeat_frequency ?? undefined,
-  } as unknown as Item
+  // The same shape the GRANT predicates are asked about, so the two agree.
+  const shape = roleShape(item as RoleRow)
 
   // Snapshotted BEFORE the write: the receipt names the role being taken away,
   // and reading it back off the row afterwards would report 'member' every time.
@@ -1067,7 +1117,11 @@ async function demoteInvalidGoalRoles(
   // role change, never an insert that could collide with a plain membership.
   const { error: writeError } = await client
     .from('goal_items')
-    .update({ role: 'member' })
+    // `sort_order` is cleared with the role. goalMemberRows emits it as null
+    // off the member array for a stated reason — a demoted milestone that kept
+    // its old ordinal sorts ahead of every real member in the array fetchGoals
+    // hands back, and nothing later would reset it.
+    .update({ role: 'member', sort_order: null })
     .eq('user_id', userId)
     .eq('item_id', itemId)
     .in('goal_id', invalid.map((r) => r.goalId))
@@ -1109,8 +1163,11 @@ export function makeGoalCreateHandler() {
       if (problem) return badRequest(problem)
 
       const entity: Record<string, unknown> = {
-        // The db layer reads .length on each array before deciding to
-        // reconcile, and Goal's arrays are required app-side.
+        // Goal's three arrays are required app-side, and the 201 echoes this
+        // entity back — a create that omitted them would hand the caller a goal
+        // object missing the fields every reader indexes. (goalMemberRows skips
+        // an absent array outright, so this is about the echo and the type, not
+        // about making the reconcile fire.)
         memberIds: [],
         milestoneIds: [],
         checkinIds: [],

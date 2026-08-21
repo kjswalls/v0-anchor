@@ -2,7 +2,7 @@ import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
 import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
-import { goalProgress, goalRolesByItem, nextMilestone } from './goals'
+import { goalProgress, goalRolesByItem, nextMilestoneVisible } from './goals'
 import type { Item, Project, HabitGroupType, Routine, Program, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
@@ -153,8 +153,13 @@ export function buildAnchorContext(state: {
     for (const goal of active) {
       const { achieved, total } = goalProgress(goal, itemsById)
       const parts: string[] = [total > 0 ? `${achieved}/${total} milestones` : 'no milestones yet']
-      const next = nextMilestone(goal, itemsById)
-      if (next && !suppressedIds.has(next.id)) {
+      // ADVANCE past a suppressed milestone rather than dropping the line.
+      // Skipping the candidate and taking the next one is what the plan asks
+      // for; dropping it left a goal reading "0/2 milestones" with no name for
+      // either, and a future-dated second milestone appears in no other section
+      // — so Beacon was told the goal exists and given nothing to say about it.
+      const next = nextMilestoneVisible(goal, itemsById, suppressedIds)
+      if (next) {
         const when = 'startDate' in next && next.startDate ? ` by ${next.startDate}` : ''
         parts.push(`next: ${next.title}${when}`)
       }
@@ -166,7 +171,11 @@ export function buildAnchorContext(state: {
       if (goal.why) goalLines.push(`  why: ${goal.why}`)
     }
     if (goalLines.length > 0) {
-      lines.push('### Goals')
+      // NOT '### Goals'. A user may define a custom item TYPE whose plural is
+      // "Goals" — the registry renders one section per hydrated type as
+      // `### ${labelPlural}` — and two identical headings in one prompt, one
+      // listing items and one listing containers, is worse than a longer name.
+      lines.push('### Long-term goals')
       lines.push(
         'What the work is FOR. A goal hides nothing and is never overdue — do ' +
           'not treat a missed milestone as a failure or suggest abandoning one.'

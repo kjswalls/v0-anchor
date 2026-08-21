@@ -842,6 +842,88 @@ table as ONE set. Four rules, each closing a found defect:
   cannot catch a PostgREST behaviour nobody modelled. The first live call should
   be a create-with-membership, since that is the path where a wrong column name
   would be silent.
+  **Phase 4's review** (five lenses: refusals, handlers-vs-db, the demotion,
+  the two prompts, the tests).
+
+  **Two live bugs, each reproduced before it was fixed.** Moving a TRASHED item
+  between roles was an unavoidable 500: the arrays are replaced independently
+  but write ONE join table, so `{milestoneIds: [], memberIds: [X]}` had the
+  milestone pass put the trashed X back and `goalMemberRows` then refused the
+  body for naming X twice. The request is legal by every stated contract — the
+  context publishes the id, the overlap refine passes, validation counts trashed
+  items as existing — and the caller had no way to succeed short of the 30-day
+  purge. The keeping is cross-array aware now. And the demotion left a stale
+  `sort_order`, which `goalMemberRows`' own docblock forbids by name ("a demoted
+  milestone that kept its old sort_order would perturb the order its new array
+  comes back in"): three lenses found it independently.
+
+  **The refusal set had a fourth hole, found by two lenses.** `itemIds` is the
+  membership key on both other containers, goals are the only container that
+  renamed it, and membership is the commonest goal write — so a model asked to
+  add work to a goal reaches for it, Zod strips it, `updateGoal` finds an empty
+  patch and issues no statement, and the caller is told 200. Exactly the
+  bug class the plan carries `paused` to prevent. `itemIds`, `routineIds` and
+  `endsOn` are now refused with a pointer at the right key. The plugin's
+  `itemIds` was the one parameter with no kind qualifier, and its allowlist
+  dropped stray keys silently; it refuses them instead.
+
+  **Decision 3's predicate was weaker than the grant predicate.** Making a
+  milestone a SUBTASK strands it just as thoroughly as making it recurring — it
+  leaves the tasks projection, so it drops off the grid and out of
+  `selectOverdue` (decision 2's past-due promise quietly stops holding) while
+  `goalProgress` goes on counting it. `roleStillValid` asks the grant predicates
+  now, and the agent gate widened to `parentItemId`.
+
+  **The prompts.** Beacon dropped the next-milestone line when the candidate was
+  suppressed instead of ADVANCING to the next visible one, leaving a goal with a
+  milestone count and no milestone; the heading is `### Long-term goals` because
+  a user may define a custom item type whose plural is "Goals" and the registry
+  renders one section per type. The plugin marked every completed and cancelled
+  milestone "overdue" — a mature goal that is going well rendered as a wall of
+  late work — and listed suppressed items with no annotation, directly under a
+  "Set aside … do not suggest these" block. Both fixed; `nextMilestoneVisible`
+  is the shared derivation.
+
+  **The test fake was the sharpest finding.** It was a JavaScript object store
+  with filter syntax: no projection, no column check, no NOT NULL, no unique
+  key, and `.order()` a no-op — so a wrong `onConflict` (42P10 on every
+  membership write), a `startsOn`/`starts_on` typo, a dropped `user_id`, and the
+  reconcile's historical read-a-column-it-never-selected bug were all green.
+  Worse, it was measurably weaker than the fake two files away in
+  `goals.test.ts`, whose docblock names that last bug as the reason it projects.
+  Rebuilt with declared per-table schemas and real ordering; all four mutations
+  now fail. Also added: a second goal in every PATCH fixture (cross-goal
+  scoping was structurally unreachable with one), real uuids for goal ids, a
+  query log so "does not scan" asserts the scan rather than the outcome, a
+  round-trip through `fetchGoals` (every other assertion read `db.goal_items`
+  directly, which is how the stale ordinal hid), and the subtask and
+  duplicate-id paths.
+
+  **And a false claim I wrote.** `agent-goal-write.test.ts`'s header said the
+  handler "is exercised live against a running server, per the plan's Phase 4
+  gate" — copied from `agent-pause-write.test.ts` and never updated. It flatly
+  contradicted the routes file and this ledger. Corrected. `ai-context-goals.test.ts`
+  (10) closes the gate this section named and Phase 4 missed: the byte-pinned
+  context tests verified the goals section only by never reaching it.
+  Two dropped `error` destructures (`verifyContainerOwnership`, `goalStatePatch`)
+  turned a missing table into a silent 404; they throw now.
+
+  **Recorded rather than fixed.** The store's demotion scans live goals only,
+  so trashing a goal, making its milestone recurring, and restoring inside 30
+  days brings back a recurring milestone that can never be achieved — the agent
+  path is a superset and handles it; the fix belongs at goal RESTORE and is
+  Phase-1 surface. An agent demotion is invisible to an open tab, and the next
+  UI membership write (which sends all three arrays from memory) reverts it —
+  general agent-vs-open-tab staleness, not specific to roles. The store fires
+  its demotion write BEFORE the item write, so a failed item write strands the
+  role. Nothing re-runs a swallowed demotion. `createGoal`'s compensating delete
+  ignores its own error. There is no agent restore verb for a soft-deleted goal.
+  A subtask can still hold plain membership: dropping it would be a REMOVAL, not
+  a demotion, and removing membership the user did not ask to remove is a bigger
+  promise than this rule makes. **And the published `@anchor-app/types` may be
+  far behind `src` — the plugin's `workspace:*` resolves to whatever was last
+  released, so the plugin-smoke gate ("context parses with the OLD published
+  schema") is still unmet and needs the actual tarball, not a simulated omit.**
 - Each phase gets the house adversarial review before its commit lands.
 
 ## Behavioral invariants to preserve (regression traps)

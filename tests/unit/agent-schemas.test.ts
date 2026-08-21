@@ -269,11 +269,13 @@ describe('AnchorContextResponseSchema (items[] additivity)', () => {
   });
 
   it('a v5 response with goals[] survives a schema that predates them', () => {
-    // The published plugin is at the v4 schema until someone republishes it,
-    // and it safeParses the WHOLE response — so a strict object anywhere on
-    // this path would brick every cached context the moment goals ship, not
-    // just the goals section. Zod strips unknown keys by default; this pins
-    // that the response object is not `.strict()`.
+    // A published plugin carries whatever @anchor-app/types build it was
+    // released with, and it safeParses the WHOLE response — so a strict object
+    // anywhere on this path would brick every cached context the moment goals
+    // ship, not just the goals section. Zod strips unknown keys by default;
+    // this pins that the response object is not `.strict()`. It does NOT prove
+    // the real published build parses a v5 response: that needs the actual
+    // tarball, and the plan's plugin-smoke gate says so.
     const withGoals = {
       ...base,
       schemaVersion: 5,

@@ -778,6 +778,54 @@ const rejectGoalDerivedFields = (
 }
 
 /**
+ * The keys a goal does not have, because the OTHER containers do.
+ *
+ * Same argument as the pause verb, and stronger on every axis. `itemIds` is the
+ * membership key on both routines and programs; goals are the only container
+ * that renamed it; and membership is the commonest goal write there is. A
+ * model asked to "add these tasks to my Learn Chinese goal" reaches for
+ * `itemIds`, Zod strips it, `updateGoal` finds an empty patch and issues no
+ * statement at all — and the caller is told 200 for a write that did nothing.
+ * A refusal that names the right key is the only outcome that ends the loop.
+ *
+ * `endsOn` is the same mistake one field over: a program's range ends, a goal
+ * has a target it may well pass.
+ */
+const rejectForeignContainerKeys = (
+  data: { itemIds?: unknown; routineIds?: unknown; endsOn?: unknown },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.itemIds !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'goals do not have itemIds — membership carries a ROLE. Use memberIds for ' +
+        'ordinary work the goal contains, milestoneIds for one-shot targets, or ' +
+        'checkinIds for a recurring review.',
+      path: ['memberIds'],
+    })
+  }
+  if (data.routineIds !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'goals hold items, not routines. Put the routine in a program, or add the ' +
+        "routine's items to the goal directly.",
+      path: ['memberIds'],
+    })
+  }
+  if (data.endsOn !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'goals have a targetOn, not an endsOn — a target is when it is MEANT to be ' +
+        'done, and passing it does not end the goal.',
+      path: ['targetOn'],
+    })
+  }
+}
+
+/**
  * A goal whose target precedes its start describes a window that never opens.
  * `timeElapsed` returns null for it, so every ahead/behind reading on the goal
  * surface silently disappears while the header still promises a target date.
@@ -831,10 +879,14 @@ const goalShape = {
   memberIds: z.array(z.string().uuid()).optional(),
   milestoneIds: z.array(z.string().uuid()).optional(),
   checkinIds: z.array(z.string().uuid()).optional(),
-  // Carried only to be refused, with a pointer — see rejectGoalDerivedFields.
+  // Carried only to be refused, with a pointer — see rejectGoalDerivedFields
+  // and rejectForeignContainerKeys.
   paused: z.unknown().optional(),
   pausedUntil: z.unknown().optional(),
   achievedAt: z.unknown().optional(),
+  itemIds: z.unknown().optional(),
+  routineIds: z.unknown().optional(),
+  endsOn: z.unknown().optional(),
 }
 
 export const GoalCreateSchema = z
@@ -846,6 +898,7 @@ export const GoalCreateSchema = z
   .superRefine(rejectInvertedGoalWindow)
   .superRefine(rejectOverlappingGoalRoles)
   .superRefine(rejectGoalDerivedFields)
+  .superRefine(rejectForeignContainerKeys)
 
 export const GoalUpdateSchema = z
   .object({
@@ -859,6 +912,7 @@ export const GoalUpdateSchema = z
   .superRefine(rejectInvertedGoalWindow)
   .superRefine(rejectOverlappingGoalRoles)
   .superRefine(rejectGoalDerivedFields)
+  .superRefine(rejectForeignContainerKeys)
 
 // ── API response schemas ───────────────────────────────────────────────────────
 
@@ -895,7 +949,9 @@ export const AnchorContextResponseSchema = z.object({
   // Additive (old clients strip unknown keys). 2 = tasks/habits are
   // projections of the unified items table; 3 = items[] present; 4 = routines[]
   // and programs[] present, so a consumer can explain WHY an item it remembers
-  // is missing from tasks[] instead of concluding it was deleted.
+  // is missing from tasks[] instead of concluding it was deleted; 5 = goals[]
+  // present, so a consumer can say what the work is FOR — progress, the next
+  // milestone, the target — instead of inferring purpose from item titles.
   schemaVersion: z.number().optional(),
 })
 

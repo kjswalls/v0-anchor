@@ -277,7 +277,18 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       params: { kind: string; id: string; paused: boolean; until?: string },
     ) {
       const path = PAUSE_PATHS[params.kind]
-      if (!path) return errorResult(400, `kind must be task, habit, or routine (got "${params.kind}")`)
+      if (!path) {
+        // Goals are the kind a model will actually try to pause, so the refusal
+        // names what to do instead rather than only what is wrong.
+        const hint =
+          params.kind === 'goal'
+            ? " Goals do not pause — they hide nothing. Use anchor_update_collection with state: achieved or abandoned to close one, or put the work in a program to set it aside for a season."
+            : ''
+        return errorResult(
+          400,
+          `kind must be task, habit, or routine (got "${params.kind}").${hint}`,
+        )
+      }
 
       const body: Record<string, unknown> = { paused: params.paused }
       // Sent only when pausing: the API rejects a resume date alongside
@@ -314,7 +325,14 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     parameters: Type.Object({
       kind: Type.String({ description: 'routine | program | goal' }),
       name: Type.String({ description: 'Display name' }),
-      itemIds: Type.Optional(Type.Array(Type.String(), { description: 'Member task/habit UUIDs' })),
+      itemIds: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            'Routines and programs only — member task/habit UUIDs. A GOAL uses ' +
+            'memberIds / milestoneIds / checkinIds instead, because its ' +
+            'membership carries a role.',
+        }),
+      ),
       routineIds: Type.Optional(
         Type.Array(Type.String(), { description: 'Held routine UUIDs (programs only)' }),
       ),
@@ -375,7 +393,11 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       id: Type.String({ description: 'Routine, program or goal UUID' }),
       name: Type.Optional(Type.String()),
       itemIds: Type.Optional(
-        Type.Array(Type.String(), { description: 'FULL replacement member list' }),
+        Type.Array(Type.String(), {
+          description:
+            'Routines and programs only — FULL replacement member list. A GOAL ' +
+            'uses memberIds / milestoneIds / checkinIds instead.',
+        }),
       ),
       routineIds: Type.Optional(
         Type.Array(Type.String(), { description: 'FULL replacement routine list (programs only)' }),
@@ -438,7 +460,13 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       const text = await res.text()
       if (!res.ok) return errorResult(res.status, text)
       markCacheDirty()
-      return textResult(`Deleted — its members are visible again.`)
+      // A goal hid nothing, so nothing became visible — saying otherwise
+      // teaches the mental model the create tool works to prevent.
+      return textResult(
+        params.kind === 'goal'
+          ? 'Deleted — its members are untouched, and its milestones are still ordinary items.'
+          : 'Deleted — its members are visible again.',
+      )
     },
   })
 }
@@ -503,6 +531,24 @@ async function writeCollection(
 
   const { kind, id, ...fields } = params
   const allowed = KIND_KEYS[kind]
+  // Paired with COLLECTION_PATHS above; a kind in one map and not the other
+  // would otherwise crash the tool on `undefined is not iterable`.
+  if (!allowed) return errorResult(500, `no key allowlist for kind "${kind}"`)
+
+  // A key this kind does not have is REFUSED, not dropped. Silently stripping
+  // `itemIds` off a goal write is how a model concludes it added the members it
+  // did not add — the server can no longer refuse what never reaches it.
+  const stray = Object.keys(fields).filter(
+    (k) => (fields as Record<string, unknown>)[k] !== undefined && !allowed.includes(k),
+  )
+  if (stray.length) {
+    const hint =
+      kind === 'goal' && stray.includes('itemIds')
+        ? " A goal's membership carries a role: use memberIds, milestoneIds or checkinIds."
+        : ''
+    return errorResult(400, `${KIND_LABELS[kind]} has no ${stray.join(', ')}.${hint}`)
+  }
+
   const body: Record<string, unknown> = {}
   for (const key of allowed) {
     const value = (fields as Record<string, unknown>)[key]

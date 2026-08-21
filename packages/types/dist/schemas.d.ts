@@ -2449,7 +2449,7 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     endsOn?: string | null | undefined;
     routineIds?: string[] | undefined;
 }>;
-export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
+export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
     /** The motivation line. Rendered on the goal surface and handed to Beacon. */
     why: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     /** Lifecycle. Omitted on create → 'active'. */
@@ -2462,6 +2462,9 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused: z.ZodOptional<z.ZodUnknown>;
     pausedUntil: z.ZodOptional<z.ZodUnknown>;
     achievedAt: z.ZodOptional<z.ZodUnknown>;
+    itemIds: z.ZodOptional<z.ZodUnknown>;
+    routineIds: z.ZodOptional<z.ZodUnknown>;
+    endsOn: z.ZodOptional<z.ZodUnknown>;
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     name: z.ZodString;
     /** icon:<LucideName> token, matching the container convention. */
@@ -2475,9 +2478,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2491,9 +2497,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2507,9 +2516,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2523,9 +2535,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2539,9 +2554,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2555,9 +2573,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2571,9 +2592,12 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2587,9 +2611,50 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: unknown;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: unknown;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2597,7 +2662,7 @@ export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     milestoneIds?: string[] | undefined;
     checkinIds?: string[] | undefined;
 }>;
-export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
+export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
     /** The motivation line. Rendered on the goal surface and handed to Beacon. */
     why: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     /** Lifecycle. Omitted on create → 'active'. */
@@ -2610,6 +2675,9 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused: z.ZodOptional<z.ZodUnknown>;
     pausedUntil: z.ZodOptional<z.ZodUnknown>;
     achievedAt: z.ZodOptional<z.ZodUnknown>;
+    itemIds: z.ZodOptional<z.ZodUnknown>;
+    routineIds: z.ZodOptional<z.ZodUnknown>;
+    endsOn: z.ZodOptional<z.ZodUnknown>;
     name: z.ZodOptional<z.ZodString>;
     /** icon:<LucideName> token, matching the container convention. */
     icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -2621,9 +2689,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2636,9 +2707,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2651,9 +2725,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2666,9 +2743,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2681,9 +2761,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2696,9 +2779,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2711,9 +2797,12 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;
@@ -2726,9 +2815,48 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     paused?: unknown;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    itemIds?: unknown;
     pausedUntil?: unknown;
     state?: "active" | "achieved" | "abandoned" | undefined;
     startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: unknown;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    itemIds?: unknown;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    endsOn?: unknown;
+    routineIds?: unknown;
     why?: string | null | undefined;
     targetOn?: string | null | undefined;
     achievedAt?: unknown;

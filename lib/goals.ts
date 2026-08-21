@@ -1,4 +1,9 @@
-import { getItemTypeConfig, itemTypeName } from './item-registry';
+import {
+  getItemTypeConfig,
+  isCheckinEligible,
+  isMilestoneEligible,
+  itemTypeName,
+} from './item-registry';
 import {
   isCompletedOnDate,
   isRecurring,
@@ -280,6 +285,30 @@ export function checkinStanding(
   };
 }
 
+/**
+ * The next milestone a reader may actually be told to act on.
+ *
+ * `nextMilestone` answers "what is next" about the goal; this answers "what is
+ * next that is not currently hidden", which is the question every PROMPT is
+ * really asking. Naming a suppressed item as next recommends the exact work the
+ * paused/set-aside section forbids in the same breath — two contradictory
+ * instructions in one prompt — while dropping the line entirely leaves a goal
+ * with a milestone count and no milestone. So it advances instead.
+ *
+ * Not used by the UI: the goal surface renders the whole timeline, where a
+ * suppressed checkpoint is visible in context rather than quoted alone.
+ */
+export function nextMilestoneVisible(
+  goal: Goal,
+  itemsById: Map<string, Item>,
+  suppressedIds: ReadonlySet<string>,
+): Item | null {
+  const visible = new Map(
+    [...itemsById].filter(([id]) => !suppressedIds.has(id)),
+  );
+  return nextMilestone(goal, visible);
+}
+
 /* ── lifecycle ────────────────────────────────────────────────────────────── */
 
 /**
@@ -334,10 +363,22 @@ export function sortGoalsForDisplay(goals: readonly Goal[]): Goal[] {
  * Rather than blocking the edit — which would let a goal constrain its members,
  * the one thing goals must never do — the holder demotes to 'member'.
  *
- * 'member' is always valid, so demotion terminates.
+ * The predicate must match the GRANT predicate, not just its recurrence half.
+ * Making a milestone a SUBTASK is the other way to strand one: a subtask leaves
+ * the tasks projection, so it drops off the grid, the braindump, the EOD review
+ * and selectOverdue — decision 2's "being behind on a milestone shows up in the
+ * past-due bar" quietly stops being true — while it stays in items[], so
+ * progress goes on counting it in the denominator. isMilestoneEligible and
+ * isCheckinEligible both start from isCollectible, which excludes subtasks; so
+ * does this.
+ *
+ * 'member' is always valid, so demotion terminates. A subtask arguably should
+ * not hold plain membership either, but that would be a REMOVAL rather than a
+ * demotion, and removing a membership the user did not ask to remove is a
+ * bigger promise than this rule makes. Recorded in the plan instead.
  */
 export function roleStillValid(role: GoalRole, item: Item): boolean {
-  if (role === 'milestone') return !isRecurring(item);
-  if (role === 'checkin') return isRecurring(item);
+  if (role === 'milestone') return isMilestoneEligible(item);
+  if (role === 'checkin') return isCheckinEligible(item);
   return true;
 }

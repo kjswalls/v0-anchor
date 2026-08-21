@@ -9,8 +9,13 @@ import type { Goal, Item } from '@/lib/planner-types';
  * Same split as agent-pause-write.test.ts: Zod decides whether a BODY is
  * coherent on its own, and the resolver decides what a coherent body means
  * against the row it is aimed at. What is tested here is everything the route
- * handler delegates to — the handler itself is a Next route and is exercised
- * live against a running server, per the plan's Phase 4 gate.
+ * handler delegates to; the handlers themselves are covered in
+ * agent-goal-routes.test.ts.
+ *
+ * Neither file meets the plan's Phase 4 gate. That gate is live calls against a
+ * running server, and no goal route in this repository has ever spoken to a
+ * database — see the header of agent-goal-routes.test.ts for what the
+ * substitute does and does not buy.
  */
 
 const NOW = '2026-08-21T12:00:00.000Z';
