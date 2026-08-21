@@ -29,6 +29,17 @@ import { resolveEnabled } from '@/lib/extension-registry';
 interface ExtensionsStore {
   /** False once a fetch proved the user_extensions table isn't deployed. */
   available: boolean;
+  /**
+   * True only once a fetch has actually RESOLVED for the current user.
+   *
+   * `hydratedUserId` cannot answer this: it is stamped synchronously at the
+   * START of hydrate, so it says "this account's fetch is in flight", not "its
+   * values are here". setConfigValue writes the WHOLE config blob for a slug,
+   * built from what the store holds — so a keystroke during that window (or
+   * after a failed hydrate) would upsert a one-key object over a server row
+   * holding four, silently destroying the rest.
+   */
+  configsLoaded: boolean;
   /** Sparse: only slugs the user has actually toggled have entries. */
   enabled: Record<string, boolean>;
   /**
@@ -54,6 +65,7 @@ interface ExtensionsStore {
 
 const INITIAL = {
   available: true,
+  configsLoaded: false,
   enabled: {} as Record<string, boolean>,
   configs: {} as Record<string, Record<string, unknown>>,
   hydratedUserId: null as string | null,
@@ -71,7 +83,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
     // user with no SIGNED_OUT — the morning-store pattern): the previous
     // user's toggles must not answer isEnabled() during the fetch window. A
     // no-op on plain page load, where state is still initial.
-    set({ hydratedUserId: userId, enabled: {}, configs: {}, available: true });
+    set({ hydratedUserId: userId, enabled: {}, configs: {}, available: true, configsLoaded: false });
 
     let rows: Record<string, boolean> | null;
     let configRows: Record<string, Record<string, unknown>> | null;
@@ -96,7 +108,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
     if (get().hydratedUserId !== userId) return;
 
     if (rows === null) {
-      set({ available: false, enabled: {}, configs: {} });
+      set({ available: false, enabled: {}, configs: {}, configsLoaded: false });
     } else {
       // Merge UNDER any local entries: `enabled` was cleared above, so entries
       // present now are exactly the toggles made while the fetch was in flight
@@ -108,7 +120,7 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
         for (const [slug, local] of Object.entries(s.configs)) {
           configs[slug] = { ...(configs[slug] ?? {}), ...local };
         }
-        return { available: true, enabled: { ...rows, ...s.enabled }, configs };
+        return { available: true, configsLoaded: true, enabled: { ...rows, ...s.enabled }, configs };
       });
     }
   },
@@ -127,6 +139,14 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
   setConfigValue: (userId, slug, key, value) => {
     if (!get().available) {
       console.warn('[extensions] setConfigValue ignored — user_extensions table not deployed.');
+      return;
+    }
+    // The write is whole-object, so writing before the server's copy has landed
+    // would replace it with whatever fragment is in memory. The settings page
+    // gates its whole render on hydration, so in practice this only fires when
+    // a hydrate FAILED — exactly the case where the in-memory copy is empty.
+    if (!get().configsLoaded) {
+      console.warn('[extensions] setConfigValue ignored — config has not loaded yet.');
       return;
     }
     // An empty string is DELETION, not storage. Otherwise clearing a field

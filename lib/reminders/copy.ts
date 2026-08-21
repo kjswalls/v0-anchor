@@ -153,11 +153,16 @@ export function spokenLine(nudge: Nudge): string {
 
   const item = nudge.items[0]
   const streak = item?.streak ?? 0
-  // The body already reads as a clause ("you pour your coffee", "7:30 am"), so
-  // it is spoken as one — "Vitamins. After you pour your coffee." Prefixing
-  // "After" only when there is an anchor is what keeps the time variant from
-  // becoming "After 7:30 am".
-  const tail = nudge.body && !/^\d/.test(nudge.body) ? ` After ${nudge.body}.` : ''
+
+  // Built from the nudge's PARTS, not from its body. The body is the
+  // notification's own line and already carries the streak after an interpunct
+  // — reusing it verbatim said the streak twice and read the separator aloud,
+  // which is the exact thing this function's docstring says it removes.
+  const [lead] = nudge.body.split(DOT)
+  const clause = lead?.trim() ?? ''
+  // "After 7:30 am" is not a sentence anyone says, so the prefix is only for a
+  // real anchor — which never begins with a digit, where a time always does.
+  const tail = clause && !/^\d/.test(clause) ? ` After ${clause}.` : ''
   const stake = streak > 0 ? ` ${streakPhrase(streak)} so far.` : ''
   return `${nudge.title}.${tail}${stake}`
 }

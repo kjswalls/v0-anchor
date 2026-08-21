@@ -41,7 +41,10 @@ export function nameList(titles: readonly string[]): string {
  * hides it is just a fine.
  */
 export function pledgeSummary(
-  outcome: DayOutcome,
+  // Only the titles and the date are read, and the parameter says so: the
+  // caller names what it CLAIMED rather than what the day missed, and those
+  // differ whenever part of the day was already settled.
+  outcome: { dateStr: string; misses: readonly { title: string }[] },
   totalCents: number,
   currency: string,
   charity: string | null,

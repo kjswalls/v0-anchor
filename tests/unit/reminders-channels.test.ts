@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { assertSafeUrl, requireString } from '@/lib/reminders/channels/http';
+import { assertSafeUrl, isBlockedHost, requireString } from '@/lib/reminders/channels/http';
 import { escapeXml } from '@/lib/reminders/channels/twilio';
 import { callTwiml, callChannel } from '@/lib/reminders/channels/call';
 import { smsChannel } from '@/lib/reminders/channels/sms';
@@ -80,6 +80,28 @@ describe('assertSafeUrl', () => {
   it('refuses something that is not a URL at all', () => {
     expect(() => assertSafeUrl('home.example.com')).toThrow();
   });
+
+  // A guard that only matches the obvious spelling is a guard that looks
+  // present and is not: [::ffff:169.254.169.254] is the same metadata endpoint
+  // the dotted-quad check refuses.
+  it('refuses loopback and link-local in their IPv6 spellings too', () => {
+    expect(isBlockedHost('::ffff:169.254.169.254')).toBe(true);
+    expect(isBlockedHost('::ffff:127.0.0.1')).toBe(true);
+    // The form that actually arrives: the URL parser canonicalises a mapped
+    // address to hex, so the dotted check alone never sees it.
+    expect(isBlockedHost('::ffff:a9fe:a9fe')).toBe(true);
+    expect(isBlockedHost('::ffff:7f00:1')).toBe(true);
+    expect(isBlockedHost('::')).toBe(true);
+    expect(isBlockedHost('0:0:0:0:0:0:0:1')).toBe(true);
+    expect(isBlockedHost('fe80::1')).toBe(true);
+    expect(() => assertSafeUrl('http://[::ffff:169.254.169.254]/latest/meta-data/')).toThrow();
+  });
+
+  it('still lets ordinary hosts through', () => {
+    expect(isBlockedHost('home.example.com')).toBe(false);
+    expect(isBlockedHost('192.168.1.40')).toBe(false);
+    expect(isBlockedHost('2606:4700:4700::1111')).toBe(false);
+  });
 });
 
 describe('requireString', () => {
@@ -130,6 +152,15 @@ describe('spokenLine', () => {
   it('leads with the item and drops the interpunct', () => {
     const line = spokenLine(cue());
     expect(line).toBe('Vitamins. After you pour your coffee. 12 days so far.');
+    expect(line).not.toContain('·');
+  });
+
+  // The notification body already carries the streak after an interpunct;
+  // reusing it verbatim said the streak twice and read the separator aloud.
+  it('states the streak once, however the body was worded', () => {
+    const line = spokenLine(cue({ body: 'you pour your coffee · 12 days' }));
+    expect(line).toBe('Vitamins. After you pour your coffee. 12 days so far.');
+    expect(line.match(/12 days/g)).toHaveLength(1);
     expect(line).not.toContain('·');
   });
 
@@ -272,5 +303,28 @@ describe('deliverNudge isolation', () => {
     );
 
     expect(reports.map((r) => r.channel)).toEqual(['push']);
+  });
+});
+
+describe('postToChannel refuses to follow a redirect', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // assertSafeUrl checks the address the user TYPED. With redirect:'follow'
+  // that check is decorative — any user-supplied host can answer 302 and send
+  // this fetch to the loopback address the guard exists to refuse.
+  it('asks fetch to error rather than follow', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await voiceChannel.deliver(
+      cue(),
+      ctx({
+        config: { baseUrl: 'https://home.example.com', players: 'media_player.kitchen' },
+        secrets: { token: 'tok' },
+      }),
+    );
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.redirect).toBe('error');
   });
 });

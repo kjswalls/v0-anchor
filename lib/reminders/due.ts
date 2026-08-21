@@ -176,8 +176,8 @@ export interface ScanClock {
  * One row as the scan sees it: the item, plus the bookkeeping that is NOT part
  * of the item.
  *
- * `sentDate` is items.reminder_sent_date and is deliberately absent from the
- * Item schema. It is the scan's own dedupe stamp, written by a cron and read by
+ * `sentKey` is items.reminder_sent_key and is deliberately absent from the Item
+ * schema. It is the scan's own dedupe stamp, written by a cron and read by
  * nothing a user can see — putting it in taskShape/habitShape would enrol it in
  * TASK_FIELDS, which means undo patches would carry it, the legacy projections
  * would publish it to every agent, and a redo could hand a stale stamp back and
@@ -185,8 +185,8 @@ export interface ScanClock {
  */
 export interface ScanRow {
   item: Item
-  /** items.reminder_sent_date — the user's local day, yyyy-MM-dd. */
-  sentDate?: string
+  /** items.reminder_sent_key — 'yyyy-MM-ddTHH:mm'. See {@link sentKeyFor}. */
+  sentKey?: string
   /** items.reminder_snooze_until — an ISO instant, or absent. */
   snoozeUntil?: string
   /** items.reminder_snooze_date — the local day the snooze belongs to. */
@@ -194,11 +194,24 @@ export interface ScanRow {
 }
 
 /**
- * Every item whose cue is due in this tick and has not already been sent today.
+ * The dedupe stamp for one cue: the user's local day AND the time it was for.
  *
- * `sentDate` is compared against the user's LOCAL day, which is the only
- * comparison that survives travel: stamping UTC would re-arm every cue for
- * anyone who flew far enough east to cross a date boundary mid-afternoon.
+ * The day alone cannot survive retiming — moving a cue to later the same day
+ * would be silently swallowed until tomorrow — and the obvious workaround
+ * (clear the stamp whenever reminder_time is written) fires the cue a SECOND
+ * time on any unrelated edit, because the item dialog's whole-item save names
+ * every field. Putting the time IN the key answers both at once.
+ *
+ * The local day rather than UTC is the only comparison that survives travel:
+ * stamping UTC re-arms every cue for anyone who crosses a date boundary
+ * mid-afternoon.
+ */
+export function sentKeyFor(dateStr: string, at: string): string {
+  return `${dateStr}T${at}`
+}
+
+/**
+ * Every item whose cue is due in this tick and has not already been sent.
  */
 export function dueReminders(
   rows: readonly ScanRow[],
@@ -206,7 +219,7 @@ export function dueReminders(
   ctx: ActivationContext,
 ): ReminderCandidate[] {
   const out: ReminderCandidate[] = []
-  for (const { item, sentDate, snoozeUntil, snoozeDate } of rows) {
+  for (const { item, sentKey, snoozeUntil, snoozeDate } of rows) {
     if (!isRemindable(item)) continue
     const at = 'reminderTime' in item ? item.reminderTime : undefined
     const target = minutesOfDay(at)
@@ -240,7 +253,7 @@ export function dueReminders(
     }
 
     if (target === null) continue
-    if (sentDate === clock.dateStr) continue
+    if (sentKey === sentKeyFor(clock.dateStr, at as string)) continue
     if (!isWithinWindow(target, clock.nowMinutes, clock.graceMinutes)) continue
     if (!wantsDoingOn(item, clock.dateStr, ctx)) continue
     out.push({

@@ -83,8 +83,28 @@ create table if not exists stake_events (
   currency text,
   /* Free text for the record: a Beeminder datapoint id, a delivery error. */
   detail text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  /*
+   * When this row's OUTSIDE-WORLD side effect actually happened — the datapoint
+   * posted, the digest delivered, the notification sent — or NULL if it has not.
+   *
+   * The second half of claim-then-act, and without it the first half is a trap.
+   * Claiming makes a retry find the row already present and do nothing; so an
+   * adapter whose commit failed once — a network blip, an expired token — would
+   * never be retried, the next tick would report no problem, and the day would
+   * be stamped settled with the datapoint never posted and the partner never
+   * told. The ledger would say it happened.
+   *
+   * So: claimed rows are recorded immediately, and the day is only finished
+   * when every row a live adapter owns has a committed_at.
+   */
+  committed_at timestamptz
 );
+
+-- The retry probe: "what did this user's day claim that never went out?"
+create index if not exists stake_events_pending_idx
+  on stake_events (user_id, date)
+  where committed_at is null;
 
 do $$
 begin

@@ -14,6 +14,15 @@ import { checkCronAuth } from '@/lib/cron-auth';
  *
  * Auth: Authorization: Bearer <CRON_SECRET> (Vercel sets this automatically).
  */
+/**
+ * The tick fans out to every user, and each delivery channel is allowed up to
+ * eight seconds. Next's default serverless budget is short enough that one
+ * unreachable host — a Home Assistant behind a dead tunnel — can end the
+ * invocation partway through, and a cue that was CLAIMED but not delivered is
+ * lost for the day.
+ */
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   const denied = checkCronAuth(req);
   if (denied) return denied.response;

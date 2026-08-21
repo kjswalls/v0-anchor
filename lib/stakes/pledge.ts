@@ -30,6 +30,9 @@ export const EXT_PLEDGE = 'pledge'
 
 const DEFAULT_CURRENCY = 'USD'
 
+/** Comfortably inside int4, and far past any honest per-miss stake. */
+const MAX_AMOUNT_CENTS = 1_000_000_00
+
 /**
  * "10", "10.50", "£10" → minor units.
  *
@@ -38,13 +41,34 @@ const DEFAULT_CURRENCY = 'USD'
  * stops believing.
  */
 export function parseAmountCents(raw: unknown): number | null {
-  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw * 100)
-  if (typeof raw !== 'string') return null
-  const cleaned = raw.replace(/[^0-9.]/g, '')
-  if (!cleaned) return null
-  const value = Number(cleaned)
+  let value: number
+
+  if (typeof raw === 'number') {
+    value = raw
+  } else if (typeof raw === 'string') {
+    // A comma is a decimal separator to most of the world. Stripping it as
+    // punctuation turns "10,50" into 1050, i.e. a hundredfold overcharge —
+    // which is the single worst thing this function could do quietly. Treated
+    // as the decimal point when there is no dot; as a thousands separator when
+    // there is.
+    const trimmed = raw.replace(/[^0-9.,]/g, '')
+    const normalised = trimmed.includes('.')
+      ? trimmed.replace(/,/g, '')
+      : trimmed.replace(',', '.')
+    if (!normalised) return null
+    value = Number(normalised)
+  } else {
+    return null
+  }
+
   if (!Number.isFinite(value) || value < 0) return null
-  return Math.round(value * 100)
+  const cents = Math.round(value * 100)
+  // stake_events.amount_cents is int4. An out-of-range value does not fail
+  // quietly: every adapter's rows go in ONE claim insert, so a fat-fingered
+  // amount would wedge that user's whole settlement — the partner digest and
+  // the Beeminder datapoints included — on every tick, forever.
+  if (cents > MAX_AMOUNT_CENTS) return null
+  return cents
 }
 
 export const pledgeAdapter: StakeAdapter = {
@@ -75,7 +99,16 @@ export const pledgeAdapter: StakeAdapter = {
     const currency = claimed[0].currency ?? DEFAULT_CURRENCY
     const totalCents = claimed.reduce((sum, event) => sum + (event.amountCents ?? 0), 0)
     const charity = claimed[0].detail ?? null
-    const copy = pledgeSummary(outcome, totalCents, currency, charity)
+    // Named from CLAIMED, not from outcome.misses. They differ whenever part of
+    // the day was already settled — and a message whose total is computed from
+    // one list and whose habit names come from the other contradicts both
+    // itself and the ledger it is reporting.
+    const copy = pledgeSummary(
+      { ...outcome, misses: claimed.map((event) => ({ title: event.subjectTitle })) },
+      totalCents,
+      currency,
+      charity,
+    )
 
     const problems: string[] = []
 

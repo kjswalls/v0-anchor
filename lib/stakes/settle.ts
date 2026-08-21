@@ -5,15 +5,23 @@
  *
  *   1. Every enabled adapter says what it would record (`plan`) — pure.
  *   2. All of it is inserted against the unique index from migration 031, with
- *      duplicates ignored. What comes back is exactly what had NOT been settled
- *      before.
- *   3. Each adapter acts on its own newly-claimed rows (`commit`).
+ *      duplicates ignored.
+ *   3. Everything still UNCOMMITTED for this day is read back — which is the
+ *      rows just claimed, plus anything an earlier tick claimed and failed to
+ *      act on.
+ *   4. Each adapter acts on its own share (`commit`), and its rows are stamped
+ *      committed_at only when it succeeds.
  *
- * Step 2 is the whole design. The settlement is driven by a cron that can run
- * twice, retry after a timeout, or catch up after an outage, and the naive
- * order — act, then record — charges a pledge twice on every one of those. A
- * ledger that overcharges once is a ledger nobody trusts again, so the write
- * that claims the day happens before anything reaches the outside world.
+ * Step 2 is why the naive order is wrong: the settlement is driven by a cron
+ * that can run twice, retry after a timeout, or catch up after an outage, and
+ * act-then-record charges a pledge twice on every one of those. A ledger that
+ * overcharges once is a ledger nobody trusts again.
+ *
+ * Step 3 is why claiming alone is not enough. Claiming makes a retry find the
+ * row already present and do nothing — so an adapter whose commit failed once
+ * would never be retried, the next tick would report no problem, and the day
+ * would be stamped settled with the datapoint never posted. committed_at is
+ * what separates "recorded" from "done".
  */
 
 import { resolveEnabled } from '../extension-registry'
@@ -54,9 +62,13 @@ export interface SettleReport {
 }
 
 interface StakeEventRow {
-  date: string
   subject: string
   channel: string
+}
+
+/** Channel::subject — the key both the plan and the ledger agree on. */
+function rowKey(channel: string, subject: string): string {
+  return `${channel}::${subject}`
 }
 
 export async function settleOneDay(
@@ -115,10 +127,9 @@ export async function settleOneDay(
     }
   }
 
-  const { data: inserted, error } = await service
+  const { error } = await service
     .from('stake_events')
     .upsert(rows, { onConflict: 'user_id,date,subject,channel', ignoreDuplicates: true })
-    .select('date, subject, channel')
 
   if (error) {
     // Nothing was claimed, so nothing may be acted on. Silence is the correct
@@ -128,23 +139,66 @@ export async function settleOneDay(
     return report
   }
 
-  const claimedKeys = new Set(
-    ((inserted ?? []) as StakeEventRow[]).map((row) => `${row.channel}::${row.subject}`),
+  // ── 3. What still owes the outside world ─────────────────────────────────
+  // Read back rather than trusting the insert's own RETURNING, because the two
+  // answers differ in exactly the case that matters: a row an EARLIER tick
+  // claimed and then failed to act on is not newly inserted, and is precisely
+  // what needs retrying.
+  const { data: pendingRows, error: pendingError } = await service
+    .from('stake_events')
+    .select('subject, channel')
+    .eq('user_id', input.userId)
+    .eq('date', input.dateStr)
+    .is('committed_at', null)
+
+  if (pendingError) {
+    report.notes.push(`pending read failed — ${pendingError.message}`)
+    return report
+  }
+
+  const pending = new Set(
+    ((pendingRows ?? []) as StakeEventRow[]).map((row) => rowKey(row.channel, row.subject)),
   )
 
-  // ── 3. Commit ─────────────────────────────────────────────────────────────
+  // ── 4. Commit ─────────────────────────────────────────────────────────────
   // Concurrently, and every rejection caught: the adapters are independent and
   // an expired Beeminder token must not cost the partner their digest.
   await Promise.all(
     active.map(async (adapter) => {
       const drafts = planned.get(adapter.slug) ?? []
-      const claimed = drafts.filter((draft) => claimedKeys.has(`${adapter.slug}::${draft.subject}`))
-      if (claimed.length === 0) return
+      const owed = drafts.filter((draft) => pending.has(rowKey(adapter.slug, draft.subject)))
+      if (owed.length === 0) return
+
+      let result
       try {
-        const result = await adapter.commit(claimed, outcome, contextFor(adapter, service, input))
-        if (!result.ok) report.notes.push(`${adapter.slug}: ${result.detail ?? 'failed'}`)
+        result = await adapter.commit(owed, outcome, contextFor(adapter, service, input))
       } catch (err) {
         report.notes.push(`${adapter.slug}: threw — ${errorText(err)}`)
+        return
+      }
+
+      if (!result.ok) {
+        // Left uncommitted on purpose. The note stops scan.ts advancing
+        // stakes_settled_date, so the next tick reads these rows back and tries
+        // again rather than declaring a day done that never left the building.
+        report.notes.push(`${adapter.slug}: ${result.detail ?? 'failed'}`)
+        return
+      }
+
+      const { error: commitError } = await service
+        .from('stake_events')
+        .update({ committed_at: new Date().toISOString() })
+        .eq('user_id', input.userId)
+        .eq('date', input.dateStr)
+        .eq('channel', adapter.slug)
+        .in('subject', owed.map((draft) => draft.subject))
+
+      // The side effect DID happen; only the bookkeeping failed. Reported so the
+      // day is not stamped — the retry re-commits, which is why every adapter's
+      // commit has to be safe to repeat (Beeminder's requestid, a duplicate
+      // digest, a re-sent notification) and why none of them moves money.
+      if (commitError) {
+        report.notes.push(`${adapter.slug}: acted but could not record it — ${commitError.message}`)
       }
     }),
   )

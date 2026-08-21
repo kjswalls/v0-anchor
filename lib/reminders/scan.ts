@@ -21,6 +21,7 @@ import {
   dueReminders,
   lastCallItems,
   minutesOfDay,
+  sentKeyFor,
   streakOf,
   type ReminderCandidate,
   type ScanRow,
@@ -32,6 +33,11 @@ import type { ActivationContext } from '../active'
 import type { Item } from '../planner-types'
 
 type ServiceClient = ReturnType<typeof createServiceClient>
+
+/** PostgREST/Postgres "that table does not exist" — the migration has not run. */
+function isMissingTable(error: { code?: string } | null): boolean {
+  return error?.code === '42P01' || error?.code === 'PGRST205'
+}
 
 /** Postgres undefined_column / PostgREST's flavour of it — migration not applied. */
 function isMissingColumn(error: { code?: string; message?: string } | null): boolean {
@@ -129,7 +135,7 @@ export function daysToSettle(today: string, settledThrough: string | null): stri
 interface BookkeepingRow {
   id: string
   user_id: string
-  reminder_sent_date: string | null
+  reminder_sent_key: string | null
   reminder_snooze_until: string | null
   reminder_snooze_date: string | null
 }
@@ -169,10 +175,19 @@ async function loadChannelState(service: ServiceClient, userId: string) {
   const extensionEnabled: Record<string, boolean> = {}
   const configs: Record<string, Record<string, unknown>> = {}
 
-  const { data: extensions } = await service
+  const { data: extensions, error: extensionsError } = await service
     .from('user_extensions')
     .select('slug, enabled, config')
     .eq('user_id', userId)
+
+  // A transient failure here is indistinguishable from "no extensions" if it is
+  // swallowed — and "no extensions" is a perfectly valid answer that makes the
+  // settlement stamp the day having done nothing, forgiving it forever. A
+  // MISSING TABLE is different: that genuinely means no extensions (the
+  // fetchUserExtensions contract), and must not stop push from working.
+  if (extensionsError && !isMissingTable(extensionsError)) {
+    throw new Error(`user_extensions unreadable: ${extensionsError.message}`)
+  }
 
   for (const row of (extensions ?? []) as { slug: string; enabled: boolean; config: unknown }[]) {
     extensionEnabled[row.slug] = row.enabled
@@ -186,11 +201,18 @@ async function loadChannelState(service: ServiceClient, userId: string) {
   // 012), so this is the only kind of client that can see the column at all —
   // which is the property the whole split exists to buy.
   const secrets: Record<string, Record<string, string>> = {}
-  const { data: secretRow } = await service
+  const { data: secretRow, error: secretsError } = await service
     .from('user_secrets')
     .select('reminder_secrets')
     .eq('user_id', userId)
     .maybeSingle()
+
+  // Same rule, and it matters more here: silently reading a Twilio token as
+  // absent turns a configured channel into a skipped one, which every caller
+  // reports as success.
+  if (secretsError && !isMissingTable(secretsError) && !isMissingColumn(secretsError)) {
+    throw new Error(`user_secrets unreadable: ${secretsError.message}`)
+  }
 
   const bag = (secretRow as { reminder_secrets?: unknown } | null)?.reminder_secrets
   if (bag && typeof bag === 'object') {
@@ -216,18 +238,37 @@ export async function runReminderScan(
 ): Promise<ScanSummary> {
   const summary: ScanSummary = { users: 0, cues: 0, lastCalls: 0, daysSettled: 0, notes: [] }
 
-  const { data: users, error } = await service
-    .from('user_settings')
-    .select(
-      'user_id, timezone, time_format, habit_reminders_enabled, habit_last_call_enabled, ' +
-        'habit_last_call_time, habit_last_call_date, stakes_enabled, stakes_settle_time, ' +
-        'stakes_settled_date',
-    )
+  // Split exactly the way lib/settings-service.ts splits its own select, and
+  // for a sharper version of the same reason. PostgREST rejects the WHOLE query
+  // with 42703 when one named column is missing, so naming the stakes columns
+  // unconditionally means a database that has 029 but not 031 stops delivering
+  // every reminder — Tier 1 and Tier 2 alike — until someone runs db:push by
+  // hand. The stakes half is the part that should degrade, not all of it.
+  const REMINDER_COLUMNS =
+    'user_id, timezone, time_format, habit_reminders_enabled, habit_last_call_enabled, ' +
+    'habit_last_call_time, habit_last_call_date'
+  const STAKES_COLUMNS = 'stakes_enabled, stakes_settle_time, stakes_settled_date'
+
+  const readUsers = async (columns: string, stakesKnown: boolean) => {
+    let query = service.from('user_settings').select(columns)
     // EITHER switch brings a user into the tick. They are genuinely separate
     // wants — someone may keep the accounting while turning off the nagging —
     // and filtering on reminders alone would silently never settle their days.
-    .or('habit_reminders_enabled.eq.true,stakes_enabled.eq.true')
-    .not('timezone', 'is', null)
+    // Without the stakes columns there is nothing to OR against.
+    query = stakesKnown
+      ? query.or('habit_reminders_enabled.eq.true,stakes_enabled.eq.true')
+      : query.eq('habit_reminders_enabled', true)
+    return query.not('timezone', 'is', null)
+  }
+
+  let { data: users, error } = await readUsers(`${REMINDER_COLUMNS}, ${STAKES_COLUMNS}`, true)
+  let stakesAvailable = true
+
+  if (error && isMissingColumn(error)) {
+    stakesAvailable = false
+    summary.notes.push('migration 031 not applied — settling is off, reminders continue')
+    ;({ data: users, error } = await readUsers(REMINDER_COLUMNS, false))
+  }
 
   if (error) {
     // A database without migration 029 must degrade to silence, not to a 500
@@ -248,7 +289,7 @@ export async function runReminderScan(
   // for someone who has set none.
   const { data: bookRows, error: bookError } = await service
     .from('items')
-    .select('id, user_id, reminder_sent_date, reminder_snooze_until, reminder_snooze_date')
+    .select('id, user_id, reminder_sent_key, reminder_snooze_until, reminder_snooze_date')
     .in('user_id', rows.map((r) => r.user_id))
     // EITHER a standing cue or a live snooze brings a row in. Filtering on
     // reminder_time alone would drop the snooze tapped on a LAST CALL, whose
@@ -304,7 +345,8 @@ export async function runReminderScan(
         clock.nowMinutes >= lastCallMinutes &&
         clock.nowMinutes < Math.min(lastCallMinutes + (options.graceMinutes ?? 30), 1440)
 
-      const settleMinutes = user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
+      const settleMinutes =
+        stakesAvailable && user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
       const pendingDays =
         settleMinutes !== null && clock.nowMinutes >= settleMinutes
           ? daysToSettle(clock.dateStr, user.stakes_settled_date)
@@ -342,7 +384,7 @@ export async function runReminderScan(
         const row = book.get(item.id)
         return {
           item,
-          sentDate: row?.reminder_sent_date ?? undefined,
+          sentKey: row?.reminder_sent_key ?? undefined,
           snoozeUntil: row?.reminder_snooze_until ?? undefined,
           snoozeDate: row?.reminder_snooze_date ?? undefined,
         }
@@ -366,6 +408,12 @@ export async function runReminderScan(
           .update({ reminder_snooze_until: null, reminder_snooze_date: null })
           .in('id', staleSnoozes)
           .eq('user_id', user.user_id)
+          // Re-asserted against the DATABASE, not just against the ids computed
+          // from a read that is by now seconds old. A snooze tapped in that gap
+          // carries today's date, and an unconditional clear would erase it —
+          // the user's tap becoming a silent no-op, which is the failure mode
+          // the whole snooze redesign exists to remove.
+          .or(`reminder_snooze_date.is.null,reminder_snooze_date.neq.${clock.dateStr}`)
       }
 
       const candidates = remindersOn
@@ -419,17 +467,26 @@ export async function runReminderScan(
         const open = lastCallItems(items, clock.dateStr, ctx)
         const copy = lastCallCopy(open)
 
-        // Stamp even when there is nothing to say. "Everything is done" is not a
-        // notification anyone asked for, but it IS an answered question, and
-        // leaving the stamp off would re-ask it every tick for the rest of the
+        // CLAIMED, not stamped — the cue path's rule, and it matters more here.
+        // A blind write always "succeeds", so two overlapping ticks would both
+        // proceed and both deliver: with the phone-call channel on, that is two
+        // Twilio calls and two billed SMS for one nudge.
+        //
+        // Claimed even when there is nothing to say. "Everything is done" is not
+        // a notification anyone asked for, but it IS an answered question, and
+        // leaving it unclaimed would re-ask it every tick for the rest of the
         // window.
-        const { error: stampError } = await service
+        const { data: claimedLastCall, error: stampError } = await service
           .from('user_settings')
           .update({ habit_last_call_date: clock.dateStr })
           .eq('user_id', user.user_id)
+          .or(`habit_last_call_date.is.null,habit_last_call_date.neq.${clock.dateStr}`)
+          .select('user_id')
 
         if (stampError) {
-          summary.notes.push(`${user.user_id}: last-call stamp failed — ${stampError.message}`)
+          summary.notes.push(`${user.user_id}: last-call claim failed — ${stampError.message}`)
+        } else if ((claimedLastCall ?? []).length === 0) {
+          // Another tick got there first. Nothing to do, and nothing wrong.
         } else if (copy) {
           const nudge: Nudge = {
             kind: 'last-call',
@@ -537,8 +594,8 @@ async function loadCreatedOn(
  * Two shapes, because the two kinds of candidate are claimed against different
  * state:
  *
- *   · a scheduled cue is claimed by moving reminder_sent_date to today, ONLY
- *     from a row where it is not already today;
+ *   · a scheduled cue is claimed by moving reminder_sent_key to this day+time,
+ *     ONLY from a row that is not already stamped with it;
  *   · a snoozed cue is claimed by clearing the snooze, ONLY from a row whose
  *     reminder_snooze_until is still the exact value this tick read. That
  *     compare-and-swap is what stops the clear from destroying a NEWER snooze
@@ -555,21 +612,23 @@ async function claimCandidates(
   candidates: readonly ReminderCandidate[],
   book: Map<string, BookkeepingRow>,
 ): Promise<ReminderCandidate[] | null> {
-  const scheduled = candidates.filter((c) => !c.snoozed)
   const snoozed = candidates.filter((c) => c.snoozed)
   const won: ReminderCandidate[] = []
 
-  if (scheduled.length > 0) {
+  // One statement per cue rather than one for the batch: the key each row is
+  // claimed against contains that row's own reminder time, so a batched update
+  // could not express the condition.
+  for (const candidate of candidates.filter((c) => !c.snoozed)) {
+    const key = sentKeyFor(dateStr, candidate.at)
     const { data, error } = await service
       .from('items')
-      .update({ reminder_sent_date: dateStr })
-      .in('id', scheduled.map((c) => c.item.id))
+      .update({ reminder_sent_key: key })
+      .eq('id', candidate.item.id)
       .eq('user_id', userId)
-      .or(`reminder_sent_date.is.null,reminder_sent_date.neq.${dateStr}`)
+      .or(`reminder_sent_key.is.null,reminder_sent_key.neq.${key}`)
       .select('id')
     if (error) return null
-    const ids = new Set(((data ?? []) as { id: string }[]).map((row) => row.id))
-    won.push(...scheduled.filter((c) => ids.has(c.item.id)))
+    if ((data ?? []).length > 0) won.push(candidate)
   }
 
   // One statement each: the CAS value differs per row, so these cannot batch.

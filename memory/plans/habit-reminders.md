@@ -162,3 +162,16 @@ Where the evidence says the power actually is, once attention is not the bottlen
 - A per-item "snoozed until" indicator in the UI. The column exists; nothing renders it.
 - The pledge ledger has no reader. `stake_events` is written and RLS-readable, but no
   surface shows it — "you owe £30" is currently only ever a notification.
+- **Beeminder datapoints are posted at settle time, not at completion time.** With the
+  defaults (settle 03:00, goal deadline midnight) a completion is reported three hours
+  after the goal has already derailed. The `daystamp` makes the graph correct; it does not
+  un-derail. Workaround today: keep the settle time before the goal's deadline. The real
+  fix is posting on completion, which needs a client→server hook this feature does not
+  have — **decide before relying on the money.**
+- **`/api/reminders/secrets` PUT is a read-modify-write of one jsonb.** Two credential
+  fields blurred within the same instant could drop one write. Single-user in practice;
+  closing it properly needs a `jsonb_set` RPC.
+- **The extension toggles do not depend on the master switch in the UI.** A channel can be
+  switched on and fully configured while `rituals.reminders` (or `rituals.stakes`) is off,
+  and the Extensions pane does not say so. `dependsOn` cannot express it — the settings
+  manifest requires parent and child to share a pane.

@@ -6,6 +6,16 @@
  * already is one, with a payment rail, a derailment ladder and years of
  * behaviour behind it. This posts the datapoint and gets out of the way.
  *
+ * TIMING MATTERS HERE, and the settlement's default does not know your goal's.
+ * Yesterday's datapoints go up at the user's settle time (03:00 by default),
+ * and a Beeminder goal's own deadline defaults to midnight — so with both at
+ * their defaults, a completion is reported three hours after the goal has
+ * already decided you missed it. The datapoint carries the right `daystamp`, so
+ * the graph ends up correct; the derailment does not un-happen on its own.
+ * Settings says so on the mapping field, and the plan doc carries it as an open
+ * question: the real fix is posting at completion time, which needs a write
+ * path this feature does not have yet.
+ *
  * Datapoints are posted for HITS only. That is not an omission: a do-more goal
  * derails on the ABSENCE of data, which is exactly the mechanism, and posting a
  * zero would actively defeat it by satisfying the goal's rate with nothing.
@@ -52,6 +62,15 @@ export const beeminderAdapter: StakeAdapter = {
   extensionSlug: EXT_BEEMINDER,
 
   plan(outcome, ctx) {
+    // Every required credential is checked HERE, not only in commit(). Under
+    // claim-then-act a planned row is a CLAIMED row: planning against a
+    // half-configured extension burns the day permanently, because the retry
+    // finds the row already there and commit's "not configured" answer is
+    // reported as success. pledge and partner already gate on their own config;
+    // this one did not.
+    if (!requireString(ctx.config, 'username') || !requireString(ctx.secrets, 'authToken')) {
+      return []
+    }
     const goals = parseGoalMap(ctx.config.goals)
     if (goals.size === 0) return []
     const drafts: StakeEventDraft[] = []

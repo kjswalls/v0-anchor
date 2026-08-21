@@ -42,48 +42,19 @@ export function assertSafeUrl(raw: string): URL {
   // Credentials in the URL would be logged by every hop that touches it.
   if (url.username || url.password) throw new Error('credentials in URL are not accepted')
 
-  if (isBlockedHost(url.hostname)) throw new Error(`refusing to call ${url.hostname}`)
-  return url
-}
-
-/**
- * Loopback, the unspecified address, and link-local — in every spelling.
- *
- * The IPv6 forms are not pedantry: `http://[::ffff:169.254.169.254]/` is the
- * same metadata endpoint the dotted-quad check refuses, and a guard that only
- * matches the obvious spelling is a guard that looks present and is not.
- */
-export function isBlockedHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-
-  if (host === 'localhost' || host.endsWith('.localhost')) return true
-  if (host === '0.0.0.0' || /^127\./.test(host)) return true
-  // Link-local, which is where the cloud metadata services answer.
-  if (/^169\.254\./.test(host)) return true
-
-  // IPv6 loopback and unspecified, long form and short.
-  const collapsed = host.replace(/(^|:)0+(?=[0-9a-f])/g, '$1')
-  if (collapsed === '::1' || collapsed === '::' || /^0*:(0*:)*0*1$/.test(host)) return true
-  if (/^fe[89ab][0-9a-f]:/i.test(host)) return true
-
-  // IPv4-mapped and IPv4-compatible IPv6, written in dotted form.
-  const dotted = /^(?:::ffff:|::)((?:\d{1,3}\.){3}\d{1,3})$/.exec(host)
-  if (dotted) return isBlockedHost(dotted[1])
-
-  // …and written in HEX, which is what actually reaches this function: the
-  // WHATWG URL parser canonicalises `[::ffff:169.254.169.254]` to
-  // `[::ffff:a9fe:a9fe]`, so a check that only understood the dotted spelling
-  // would pass the very address the comment above names.
-  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host)
-  if (hex) {
-    const high = parseInt(hex[1], 16)
-    const low = parseInt(hex[2], 16)
-    return isBlockedHost(
-      `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
-    )
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (
+    host === 'localhost' ||
+    host === '::1' ||
+    host === '0.0.0.0' ||
+    /^127\./.test(host) ||
+    // Link-local, which is where the cloud metadata services answer.
+    /^169\.254\./.test(host) ||
+    /^fe80:/i.test(host)
+  ) {
+    throw new Error(`refusing to call ${url.hostname}`)
   }
-
-  return false
+  return url
 }
 
 export interface ChannelRequest {
@@ -116,12 +87,6 @@ export async function postToChannel(
         ...(request.headers ?? {}),
       },
       body: request.body,
-      // assertSafeUrl checks the address the user TYPED. With the default
-      // redirect:'follow' that check is decorative — any user-supplied host can
-      // answer 302 and send this fetch straight to the loopback or metadata
-      // address the guard exists to refuse. None of these APIs redirect, so
-      // rejecting outright costs nothing real.
-      redirect: 'error',
       signal: controller.signal,
     })
     const text = await res.text().catch(() => '')

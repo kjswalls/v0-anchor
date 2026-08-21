@@ -32,6 +32,15 @@ export interface UserSettingsRow {
   stakes_enabled?: boolean;
   stakes_settle_time?: string;
   /**
+   * The settlement's own bookkeeping. The client writes it in exactly ONE
+   * place — switching stakes on, to close the books on everything before today
+   * — and reads it nowhere: no store hydrates it, so a stale copy can never be
+   * written back to re-open a day that was already settled. Deliberately absent
+   * from DEFAULT_SETTINGS for the same reason; there is no client-side default
+   * for a value only the server should move.
+   */
+  stakes_settled_date?: string;
+  /**
    * Active ground palette slug (lib/theme-palettes.ts). Deliberately absent
    * from DEFAULT_SETTINGS: undefined means "never chosen on any device", and
    * the provider only applies real values — so a device-local choice made
@@ -122,6 +131,10 @@ const PENDING_SCHEMA_COLUMNS = [
   'habit_last_call_time',
   'stakes_enabled',
   'stakes_settle_time',
+  // Listed for the WRITE path: flushSettings drops these when the database is
+  // behind, and without it a pre-031 database would reject the whole batched
+  // upsert. It rides along in the select too, where nothing reads it.
+  'stakes_settled_date',
 ] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');

@@ -36,9 +36,9 @@ const probeFor = (field: string) => PROBE[field] ?? 'probe';
  * (a field that diffs but silently never persists).
  */
 const COMPANION_COLUMNS: Record<string, string[]> = {
-  // Retiming a cue clears its same-day stamp, or moving a reminder from 07:00
-  // to 21:00 would be silently ignored until tomorrow. See lib/db.ts.
-  reminderTime: ['reminder_sent_date'],
+  // Currently none. Kept because the mechanism is the interesting part: an
+  // exception has to be DECLARED rather than absorbed by loosening the
+  // assertion, or this suite stops catching the bug it exists for.
 };
 
 function expectPersisted(row: Record<string, unknown>, field: string, which: string) {

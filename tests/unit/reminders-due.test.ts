@@ -8,6 +8,7 @@ import {
   lastCallItems,
   streakOf,
   hasMatured,
+  sentKeyFor,
   REMINDER_GRACE_MINUTES,
   type ScanRow,
 } from '@/lib/reminders/due';
@@ -179,11 +180,28 @@ describe('dueReminders', () => {
     expect(dueReminders([row(habit())], clock(450), ctx)).toEqual([]);
   });
 
-  it('will not send twice on the same local day', () => {
+  it('will not send twice for the same day and time', () => {
     const h = habit({ reminderTime: '07:30' });
-    expect(dueReminders([row(h, { sentDate: MON })], clock(450), ctx)).toEqual([]);
+    expect(dueReminders([row(h, { sentKey: `${MON}T07:30` })], clock(450), ctx)).toEqual([]);
     // A stamp from YESTERDAY must not suppress today.
-    expect(dueReminders([row(h, { sentDate: '2026-08-09' })], clock(450), ctx)).toHaveLength(1);
+    expect(dueReminders([row(h, { sentKey: '2026-08-09T07:30' })], clock(450), ctx)).toHaveLength(1);
+  });
+
+  // The point of putting the TIME in the key. Retiming a cue to later the same
+  // day has to re-arm it, or the user changes the time, watches nothing happen
+  // and concludes reminders are broken. The alternative — clearing the stamp
+  // whenever reminder_time is written — fires the cue a second time on any
+  // unrelated edit, because the dialog's whole-item save names every field.
+  it('re-arms when the cue is moved to a new time on the same day', () => {
+    const moved = habit({ reminderTime: '18:00' });
+    const stamped = row(moved, { sentKey: `${MON}T07:30` });
+    expect(dueReminders([stamped], clock(18 * 60), ctx)).toHaveLength(1);
+  });
+
+  it('but an unrelated edit does not re-arm it', () => {
+    const renamed = habit({ title: 'Vitamins (new name)', reminderTime: '07:30' });
+    const stamped = row(renamed, { sentKey: `${MON}T07:30` });
+    expect(dueReminders([stamped], clock(455), ctx)).toEqual([]);
   });
 
   it('stays silent about something already done', () => {
@@ -197,7 +215,7 @@ describe('dueReminders', () => {
   it('a matured snooze overrides both the day stamp and the window', () => {
     const h = habit({ reminderTime: '07:30' });
     const snoozed = row(h, {
-      sentDate: MON,
+      sentKey: `${MON}T07:30`,
       snoozeUntil: '2026-08-10T11:00:00.000Z',
       snoozeDate: MON,
     });
@@ -209,7 +227,7 @@ describe('dueReminders', () => {
   it('a snooze that has not matured yet stays quiet', () => {
     const h = habit({ reminderTime: '07:30' });
     const pending = row(h, {
-      sentDate: MON,
+      sentKey: `${MON}T07:30`,
       snoozeUntil: '2026-08-10T13:00:00.000Z',
       snoozeDate: MON,
     });
@@ -224,7 +242,7 @@ describe('dueReminders', () => {
   it('a snooze belonging to another day never fires', () => {
     const h = habit({ reminderTime: '07:30' });
     const stale = row(h, {
-      sentDate: '2026-08-09',
+      sentKey: '2026-08-09T07:30',
       snoozeUntil: '2026-08-09T12:00:00.000Z',
       snoozeDate: '2026-08-09',
     });
@@ -245,7 +263,7 @@ describe('dueReminders', () => {
   it('a snooze does not resurrect an item that was completed meanwhile', () => {
     const h = habit({ reminderTime: '07:30', completedDates: [MON] });
     const snoozed = row(h, {
-      sentDate: MON,
+      sentKey: `${MON}T07:30`,
       snoozeUntil: '2026-08-10T11:00:00.000Z',
       snoozeDate: MON,
     });
@@ -331,5 +349,11 @@ describe('hasMatured', () => {
   it('treats an unreadable value as not yet matured', () => {
     expect(hasMatured('whenever', now)).toBe(false);
     expect(hasMatured(undefined, now)).toBe(false);
+  });
+});
+
+describe('sentKeyFor', () => {
+  it('carries the day and the time', () => {
+    expect(sentKeyFor('2026-08-10', '07:30')).toBe('2026-08-10T07:30');
   });
 });

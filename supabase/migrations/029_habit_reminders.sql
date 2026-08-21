@@ -37,10 +37,18 @@ alter table items
   -- behavior with a stable context is what forms the habit, and a clock time is
   -- a weaker context than an event. Free text, never parsed.
   add column if not exists reminder_anchor text,
-  -- Dedupe stamp, 'yyyy-MM-dd' in the USER's timezone. The reminder cron runs
-  -- every 5 minutes and the delivery window is wider than one tick, so without
-  -- this a single 07:30 cue would fire six times.
-  add column if not exists reminder_sent_date text,
+  -- Dedupe stamp: 'yyyy-MM-ddTHH:mm' — the user's local DAY and the TIME the
+  -- cue was sent for. The scan runs every 5 minutes and the delivery window is
+  -- wider than one tick, so without a stamp a single 07:30 cue fires six times.
+  --
+  -- The time is in the key, not just the day, and that is the whole difference
+  -- between this working and not. Retiming a cue from 07:00 to 21:00 after the
+  -- morning one has already fired has to re-arm it — otherwise the user changes
+  -- the time, watches nothing happen, and concludes reminders are broken. A
+  -- day-only stamp cannot express that, and the obvious workaround (clear the
+  -- stamp whenever reminder_time is written) fires the cue a SECOND time on any
+  -- unrelated edit, because the item dialog's whole-item save names every field.
+  add column if not exists reminder_sent_key text,
   -- "Not now — ask me again at." Set by the Snooze action on the notification
   -- itself, and the ONE piece of reminder state that is an instant rather than
   -- a wall-clock time: "in 15 minutes" is a real duration from a real moment,

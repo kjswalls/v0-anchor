@@ -134,6 +134,22 @@ describe('parseAmountCents', () => {
     expect(Number.isInteger(parseAmountCents('19.99'))).toBe(true);
   });
 
+  // Stripping a comma as punctuation turns "10,50" into 1050 — a hundredfold
+  // overcharge, and the worst thing this function could do quietly.
+  it('reads a comma as the decimal separator, not as noise', () => {
+    expect(parseAmountCents('10,50')).toBe(1050);
+    expect(parseAmountCents('€10,50')).toBe(1050);
+    // With a dot present the comma is a thousands separator instead.
+    expect(parseAmountCents('1,000.50')).toBe(100050);
+  });
+
+  // Every adapter's rows go in ONE claim insert, so an out-of-range amount
+  // would wedge that user's whole settlement — partner digest included — on
+  // every tick, forever.
+  it('refuses an amount that would overflow the ledger column', () => {
+    expect(parseAmountCents('99999999999')).toBeNull();
+  });
+
   it('rejects nonsense instead of guessing', () => {
     expect(parseAmountCents('')).toBeNull();
     expect(parseAmountCents('lots')).toBeNull();
@@ -206,12 +222,34 @@ describe('stakes copy', () => {
 describe('adapters plan only what they are configured for', () => {
   it('beeminder plans nothing without a goal map', () => {
     const outcome = { dateStr: DAY, hits: [habit()], misses: [] };
-    expect(beeminderAdapter.plan(outcome, stakeCtx())).toEqual([]);
+    const configured = stakeCtx({ config: { username: 'me' }, secrets: { authToken: 'tok' } });
+    expect(beeminderAdapter.plan(outcome, configured)).toEqual([]);
+  });
+
+  // Under claim-then-act a PLANNED row is a CLAIMED row, so planning against a
+  // half-configured extension burns the day permanently — the retry finds the
+  // row already there and commit's "not configured" reads as success.
+  it('beeminder plans nothing while its credentials are missing', () => {
+    const outcome = { dateStr: DAY, hits: [habit({ title: 'Vitamins' })], misses: [] };
+    const goals = { goals: 'Vitamins: vits' };
+    expect(beeminderAdapter.plan(outcome, stakeCtx({ config: goals }))).toEqual([]);
+    expect(
+      beeminderAdapter.plan(outcome, stakeCtx({ config: { ...goals, username: 'me' } })),
+    ).toEqual([]);
+    expect(
+      beeminderAdapter.plan(outcome, stakeCtx({ config: goals, secrets: { authToken: 't' } })),
+    ).toEqual([]);
   });
 
   it('beeminder plans hits only — a miss is the ABSENT datapoint', () => {
     const outcome = { dateStr: DAY, hits: [habit({ title: 'Vitamins' })], misses: [habit({ id: 'h2', title: 'Reading' })] };
-    const drafts = beeminderAdapter.plan(outcome, stakeCtx({ config: { goals: 'Vitamins: vits, Reading: read' } }));
+    const drafts = beeminderAdapter.plan(
+      outcome,
+      stakeCtx({
+        config: { goals: 'Vitamins: vits, Reading: read', username: 'me' },
+        secrets: { authToken: 'tok' },
+      }),
+    );
     expect(drafts).toHaveLength(1);
     expect(drafts[0]).toMatchObject({ subject: 'h1', kind: 'hit', detail: 'vits' });
   });
@@ -249,19 +287,43 @@ describe('adapters plan only what they are configured for', () => {
 
 /* ── settleOneDay ─────────────────────────────────────────────────────────── */
 
-function makeService(insertedRows: unknown[], opts: { error?: unknown } = {}) {
+/**
+ * A stand-in for the two statements settleOneDay actually issues: the claim
+ * upsert, and the read-back of everything still uncommitted for the day.
+ *
+ * `pendingRows` is what the read-back answers — which is the interesting knob,
+ * because it is how "already settled" (empty) is distinguished from "claimed
+ * earlier and never delivered" (non-empty).
+ */
+function makeService(pendingRows: unknown[], opts: { error?: unknown } = {}) {
   const upserts: unknown[][] = [];
+  const commits: unknown[] = [];
+
+  const chain = (result: { data?: unknown; error?: unknown }): Record<string, unknown> =>
+    new Proxy({}, {
+      get(_t, prop: string) {
+        if (prop === 'then') {
+          return (resolve: (v: unknown) => void) =>
+            Promise.resolve({ data: result.data ?? null, error: result.error ?? null }).then(resolve);
+        }
+        return () => chain(result);
+      },
+    });
+
   const service = {
     from: () => ({
       upsert: (rows: unknown[]) => {
         upserts.push(rows);
-        return {
-          select: async () => ({ data: opts.error ? null : insertedRows, error: opts.error ?? null }),
-        };
+        return chain({ error: opts.error ?? null });
+      },
+      select: () => chain({ data: opts.error ? null : pendingRows, error: null }),
+      update: (payload: unknown) => {
+        commits.push(payload);
+        return chain({ error: null });
       },
     }),
   };
-  return { service: service as never, upserts };
+  return { service: service as never, upserts, commits };
 }
 
 describe('settleOneDay — claim then act', () => {
@@ -279,7 +341,7 @@ describe('settleOneDay — claim then act', () => {
   };
 
   it('records the misses it claimed', async () => {
-    const { service, upserts } = makeService([{ date: DAY, subject: 'h1', channel: 'pledge' }]);
+    const { service, upserts } = makeService([{ subject: 'h1', channel: 'pledge' }]);
     const report = await settleOneDay(service, { ...base, extensionEnabled: { pledge: true } });
 
     expect(report.misses).toBe(1);
@@ -298,7 +360,8 @@ describe('settleOneDay — claim then act', () => {
     const { sendPushToUser } = await import('@/lib/push-send');
     vi.mocked(sendPushToUser).mockClear();
 
-    const { service } = makeService([]); // nothing new inserted — already claimed
+    // Nothing pending: every row for this day already has a committed_at.
+    const { service } = makeService([]);
     const report = await settleOneDay(service, { ...base, extensionEnabled: { pledge: true } });
 
     expect(report.notes).toEqual([]);
@@ -318,6 +381,39 @@ describe('settleOneDay — claim then act', () => {
     expect(sendPushToUser).not.toHaveBeenCalled();
   });
 
+  // Claiming alone is a trap: a retry finds the row already there and does
+  // nothing, so an adapter whose commit failed once would never be retried and
+  // the day would be stamped settled with the digest never sent. committed_at
+  // is what separates "recorded" from "done".
+  it('retries a row that was claimed earlier and never delivered', async () => {
+    const { sendPushToUser } = await import('@/lib/push-send');
+    vi.mocked(sendPushToUser).mockClear();
+
+    // The upsert inserts nothing new (already claimed), but the row is still
+    // uncommitted — so it is owed, and must go out.
+    const { service, commits } = makeService([{ subject: 'h1', channel: 'pledge' }]);
+    const report = await settleOneDay(service, { ...base, extensionEnabled: { pledge: true } });
+
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    expect(report.notes).toEqual([]);
+    // …and it is marked done, so the NEXT tick leaves it alone.
+    expect(commits[0]).toHaveProperty('committed_at');
+  });
+
+  it('leaves a failed row uncommitted, and says so, so the day is not stamped', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    const { service, commits } = makeService([{ subject: 'day', channel: 'accountability-partner' }]);
+
+    const report = await settleOneDay(service, {
+      ...base,
+      extensionEnabled: { 'accountability-partner': true },
+      configs: { 'accountability-partner': { webhookUrl: 'https://hooks.example.com/x' } },
+    });
+
+    expect(report.notes.join()).toMatch(/accountability-partner/);
+    expect(commits).toEqual([]);
+  });
+
   it('does nothing at all when no stake extension is on', async () => {
     const { service, upserts } = makeService([]);
     const report = await settleOneDay(service, { ...base, extensionEnabled: {} });
@@ -328,8 +424,8 @@ describe('settleOneDay — claim then act', () => {
   it('one adapter throwing does not stop the others', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
     const { service } = makeService([
-      { date: DAY, subject: 'h1', channel: 'pledge' },
-      { date: DAY, subject: 'day', channel: 'accountability-partner' },
+      { subject: 'h1', channel: 'pledge' },
+      { subject: 'day', channel: 'accountability-partner' },
     ]);
 
     const report = await settleOneDay(service, {

@@ -92,7 +92,7 @@ const AT_0735_NY = new Date('2026-08-10T11:35:00Z');
 const BOOK_ROW = {
   id: 'h1',
   user_id: 'u1',
-  reminder_sent_date: null,
+  reminder_sent_key: null,
   reminder_snooze_until: null,
   reminder_snooze_date: null,
 };
@@ -181,7 +181,7 @@ describe('runReminderScan', () => {
     expect(claimedBeforeSend).toBe(true);
 
     const claim = calls.find((c) => c.table === 'items' && c.op === 'update');
-    expect(claim?.payload).toMatchObject({ reminder_sent_date: '2026-08-10' });
+    expect(claim?.payload).toMatchObject({ reminder_sent_key: '2026-08-10T07:30' });
   });
 
   // A blind stamp is not exclusive: two overlapping ticks — which a slow push
@@ -255,6 +255,9 @@ describe('runReminderScan', () => {
       const { service } = makeService({
         'user_settings.select': { data: [lastCallUser] },
         'items.select': { data: [] },
+        // The last call is CLAIMED, not stamped — the update reports the row it
+        // actually changed, and only a winning claim delivers.
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
       });
 
       const summary = await runReminderScan(service, { now: AT_2035_NY });
@@ -271,6 +274,7 @@ describe('runReminderScan', () => {
       const { service, calls } = makeService({
         'user_settings.select': { data: [lastCallUser] },
         'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
       });
 
       const summary = await runReminderScan(service, { now: AT_2035_NY });
@@ -278,6 +282,20 @@ describe('runReminderScan', () => {
       expect(sendPushToUser).not.toHaveBeenCalled();
       expect(calls.find((c) => c.table === 'user_settings' && c.op === 'update')?.payload)
         .toMatchObject({ habit_last_call_date: '2026-08-10' });
+    });
+
+    // A blind write always "succeeds", so two overlapping ticks would both
+    // deliver — with the call channel on, that is two Twilio calls for one nudge.
+    it('does not deliver when another tick won the claim', async () => {
+      fetchItems.mockResolvedValue([habit()]);
+      const { service } = makeService({
+        'user_settings.select': { data: [lastCallUser] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [] },
+      });
+      const summary = await runReminderScan(service, { now: AT_2035_NY });
+      expect(summary.lastCalls).toBe(0);
+      expect(sendPushToUser).not.toHaveBeenCalled();
     });
 
     it('does not repeat once it has been sent today', async () => {

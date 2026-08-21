@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { saveSettings } from '@/lib/settings-service';
 import { usePlannerStore } from '@/lib/planner-store';
+import { toDateStr } from '@/lib/recurrence';
 
 /**
  * Per-user reminder and stakes settings — everything the unattended tick reads.
@@ -89,7 +90,30 @@ export const useReminderStore = create<ReminderStore>((set) => ({
   setStakesEnabled: (enabled) => {
     set({ stakesEnabled: enabled });
     const userId = usePlannerStore.getState().userId;
-    if (userId) saveSettings(userId, { stakes_enabled: enabled });
+    if (!userId) return;
+
+    if (!enabled) {
+      saveSettings(userId, { stakes_enabled: false });
+      return;
+    }
+
+    // Switching stakes ON also closes the books on everything before today.
+    //
+    // Without this, stakes_settled_date is still whatever it was — usually null
+    // — so the first settlement runs its catch-up and bills for days the user
+    // had stakes switched OFF and no way to act on. Someone enabling the pledge
+    // tier at lunchtime would wake up owing money for a week they never agreed
+    // to. Stamping yesterday means the first day that can cost anything is the
+    // one that starts now.
+    const timezone =
+      usePlannerStore.getState().userTimezone ??
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    saveSettings(userId, {
+      stakes_enabled: true,
+      stakes_settled_date: toDateStr(yesterday, timezone),
+    });
   },
 
   setStakesSettleTime: (time) => {

@@ -122,8 +122,15 @@ function ControlFor({
   }, [value]);
 
   const commit = () => {
+    const wasDirty = dirty.current;
     dirty.current = false;
-    if (draft === String(value)) return;
+    // A write-only credential's read() returns '' whatever is stored, so
+    // "different from the rendered value" cannot see the one edit that matters
+    // most — CLEARING the field. Without the dirty flag a stored token could be
+    // replaced but never deleted from the UI, which is the wrong direction for
+    // the only control here that holds a key to someone's house.
+    const changed = record.textVariant === 'secret' ? wasDirty : draft !== String(value);
+    if (!changed) return;
     onWrite(draft);
     // A write-only credential renders empty BY CONTRACT — its read() returns ''
     // whatever is stored — so `value` never changes and the sync effect above

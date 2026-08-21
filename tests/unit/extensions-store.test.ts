@@ -184,7 +184,11 @@ describe('extensions store — per-extension config', () => {
   });
 
   it('writes one key without disturbing the others', () => {
-    useExtensionsStore.setState({ available: true, configs: { 'phone-call': { to: '+1', from: '+2' } } });
+    useExtensionsStore.setState({
+      available: true,
+      configsLoaded: true,
+      configs: { 'phone-call': { to: '+1', from: '+2' } },
+    });
     useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'voice', 'alice');
 
     expect(useExtensionsStore.getState().configs['phone-call']).toEqual({
@@ -199,7 +203,11 @@ describe('extensions store — per-extension config', () => {
   // decide whether '' means unset — which is what makes "I cleared the number
   // and it still called me" possible.
   it('clearing a field removes the key rather than storing an empty string', () => {
-    useExtensionsStore.setState({ available: true, configs: { 'phone-call': { to: '+1', voice: 'alice' } } });
+    useExtensionsStore.setState({
+      available: true,
+      configsLoaded: true,
+      configs: { 'phone-call': { to: '+1', voice: 'alice' } },
+    });
     useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'voice', '');
 
     expect(useExtensionsStore.getState().configs['phone-call']).toEqual({ to: '+1' });
@@ -215,19 +223,40 @@ describe('extensions store — per-extension config', () => {
     expect(mockSetConfig).not.toHaveBeenCalled();
   });
 
-  it('a field typed during the first hydrate survives it', async () => {
+  // The config write is WHOLE-OBJECT, so it can only be correct once the
+  // server's copy is in memory. Writing mid-hydrate would upsert a one-key
+  // object over a row holding four and silently destroy the rest — so the write
+  // is refused, not merged. (The settings page gates its render on hydration,
+  // so in practice this only fires after a hydrate has FAILED — exactly when
+  // the in-memory copy is empty and most dangerous.)
+  it('refuses a config write while the first hydrate is still in flight', async () => {
     let resolve!: (v: Record<string, Record<string, unknown>>) => void;
     mockFetchConfigs.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
     mockFetch.mockResolvedValueOnce({});
 
     const inFlight = useExtensionsStore.getState().hydrate('user-1');
     useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'to', '+1-typed');
+    expect(mockSetConfig).not.toHaveBeenCalled();
+
     resolve({ 'phone-call': { to: '+1-server', from: '+2-server' } });
     await inFlight;
 
-    // The local write is already on the wire; the server read predates it.
     expect(useExtensionsStore.getState().configs['phone-call']).toEqual({
+      to: '+1-server', from: '+2-server',
+    });
+    // …and once it has landed, writes work normally.
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'to', '+1-typed');
+    expect(mockSetConfig).toHaveBeenCalledWith('user-1', 'phone-call', {
       to: '+1-typed', from: '+2-server',
     });
+  });
+
+  it('refuses a config write after a hydrate failed outright', async () => {
+    mockFetch.mockResolvedValueOnce(null);
+    mockFetchConfigs.mockResolvedValueOnce(null);
+    await useExtensionsStore.getState().hydrate('user-1');
+
+    useExtensionsStore.getState().setConfigValue('user-1', 'phone-call', 'to', '+1');
+    expect(mockSetConfig).not.toHaveBeenCalled();
   });
 });
