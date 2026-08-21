@@ -527,13 +527,36 @@ table as ONE set. Four rules, each closing a found defect:
     field and lands with the slice;
   - `listDeleted`'s goal arm, whose bin snapshot must carry `{itemId, role,
     sortOrder}` and not bare ids — it ships with the console's Trash section.
-- **Phase 1 — goals end-to-end, console section.** Store slice + history + undo
-  (incl. the demotion mechanism and the item→roles index); console Goals section
-  (list + detail + wind-down + trash with the role-aware bin arm); Goal chip
-  (renders at zero goals, next-milestone line, Ended divider);
-  create-with-membership (`goalIds` + `goalRole`); sweep + bulk-verb milestone
-  exclusions with receipts; the vocabulary cleanup (placeholder + example copy);
-  `lib/goals.ts` + progress display rules.
+- [x] **Phase 1 — goals end-to-end, console section** (built 2026-08-20, `89120ec`
+  + `5a150e8`). `lib/goals.ts` (progress with the cancelled/zero/all-done-early
+  rules, nextMilestone, checkinStanding, timeElapsed, goalRolesByItem,
+  milestoneItemIds, resolveGoalStateWrite, roleStillValid); store slice with CRUD,
+  `setGoalState`, `goalsAvailable`, goals in HistoryState/syncContainers/
+  applyHistoryState, and the history-baseline literal now a TYPED `historySlice()`
+  helper; the demotion mechanism in `updateItemAction`; milestone exclusions on
+  `moveTasksToDate` and `unscheduleTasks`; create-with-membership (`goalIds` +
+  `goalRole`); console Goals section with the wind-down notice; role-aware trash
+  arm end-to-end; the Goal chip; the member picker's pool parameterised by role;
+  the vocabulary cleanup. 1362 unit tests green, lint 0 errors, build clean, dist
+  matches src, tsc at baseline 23.
+
+  **Found by its own test, and it was new:** `unscheduleTasks` filtered its DB
+  writes by the milestone exclusion but re-derived its optimistic `set()` from
+  the caller's raw id set — so a milestone would have cleared in the store,
+  written nothing, and silently come back on reload. The two lists had been
+  interchangeable until this commit made them different. `moveTasksToDate` was
+  already safe (it keys its set() off the same `targets`).
+
+  **The typed history slice paid for itself immediately:** annotating the
+  literal turned up three more snapshot sites the compiler could now check, one
+  of which (`applyHistoryState`'s hand-repeated structural copy of HistoryState)
+  was a second place to forget a slice. It is now `HistoryState` itself.
+
+  **Deferred out of Phase 1, deliberately:** the celebrate receipt and the role
+  glyphs on rows ship with Phase 2's goal surface — both want `/goal/[id]` to
+  exist to point at. The `member-list` picker gained an `eligible` prop rather
+  than a role-aware rewrite, since milestone/check-in pickers differ only in
+  which items they admit.
 - **Phase 2 — the goal surface.** `/goal/[id]` + shared sections (suppression
   annotations included); role glyphs on rows + touch story; palette + omnibar
   parallel channel; the celebrate receipt (gated per decision 5).
