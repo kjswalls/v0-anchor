@@ -158,6 +158,17 @@ export interface ScanClock {
    * ends up an hour wrong twice a year.
    */
   nowIso: string
+  /**
+   * The same instant in epoch milliseconds.
+   *
+   * Carried rather than derived at the comparison site because the value it is
+   * compared against comes back from PostgREST, which renders a timestamptz as
+   * `…+00:00` while `toISOString()` produces `…Z`. Comparing those two as
+   * STRINGS is lexicographic, so it happens to work for UTC and silently stops
+   * working the moment the connection reports any other offset. Numbers have no
+   * such failure mode.
+   */
+  nowMs: number
   graceMinutes?: number
 }
 
@@ -212,9 +223,7 @@ export function dueReminders(
     // the item is due AND stamps that day, suppressing the real cue. See
     // migration 029's note on reminder_snooze_date.
     const snoozed =
-      snoozeUntil !== undefined &&
-      snoozeUntil <= clock.nowIso &&
-      snoozeDate === clock.dateStr
+      snoozeDate === clock.dateStr && hasMatured(snoozeUntil, clock.nowMs)
 
     if (snoozed) {
       // Deliberately NOT gated on reminderTime. Snooze can be tapped on a
@@ -278,4 +287,18 @@ export function lastCallItems(
 /** Stored streak, or 0 for a type that has no counter. */
 export function streakOf(item: Item): number {
   return 'streak' in item && typeof item.streak === 'number' ? item.streak : 0
+}
+
+/**
+ * Has a stored snooze instant arrived?
+ *
+ * Parsed rather than string-compared — see ScanClock.nowMs. An unparseable
+ * value answers false: a snooze nobody can read is a snooze that never fires,
+ * which is the safe direction (the stale sweep clears it) where the opposite
+ * would deliver at every tick forever.
+ */
+export function hasMatured(snoozeUntil: string | undefined, nowMs: number): boolean {
+  if (snoozeUntil === undefined) return false
+  const at = Date.parse(snoozeUntil)
+  return Number.isFinite(at) && at <= nowMs
 }

@@ -7,6 +7,7 @@ import {
   dueReminders,
   lastCallItems,
   streakOf,
+  hasMatured,
   REMINDER_GRACE_MINUTES,
   type ScanRow,
 } from '@/lib/reminders/due';
@@ -32,10 +33,12 @@ const MON = '2026-08-10';
 const TUE = '2026-08-11';
 const SAT = '2026-08-15';
 
+const NOW_ISO = '2026-08-10T12:00:00.000Z';
 const clock = (nowMinutes: number, dateStr = MON) => ({
   dateStr,
   nowMinutes,
-  nowIso: '2026-08-10T12:00:00.000Z',
+  nowIso: NOW_ISO,
+  nowMs: Date.parse(NOW_ISO),
 });
 
 describe('minutesOfDay', () => {
@@ -304,5 +307,29 @@ describe('streakOf', () => {
   it('is 0 for a type with no counter', () => {
     expect(streakOf(task())).toBe(0);
     expect(streakOf(habit({ streak: 12 }))).toBe(12);
+  });
+});
+
+describe('hasMatured', () => {
+  const now = Date.parse('2026-08-10T12:00:00.000Z');
+
+  it('compares instants, not strings', () => {
+    expect(hasMatured('2026-08-10T11:59:59.000Z', now)).toBe(true);
+    expect(hasMatured('2026-08-10T12:00:01.000Z', now)).toBe(false);
+  });
+
+  // PostgREST renders a timestamptz as `…+00:00`; toISOString() produces `…Z`.
+  // Compared as strings that is lexicographic, and works only by luck.
+  it('reads the offset form PostgREST actually returns', () => {
+    expect(hasMatured('2026-08-10T11:00:00+00:00', now)).toBe(true);
+    expect(hasMatured('2026-08-10T13:00:00+00:00', now)).toBe(false);
+    // A non-UTC offset is the case a string compare gets outright wrong:
+    // 14:00+03:00 is 11:00Z, which HAS matured.
+    expect(hasMatured('2026-08-10T14:00:00+03:00', now)).toBe(true);
+  });
+
+  it('treats an unreadable value as not yet matured', () => {
+    expect(hasMatured('whenever', now)).toBe(false);
+    expect(hasMatured(undefined, now)).toBe(false);
   });
 });

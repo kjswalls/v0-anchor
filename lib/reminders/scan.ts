@@ -44,6 +44,7 @@ export interface LocalClock {
   dateStr: string
   nowMinutes: number
   nowIso: string
+  nowMs: number
 }
 
 /**
@@ -62,7 +63,12 @@ export function localClock(now: Date, timezone: string): LocalClock {
     hourCycle: 'h23',
   }).format(now)
   const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now)
-  return { dateStr, nowMinutes: minutesOfDay(hhmm) ?? 0, nowIso: now.toISOString() }
+  return {
+    dateStr,
+    nowMinutes: minutesOfDay(hhmm) ?? 0,
+    nowIso: now.toISOString(),
+    nowMs: now.getTime(),
+  }
 }
 
 interface ReminderUserRow {
