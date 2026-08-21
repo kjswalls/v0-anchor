@@ -511,6 +511,11 @@ export function ItemDialog({
     updateGoal,
   } = usePlannerStore();
 
+  // Hoisted out of renderChips, which runs on every render of a component that
+  // subscribes to the whole store — so this rebuilt an N-item Map on every
+  // keystroke in the title field.
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
   /**
    * The names a trashed container is still holding.
    *
@@ -1007,7 +1012,6 @@ export function ItemDialog({
 
     // ── goal membership ───────────────────────────────────────────────────
     const activeGoals = goals.filter((g) => g.state === 'active');
-    const itemsById = new Map(items.map((i) => [i.id, i]));
     // Plain members only. A goal's chip adds the item to the goal; it never
     // grants a milestone or check-in role, which are the goal's own decision
     // and are made where its timeline is visible.

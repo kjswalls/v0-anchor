@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isMilestoneEligible } from '@/lib/item-registry';
@@ -12,10 +11,19 @@ import {
   sortGoalsForDisplay,
   timeElapsed,
 } from '@/lib/goals';
-import { byName, formatShort, matching, useLiveItemIds, useToday } from '@/lib/collections';
-import { Eyebrow, ObjectRow, Segmented, SegmentedOption, StatePill } from '../primitives';
+import {
+  byName,
+  countLive,
+  formatShort,
+  matching,
+  parseDay,
+  useLiveItemIds,
+  useToday,
+} from '@/lib/collections';
+import { Eyebrow, ObjectRow, Segmented, SegmentedOption } from '../primitives';
 import {
   BackRow,
+  BufferedTextarea,
   DangerZone,
   DayField,
   DetailColumn,
@@ -25,7 +33,6 @@ import {
   TeachingLine,
 } from '../detail-parts';
 import { ItemMemberList } from '../member-list';
-import { cn } from '@/lib/utils';
 import type { Goal, Item } from '@/lib/planner-types';
 
 /**
@@ -99,6 +106,71 @@ function ProgressTrack({ goal, achieved, total }: { goal: Goal; achieved: number
   );
 }
 
+/**
+ * Is this item already held by one of the goal's OTHER role arrays?
+ *
+ * The PK gives an item exactly one role per goal, so a picker that offered an
+ * item already held elsewhere would be offering a contradiction — and the write
+ * that follows is refused, leaving the store showing the item twice.
+ */
+function heldElsewhere(
+  goal: Goal,
+  own: 'memberIds' | 'milestoneIds' | 'checkinIds',
+  itemId: string,
+): boolean {
+  return (['memberIds', 'milestoneIds', 'checkinIds'] as const)
+    .filter((k) => k !== own)
+    .some((k) => goal[k].includes(itemId));
+}
+
+/** One role's member list, with the heading that names the role. */
+function RoleList({
+  title,
+  hint,
+  goal,
+  ids,
+  itemsById,
+  testPrefix,
+  orderable,
+  eligible,
+  emptyPool,
+  onChange,
+}: {
+  title: string;
+  hint: string;
+  goal: Goal;
+  ids: string[];
+  itemsById: Map<string, Item>;
+  testPrefix: string;
+  orderable?: boolean;
+  eligible: (item: Item) => boolean;
+  emptyPool?: string;
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Eyebrow>{title}</Eyebrow>
+      <ItemMemberList
+        ownerId={goal.id}
+        ownerName={goal.name}
+        memberIds={ids}
+        members={ids.map((id) => itemsById.get(id)).filter((i): i is Item => !!i)}
+        // Goals never suppress, so nothing here is ever dimmed for activation.
+        hiddenIds={EMPTY_IDS}
+        testPrefix={testPrefix}
+        orderable={orderable}
+        eligible={eligible}
+        emptyPoolLabel={emptyPool}
+        onChange={onChange}
+      />
+      <span className="text-muted-foreground text-[11px]">{hint}</span>
+    </div>
+  );
+}
+
+/** Shared, so a fresh Set per render never churns a memo downstream. */
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+
 /* ── the section ──────────────────────────────────────────────────────────── */
 
 export function GoalsSection({
@@ -143,9 +215,10 @@ export function GoalsSection({
 
   const firstEndedIndex = shown.findIndex((g) => !isGoalActive(g));
 
-  const create = (name: string) => {
+  const create = (name: string, icon?: string) => {
     const id = addGoal({
       name,
+      icon,
       state: 'active',
       memberIds: [],
       milestoneIds: [],
@@ -154,105 +227,125 @@ export function GoalsSection({
     onSelect(id);
   };
 
-  if (selected) {
-    return (
-      <GoalDetail
-        goal={selected}
-        itemsById={itemsById}
-        liveItemIds={liveItemIds}
-        onBack={() => onSelect(null)}
-        onChange={(updates) => updateGoal(selected.id, updates)}
-        onState={(state) => setGoalState(selected.id, state)}
-        onDelete={() =>
-          confirm({
-            title: `Delete ${selected.name}?`,
-            // The sentence that has to be here. "Delete Learn Chinese" sounds
-            // like it takes a year of work with it, and it does not: the
-            // members are ordinary items that exist for their own sake.
-            description:
-              `The goal moves to the trash for 30 days. Its habits, tasks and milestones ` +
-              `are ordinary items and stay exactly where they are — only the goal and its ` +
-              `links go.`,
-            confirmLabel: 'Delete goal',
-            destructive: true,
-            onConfirm: () => {
-              removeGoal(selected.id);
-              onSelect(null);
-            },
-          })
-        }
-      />
-    );
-  }
-
+  // BOTH columns, always — the console's contract (organize-console.tsx: "Each
+  // section owns both columns"). This used to early-return one or the other,
+  // which on desktop unmounted the list, the filter and the create row the
+  // moment a goal was clicked; BackRow is `md:hidden`, so above `md` there was
+  // then no way back to the list at all without changing rail sections.
   return (
-    <ListColumn
-      eyebrow="GOALS"
-      count={shown.length}
-      hasSelection={false}
-      filter={{
-        value: query,
-        onChange: setQuery,
-        placeholder: 'Filter goals…',
-        testId: 'goals-filter',
-      }}
-      footer={
-        <DraftRow
-          placeholder="Name a goal…"
-          addLabel="New goal"
-          testPrefix="goal"
-          autoFocus={focusNew}
-          disabled={!canCreate}
-          onAdd={(name) => create(name)}
-        />
-      }
-    >
-      {!goalsAvailable ? (
-        <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="goals-unavailable">
-          Goals aren&apos;t available on this account yet.
-        </p>
-      ) : shown.length === 0 && !query ? (
-        <TeachingLine>
-          A goal is the reason a stretch of work exists — learning a language, building
-          something over years. It holds the habits and tasks that serve it, the
-          checkpoints along the way, and a recurring check-in. It never hides anything.
-        </TeachingLine>
-      ) : (
-        shown.map((goal, i) => {
-          const { achieved, total } = goalProgress(goal, itemsById);
-          return (
-            <div key={goal.id}>
-              {i === firstEndedIndex && i > 0 && (
-                <div className="my-1.5 flex items-center gap-2 px-1" data-testid="goals-ended-divider">
-                  <span className="bg-border h-px flex-1" />
-                  <Eyebrow>ENDED</Eyebrow>
-                  <span className="bg-border h-px flex-1" />
-                </div>
-              )}
-              <ObjectRow
-                testId={`goal-row-${goal.id}`}
-                idAttr={{ 'data-goal-id': goal.id }}
-                icon={goal.icon}
-                color={goal.color}
-                name={goal.name}
-                selected={false}
-                pill={
-                  goal.state === 'achieved'
-                    ? 'Achieved'
-                    : goal.state === 'abandoned'
-                      ? 'Set aside'
-                      : null
-                }
-                pillTestId={`goal-pill-${goal.id}`}
-                count={total}
-                onSelect={() => onSelect(goal.id)}
-              />
-              <span className="sr-only">{progressLabel(goal, achieved, total)}</span>
-            </div>
-          );
-        })
-      )}
-    </ListColumn>
+    <>
+      <ListColumn
+        eyebrow="GOALS"
+        count={shown.length}
+        hasSelection={!!selected}
+        filter={{
+          value: query,
+          onChange: setQuery,
+          placeholder: 'Filter goals…',
+          testId: 'goals-filter',
+        }}
+        footer={
+          <DraftRow
+            placeholder="New goal…"
+            addLabel="Add goal"
+            testPrefix="goal"
+            disabled={!canCreate}
+            autoFocus={focusNew}
+            onAdd={(name, icon) => create(name, icon)}
+          />
+        }
+      >
+        {!goalsAvailable ? (
+          <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="goals-unavailable">
+            Goals aren&apos;t available on this account yet.
+          </p>
+        ) : goals.length === 0 ? (
+          <p className="text-muted-foreground px-[7px] pt-2 text-xs">No goals yet.</p>
+        ) : (
+          shown.map((goal, i) => {
+            const { achieved, total } = goalProgress(goal, itemsById);
+            return (
+              <div key={goal.id}>
+                {i === firstEndedIndex && i > 0 && (
+                  <div
+                    className="my-1.5 flex items-center gap-2 px-1"
+                    data-testid="goals-ended-divider"
+                  >
+                    <span className="bg-border h-px flex-1" />
+                    <Eyebrow>ENDED</Eyebrow>
+                    <span className="bg-border h-px flex-1" />
+                  </div>
+                )}
+                <ObjectRow
+                  testId="goal-row"
+                  idAttr={{ 'data-goal-id': goal.id }}
+                  icon={goal.icon}
+                  color={goal.color}
+                  name={goal.name}
+                  selected={selectedId === goal.id}
+                  // The pill carries the quiet progress fraction while a goal is
+                  // running, and its state once it is not. The numeral column
+                  // beside it means "how much is in here" in every other
+                  // section, so it counts MEMBERS — a goal holding five habits
+                  // and no milestones read "0" there when it counted only
+                  // milestones.
+                  pill={
+                    goal.state === 'achieved'
+                      ? 'Achieved'
+                      : goal.state === 'abandoned'
+                        ? 'Set aside'
+                        : total > 0
+                          ? `${achieved}/${total}`
+                          : null
+                  }
+                  pillTestId="goal-state-pill"
+                  count={countLive(
+                    [...goal.memberIds, ...goal.milestoneIds, ...goal.checkinIds],
+                    liveItemIds,
+                  )}
+                  onSelect={() => onSelect(goal.id)}
+                />
+              </div>
+            );
+          })
+        )}
+      </ListColumn>
+
+      <DetailColumn hasSelection={!!selected}>
+        {selected ? (
+          <GoalDetail
+            goal={selected}
+            itemsById={itemsById}
+            onBack={() => onSelect(null)}
+            onChange={(updates) => updateGoal(selected.id, updates)}
+            onState={(state) => setGoalState(selected.id, state)}
+            onDelete={() =>
+              confirm({
+                title: `Delete ${selected.name}?`,
+                // The sentence that has to be here. "Delete Learn Chinese"
+                // sounds like it takes a year of work with it, and it does not.
+                description:
+                  `The goal moves to the trash for 30 days. Its habits, tasks and milestones ` +
+                  `are ordinary items and stay exactly where they are — only the goal and its ` +
+                  `links go.`,
+                confirmLabel: 'Delete goal',
+                destructive: true,
+                onConfirm: () => {
+                  removeGoal(selected.id);
+                  onSelect(null);
+                },
+              })
+            }
+          />
+        ) : (
+          <TeachingLine>
+            A goal is the reason a stretch of work exists — learning a language, building
+            something over years. It holds the habits and tasks that serve it, the checkpoints
+            along the way, and a recurring check-in. It never hides anything.
+          </TeachingLine>
+        )}
+      </DetailColumn>
+    </>
   );
 }
 
@@ -261,7 +354,6 @@ export function GoalsSection({
 function GoalDetail({
   goal,
   itemsById,
-  liveItemIds,
   onBack,
   onChange,
   onState,
@@ -269,7 +361,6 @@ function GoalDetail({
 }: {
   goal: Goal;
   itemsById: Map<string, Item>;
-  liveItemIds: Set<string>;
   onBack: () => void;
   onChange: (updates: Partial<Goal>) => void;
   onState: (state: Goal['state']) => void;
@@ -277,6 +368,8 @@ function GoalDetail({
 }) {
   const { achieved, total } = goalProgress(goal, itemsById);
   const next = nextMilestone(goal, itemsById);
+  const startDay = parseDay(goal.startsOn);
+  const targetDay = parseDay(goal.targetOn);
 
   // Membership patches always carry all three arrays. The reconcile would
   // accept one, but sending the whole set makes the write independent of which
@@ -315,21 +408,20 @@ function GoalDetail({
         survives three years survives on the reason, and this is the line Beacon
         is handed when it is asked what the user is working towards.
       */}
-      <label className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <Eyebrow>WHY THIS MATTERS</Eyebrow>
-        <textarea
+        {/* Buffered, like every other typed field in this console. Live-bound it
+            armed a history label, a set() and a PATCH per KEYSTROKE — and this
+            is the console's first paragraph-shaped field, so one sentence would
+            have evicted the user's entire 50-deep undo stack. */}
+        <BufferedTextarea
           value={goal.why ?? ''}
-          onChange={(e) => onChange({ why: e.target.value || undefined })}
+          onCommit={(next) => onChange({ why: next.trim() || undefined })}
           placeholder="So I can talk to my in-laws without an interpreter."
-          rows={2}
-          data-testid="goal-why"
-          className={cn(
-            'placeholder:text-muted-foreground/60 w-full resize-none rounded-md border bg-transparent',
-            'px-2.5 py-2 text-[13px] leading-relaxed outline-none',
-            'focus-visible:ring-ring/40 focus-visible:ring-2',
-          )}
+          ariaLabel="Why this goal matters"
+          testId="goal-why"
         />
-      </label>
+      </div>
 
       <ProgressTrack goal={goal} achieved={achieved} total={total} />
 
@@ -347,12 +439,20 @@ function GoalDetail({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* Stacked below `sm`: the console is a bottom sheet there, and two
+          side-by-side pickers overflow a ~133px content box into an
+          `overflow-x-hidden` wrapper — unreachable, not merely tight. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* Each field bounds the other, the way a program's range does. An
+            inverted range is one careless click away and it fails SILENTLY:
+            timeElapsed returns null, so both elapsed readouts simply stop
+            existing while the header still says "· by <target>". */}
         <DayField
           label="Started"
           placeholder="No start date"
           value={goal.startsOn}
           clearLabel="Clear start date"
+          disabledDays={targetDay ? { after: targetDay } : undefined}
           onChange={(next) => onChange({ startsOn: next })}
           testId="goal-starts-on"
         />
@@ -361,6 +461,7 @@ function GoalDetail({
           placeholder="No target date"
           value={goal.targetOn}
           clearLabel="Clear target date"
+          disabledDays={startDay ? { before: startDay } : undefined}
           onChange={(next) => onChange({ targetOn: next })}
           testId="goal-target-on"
         />
@@ -395,41 +496,49 @@ function GoalDetail({
       </div>
 
       {/*
-        Three lists, one per role. Each picker is filtered by the registry
-        predicate for its role rather than by plain collectibility — a milestone
-        must be one-shot and a check-in must recur, and offering an ineligible
-        item would produce a role the demotion rule immediately takes back.
+        Three lists, one per role, each LABELLED — the words Milestone and
+        Check-in are the whole role model, and without headings the pane showed
+        three identical "0 items / Add an item" blocks and never said them.
+
+        Each picker excludes the OTHER two arrays as well as its own. Otherwise
+        the natural "this member is really a milestone" gesture offers an item
+        that is already a member, sends a patch naming it twice, and the write
+        is refused — leaving the store showing it in two lists and every
+        subsequent membership edit on this goal failing the same way.
       */}
-      <ItemMemberList
-        ownerId={goal.id}
-        ownerName={goal.name}
-        memberIds={goal.milestoneIds}
-        members={goal.milestoneIds.map((id) => itemsById.get(id)).filter((i): i is Item => !!i)}
-        hiddenIds={new Set()}
+      <RoleList
+        title="MILESTONES"
+        hint="Checkpoints along the way. One-shot items only — a repeating item never finishes."
+        goal={goal}
+        ids={goal.milestoneIds}
+        itemsById={itemsById}
         testPrefix="goal-milestone"
         orderable
-        eligible={isMilestoneEligible}
+        eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(goal, 'milestoneIds', i.id)}
+        emptyPool="Nothing eligible yet — a milestone is a one-shot task with a target date."
         onChange={(ids) => members({ milestoneIds: ids })}
       />
 
-      <ItemMemberList
-        ownerId={goal.id}
-        ownerName={goal.name}
-        memberIds={goal.checkinIds}
-        members={goal.checkinIds.map((id) => itemsById.get(id)).filter((i): i is Item => !!i)}
-        hiddenIds={new Set()}
+      <RoleList
+        title="CHECK-INS"
+        hint="A recurring review of how this is going."
+        goal={goal}
+        ids={goal.checkinIds}
+        itemsById={itemsById}
         testPrefix="goal-checkin"
-        eligible={isCheckinEligible}
+        eligible={(i) => isCheckinEligible(i) && !heldElsewhere(goal, 'checkinIds', i.id)}
+        emptyPool="Nothing eligible yet — a check-in is a repeating item."
         onChange={(ids) => members({ checkinIds: ids })}
       />
 
-      <ItemMemberList
-        ownerId={goal.id}
-        ownerName={goal.name}
-        memberIds={goal.memberIds}
-        members={goal.memberIds.map((id) => itemsById.get(id)).filter((i): i is Item => !!i)}
-        hiddenIds={new Set()}
+      <RoleList
+        title="SUPPORTING WORK"
+        hint="The habits and tasks that serve this goal."
+        goal={goal}
+        ids={goal.memberIds}
+        itemsById={itemsById}
         testPrefix="goal-member"
+        eligible={(i) => !heldElsewhere(goal, 'memberIds', i.id)}
         onChange={(ids) => members({ memberIds: ids })}
       />
 
@@ -440,12 +549,6 @@ function GoalDetail({
         consequence="Its members stay where they are — only the goal and its links go to the trash."
         onDelete={onDelete}
       />
-
-      <span className="sr-only" data-testid="goal-live-members">
-        {[...goal.memberIds, ...goal.milestoneIds, ...goal.checkinIds].filter((id) =>
-          liveItemIds.has(id),
-        ).length}
-      </span>
     </DetailColumn>
   );
 }

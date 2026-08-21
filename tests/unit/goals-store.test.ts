@@ -315,3 +315,112 @@ describe('the trash keeps a goal’s roles', () => {
     expect(usePlannerStore.getState().goals).toHaveLength(1);
   });
 });
+
+describe('the review’s findings, pinned', () => {
+  it('demotion is ONE history entry, so one undo cannot restore an invalid role', () => {
+    // The blocker three lenses found. Two set()s meant two entries, and the
+    // intermediate one is the state decision 3 exists to make unreachable: a
+    // milestone whose item recurs, whose scalar status is frozen by design, so
+    // it can never be counted achieved. Worse, syncContainers then WRITES it.
+    usePlannerStore.setState({
+      items: [task()],
+      goals: [goal({ milestoneIds: ['t1'] })],
+    } as never);
+    usePlannerStore.getState().refreshActionLog();
+    // Compared by HEAD rather than by length: the log is capped at
+    // MAX_HISTORY_SIZE, so a full stack absorbs a second entry without growing
+    // — which is exactly how a two-entry edit could hide from a count.
+    const previousHead = usePlannerStore.getState().actionLog[0]?.label;
+
+    usePlannerStore.getState().updateTask('t1', { repeatFrequency: 'daily' });
+    usePlannerStore.getState().refreshActionLog();
+    const log = usePlannerStore.getState().actionLog;
+    expect(log[0].label).toMatch(/^Role changed:/);
+    expect(log[1]?.label).toBe(previousHead);
+
+    usePlannerStore.getState().undo();
+    const g = usePlannerStore.getState().goals[0];
+    const item = usePlannerStore.getState().items[0] as Extract<Item, { type: 'task' }>;
+    // Either both revert or neither does — never a recurring milestone.
+    expect(g.milestoneIds.includes('t1') && item.repeatFrequency === 'daily').toBe(false);
+  });
+
+  it('the demotion receipt rides a label the undo toast can actually see', () => {
+    // The receipt has exactly one consumer and it fires only for a known
+    // prefix, so an `Edit …` label wrote the explanation into an object
+    // nothing renders — and borrowing another verb's prefix would have lied in
+    // the history popover, which shows the label verbatim.
+    usePlannerStore.setState({
+      items: [task()],
+      goals: [goal({ milestoneIds: ['t1'] })],
+    } as never);
+    usePlannerStore.getState().updateTask('t1', { repeatFrequency: 'daily' });
+    usePlannerStore.getState().refreshActionLog();
+    const entry = usePlannerStore.getState().actionLog[0];
+    expect(entry.label.startsWith('Role changed:')).toBe(true);
+    expect(entry.receipt).toMatch(/Learn Chinese/);
+  });
+
+  it('refuses a membership patch that gives one item two roles', () => {
+    // db.ts refuses it inside the write, which this action fires as
+    // .catch(console.error) AFTER the optimistic set() — so without a guard
+    // here the store kept a state the database rejected, and every subsequent
+    // membership edit on the goal threw on the same contradiction.
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    usePlannerStore.setState({ goals: [goal({ memberIds: ['t1'] })] } as never);
+    usePlannerStore.getState().updateGoal('g1', {
+      memberIds: ['t1'],
+      milestoneIds: ['t1'],
+      checkinIds: [],
+    });
+    const g = usePlannerStore.getState().goals[0];
+    expect(g.milestoneIds).toEqual([]);
+    expect(g.memberIds).toEqual(['t1']);
+    expect(db.updateGoal).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('clears goals on sign-out, so the next account never sees them', () => {
+    usePlannerStore.setState({ goals: [goal()], goalsAvailable: false } as never);
+    usePlannerStore.getState().clearStore();
+    expect(usePlannerStore.getState().goals).toEqual([]);
+    expect(usePlannerStore.getState().goalsAvailable).toBe(true);
+  });
+
+  it('survives an undo back to session start with its goals intact', () => {
+    // The payoff of typing the history-baseline literal. Missed there, undoing
+    // to the baseline reads every goal as "present in current, absent in
+    // restored" — which syncContainers executes as a DELETE of all of them.
+    usePlannerStore.setState({ goals: [goal()] } as never);
+    usePlannerStore.getState().addGoal({
+      name: 'Second', state: 'active', memberIds: [], milestoneIds: [], checkinIds: [],
+    });
+    usePlannerStore.getState().undo();
+    // The goal that existed at the baseline survives; only the one the undone
+    // action CREATED is deleted. Before the literal was typed, the baseline
+    // held no `goals` at all, so syncContainers read both as "absent in
+    // restored" and soft-deleted the pair.
+    expect(usePlannerStore.getState().goals.map((g) => g.name)).toEqual(['Learn Chinese']);
+    const deleted = (db.deleteGoal as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(
+      (c) => c[1],
+    );
+    expect(deleted).not.toContain('g1');
+  });
+
+  it('the bulk verbs persist exactly what they kept', () => {
+    // The optimistic state and the DB writes must name the same set — the
+    // divergence that shipped in 1a and was caught by its own test.
+    usePlannerStore.setState({
+      items: [
+        task({ id: 'plain', startDate: '2026-06-01', timeBucket: 'anytime' }),
+        task({ id: 'stone', startDate: '2026-06-30', timeBucket: 'anytime' }),
+      ],
+      goals: [goal({ milestoneIds: ['stone'] })],
+    } as never);
+    usePlannerStore.getState().unscheduleTasks(['plain', 'stone']);
+    const written = (db.updateItem as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(
+      (c) => c[0],
+    );
+    expect(written).toEqual(['plain']);
+  });
+});

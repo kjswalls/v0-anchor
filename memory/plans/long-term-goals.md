@@ -557,6 +557,27 @@ table as ONE set. Four rules, each closing a found defect:
   exist to point at. The `member-list` picker gained an `eligible` prop rather
   than a role-aware rewrite, since milestone/check-in pickers differ only in
   which items they admit.
+
+  **Deferred, and NOT originally recorded — the review caught the omissions:**
+  - **The agent PATCH path has no demotion.** Decision 3 requires it "from the
+    store's item-update path AND from the agent item PATCH handler"; only the
+    store half shipped, so an OpenClaw write can make a milestone recurring
+    server-side today with nothing taking the role back. It lands with Phase 4's
+    agent surface, where the rest of the goal write-path validation lives.
+  - **Inline-create-a-milestone from the goal.** `Memberships.goalRole` was
+    built in 1a for exactly this and has no producer, so the only way to make a
+    milestone is to pick an item that already exists. It is the shortest path to
+    the plan's headline journey and belongs with Phase 2's surface (it also
+    needs the `timeBucket: 'anytime'` seed the UI plan records).
+  - **The wind-down is a NOTICE, not the step decision 5 describes.** It names
+    the recurring members an ended goal leaves running; it does not offer the
+    keep / delete / move-to-a-program affordances. The naming is the load-bearing
+    half (nothing else in the app will ever mention the goal again), so the
+    affordances follow with Phase 2.
+  - **`checkinStanding` has no consumer yet** — it is Phase 3/4's, and its
+    timezone handling (it round-trips a constructed Date through `toDateStr`,
+    and does not consult `isSkippedOnDate`) should be settled before Beacon
+    reads it server-side.
 - **Phase 2 — the goal surface.** `/goal/[id]` + shared sections (suppression
   annotations included); role glyphs on rows + touch story; palette + omnibar
   parallel channel; the celebrate receipt (gated per decision 5).

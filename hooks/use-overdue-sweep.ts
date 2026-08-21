@@ -5,6 +5,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
 import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
+import { milestoneItemIds } from '@/lib/goals';
 import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
 import { releasedOn } from '@/lib/sweep-grace';
 import type { Item, Routine, Program } from '@/lib/planner-types';
@@ -321,7 +322,20 @@ export function useOverdueSweep() {
     const graced = stale.filter(
       (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, programs)
     );
-    if (graced.length === 0) return;
+
+    // Milestones are subtracted HERE, not left to unscheduleTasks to refuse.
+    // The verb already declines them — a milestone's startDate is the goal's
+    // target date, not stale scheduling residue — but the receipt below is
+    // built from this list, and a receipt is a promise about what happened.
+    // Left in, the dock would announce "N items put aside this morning"
+    // counting milestones still sitting on their dates, and its "Put back"
+    // would then write their PRE-SWEEP scheduling over them hours later,
+    // silently reverting any deliberate reschedule made in between. When every
+    // stale item is a milestone the verb writes nothing at all, so the notice
+    // would be pure fiction.
+    const milestones = milestoneItemIds(planner.goals);
+    const sweepable = graced.filter((item) => !milestones.has(item.id));
+    if (sweepable.length === 0) return;
 
     // ── Gate 7: no sibling tab beat us to it ─────────────────────────────────
     // Gate 6 only saw this tab's copy of the store. Two tabs open at the same
@@ -341,7 +355,7 @@ export function useOverdueSweep() {
     // entirely (lib/planner-store.ts `restoreScheduling`).
     const receipt = {
       date: todayStr,
-      items: graced.map((item) => ({
+      items: sweepable.map((item) => ({
         id: item.id,
         title: item.title,
         isScheduled: 'isScheduled' in item ? !!item.isScheduled : false,
@@ -363,8 +377,8 @@ export function useOverdueSweep() {
     // persists (components/sidebar/dock-notices.tsx). ⌘Z is untouched — the
     // history entry is still written, only the toast is suppressed.
     planner.unscheduleTasks(
-      graced.map((item) => item.id),
-      { label: `Aged out: ${graced.length} items` },
+      sweepable.map((item) => item.id),
+      { label: `Aged out: ${sweepable.length} items` },
     );
     morning.setAutoAgeReceipt(userId, receipt);
 

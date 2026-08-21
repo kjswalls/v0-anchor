@@ -29,12 +29,7 @@ import type {
   GoalRole,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
-import {
-  goalRolesByItem,
-  milestoneItemIds,
-  resolveGoalStateWrite,
-  roleStillValid,
-} from './goals';
+import { milestoneItemIds, resolveGoalStateWrite, roleStillValid } from './goals';
 import {
   fetchItems,
   fetchProjects,
@@ -1153,9 +1148,9 @@ export const usePlannerStore = create<PlannerStore>()(
        * Runs on the item that is ALREADY updated, not on the patch, so it asks
        * the same question the reader will: is this role still true of this item?
        */
-      const demoteInvalidGoalRoles = (item: Item) => {
+      const planGoalRoleDemotion = (item: Item): { goals: Goal[]; receipt: string } | null => {
         const goals = get().goals;
-        if (goals.length === 0) return;
+        if (goals.length === 0) return null;
         const demoted: { goal: Goal; from: GoalRole }[] = [];
         const next = goals.map((goal) => {
           for (const role of ['milestone', 'checkin'] as const) {
@@ -1173,7 +1168,7 @@ export const usePlannerStore = create<PlannerStore>()(
           }
           return goal;
         });
-        if (demoted.length === 0) return;
+        if (demoted.length === 0) return null;
 
         const { goal, from } = demoted[0];
         const noun = from === 'milestone' ? 'milestone' : 'check-in';
@@ -1181,41 +1176,63 @@ export const usePlannerStore = create<PlannerStore>()(
           from === 'milestone'
             ? 'it repeats now, and a repeating item never finishes'
             : 'it no longer repeats, and a check-in is a rhythm';
-        setNextActionLabel(
-          `Edit ${item.title}`,
-          demoted.length === 1
-            ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
-            : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
-        );
-        set({ goals: next });
 
         const userId = get().userId;
-        if (!userId) return;
-        for (const { goal: g } of demoted) {
-          const live = next.find((n) => n.id === g.id)!;
-          dbUpdateGoal(userId, g.id, {
-            memberIds: live.memberIds,
-            milestoneIds: live.milestoneIds,
-            checkinIds: live.checkinIds,
-          }).catch(console.error);
+        if (userId) {
+          for (const { goal: g } of demoted) {
+            const live = next.find((n) => n.id === g.id)!;
+            dbUpdateGoal(userId, g.id, {
+              memberIds: live.memberIds,
+              milestoneIds: live.milestoneIds,
+              checkinIds: live.checkinIds,
+            }).catch(console.error);
+          }
         }
+
+        return {
+          goals: next,
+          receipt:
+            demoted.length === 1
+              ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
+              : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
+        };
       };
 
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
-        set((state) => projectItems(
-          state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
-        ));
-        dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
-        // Only recurrence can invalidate a role, so only a patch that touches
-        // it needs the check — every other field edit skips a scan of every
-        // goal's arrays. `in` rather than a truthiness test: clearing the field
-        // (`repeatFrequency: undefined`) is exactly the edit that turns a
+        // Only recurrence can invalidate a role, so only a patch that touches it
+        // pays for the scan. `in` rather than a truthiness test: clearing the
+        // field (`repeatFrequency: undefined`) is exactly the edit that turns a
         // check-in back into a one-shot task.
-        if ('repeatFrequency' in updates) {
-          demoteInvalidGoalRoles({ ...found, ...updates } as Item);
+        const demotion = 'repeatFrequency' in updates
+          ? planGoalRoleDemotion({ ...found, ...updates } as Item)
+          : null;
+
+        // ONE set() for the item AND the roles it just invalidated. Two set()s
+        // push two history entries, and the intermediate one is the state the
+        // whole rule exists to make unreachable: a single ⌘Z would restore the
+        // milestone role while the item is still recurring, and syncContainers
+        // would then WRITE that recurring milestone back — a row whose scalar
+        // status is frozen by design, so the goal reads permanently behind with
+        // nothing to click. The file's own doctrine, twenty lines from the trash
+        // restore: one set() => one history entry => one undo.
+        if (demotion) {
+          // Its own prefix, registered in use-undo-toast's SIGNIFICANT_ACTIONS.
+          // The receipt has exactly one consumer and it only fires for a known
+          // prefix, so an `Edit …` label would have written the explanation
+          // into an object nothing renders — and borrowing another verb's
+          // prefix would have lied in the history popover, which shows the
+          // label verbatim.
+          setNextActionLabel(`Role changed: ${found.title}`, demotion.receipt);
         }
+        set((state) => ({
+          ...projectItems(
+            state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
+          ),
+          ...(demotion ? { goals: demotion.goals } : {}),
+        }));
+        dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
       };
 
       const resolveDateStr = (date?: Date): string => {
@@ -1570,6 +1587,30 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         const goal = get().goals.find((g) => g.id === id);
         if (!goal) return;
+
+        // An id in two role arrays is two contradictory instructions about one
+        // join row, and the PK holds exactly one role. db.ts refuses it — but
+        // it refuses INSIDE the write, which this action fires as
+        // `.catch(console.error)` AFTER the optimistic set() has landed. So the
+        // store would keep a state the database rejected, the item would render
+        // in two lists, goalProgress would count a milestone that does not
+        // exist, and every SUBSEQUENT membership edit on this goal would throw
+        // on the same contradiction. Refusing here keeps the store honest.
+        const roleArrays = [updates.memberIds, updates.milestoneIds, updates.checkinIds];
+        const seen = new Set<string>();
+        for (const ids of roleArrays) {
+          if (!ids) continue;
+          for (const memberId of new Set(ids)) {
+            if (seen.has(memberId)) {
+              console.error(
+                `updateGoal: item ${memberId} was given two roles in goal ${id}; write refused.`,
+              );
+              return;
+            }
+            seen.add(memberId);
+          }
+        }
+
         setNextActionLabel(`Edit goal: ${updates.name ?? goal.name}`);
         set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...updates } : g)) });
         // No withReleaseGrace, unlike updateRoutine: a goal suppresses nothing,
@@ -1742,6 +1783,14 @@ export const usePlannerStore = create<PlannerStore>()(
           routines: [],
           programs: [],
           collectionsAvailable: true,
+          // Goals reset with every other slice. Missed, the previous account's
+          // goal names, whys and target dates stay in memory after SIGNED_OUT —
+          // and initializeStore's catch branch sets only isLoading/error, so a
+          // FAILED next sign-in leaves user B looking at user A's goals in the
+          // chip and the console, with updateGoal firing user-B writes at
+          // user-A ids.
+          goals: [],
+          goalsAvailable: true,
           isLoading: false,
           error: null,
           canUndo: false,

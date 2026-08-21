@@ -2181,10 +2181,26 @@ export async function listDeleted(
   // One failure fails the lot. A partial bin is worse than an error: a user
   // hunting for a deleted routine would find a Trash that renders happily
   // without it and conclude it is gone for good.
+  //
+  // EXCEPT a table that does not exist yet, which is not a failure — it is an
+  // un-applied migration, and the honest answer for it is "no rows of that
+  // kind", not "the bin is broken". Without this the goals arm took the WHOLE
+  // trash down on every pre-029 database: the bin's consumer turns any
+  // rejection into its terminal state, so items, projects, habit groups,
+  // routines and programs would all have vanished from the 30-day recovery
+  // path until someone ran `db push`. That directly contradicts the deploy-
+  // order promise 029's own header makes, and it is exactly why fetchGoals
+  // returns null rather than throwing.
+  const missingTable = (e: { code?: string } | null) =>
+    !!e && (e.code === '42P01' || e.code === 'PGRST205');
+  const goalsMissing = missingTable(goals.error) || missingTable(goalMembers.error);
+  if (goalsMissing) {
+    console.warn('listDeleted: migration 029 not applied yet — no goals in the bin.');
+  }
   const failure =
     items.error ?? projects.error ?? groups.error ?? routines.error ??
     routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error ??
-    goals.error ?? goalMembers.error;
+    (goalsMissing ? null : (goals.error ?? goalMembers.error));
   if (failure) throw failure;
 
   const itemRows = (items.data ?? []) as Trashed<ItemRow>[];
@@ -2207,7 +2223,7 @@ export async function listDeleted(
   // a role this build does not recognise, so a restore can never drop a member
   // out of every array.
   const membersByGoal = new Map<string, GoalMembers>();
-  for (const row of (goalMembers.data ?? []) as { goal_id: string; item_id: string; role: string }[]) {
+  for (const row of (goalsMissing ? [] : (goalMembers.data ?? [])) as { goal_id: string; item_id: string; role: string }[]) {
     let entry = membersByGoal.get(row.goal_id);
     if (!entry) {
       entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
@@ -2307,10 +2323,18 @@ export async function listDeleted(
     });
   }
 
-  for (const row of (goals.data ?? []) as Trashed<GoalRow>[]) {
+  for (const row of (goalsMissing ? [] : (goals.data ?? [])) as Trashed<GoalRow>[]) {
     entries.push({
       kind: 'goal', id: row.id, name: row.name, deletedAt: row.deleted_at,
       icon: row.icon ?? undefined, color: row.color ?? undefined,
+      // What comes back with it, so the bin row can say so BEFORE the click —
+      // which is the one job that surface has. Every other container arm sets
+      // this; a goal restoring twelve memberships was reporting none.
+      memberIds: [
+        ...(membersByGoal.get(row.id)?.milestoneIds ?? []),
+        ...(membersByGoal.get(row.id)?.checkinIds ?? []),
+        ...(membersByGoal.get(row.id)?.memberIds ?? []),
+      ],
       entity: {
         id: row.id,
         name: row.name,
@@ -2347,7 +2371,7 @@ export async function listDeleted(
     });
   }
 
-  // Sorted across the five tables, then capped — the per-table `order` above
+  // Sorted across the six tables, then capped — the per-table `order` above
   // only makes each slice internally newest-first. Capping BEFORE the merge
   // would silently hide a routine deleted a minute ago behind a hundred older
   // items.

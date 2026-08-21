@@ -159,6 +159,7 @@ export function ItemMemberList({
   testPrefix,
   orderable = false,
   eligible,
+  emptyPoolLabel,
   onChange,
 }: {
   /** Only used to disarm the search when the selection changes. */
@@ -196,6 +197,17 @@ export function ItemMemberList({
    * container asked before and what routines and programs still ask.
    */
   eligible?: (item: Item) => boolean;
+  /**
+   * What to say when the pool is empty for a reason other than "you already
+   * added everything".
+   *
+   * The default copy — "Everything is already in here." — was true while the
+   * pool was always `isCollectible`. With a narrower `eligible` it can be empty
+   * because NOTHING the user owns qualifies, and telling someone with no
+   * one-shot tasks that every one of them is already a milestone is the kind of
+   * confident wrong answer a picker should never give.
+   */
+  emptyPoolLabel?: string;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -487,7 +499,7 @@ export function ItemMemberList({
                 data-testid={`${testPrefix}-member-none`}
               >
                 {pool.length === 0
-                  ? 'Everything is already in here.'
+                  ? (emptyPoolLabel ?? 'Everything is already in here.')
                   : `Nothing matches “${query.trim()}”.`}
               </p>
             )}
