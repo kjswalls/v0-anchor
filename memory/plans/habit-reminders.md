@@ -168,10 +168,7 @@ Where the evidence says the power actually is, once attention is not the bottlen
   un-derail. Workaround today: keep the settle time before the goal's deadline. The real
   fix is posting on completion, which needs a client→server hook this feature does not
   have — **decide before relying on the money.**
-- **`/api/reminders/secrets` PUT is a read-modify-write of one jsonb.** Two credential
-  fields blurred within the same instant could drop one write. Single-user in practice;
-  closing it properly needs a `jsonb_set` RPC.
-- **The extension toggles do not depend on the master switch in the UI.** A channel can be
-  switched on and fully configured while `rituals.reminders` (or `rituals.stakes`) is off,
-  and the Extensions pane does not say so. `dependsOn` cannot express it — the settings
-  manifest requires parent and child to share a pane.
+- **`/api/reminders/secrets` PUT is a read-modify-write of one jsonb.** The store now
+  serialises its writes, which closes the reachable path (it is the only writer, and
+  tabbing between two credential fields is what used to race). A second client would still
+  race it; the durable fix is a `jsonb_set` RPC.

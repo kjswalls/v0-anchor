@@ -20,6 +20,7 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
+import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
@@ -218,6 +219,24 @@ const palette = () => usePaletteStore.getState();
 const extUnavailable = () =>
   ext().available ? null : 'Needs a database update that has not landed here yet.';
 
+/**
+ * The master switch a delivery channel or stake adapter actually rides on.
+ *
+ * Both live in Rituals, and `dependsOn` cannot express this — the settings
+ * manifest requires a parent and child to share a pane. Without saying it
+ * somewhere, an extension can be switched on and fully credentialed while the
+ * switch that governs it is off, which makes the toggle and its four config
+ * fields a control that silently does nothing. `unavailable` is the right
+ * mechanism: the row stays visible, with the reason inline, rather than
+ * vanishing or lying.
+ */
+const masterSwitchFor = (slug: string): { label: string; on: () => boolean } =>
+  STAKE_SLUGS.has(slug)
+    ? { label: 'Settle the day', on: () => reminders().stakesEnabled }
+    : { label: 'Habit reminders', on: () => reminders().remindersEnabled };
+
+const STAKE_SLUGS = new Set(STAKE_SETTINGS.map((spec) => spec.slug));
+
 function labelFor(options: SettingOption[] | undefined, value: string | boolean): string {
   const hit = options?.find((o) => o.value === String(value));
   return hit ? hit.label : String(value);
@@ -266,6 +285,9 @@ function channelRecords(): SettingRecord[] {
     const manifest = extensionManifest(spec.slug);
     if (!manifest) continue;
     const toggleId = `extensions.${spec.slug}`;
+    const master = masterSwitchFor(spec.slug);
+    const gated = () =>
+      extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in Rituals`);
 
     records.push({
       id: toggleId,
@@ -274,7 +296,7 @@ function channelRecords(): SettingRecord[] {
       description: manifest.description,
       control: 'switch',
       keywords: usable(manifest.name, [...spec.keywords, 'remind', 'nudge', 'notification']),
-      unavailable: extUnavailable,
+      unavailable: gated,
       read: () => ext().isEnabled(spec.slug),
       write: (v, ctx) => {
         if (ctx.userId) ext().setEnabled(ctx.userId, spec.slug, Boolean(v));
@@ -296,7 +318,7 @@ function channelRecords(): SettingRecord[] {
         // derived from the label: search already indexes labels, and a keyword
         // that merely restates one is what the manifest's own rule forbids.
         keywords: usable(field.label, [...spec.keywords, ...(field.keywords ?? [])]),
-        unavailable: extUnavailable,
+        unavailable: gated,
         read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
         write: (v, ctx) => {
           if (ctx.userId) ext().setConfigValue(ctx.userId, spec.slug, field.key, String(v).trim());
@@ -321,7 +343,11 @@ function channelRecords(): SettingRecord[] {
           'token', 'secret', 'credential', 'key', 'password',
         ]),
         unavailable: () =>
-          channelSecrets().available ? null : 'Needs a database update that has not landed here yet.',
+          !channelSecrets().available
+            ? 'Needs a database update that has not landed here yet.'
+            : master.on()
+              ? null
+              : `needs ${master.label}, in Rituals`,
         // Write-only: there is nothing to read back, by design.
         read: () => '',
         write: (v) => channelSecrets().setSecret(spec.slug, field.key, String(v).trim()),

@@ -33,6 +33,22 @@ interface ChannelSecretsStore {
   reset: () => void;
 }
 
+/**
+ * Credential writes run one after another, never concurrently.
+ *
+ * The route merges each PUT into the whole reminder_secrets jsonb with a
+ * read-modify-write, so two requests in flight together silently lose one — and
+ * the losing field still shows as saved here, which is the worst possible
+ * version: the user believes a token is stored, the channel skips as "not
+ * configured", and nothing anywhere disagrees.
+ *
+ * Tabbing from Account SID straight to Auth token fires two blurs back to back,
+ * so this is the ordinary path, not a stress case. Serialising in the ONE
+ * writer is the cheap half of the fix; the durable half is a jsonb_set RPC, and
+ * the plan doc carries it as an open item.
+ */
+let writeQueue: Promise<unknown> = Promise.resolve();
+
 const INITIAL = {
   setKeys: {} as Record<string, string[]>,
   available: true,
@@ -82,11 +98,13 @@ export const useChannelSecretsStore = create<ChannelSecretsStore>((set, get) => 
         : [...current, key];
     set((s) => ({ setKeys: { ...s.setKeys, [slug]: optimistic } }));
 
-    void fetch('/api/reminders/secrets', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: slug, values: { [key]: clearing ? null : value } }),
-    })
+    writeQueue = writeQueue
+      .catch(() => {})
+      .then(() => fetch('/api/reminders/secrets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: slug, values: { [key]: clearing ? null : value } }),
+      }))
       .then(async (res) => {
         if (res.ok) {
           // Reconcile against what the server actually holds. The optimistic
