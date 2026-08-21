@@ -1,16 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isMilestoneEligible } from '@/lib/item-registry';
-import {
-  goalProgress,
-  isGoalActive,
-  nextMilestone,
-  sortGoalsForDisplay,
-  timeElapsed,
-} from '@/lib/goals';
+import { goalProgress, isGoalActive, nextMilestone, sortGoalsForDisplay } from '@/lib/goals';
+import { GoalProgressTrack, progressLabel } from '@/components/planner/goal-sections';
 import {
   byName,
   countLive,
@@ -45,67 +41,6 @@ import type { Goal, Item } from '@/lib/planner-types';
  * See memory/plans/long-term-goals.md.
  */
 
-/* ── progress ─────────────────────────────────────────────────────────────── */
-
-/**
- * The fraction, in words, with the three states the plan's display rules pin.
- *
- * "2/2 so far" rather than "2/2" while the goal is running: the plan's own
- * example is a three-year business with two near-term milestones, and a bare
- * full fraction there reads as finished. The suffix disappears once the goal is
- * actually achieved, when 2/2 means what it says.
- */
-function progressLabel(goal: Goal, achieved: number, total: number): string {
-  if (total === 0) return 'No milestones yet';
-  const bare = `${achieved}/${total}`;
-  if (!isGoalActive(goal)) return bare;
-  return achieved === total ? `${bare} so far` : bare;
-}
-
-/**
- * The bar, or nothing.
- *
- * Suppressed entirely at zero milestones — every goal is born there and a
- * habit-only goal stays there legitimately, so an empty track reads as a
- * feature that is broken rather than one that has not been used. The time
- * marker rides the SAME track as a hairline rather than a second bar, because
- * the question it answers ("how much of the window is gone") is only ever
- * interesting next to the fill.
- */
-function ProgressTrack({ goal, achieved, total }: { goal: Goal; achieved: number; total: number }) {
-  const { todayStr } = useToday();
-  if (total === 0) return null;
-  const pct = Math.round((achieved / total) * 100);
-  const elapsed = timeElapsed(goal, todayStr);
-  return (
-    <div className="flex flex-col gap-1.5" data-testid="goal-progress">
-      <div className="bg-muted relative h-1.5 w-full overflow-hidden rounded-full">
-        <div
-          className="bg-primary h-full rounded-full transition-[width] duration-300"
-          style={{ width: `${pct}%` }}
-        />
-        {elapsed !== null && (
-          // Deliberately NOT merged into the fill. They answer different
-          // questions and a single blended number would hide exactly the case
-          // the pair exists to show: all the milestones done, three months into
-          // three years.
-          <span
-            className="bg-foreground/35 absolute inset-y-0 w-px"
-            style={{ left: `${Math.round(elapsed * 100)}%` }}
-            data-testid="goal-time-marker"
-            aria-hidden
-          />
-        )}
-      </div>
-      {elapsed !== null && (
-        <span className="text-muted-foreground text-[11px]">
-          {Math.round(elapsed * 100)}% of the way to {formatShort(goal.targetOn!)}
-        </span>
-      )}
-    </div>
-  );
-}
-
 /**
  * Is this item already held by one of the goal's OTHER role arrays?
  *
@@ -134,6 +69,7 @@ function RoleList({
   orderable,
   eligible,
   emptyPool,
+  footer,
   onChange,
 }: {
   title: string;
@@ -145,6 +81,7 @@ function RoleList({
   orderable?: boolean;
   eligible: (item: Item) => boolean;
   emptyPool?: string;
+  footer?: React.ReactNode;
   onChange: (ids: string[]) => void;
 }) {
   return (
@@ -164,6 +101,7 @@ function RoleList({
         onChange={onChange}
       />
       <span className="text-muted-foreground text-[11px]">{hint}</span>
+      {footer}
     </div>
   );
 }
@@ -186,6 +124,7 @@ export function GoalsSection({
   const goals = usePlannerStore((s) => s.goals);
   const items = usePlannerStore((s) => s.items);
   const addGoal = usePlannerStore((s) => s.addGoal);
+  const addTask = usePlannerStore((s) => s.addTask);
   const updateGoal = usePlannerStore((s) => s.updateGoal);
   const removeGoal = usePlannerStore((s) => s.removeGoal);
   const setGoalState = usePlannerStore((s) => s.setGoalState);
@@ -214,6 +153,34 @@ export function GoalsSection({
   const selected = goals.find((g) => g.id === selectedId) ?? null;
 
   const firstEndedIndex = shown.findIndex((g) => !isGoalActive(g));
+
+  /**
+   * A new checkpoint, created and linked in one gesture.
+   *
+   * `timeBucket: 'anytime'` is load-bearing, not a default worth skipping:
+   * deriveDayItems drops a bucketless task from every bucket, so without it the
+   * milestone would be invisible on its own target day and would sit in the
+   * braindump until it went past due.
+   *
+   * Undated on purpose. A checkpoint's date is a commitment, and guessing one
+   * (today? the goal's target?) would put a date on the timeline that the user
+   * never chose — nextMilestone sorts undated last, so an unscheduled milestone
+   * waits at the bottom until it is given a day.
+   */
+  const createMilestone = (goal: Goal, title: string) => {
+    addTask(
+      {
+        title,
+        status: 'pending',
+        isScheduled: false,
+        order: 0,
+        timeBucket: 'anytime',
+        completedDates: [],
+        skippedDates: [],
+      } as never,
+      { goalIds: [goal.id], goalRole: 'milestone' },
+    );
+  };
 
   const create = (name: string, icon?: string) => {
     const id = addGoal({
@@ -319,6 +286,7 @@ export function GoalsSection({
             onBack={() => onSelect(null)}
             onChange={(updates) => updateGoal(selected.id, updates)}
             onState={(state) => setGoalState(selected.id, state)}
+            onCreateMilestone={(title) => createMilestone(selected, title)}
             onDelete={() =>
               confirm({
                 title: `Delete ${selected.name}?`,
@@ -357,11 +325,13 @@ function GoalDetail({
   onBack,
   onChange,
   onState,
+  onCreateMilestone,
   onDelete,
 }: {
   goal: Goal;
   itemsById: Map<string, Item>;
   onBack: () => void;
+  onCreateMilestone: (title: string) => void;
   onChange: (updates: Partial<Goal>) => void;
   onState: (state: Goal['state']) => void;
   onDelete: () => void;
@@ -384,7 +354,20 @@ function GoalDetail({
 
   return (
     <DetailColumn hasSelection>
-      <BackRow label="Goals" testId="goal-back" onBack={onBack} />
+      <div className="flex items-center justify-between gap-2">
+        <BackRow label="Goals" testId="goal-back" onBack={onBack} />
+        {/* The console EDITS a goal; the page READS one. On mobile this is also
+            the only route to the page — there is no palette and no omnibar
+            there — so it is a plain link rather than a hover affordance. */}
+        <a
+          href={`/goal/${goal.id}`}
+          data-testid="goal-open-page"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] transition-colors"
+        >
+          Open as page
+          <ArrowUpRight className="size-3" aria-hidden />
+        </a>
+      </div>
 
       <IdentityRow
         id={goal.id}
@@ -423,7 +406,7 @@ function GoalDetail({
         />
       </div>
 
-      <ProgressTrack goal={goal} achieved={achieved} total={total} />
+      <GoalProgressTrack goal={goal} achieved={achieved} total={total} />
 
       <div className="flex flex-col gap-1.5">
         <Eyebrow>PROGRESS</Eyebrow>
@@ -517,6 +500,17 @@ function GoalDetail({
         eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(goal, 'milestoneIds', i.id)}
         emptyPool="Nothing eligible yet — a milestone is a one-shot task with a target date."
         onChange={(ids) => members({ milestoneIds: ids })}
+        footer={
+          /* Making a checkpoint should not require leaving the goal, creating a
+             task somewhere else, coming back, and hunting for it in a picker.
+             This is the flow `Memberships.goalRole` was built for. */
+          <DraftRow
+            placeholder="New milestone…"
+            addLabel="Add milestone"
+            testPrefix="goal-new-milestone"
+            onAdd={(title) => onCreateMilestone(title)}
+          />
+        }
       />
 
       <RoleList

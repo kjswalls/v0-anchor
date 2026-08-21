@@ -29,7 +29,12 @@ import type {
   GoalRole,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
-import { milestoneItemIds, resolveGoalStateWrite, roleStillValid } from './goals';
+import {
+  goalProgress,
+  milestoneItemIds,
+  resolveGoalStateWrite,
+  roleStillValid,
+} from './goals';
 import {
   fetchItems,
   fetchProjects,
@@ -1198,6 +1203,62 @@ export const usePlannerStore = create<PlannerStore>()(
         };
       };
 
+      /**
+       * A goal whose last open milestone just closed.
+       *
+       * Offers, never acts (decision 6 / Kirby's answer to open question 6):
+       * achieving is a deliberate statement about a stretch of your life, and
+       * an app that made it for you would be claiming to know when the thing
+       * you set out to do is done.
+       *
+       * A TOAST rather than a dialog, and that is a constraint rather than a
+       * taste: `activeDialog` is a single slot, so a dialog fired from a
+       * completion inside the EOD review would destructively replace the review
+       * the user is in the middle of.
+       *
+       * Called only from the user-facing completion verbs — never from
+       * applyHistoryState (which writes through dbUpdateItem) and never from the
+       * agent routes (which do not touch the store), so a redo can't re-fire it
+       * and a background write can't fire it at a screen nobody is looking at.
+       */
+      const offerAchievementFor = (itemId: string) => {
+        const state = get();
+        const itemsById = new Map(state.items.map((i) => [i.id, i]));
+        for (const goal of state.goals) {
+          if (goal.state !== 'active') continue;
+          if (!goal.milestoneIds.includes(itemId)) continue;
+          const { achieved, total } = goalProgress(goal, itemsById);
+          if (total === 0 || achieved !== total) continue;
+
+          // The copy respects a distant target. "All 3 milestones so far" is the
+          // honest reading of a three-year goal that has defined two near-term
+          // checkpoints — telling that user they have finished would be the
+          // progress bar's own lie, in words.
+          const far =
+            !!goal.targetOn && goal.targetOn > toDateStr(new Date(), state.userTimezone ??
+              Intl.DateTimeFormat().resolvedOptions().timeZone);
+          toast(
+            far
+              ? `All ${total} milestone${total === 1 ? '' : 's'} so far on ${goal.name}`
+              : `Every milestone on ${goal.name} is done`,
+            {
+              description: far
+                ? `Its target is ${goal.targetOn}. Worth a look — or call it achieved.`
+                : 'Ready to call it achieved?',
+              action: {
+                label: 'Mark achieved',
+                onClick: () => get().setGoalState(goal.id, 'achieved'),
+              },
+              duration: 8000,
+            },
+          );
+          // One goal per completion. An item can be a milestone of several, but
+          // a stack of toasts for one checkbox is noise, and the first is the
+          // one whose list the user was most likely looking at.
+          return;
+        }
+      };
+
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
@@ -1945,7 +2006,10 @@ export const usePlannerStore = create<PlannerStore>()(
           updateItemAction(id, 'task', { status: newStatus });
           // Transition-only, like the recurring/habit taps: an explicit
           // status='completed' on an already-completed task must not celebrate.
-          if (newStatus === 'completed' && task.status !== 'completed') celebrateCompletion();
+          if (newStatus === 'completed' && task.status !== 'completed') {
+            celebrateCompletion();
+            offerAchievementFor(id);
+          }
         }
       },
 

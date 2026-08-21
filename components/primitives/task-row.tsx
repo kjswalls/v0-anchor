@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from 'react';
-import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
+import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon,
+  Flag,
+  Repeat,
+} from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { goalRolesByItem } from '@/lib/goals';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
@@ -16,6 +20,7 @@ import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
   PriorityGlyph,
+  RailTooltip,
   StreakFlame,
   MetaText,
   TagDot,
@@ -68,6 +73,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     userTimezone,
     routines,
     programs,
+    goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
@@ -143,6 +149,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const projected = item as { type?: string; customType?: string };
   const typeName = projected.type === 'custom' ? projected.customType! : itemType;
   const typeConfig = getItemTypeConfig(typeName);
+
+  // The goal roles this item holds, in LIVE goals only — an achieved goal's
+  // milestone is history, and a row should not still wear a flag for work that
+  // is finished. Built per row rather than threaded down: the index is O(goals)
+  // over a handful of containers, and threading it would mean touching every
+  // one of this row's callers for a glyph.
+  const roles = useMemo(
+    () => goalRolesByItem(goals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
+    [goals, item.id],
+  );
 
   // Effective per-date status
   const taskRecurring = task ? isRecurring(task) : false;
@@ -492,6 +508,39 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
       >
         {item.title}
+        {/* The goal role, INLINE with the title rather than as a rail column.
+            The rail's five columns are budgeted and every one of them reserves
+            width on every row of both types — a sixth would cost 20px on every
+            row in the app to say something true of a handful of them.
+
+            Muted ink, never honey: being a milestone is an identity, not a
+            warning, and this is the row of a checkpoint that may well be late.
+            On touch the tooltip never fires, so the glyph is deliberately one
+            a reader can place unaided (a flag for a checkpoint, a loop for a
+            recurring review) and the FULL attribution lives one tap away in the
+            edit sheet's Goal chip. */}
+        {roles.length > 0 && (
+          <RailTooltip
+            label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
+            detail={
+              roles.length === 1
+                ? roles[0].goalName
+                : `${roles[0].goalName} +${roles.length - 1}`
+            }
+          >
+            <span
+              className="text-muted-foreground/70 ml-1.5 inline-flex translate-y-[1px] align-middle"
+              data-testid="item-goal-role"
+              data-goal-role={roles[0].role}
+            >
+              {roles[0].role === 'milestone' ? (
+                <Flag className="size-3" aria-hidden />
+              ) : (
+                <Repeat className="size-3" aria-hidden />
+              )}
+            </span>
+          </RailTooltip>
+        )}
       </p>
 
       {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the

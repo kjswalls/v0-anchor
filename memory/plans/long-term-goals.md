@@ -578,9 +578,49 @@ table as ONE set. Four rules, each closing a found defect:
     timezone handling (it round-trips a constructed Date through `toDateStr`,
     and does not consult `isSkippedOnDate`) should be settled before Beacon
     reads it server-side.
-- **Phase 2 — the goal surface.** `/goal/[id]` + shared sections (suppression
-  annotations included); role glyphs on rows + touch story; palette + omnibar
-  parallel channel; the celebrate receipt (gated per decision 5).
+- [x] **Phase 2 — the goal surface** (built 2026-08-21). `components/planner/
+  goal-sections.tsx` carries what more than one surface renders — the fraction's
+  wording, the progress track with its separate elapsed hairline, the milestone
+  timeline, member groups, and the rule that every rendered member says whether
+  it will actually appear on a day (`suppressionReason` at today, per the goal
+  surfaces' dateless contract). `/goal/[id]` follows `/item/[id]` exactly:
+  client route, deep-linkable so Beacon can answer with a URL, editing left in
+  the console. The console's local progress copy was deleted in favour of the
+  shared one, and its detail gained an "Open as page" link — which on mobile is
+  the only route to the page, since there is no palette or omnibar there.
+
+  Role glyphs land INLINE with the title, not as a rail column: the rail's five
+  columns each reserve width on every row of both types, so a sixth would cost
+  20px on every row in the app to say something true of a handful. Muted ink,
+  never honey — being a milestone is an identity, not a warning, and this is the
+  row of a checkpoint that may well be late. On touch the tooltip never fires,
+  so the glyphs are ones a reader can place unaided (a flag, a loop) with full
+  attribution one tap away in the edit sheet's Goal chip.
+
+  `app.goals` + one navigation command per ACTIVE goal (ended ones would push
+  the running one down a list that exists to be fast). The omnibar gets the
+  PARALLEL channel the review demanded rather than a `groupResults` section —
+  a goal is not an Item, needs a navigate action, and the key `goal` would
+  collide with a custom item type of that name.
+
+  The celebrate offer is a toast, never a dialog: `activeDialog` is a single
+  slot, so a dialog fired from a completion inside the EOD review would
+  destructively replace the review. It fires only from the user-facing
+  completion verb — never from `applyHistoryState` (which writes through
+  `dbUpdateItem`) or the agent routes (which never touch the store) — so a redo
+  cannot re-fire it and a background write cannot fire it at a screen nobody is
+  looking at. Its copy respects a distant target: "All 3 milestones so far" is
+  the honest reading of a three-year goal with two near-term checkpoints.
+
+  **Two Phase-1 deferrals closed here:** inline milestone creation, which gives
+  `Memberships.goalRole` its first producer (seeded `timeBucket: 'anytime'`,
+  because deriveDayItems drops a bucketless task from every bucket, and
+  deliberately undated, because a checkpoint's date is a commitment the app must
+  not guess). The wind-down affordances and the agent-PATCH demotion remain
+  deferred to Phases 3/4.
+
+  **Gates:** 1371 unit tests green (78 files), lint 0 errors, `pnpm build`
+  clean, tsc at baseline 23. The `/goal/[id]` route builds and is listed.
 - **Phase 3 — check-ins.** Role `'checkin'` UI: console "Check-in schedule" block
   (creates a recurring task pre-linked, weekly seeded, editable) or link an
   existing recurring item; **the completion receipt bridge on every completion

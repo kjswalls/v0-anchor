@@ -424,3 +424,51 @@ describe('the review’s findings, pinned', () => {
     expect(written).toEqual(['plain']);
   });
 });
+
+describe('Phase 2 — the goal surface', () => {
+  it('offers achievement when the last milestone closes, and never takes it', () => {
+    // Offers, never acts: achieving is a statement about a stretch of your
+    // life, and an app that made it for you would be claiming to know when the
+    // thing you set out to do is done.
+    usePlannerStore.setState({
+      items: [task({ id: 's1', title: 'Sit HSK 3' })],
+      goals: [goal({ milestoneIds: ['s1'] })],
+    } as never);
+    usePlannerStore.getState().toggleTaskStatus('s1');
+    expect(usePlannerStore.getState().goals[0].state).toBe('active');
+  });
+
+  it('stays quiet while any milestone is still open', () => {
+    usePlannerStore.setState({
+      items: [task({ id: 's1' }), task({ id: 's2' })],
+      goals: [goal({ milestoneIds: ['s1', 's2'] })],
+    } as never);
+    usePlannerStore.getState().toggleTaskStatus('s1');
+    // Nothing to assert on state — the point is that no write happened.
+    expect(usePlannerStore.getState().goals[0].state).toBe('active');
+    expect(db.updateGoal).not.toHaveBeenCalled();
+  });
+
+  it('creates a milestone and links it in one gesture, bucketed so it renders', () => {
+    // timeBucket is load-bearing: deriveDayItems drops a bucketless task from
+    // every bucket, so an unbucketed milestone would be invisible on its own
+    // target day and sit in the braindump until it went past due.
+    usePlannerStore.setState({ goals: [goal()], items: [] } as never);
+    usePlannerStore.getState().addTask(
+      {
+        title: 'Reach conversational fluency',
+        status: 'pending',
+        isScheduled: false,
+        order: 0,
+        timeBucket: 'anytime',
+        completedDates: [],
+        skippedDates: [],
+      } as never,
+      { goalIds: ['g1'], goalRole: 'milestone' },
+    );
+    const g = usePlannerStore.getState().goals[0];
+    expect(g.milestoneIds).toHaveLength(1);
+    const created = usePlannerStore.getState().items[0] as { timeBucket?: string };
+    expect(created.timeBucket).toBe('anytime');
+  });
+});

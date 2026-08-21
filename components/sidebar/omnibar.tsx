@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X } from 'lucide-react';
+import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
+  Target,
+} from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import {
   Command,
@@ -14,7 +16,7 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
 import { useChatStore } from '@/lib/chat-store';
-import { groupResults, searchItems, type SearchGroup } from '@/lib/search';
+import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -84,6 +86,7 @@ export function Omnibar({
     userTimezone,
     routines,
     programs,
+    goals,
   } = usePlannerStore();
   // Today, not selectedDate — the omnibar carries no date of its own.
   const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -193,6 +196,17 @@ export function Omnibar({
   }, [argument, query]);
 
   /* ── rows ──────────────────────────────────────────────────────────── */
+
+  /**
+   * Goals, resolved BESIDE the item sections rather than inside them — a goal
+   * is not an Item, needs a navigate action rather than an edit, and the key
+   * `goal` would collide with a custom item type of that name. See searchGoals.
+   */
+  const goalHits = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    return searchGoals(trimmed, goals).slice(0, 4);
+  }, [query, goals]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
   const results = useMemo<SearchGroup[]>(() => {
@@ -478,6 +492,34 @@ export function Omnibar({
                         )}
                       </span>
                     </CommandItem>
+                  </CommandGroup>
+                )}
+
+                {/* Goals first: they are containers, so a hit here reframes
+                    every item row beneath it. Four at most — this is a jump,
+                    not a browse. */}
+                {goalHits.length > 0 && (
+                  <CommandGroup heading="Goals">
+                    {goalHits.map((goal) => (
+                      <CommandItem
+                        key={goal.id}
+                        value={`goal-${goal.id}`}
+                        data-testid="omnibar-goal-result"
+                        data-goal-id={goal.id}
+                        onSelect={() => {
+                          closeAndClear();
+                          window.location.href = `/goal/${goal.id}`;
+                        }}
+                      >
+                        <Target className="size-4 shrink-0" />
+                        <span className="truncate">{goal.name}</span>
+                        {goal.state !== 'active' && (
+                          <span className="text-muted-foreground ml-auto text-[11px]">
+                            {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
+                          </span>
+                        )}
+                      </CommandItem>
+                    ))}
                   </CommandGroup>
                 )}
 

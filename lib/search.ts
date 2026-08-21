@@ -1,4 +1,4 @@
-import type { Item, Task, Habit } from './planner-types';
+import type { Item, Task, Habit, Goal } from './planner-types';
 import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
 import { passesContainerFilter, typeNameOf } from './filters';
 import { containerRef } from './container-registry';
@@ -151,6 +151,29 @@ const TOTAL_LIMIT = 12;
  * items remain — keep their own section at the end rather than disappearing;
  * getItemTypeConfig falls back to a template for the heading.
  */
+/**
+ * Goals, as a channel BESIDE the item groups rather than a group inside them.
+ *
+ * `groupResults` is typed to `Item`s, keyed by item TYPE, and its rows are
+ * rendered with `data-item-type`, a `doneStatus` and an edit action — a goal is
+ * none of those, needs a navigate action, and would collide outright with a
+ * user's custom item type literally named `goal` (still the codebase's
+ * canonical example slug in several places).
+ *
+ * Text-only, deliberately: the search grammar's filters (`type:`, `project:`,
+ * `priority:`) are all questions about items, and answering them with goals
+ * would mean inventing a meaning for "goals with high priority".
+ */
+export function searchGoals(raw: string, goals: readonly Goal[]): Goal[] {
+  const query = parseSearchQuery(raw);
+  const text = query.text.trim().toLowerCase();
+  if (!text) return [];
+  return goals.filter(
+    (goal) =>
+      goal.name.toLowerCase().includes(text) || (goal.why ?? '').toLowerCase().includes(text),
+  );
+}
+
 export function groupResults(results: SearchResults): SearchGroup[] {
   const byType = new Map<string, Item[]>();
   for (const row of [...results.tasks, ...results.habits] as unknown as Item[]) {
