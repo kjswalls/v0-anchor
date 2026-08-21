@@ -121,7 +121,17 @@ export async function sendPushToUser(
   })
 
   if (expired.length) {
-    await service.from('push_subscriptions').delete().in('endpoint', expired)
+    // Scoped to THIS user, which the version this was extracted from was not.
+    // push_subscriptions is unique on (user_id, endpoint), not on endpoint
+    // alone, so two accounts used in the same browser profile hold the same
+    // endpoint string — an unscoped delete would sign the other account out of
+    // notifications entirely. Harmless-looking in a route that ran on demand;
+    // this now runs for every user on every tick.
+    await service
+      .from('push_subscriptions')
+      .delete()
+      .eq('user_id', userId)
+      .in('endpoint', expired)
   }
 
   return { sent: results.filter((r) => r.status === 'fulfilled').length, expired: expired.length }

@@ -28,6 +28,9 @@ export interface UserSettingsRow {
   habit_reminders_enabled?: boolean;
   habit_last_call_enabled?: boolean;
   habit_last_call_time?: string;
+  /** The nightly stakes settlement (migration 031). */
+  stakes_enabled?: boolean;
+  stakes_settle_time?: string;
   /**
    * Active ground palette slug (lib/theme-palettes.ts). Deliberately absent
    * from DEFAULT_SETTINGS: undefined means "never chosen on any device", and
@@ -61,6 +64,8 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   habit_reminders_enabled: false,
   habit_last_call_enabled: false,
   habit_last_call_time: '20:30',
+  stakes_enabled: false,
+  stakes_settle_time: '03:00',
 };
 
 /**
@@ -105,8 +110,8 @@ const STABLE_SETTINGS_COLUMNS = [
  * round-trip on databases that predate it and nothing else; a column moved up
  * too early wipes everyone's settings, so err towards leaving it here.
  *
- * Currently: migration 022 (morning auto-age) and migration 029 (habit
- * reminders). Migration 025 (theme_palette) graduated to stable on 2026-08-12
+ * Currently: migration 022 (morning auto-age), 029 (habit reminders) and 031
+ * (stakes). Migration 025 (theme_palette) graduated to stable on 2026-08-12
  * once it was applied to prod.
  */
 const PENDING_SCHEMA_COLUMNS = [
@@ -115,6 +120,8 @@ const PENDING_SCHEMA_COLUMNS = [
   'habit_reminders_enabled',
   'habit_last_call_enabled',
   'habit_last_call_time',
+  'stakes_enabled',
+  'stakes_settle_time',
 ] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');

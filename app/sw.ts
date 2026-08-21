@@ -41,6 +41,15 @@ const ACTION_SNOOZE = 'snooze';
  */
 interface SwNotificationOptions extends NotificationOptions {
   actions?: { action: string; title: string }[];
+  /**
+   * Alert again when replacing a notification that shares this one's tag.
+   *
+   * Without it, a replacement over an existing tag lands SILENTLY — per the
+   * Notifications spec, replacing suppresses the alert unless renotify is set.
+   * The cue's tag is item-scoped (`anchor-item-<id>`), so yesterday's cue
+   * sitting unread in the shade would silently swallow today's.
+   */
+  renotify?: boolean;
 }
 
 interface PushPayload {
@@ -71,6 +80,9 @@ self.addEventListener('push', (event) => {
     // Collapse key: a re-delivered cue REPLACES the one already on screen
     // instead of stacking beside it.
     tag: payload.tag,
+    // Only meaningful with a tag, and only correct with one: renotify without a
+    // tag throws a TypeError.
+    renotify: Boolean(payload.tag),
     actions: payload.actions,
     data: { url: payload.url ?? '/', ...(payload.data ?? {}) },
   };
@@ -111,10 +123,17 @@ async function openOrFocus(url: string): Promise<void> {
   // Fall back to focusing ANY open Anchor tab and steering it, rather than
   // opening a duplicate: the PWA is usually already running.
   for (const client of clientList) {
-    if ('navigate' in client && 'focus' in client) {
+    if (!('navigate' in client) || !('focus' in client)) continue;
+    try {
       await client.focus();
       await client.navigate(target);
       return;
+    } catch {
+      // navigate() rejects with a TypeError on a client this worker does not
+      // control — which matchAll({includeUncontrolled: true}) deliberately
+      // returns. Uncaught, that rejection skipped openWindow entirely and the
+      // tap did nothing at all.
+      break;
     }
   }
   await self.clients.openWindow(target);

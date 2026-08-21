@@ -139,22 +139,9 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
   },
 ]
 
-export function channelSettingsFor(slug: string): ChannelSettingsSpec | undefined {
-  return CHANNEL_SETTINGS.find((spec) => spec.slug === slug)
-}
-
-/**
- * Is `key` a credential this channel actually declares?
- *
- * The write path's allow-list. Without it, user_secrets.reminder_secrets is an
- * unbounded jsonb an authenticated caller can grow without limit — and every
- * byte of it is read into memory on every reminder tick.
+/*
+ * The lookup helpers that used to live here moved to lib/extension-settings.ts
+ * when the stake adapters arrived with the same shape: a consumer that resolved
+ * a slug against THIS list alone would silently fail to find every stakes
+ * field, which is the exact drift the single declaration exists to prevent.
  */
-export function isKnownSecretKey(slug: string, key: string): boolean {
-  return channelSettingsFor(slug)?.secrets.some((field) => field.key === key) ?? false
-}
-
-/** The config twin of isKnownSecretKey. */
-export function isKnownConfigKey(slug: string, key: string): boolean {
-  return channelSettingsFor(slug)?.config.some((field) => field.key === key) ?? false
-}

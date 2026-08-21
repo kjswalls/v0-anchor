@@ -19,7 +19,7 @@ import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
-import { CHANNEL_SETTINGS } from '@/lib/reminders/channel-config';
+import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
@@ -248,7 +248,21 @@ function labelFor(options: SettingOption[] | undefined, value: string | boolean)
 function channelRecords(): SettingRecord[] {
   const records: SettingRecord[] = [];
 
-  for (const spec of CHANNEL_SETTINGS) {
+  /**
+   * Keywords minus anything that merely restates the label.
+   *
+   * A channel's terms are written for the CHANNEL ("beeminder", "twilio"), and
+   * they are exactly right on its credential fields — nobody finds "Auth token"
+   * by typing "Auth token". On the extension's own toggle, though, one of them
+   * usually IS the label, which adds nothing (search indexes labels already) and
+   * trips the manifest's own "never just the label" rule. Filtering per record
+   * lets each spec keep one natural keyword list instead of two hand-pruned
+   * ones that drift.
+   */
+  const usable = (label: string, keywords: string[]) =>
+    keywords.filter((k) => k !== label.toLowerCase());
+
+  for (const spec of EXTENSION_SETTINGS) {
     const manifest = extensionManifest(spec.slug);
     if (!manifest) continue;
     const toggleId = `extensions.${spec.slug}`;
@@ -259,7 +273,7 @@ function channelRecords(): SettingRecord[] {
       label: manifest.name,
       description: manifest.description,
       control: 'switch',
-      keywords: [...spec.keywords, 'remind', 'nudge', 'notification'],
+      keywords: usable(manifest.name, [...spec.keywords, 'remind', 'nudge', 'notification']),
       unavailable: extUnavailable,
       read: () => ext().isEnabled(spec.slug),
       write: (v, ctx) => {
@@ -281,7 +295,7 @@ function channelRecords(): SettingRecord[] {
         // The channel's hand-authored terms, plus any the field declares. NOT
         // derived from the label: search already indexes labels, and a keyword
         // that merely restates one is what the manifest's own rule forbids.
-        keywords: [...spec.keywords, ...(field.keywords ?? [])],
+        keywords: usable(field.label, [...spec.keywords, ...(field.keywords ?? [])]),
         unavailable: extUnavailable,
         read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
         write: (v, ctx) => {
@@ -302,7 +316,10 @@ function channelRecords(): SettingRecord[] {
         placeholder: () =>
           channelSecrets().isSet(spec.slug, field.key) ? 'Saved — type to replace' : 'Not set',
         dependsOn: toggleId,
-        keywords: [...spec.keywords, 'token', 'secret', 'credential', 'key', 'password'],
+        keywords: usable(field.label, [
+          ...spec.keywords,
+          'token', 'secret', 'credential', 'key', 'password',
+        ]),
         unavailable: () =>
           channelSecrets().available ? null : 'Needs a database update that has not landed here yet.',
         // Write-only: there is nothing to read back, by design.
@@ -668,6 +685,35 @@ export const SETTINGS: SettingRecord[] = [
     read: () => reminders().lastCallTime,
     write: (v) => reminders().setLastCallTime(String(v)),
     defaultValue: '20:30',
+  },
+  {
+    id: 'rituals.stakes',
+    pane: 'rituals',
+    label: 'Settle the day',
+    // Says what it does and what it does NOT do, because the extensions behind
+    // it can cost money and "settle" alone does not warn anyone.
+    description:
+      'Once a night, work out what yesterday came to and report it to whatever you have attached — a Beeminder goal, a pledge, a person. Nothing happens until you turn one of those on.',
+    control: 'switch',
+    dbColumn: 'stakes_enabled',
+    keywords: ['stakes', 'settle', 'ledger', 'accountability', 'beeminder', 'pledge', 'consequence', 'money'],
+    read: () => reminders().stakesEnabled,
+    write: (v) => reminders().setStakesEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.stakesTime',
+    pane: 'rituals',
+    label: 'Settle at',
+    description:
+      'Settles the day before. Late enough that nothing is still in flight — an end-of-day review can credit yesterday after midnight.',
+    control: 'time',
+    dependsOn: 'rituals.stakes',
+    dbColumn: 'stakes_settle_time',
+    keywords: ['when', 'hour', 'overnight', 'night', 'schedule'],
+    read: () => reminders().stakesSettleTime,
+    write: (v) => reminders().setStakesSettleTime(String(v)),
+    defaultValue: '03:00',
   },
   {
     id: 'rituals.push',

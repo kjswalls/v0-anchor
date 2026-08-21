@@ -112,7 +112,9 @@ export default function SettingsPage() {
   );
   const eodTick = useEODStore((s) => `${s.eodReviewEnabled}|${s.eodReviewTime}`);
   const reminderTick = useReminderStore(
-    (s) => `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}`
+    (s) =>
+      `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
+      `${s.stakesEnabled}|${s.stakesSettleTime}`
   );
   // apiKey rides the tick VERBATIM, not as a set/unset flag: one non-empty key
   // replacing another is exactly what a flag can't see, and the text controls

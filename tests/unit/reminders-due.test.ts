@@ -96,6 +96,14 @@ describe('occursOn', () => {
     expect(occursOn(t, TUE, TZ)).toBe(true);
   });
 
+  // deriveDayItems rejects this outright (`if (!task.startDate) return false`
+  // BEFORE its recurrence branch), and unscheduling a recurring task to the
+  // braindump produces exactly this row — so treating it as "every matching
+  // day" would nudge daily about something no view renders.
+  it('an anchored recurring item with NO startDate occurs on no day', () => {
+    expect(occursOn(task({ repeatFrequency: 'daily' }), MON, TZ)).toBe(false);
+  });
+
   it('puts a one-shot task on exactly its own date', () => {
     const t = task({ startDate: MON });
     expect(occursOn(t, MON, TZ)).toBe(true);
@@ -185,7 +193,11 @@ describe('dueReminders', () => {
   // that state is what the user asked for when they tapped Snooze.
   it('a matured snooze overrides both the day stamp and the window', () => {
     const h = habit({ reminderTime: '07:30' });
-    const snoozed = row(h, { sentDate: MON, snoozeUntil: '2026-08-10T11:00:00.000Z' });
+    const snoozed = row(h, {
+      sentDate: MON,
+      snoozeUntil: '2026-08-10T11:00:00.000Z',
+      snoozeDate: MON,
+    });
     const out = dueReminders([snoozed], clock(900), ctx);
     expect(out).toHaveLength(1);
     expect(out[0].snoozed).toBe(true);
@@ -193,13 +205,47 @@ describe('dueReminders', () => {
 
   it('a snooze that has not matured yet stays quiet', () => {
     const h = habit({ reminderTime: '07:30' });
-    const pending = row(h, { sentDate: MON, snoozeUntil: '2026-08-10T13:00:00.000Z' });
+    const pending = row(h, {
+      sentDate: MON,
+      snoozeUntil: '2026-08-10T13:00:00.000Z',
+      snoozeDate: MON,
+    });
     expect(dueReminders([pending], clock(900), ctx)).toEqual([]);
+  });
+
+  // THE bug the day gate exists for. A snooze is cleared as it fires, but it
+  // only fires while the item still wants doing — so completing the habit IN
+  // THE APP leaves the row armed. Ungated, that stale row fires at the first
+  // tick after midnight on the next day the habit is due and stamps that day,
+  // suppressing the real cue.
+  it('a snooze belonging to another day never fires', () => {
+    const h = habit({ reminderTime: '07:30' });
+    const stale = row(h, {
+      sentDate: '2026-08-09',
+      snoozeUntil: '2026-08-09T12:00:00.000Z',
+      snoozeDate: '2026-08-09',
+    });
+    // 00:05 on the following day — matured long ago, and outside the window.
+    expect(dueReminders([stale], clock(5), ctx)).toEqual([]);
+  });
+
+  // Snooze can be tapped on a LAST CALL, whose item often carries no per-item
+  // cue at all. Requiring one would accept the tap and never honour it.
+  it('honours a snooze on an item that has no reminder time of its own', () => {
+    const h = habit({ reminderTime: undefined });
+    const snoozed = row(h, { snoozeUntil: '2026-08-10T11:00:00.000Z', snoozeDate: MON });
+    const out = dueReminders([snoozed], clock(900), ctx);
+    expect(out).toHaveLength(1);
+    expect(out[0].at).toBe('');
   });
 
   it('a snooze does not resurrect an item that was completed meanwhile', () => {
     const h = habit({ reminderTime: '07:30', completedDates: [MON] });
-    const snoozed = row(h, { sentDate: MON, snoozeUntil: '2026-08-10T11:00:00.000Z' });
+    const snoozed = row(h, {
+      sentDate: MON,
+      snoozeUntil: '2026-08-10T11:00:00.000Z',
+      snoozeDate: MON,
+    });
     expect(dueReminders([snoozed], clock(900), ctx)).toEqual([]);
   });
 

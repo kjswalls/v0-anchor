@@ -1,9 +1,12 @@
 import {
   CalendarRange,
+  HandCoins,
+  LineChart,
   MessageSquare,
   PartyPopper,
   PhoneCall,
   Speaker,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -53,6 +56,19 @@ export const EXT_VOICE_ANNOUNCEMENTS = 'voice-announcements';
 export const EXT_SMS_NUDGE = 'sms-nudge';
 export const EXT_PHONE_CALL = 'phone-call';
 
+/**
+ * Stakes (Tier 3) — what a finished day is worth.
+ *
+ * These do not deliver anything at the moment a habit is due; they settle the
+ * day afterwards and report it somewhere with consequences attached. Off by
+ * default for a sharper version of the Tier 2 reason: one of them can cost real
+ * money, and none of them should be able to start doing that because a toggle
+ * defaulted on.
+ */
+export const EXT_BEEMINDER = 'beeminder';
+export const EXT_PLEDGE = 'pledge';
+export const EXT_ACCOUNTABILITY_PARTNER = 'accountability-partner';
+
 export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
   {
     slug: EXT_HABIT_HEATMAP,
@@ -96,6 +112,34 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     description: 'Rings you through Twilio. Last call only unless you change it — a call for every reminder is a lot.',
     icon: PhoneCall,
     category: 'integrations',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_BEEMINDER,
+    name: 'Beeminder',
+    description: 'Posts each completed habit to a Beeminder goal, where missing costs real money.',
+    icon: LineChart,
+    category: 'habits',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_PLEDGE,
+    name: 'Pledge',
+    // The limitation is IN the description, not buried in a doc. A commitment
+    // device that seems to collect and does not is worse than none, because you
+    // keep trusting it — so the one sentence everyone reads has to say it.
+    description:
+      'Records what each miss costs, payable to a cause you can’t stand. Anchor keeps the ledger — it cannot take payment.',
+    icon: HandCoins,
+    category: 'habits',
+    defaultEnabled: false,
+  },
+  {
+    slug: EXT_ACCOUNTABILITY_PARTNER,
+    name: 'Accountability partner',
+    description: 'Sends a short daily digest to a Slack or Discord webhook. Someone expecting it is the point.',
+    icon: Users,
+    category: 'habits',
     defaultEnabled: false,
   },
 ];

@@ -36,10 +36,11 @@ export async function POST(req: NextRequest) {
   if (!itemId || (action !== ACTION_DONE && action !== ACTION_SNOOZE)) {
     return NextResponse.json({ error: 'action and itemId are required' }, { status: 400 });
   }
-  if (action === ACTION_DONE && !/^\d{4}-\d{2}-\d{2}$/.test(dateStr ?? '')) {
-    // The date comes off a notification that may have sat on a lock screen
-    // overnight, so it is data, not a formality — completing "today" server-side
-    // would credit the wrong day for exactly the user who most needs the credit.
+  // Required for BOTH actions. The date comes off a notification that may have
+  // sat on a lock screen overnight, so it is data, not a formality: completing
+  // "today" server-side would credit the wrong day for exactly the user who
+  // most needs the credit, and a snooze without its day cannot be expired.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr ?? '')) {
     return NextResponse.json({ error: 'dateStr must be yyyy-MM-dd' }, { status: 400 });
   }
 
@@ -59,7 +60,17 @@ export async function POST(req: NextRequest) {
     const until = new Date(Date.now() + SNOOZE_MINUTES * 60_000).toISOString();
     const { error: snoozeError } = await supabase
       .from('items')
-      .update({ reminder_snooze_until: until })
+      .update({
+        reminder_snooze_until: until,
+        // The day the snooze BELONGS to — the day the notification was about,
+        // not the day it happens to mature on. A snooze tapped at 23:55 matures
+        // tomorrow, and without this the scan would deliver it against tomorrow
+        // and its Done button would tick tomorrow's box for yesterday's habit.
+        // The scan refuses a snooze whose day is not today, so this also makes
+        // a cross-midnight snooze expire rather than misfire — "in 15 minutes"
+        // at 23:55 is, in practice, "not tonight".
+        reminder_snooze_date: dateStr ?? null,
+      })
       .eq('id', itemId);
     if (snoozeError) {
       return NextResponse.json({ error: snoozeError.message }, { status: 500 });
@@ -67,7 +78,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, snoozedUntil: until });
   }
 
-  const recurring = Boolean(row.repeat_frequency) && row.repeat_frequency !== 'none';
+  // Resolved through the REGISTRY, not read raw. items.repeat_frequency has no
+  // column default and the agent create schemas make it optional, so a habit
+  // can legitimately be stored with NULL — and a raw read would send it down
+  // the one-shot branch and mark it done via scalar `status`, which is exactly
+  // the write CLAUDE.md forbids for a recurring item (completion is per-date,
+  // in completedDates, always). itemFromRow applies the same fallback.
+  const frequency = (row.repeat_frequency as string | null) ?? getItemTypeConfig(type).defaultFrequency;
+  const recurring = Boolean(frequency) && frequency !== 'none';
 
   try {
     if (recurring) {
@@ -91,7 +109,10 @@ export async function POST(req: NextRequest) {
   }
 
   // A completed item must not be re-asked by a snooze that was armed before it.
-  await supabase.from('items').update({ reminder_snooze_until: null }).eq('id', itemId);
+  await supabase
+    .from('items')
+    .update({ reminder_snooze_until: null, reminder_snooze_date: null })
+    .eq('id', itemId);
 
   return NextResponse.json({ ok: true });
 }

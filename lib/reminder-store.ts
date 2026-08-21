@@ -5,7 +5,7 @@ import { saveSettings } from '@/lib/settings-service';
 import { usePlannerStore } from '@/lib/planner-store';
 
 /**
- * Per-user reminder settings — the master switch and the last call.
+ * Per-user reminder and stakes settings — everything the unattended tick reads.
  *
  * One store per concern, like every other ritual (morning-store, eod-store).
  *
@@ -25,17 +25,44 @@ interface ReminderStore {
   lastCallEnabled: boolean;
   /** HH:mm, local. */
   lastCallTime: string;
+  /**
+   * The nightly settlement (migration 031). Its own switch, NOT folded into
+   * remindersEnabled: keeping the accounting while turning off the nagging is a
+   * real thing to want, and one switch for both would make silencing Anchor
+   * also silently forgive every miss.
+   */
+  stakesEnabled: boolean;
+  /** HH:mm, local — settles the day BEFORE it. */
+  stakesSettleTime: string;
 
   setRemindersEnabled: (enabled: boolean) => void;
   setLastCallEnabled: (enabled: boolean) => void;
   setLastCallTime: (time: string) => void;
+  setStakesEnabled: (enabled: boolean) => void;
+  setStakesSettleTime: (time: string) => void;
 }
 
 export const REMINDER_DEFAULTS = {
   remindersEnabled: false,
   lastCallEnabled: false,
   lastCallTime: '20:30',
+  stakesEnabled: false,
+  // 03:00, not midnight: the end-of-day review can credit yesterday's habit
+  // after midnight, and a settlement that ran first would report a miss the app
+  // itself does not believe in.
+  stakesSettleTime: '03:00',
 } as const;
+
+/**
+ * Both time columns carry a CHECK constraint (migrations 029 and 031), so an
+ * empty string does not degrade — it rejects the ENTIRE debounced upsert, and
+ * settings-service merges patches across that window, so clearing this field
+ * silently takes whatever else was being saved down with it.
+ *
+ * Clearing a `<input type="time">` is one Backspace away, so this is a normal
+ * gesture and not an edge case. The store keeps the last good value.
+ */
+const isTimeOfDay = (value: string): boolean => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(value);
 
 export const useReminderStore = create<ReminderStore>((set) => ({
   ...REMINDER_DEFAULTS,
@@ -53,8 +80,22 @@ export const useReminderStore = create<ReminderStore>((set) => ({
   },
 
   setLastCallTime: (time) => {
+    if (!isTimeOfDay(time)) return;
     set({ lastCallTime: time });
     const userId = usePlannerStore.getState().userId;
     if (userId) saveSettings(userId, { habit_last_call_time: time });
+  },
+
+  setStakesEnabled: (enabled) => {
+    set({ stakesEnabled: enabled });
+    const userId = usePlannerStore.getState().userId;
+    if (userId) saveSettings(userId, { stakes_enabled: enabled });
+  },
+
+  setStakesSettleTime: (time) => {
+    if (!isTimeOfDay(time)) return;
+    set({ stakesSettleTime: time });
+    const userId = usePlannerStore.getState().userId;
+    if (userId) saveSettings(userId, { stakes_settle_time: time });
   },
 }));

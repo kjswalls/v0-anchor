@@ -97,8 +97,15 @@ export function occursOn(item: Item, dateStr: string, userTimezone: string): boo
   const anchored = getItemTypeConfig(itemTypeName(item)).dateAnchored
 
   if (isRecurring(item)) {
+    // An ANCHORED type with no startDate occurs on no day at all — the same
+    // rule deriveDayItems applies with `if (!task.startDate) return false`
+    // BEFORE its recurrence branch. Treating it as "every matching day"
+    // instead would nudge daily about an item no view renders: unscheduling a
+    // recurring task to the braindump clears startDate and leaves
+    // repeatFrequency alone, which is exactly that state.
+    if (anchored && !startDate) return false
     if (!shouldShowOnDate(item, day, userTimezone)) return false
-    if (anchored && startDate) return toDateOnly(startDate) <= day
+    if (anchored) return toDateOnly(startDate as string) <= day
     return true
   }
 
@@ -171,6 +178,8 @@ export interface ScanRow {
   sentDate?: string
   /** items.reminder_snooze_until — an ISO instant, or absent. */
   snoozeUntil?: string
+  /** items.reminder_snooze_date — the local day the snooze belongs to. */
+  snoozeDate?: string
 }
 
 /**
@@ -186,28 +195,50 @@ export function dueReminders(
   ctx: ActivationContext,
 ): ReminderCandidate[] {
   const out: ReminderCandidate[] = []
-  for (const { item, sentDate, snoozeUntil } of rows) {
+  for (const { item, sentDate, snoozeUntil, snoozeDate } of rows) {
     if (!isRemindable(item)) continue
     const at = 'reminderTime' in item ? item.reminderTime : undefined
     const target = minutesOfDay(at)
-    if (target === null) continue
 
     // A matured snooze OVERRIDES both the day stamp and the window. Both would
     // otherwise reject it, and rightly so for a first delivery: the day's cue
     // has already been sent and its window has usually closed. Re-opening
     // exactly that state is what the user asked for when they tapped Snooze.
-    const snoozed = snoozeUntil !== undefined && snoozeUntil <= clock.nowIso
-    if (!snoozed) {
-      if (sentDate === clock.dateStr) continue
-      if (!isWithinWindow(target, clock.nowMinutes, clock.graceMinutes)) continue
+    //
+    // It is gated on the snooze's OWN day, which is what keeps that override
+    // from becoming a bug. Without the day gate a stale snooze — armed, then
+    // orphaned because the user completed the habit in the app rather than on
+    // the notification — fires at the first tick after midnight on the next day
+    // the item is due AND stamps that day, suppressing the real cue. See
+    // migration 029's note on reminder_snooze_date.
+    const snoozed =
+      snoozeUntil !== undefined &&
+      snoozeUntil <= clock.nowIso &&
+      snoozeDate === clock.dateStr
+
+    if (snoozed) {
+      // Deliberately NOT gated on reminderTime. Snooze can be tapped on a
+      // LAST CALL, whose item may carry no per-item cue at all; requiring one
+      // would accept the tap and then silently never honour it.
+      if (!wantsDoingOn(item, clock.dateStr, ctx)) continue
+      out.push({
+        item,
+        at: at ?? '',
+        anchor: ('reminderAnchor' in item ? item.reminderAnchor : undefined) || undefined,
+        snoozed: true,
+      })
+      continue
     }
 
+    if (target === null) continue
+    if (sentDate === clock.dateStr) continue
+    if (!isWithinWindow(target, clock.nowMinutes, clock.graceMinutes)) continue
     if (!wantsDoingOn(item, clock.dateStr, ctx)) continue
     out.push({
       item,
       at: at as string,
       anchor: ('reminderAnchor' in item ? item.reminderAnchor : undefined) || undefined,
-      snoozed,
+      snoozed: false,
     })
   }
   // Earliest cue first — a tick that catches two after an outage should read in

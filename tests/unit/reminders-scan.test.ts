@@ -75,13 +75,27 @@ const USER = {
   user_id: 'u1',
   timezone: 'America/New_York',
   time_format: '12h',
+  // Explicit, because the scan now asserts it rather than inheriting it from
+  // the query filter — a user can be in the tick for stakes alone.
+  habit_reminders_enabled: true,
   habit_last_call_enabled: false,
   habit_last_call_time: '20:30',
   habit_last_call_date: null,
+  stakes_enabled: false,
+  stakes_settle_time: '03:00',
+  stakes_settled_date: null,
 };
 
 /** 2026-08-10T11:35Z is 07:35 in New York — inside a 07:30 cue's window. */
 const AT_0735_NY = new Date('2026-08-10T11:35:00Z');
+
+const BOOK_ROW = {
+  id: 'h1',
+  user_id: 'u1',
+  reminder_sent_date: null,
+  reminder_snooze_until: null,
+  reminder_snooze_date: null,
+};
 
 beforeEach(() => {
   sendPushToUser.mockClear();
@@ -130,7 +144,9 @@ describe('runReminderScan', () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30', reminderAnchor: 'you pour your coffee' })]);
     const { service } = makeService({
       'user_settings.select': { data: [USER] },
-      'items.select': { data: [{ id: 'h1', user_id: 'u1', reminder_sent_date: null, reminder_snooze_until: null }] },
+      'items.select': { data: [BOOK_ROW] },
+      // The claim is conditional and returns the rows it actually changed.
+      'items.update': { data: [{ id: 'h1' }] },
     });
 
     const summary = await runReminderScan(service, { now: AT_0735_NY });
@@ -147,40 +163,66 @@ describe('runReminderScan', () => {
   // The deliberate divergence from eod-notify. Deliver-first survives a failed
   // write by re-sending, which is nearly free for a push and very much not free
   // once a channel rings a phone.
-  it('stamps the day BEFORE it delivers', async () => {
+  it('claims the day BEFORE it delivers', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
     const { service, calls } = makeService({
       'user_settings.select': { data: [USER] },
-      'items.select': { data: [{ id: 'h1', user_id: 'u1', reminder_sent_date: null, reminder_snooze_until: null }] },
+      'items.select': { data: [BOOK_ROW] },
+      'items.update': { data: [{ id: 'h1' }] },
     });
 
-    let stampedBeforeSend = false;
+    let claimedBeforeSend = false;
     sendPushToUser.mockImplementation(async () => {
-      stampedBeforeSend = calls.some((c) => c.table === 'items' && c.op === 'update');
+      claimedBeforeSend = calls.some((c) => c.table === 'items' && c.op === 'update');
       return { sent: 1, expired: 0 };
     });
 
     await runReminderScan(service, { now: AT_0735_NY });
-    expect(stampedBeforeSend).toBe(true);
+    expect(claimedBeforeSend).toBe(true);
 
-    const stamp = calls.find((c) => c.table === 'items' && c.op === 'update');
-    expect(stamp?.payload).toMatchObject({
-      reminder_sent_date: '2026-08-10',
-      reminder_snooze_until: null,
-    });
+    const claim = calls.find((c) => c.table === 'items' && c.op === 'update');
+    expect(claim?.payload).toMatchObject({ reminder_sent_date: '2026-08-10' });
   });
 
-  it('sends nothing when the stamp fails, rather than sending every tick', async () => {
+  // A blind stamp is not exclusive: two overlapping ticks — which a slow push
+  // endpoint and an at-least-once cron make possible — would both "succeed" and
+  // both deliver. Only rows the database actually changed may be sent.
+  it('delivers nothing when the claim changed no rows', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
     const { service } = makeService({
       'user_settings.select': { data: [USER] },
-      'items.select': { data: [{ id: 'h1', user_id: 'u1', reminder_sent_date: null, reminder_snooze_until: null }] },
+      'items.select': { data: [BOOK_ROW] },
+      'items.update': { data: [] },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary.cues).toBe(0);
+  });
+
+  it('sends nothing when the claim fails, rather than sending every tick', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service } = makeService({
+      'user_settings.select': { data: [USER] },
+      'items.select': { data: [BOOK_ROW] },
       'items.update': { error: { message: 'write conflict' } },
     });
 
     const summary = await runReminderScan(service, { now: AT_0735_NY });
     expect(sendPushToUser).not.toHaveBeenCalled();
-    expect(summary.notes.join()).toMatch(/cue stamp failed/);
+    expect(summary.notes.join()).toMatch(/cue claim failed/);
+  });
+
+  // One user's failure must not cost everyone else their reminders.
+  it('one user throwing does not abort the tick', async () => {
+    fetchItems.mockRejectedValueOnce(new Error('PostgREST exploded'));
+    const { service } = makeService({
+      'user_settings.select': { data: [USER] },
+      'items.select': { data: [BOOK_ROW] },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+    expect(summary.notes.join()).toMatch(/skipped — PostgREST exploded/);
   });
 
   it('does not pay for the item fetch when nothing is set and nothing is owed', async () => {
@@ -196,7 +238,7 @@ describe('runReminderScan', () => {
   it('skips a user whose timezone is unusable, and keeps going', async () => {
     const { service } = makeService({
       'user_settings.select': { data: [{ ...USER, timezone: 'Mars/Olympus' }] },
-      'items.select': { data: [{ id: 'h1', user_id: 'u1', reminder_sent_date: null, reminder_snooze_until: null }] },
+      'items.select': { data: [BOOK_ROW] },
     });
     const summary = await runReminderScan(service, { now: AT_0735_NY });
     expect(summary.notes.join()).toMatch(/unusable timezone/);

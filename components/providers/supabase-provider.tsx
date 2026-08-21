@@ -169,6 +169,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         remindersEnabled: settings.habit_reminders_enabled ?? REMINDER_DEFAULTS.remindersEnabled,
         lastCallEnabled: settings.habit_last_call_enabled ?? REMINDER_DEFAULTS.lastCallEnabled,
         lastCallTime: settings.habit_last_call_time ?? REMINDER_DEFAULTS.lastCallTime,
+        stakesEnabled: settings.stakes_enabled ?? REMINDER_DEFAULTS.stakesEnabled,
+        stakesSettleTime: settings.stakes_settle_time ?? REMINDER_DEFAULTS.stakesSettleTime,
       });
 
       if (settings.theme) {

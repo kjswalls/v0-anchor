@@ -27,12 +27,37 @@ const PROBE: Record<string, unknown> = {
 };
 const probeFor = (field: string) => PROBE[field] ?? 'probe';
 
+/**
+ * Fields whose write deliberately touches a COMPANION column too.
+ *
+ * The one-column-per-field rule below is the drift detector, so an exception
+ * has to be declared rather than absorbed by loosening the assertion — a bare
+ * "row is non-empty" check would stop catching the bug this suite exists for
+ * (a field that diffs but silently never persists).
+ */
+const COMPANION_COLUMNS: Record<string, string[]> = {
+  // Retiming a cue clears its same-day stamp, or moving a reminder from 07:00
+  // to 21:00 would be silently ignored until tomorrow. See lib/db.ts.
+  reminderTime: ['reminder_sent_date'],
+};
+
+function expectPersisted(row: Record<string, unknown>, field: string, which: string) {
+  const companions = COMPANION_COLUMNS[field] ?? [];
+  expect(
+    Object.keys(row),
+    `${which} includes '${field}' but its allowlist drops it`,
+  ).toHaveLength(1 + companions.length);
+  for (const column of companions) {
+    expect(Object.keys(row), `'${field}' should also write ${column}`).toContain(column);
+  }
+}
+
 describe('db updatesToRow allowlists cover every schema field', () => {
   for (const field of TASK_FIELDS) {
     if (EXEMPT.has(field)) continue;
     it(`task allowlist persists '${field}'`, () => {
       const row = updatesToRow('task', { [field]: probeFor(field) });
-      expect(Object.keys(row), `TASK_FIELDS includes '${field}' but taskUpdatesToRow drops it`).toHaveLength(1);
+      expectPersisted(row, field, 'TASK_FIELDS');
     });
   }
 
@@ -40,7 +65,7 @@ describe('db updatesToRow allowlists cover every schema field', () => {
     if (EXEMPT.has(field)) continue;
     it(`habit allowlist persists '${field}'`, () => {
       const row = updatesToRow('habit', { [field]: probeFor(field) });
-      expect(Object.keys(row), `HABIT_FIELDS includes '${field}' but habitUpdatesToRow drops it`).toHaveLength(1);
+      expectPersisted(row, field, 'HABIT_FIELDS');
     });
   }
 });

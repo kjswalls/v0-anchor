@@ -13,9 +13,18 @@
  * timezones, and the part nothing else should have an opinion about.
  */
 
+import { addDays, format, parseISO } from 'date-fns'
 import { fetchItems, fetchRoutines, fetchPrograms } from '../db'
+import { settleOneDay } from '../stakes/settle'
 import type { createServiceClient } from '../supabase-service'
-import { dueReminders, lastCallItems, minutesOfDay, streakOf, type ScanRow } from './due'
+import {
+  dueReminders,
+  lastCallItems,
+  minutesOfDay,
+  streakOf,
+  type ReminderCandidate,
+  type ScanRow,
+} from './due'
 import { lastCallCopy, reminderCopy, type TimeFormat } from './copy'
 import { deliverNudge, type DeliveryReport } from './deliver'
 import type { Nudge, NudgeItem } from './nudge'
@@ -60,9 +69,55 @@ interface ReminderUserRow {
   user_id: string
   timezone: string | null
   time_format: string | null
+  habit_reminders_enabled: boolean | null
   habit_last_call_enabled: boolean | null
   habit_last_call_time: string | null
   habit_last_call_date: string | null
+  stakes_enabled: boolean | null
+  stakes_settle_time: string | null
+  stakes_settled_date: string | null
+}
+
+/**
+ * How far back a settlement will catch up.
+ *
+ * Not unbounded, and not zero. Zero means a deployment that was down overnight
+ * silently forgives a day — a commitment device that forgets is not one.
+ * Unbounded means a user who enables stakes for the first time gets their
+ * entire history settled at once, which for the pledge tier is a bill for
+ * months they never agreed to. A week covers a real outage and stops there.
+ */
+const MAX_CATCH_UP_DAYS = 7
+
+/** Calendar arithmetic on a yyyy-MM-dd, with no timezone in sight. */
+function shiftDay(dateStr: string, days: number): string {
+  return format(addDays(parseISO(dateStr), days), 'yyyy-MM-dd')
+}
+
+/**
+ * The days a user still owes a settlement for, oldest first.
+ *
+ * Always strictly BEFORE today: a day is settled once it is over, never while
+ * it is still winnable.
+ */
+export function daysToSettle(today: string, settledThrough: string | null): string[] {
+  const yesterday = shiftDay(today, -1)
+  if (!settledThrough) return [yesterday]
+  if (settledThrough >= yesterday) return []
+
+  // The oldest day still worth settling. Starting from the cap rather than
+  // truncating from the other end means a long-dormant account settles the days
+  // it might still care about, not a week from last spring.
+  const floor = shiftDay(yesterday, -(MAX_CATCH_UP_DAYS - 1))
+  let cursor = shiftDay(settledThrough, 1)
+  if (cursor < floor) cursor = floor
+
+  const days: string[] = []
+  while (cursor <= yesterday) {
+    days.push(cursor)
+    cursor = shiftDay(cursor, 1)
+  }
+  return days
 }
 
 interface BookkeepingRow {
@@ -70,6 +125,7 @@ interface BookkeepingRow {
   user_id: string
   reminder_sent_date: string | null
   reminder_snooze_until: string | null
+  reminder_snooze_date: string | null
 }
 
 export interface ScanSummary {
@@ -79,6 +135,8 @@ export interface ScanSummary {
   cues: number
   /** Last calls delivered. */
   lastCalls: number
+  /** Days closed by the stakes settlement. */
+  daysSettled: number
   /** Non-fatal problems, one line each. */
   notes: string[]
   /** True when migration 029 has not been applied — the scan is a no-op. */
@@ -150,14 +208,19 @@ export async function runReminderScan(
   service: ServiceClient,
   options: ScanOptions,
 ): Promise<ScanSummary> {
-  const summary: ScanSummary = { users: 0, cues: 0, lastCalls: 0, notes: [] }
+  const summary: ScanSummary = { users: 0, cues: 0, lastCalls: 0, daysSettled: 0, notes: [] }
 
   const { data: users, error } = await service
     .from('user_settings')
     .select(
-      'user_id, timezone, time_format, habit_last_call_enabled, habit_last_call_time, habit_last_call_date',
+      'user_id, timezone, time_format, habit_reminders_enabled, habit_last_call_enabled, ' +
+        'habit_last_call_time, habit_last_call_date, stakes_enabled, stakes_settle_time, ' +
+        'stakes_settled_date',
     )
-    .eq('habit_reminders_enabled', true)
+    // EITHER switch brings a user into the tick. They are genuinely separate
+    // wants — someone may keep the accounting while turning off the nagging —
+    // and filtering on reminders alone would silently never settle their days.
+    .or('habit_reminders_enabled.eq.true,stakes_enabled.eq.true')
     .not('timezone', 'is', null)
 
   if (error) {
@@ -170,7 +233,7 @@ export async function runReminderScan(
     throw new Error(error.message)
   }
 
-  const rows = (users ?? []) as ReminderUserRow[]
+  const rows = (users ?? []) as unknown as ReminderUserRow[]
   if (rows.length === 0) return summary
 
   // ONE query for everyone's bookkeeping, rather than one per user. It also
@@ -179,9 +242,13 @@ export async function runReminderScan(
   // for someone who has set none.
   const { data: bookRows, error: bookError } = await service
     .from('items')
-    .select('id, user_id, reminder_sent_date, reminder_snooze_until')
+    .select('id, user_id, reminder_sent_date, reminder_snooze_until, reminder_snooze_date')
     .in('user_id', rows.map((r) => r.user_id))
-    .not('reminder_time', 'is', null)
+    // EITHER a standing cue or a live snooze brings a row in. Filtering on
+    // reminder_time alone would drop the snooze tapped on a LAST CALL, whose
+    // item often has no per-item cue — the tap would be accepted by the act
+    // route and then never read by anything.
+    .or('reminder_time.not.is.null,reminder_snooze_until.not.is.null')
     .is('deleted_at', null)
 
   if (bookError) {
@@ -210,132 +277,270 @@ export async function runReminderScan(
       continue
     }
 
-    const book = bookByUser.get(user.user_id) ?? new Map<string, BookkeepingRow>()
-    const lastCallMinutes = user.habit_last_call_enabled
-      ? minutesOfDay(user.habit_last_call_time)
-      : null
-    const lastCallDue =
-      lastCallMinutes !== null &&
-      user.habit_last_call_date !== clock.dateStr &&
-      clock.nowMinutes >= lastCallMinutes &&
-      clock.nowMinutes < Math.min(lastCallMinutes + (options.graceMinutes ?? 30), 1440)
+    // ONE user's failure must not cost everyone else their reminders. Without
+    // this boundary a single rejected fetch — a transient PostgREST error, one
+    // malformed row — propagates out of the scan and 500s the route, which
+    // silently drops every user after this one in the list AND contradicts the
+    // route's own "200 for a partial tick" contract.
+    try {
+      const book = bookByUser.get(user.user_id) ?? new Map<string, BookkeepingRow>()
+      // Both nudge kinds hang off the master switch. It is implied by the query's
+      // .or() only when stakes are off, so it is asserted here rather than
+      // assumed — that is exactly the kind of implication a later filter change
+      // breaks silently.
+      const remindersOn = user.habit_reminders_enabled === true
+      const lastCallMinutes = remindersOn && user.habit_last_call_enabled
+        ? minutesOfDay(user.habit_last_call_time)
+        : null
+      const lastCallDue =
+        lastCallMinutes !== null &&
+        user.habit_last_call_date !== clock.dateStr &&
+        clock.nowMinutes >= lastCallMinutes &&
+        clock.nowMinutes < Math.min(lastCallMinutes + (options.graceMinutes ?? 30), 1440)
 
-    // Nothing set and nothing owed — do not pay for the item fetch.
-    if (book.size === 0 && !lastCallDue) continue
+      const settleMinutes = user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
+      const pendingDays =
+        settleMinutes !== null && clock.nowMinutes >= settleMinutes
+          ? daysToSettle(clock.dateStr, user.stakes_settled_date)
+          : []
 
-    summary.users += 1
+      // Nothing set and nothing owed — do not pay for the item fetch.
+      if (book.size === 0 && !lastCallDue && pendingDays.length === 0) continue
 
-    const [items, routines, programs] = await Promise.all([
-      fetchItems(user.user_id, undefined, service),
-      fetchRoutines(user.user_id, service),
-      fetchPrograms(user.user_id, service),
-    ])
+      summary.users += 1
 
-    // routines/programs return null when their tables are unreachable. Passing
-    // the nulls through as "no memberships known" is the ActivationContext
-    // contract and leaves item-level pause still honoured — which is the safe
-    // direction: the worst case is a nudge for something a paused PROGRAM
-    // covers, not a nudge for something the user paused by hand.
-    const ctx: ActivationContext = {
-      userTimezone: timezone,
-      routines: routines ?? undefined,
-      programs: programs ?? undefined,
-    }
+      const [items, routines, programs] = await Promise.all([
+        fetchItems(user.user_id, undefined, service),
+        fetchRoutines(user.user_id, service),
+        fetchPrograms(user.user_id, service),
+      ])
 
-    const timeFormat: TimeFormat = user.time_format === '24h' ? '24h' : '12h'
-    const channelState = await loadChannelState(service, user.user_id)
-    const base = { userId: user.user_id, service, timeFormat, timezone }
+      // routines/programs return null when their tables are unreachable. Passing
+      // the nulls through as "no memberships known" is the ActivationContext
+      // contract and leaves item-level pause still honoured — which is the safe
+      // direction: the worst case is a nudge for something a paused PROGRAM
+      // covers, not a nudge for something the user paused by hand.
+      const ctx: ActivationContext = {
+        userTimezone: timezone,
+        routines: routines ?? undefined,
+        programs: programs ?? undefined,
+      }
 
-    /* ── The per-item cues ─────────────────────────────────────────────── */
+      const timeFormat: TimeFormat = user.time_format === '24h' ? '24h' : '12h'
+      const channelState = await loadChannelState(service, user.user_id)
+      const base = { userId: user.user_id, service, timeFormat, timezone }
 
-    const scanRows: ScanRow[] = items.map((item) => ({
-      item,
-      sentDate: book.get(item.id)?.reminder_sent_date ?? undefined,
-      snoozeUntil: book.get(item.id)?.reminder_snooze_until ?? undefined,
-    }))
+      /* ── The per-item cues ─────────────────────────────────────────────── */
 
-    const candidates = dueReminders(
-      scanRows,
-      { ...clock, graceMinutes: options.graceMinutes },
-      ctx,
-    )
+      const scanRows: ScanRow[] = items.map((item) => {
+        const row = book.get(item.id)
+        return {
+          item,
+          sentDate: row?.reminder_sent_date ?? undefined,
+          snoozeUntil: row?.reminder_snooze_until ?? undefined,
+          snoozeDate: row?.reminder_snooze_date ?? undefined,
+        }
+      })
 
-    if (candidates.length > 0) {
-      // STAMP BEFORE DELIVERING, which is the opposite of what
-      // /api/cron/eod-notify does and a deliberate divergence.
-      //
-      // Deliver-first survives a failed write by re-sending, and for a push
-      // notification that is nearly free — the tag collapses the duplicate into
-      // the same slot in the shade. It stops being free the moment a channel
-      // costs money or rings a phone: six identical calls between 07:30 and
-      // 08:00 is not a degraded experience, it is the reason someone uninstalls
-      // the app. A stamp that lands and a delivery that fails costs one missed
-      // cue on one day; the reverse costs trust, so the failure is pointed at
-      // the cheaper side on purpose.
-      const stampIds = candidates.map((c) => c.item.id)
-      const { error: stampError } = await service
-        .from('items')
-        .update({ reminder_sent_date: clock.dateStr, reminder_snooze_until: null })
-        .in('id', stampIds)
-        .eq('user_id', user.user_id)
+      // Sweep snoozes that can never fire: matured, but belonging to a day that
+      // is no longer today. They are left behind whenever the user completes the
+      // habit in the app rather than on the notification, and dueReminders now
+      // refuses them — but a row that is refused forever is still a row every
+      // tick reads.
+      const staleSnoozes = [...book.values()]
+        .filter(
+          (row) =>
+            row.reminder_snooze_until !== null &&
+            row.reminder_snooze_date !== clock.dateStr,
+        )
+        .map((row) => row.id)
+      if (staleSnoozes.length > 0) {
+        await service
+          .from('items')
+          .update({ reminder_snooze_until: null, reminder_snooze_date: null })
+          .in('id', staleSnoozes)
+          .eq('user_id', user.user_id)
+      }
 
-      if (stampError) {
-        summary.notes.push(`${user.user_id}: cue stamp failed — ${stampError.message}`)
-      } else {
-        for (const candidate of candidates) {
-          const { title, body } = reminderCopy(candidate, timeFormat)
+      const candidates = remindersOn
+        ? dueReminders(scanRows, { ...clock, graceMinutes: options.graceMinutes }, ctx)
+        : []
+
+      if (candidates.length > 0) {
+        // CLAIM BEFORE DELIVERING, which is the opposite of what
+        // /api/cron/eod-notify does and a deliberate divergence.
+        //
+        // Deliver-first survives a failed write by re-sending, and for a push
+        // notification that is nearly free — the tag collapses the duplicate into
+        // the same slot in the shade. It stops being free the moment a channel
+        // costs money or rings a phone: six identical calls between 07:30 and
+        // 08:00 is not a degraded experience, it is the reason someone uninstalls
+        // the app. A stamp that lands and a delivery that fails costs one missed
+        // cue on one day; the reverse costs trust.
+        //
+        // And it is a CLAIM, not a blind stamp: each update is conditional on the
+        // state it read, and only rows the database actually changed are
+        // delivered. A blind write is not exclusive, so two overlapping ticks —
+        // which a slow push endpoint and an at-least-once cron make possible —
+        // would both "succeed" and both deliver.
+        const claimed = await claimCandidates(service, user.user_id, clock.dateStr, candidates, book)
+
+        if (claimed === null) {
+          summary.notes.push(`${user.user_id}: cue claim failed`)
+        } else {
+          for (const candidate of claimed) {
+            const { title, body } = reminderCopy(candidate, timeFormat)
+            const nudge: Nudge = {
+              kind: 'cue',
+              title,
+              body,
+              url: `/item/${candidate.item.id}`,
+              dateStr: clock.dateStr,
+              itemId: candidate.item.id,
+              items: [toNudgeItem(candidate.item)],
+              snoozed: candidate.snoozed,
+            }
+            const reports = await deliverNudge(nudge, base, channelState)
+            noteFailures(summary, user.user_id, 'cue', reports)
+            summary.cues += 1
+          }
+        }
+      }
+
+      /* ── The streak-at-risk last call ──────────────────────────────────── */
+
+      if (lastCallDue) {
+        const open = lastCallItems(items, clock.dateStr, ctx)
+        const copy = lastCallCopy(open)
+
+        // Stamp even when there is nothing to say. "Everything is done" is not a
+        // notification anyone asked for, but it IS an answered question, and
+        // leaving the stamp off would re-ask it every tick for the rest of the
+        // window.
+        const { error: stampError } = await service
+          .from('user_settings')
+          .update({ habit_last_call_date: clock.dateStr })
+          .eq('user_id', user.user_id)
+
+        if (stampError) {
+          summary.notes.push(`${user.user_id}: last-call stamp failed — ${stampError.message}`)
+        } else if (copy) {
           const nudge: Nudge = {
-            kind: 'cue',
-            title,
-            body,
-            url: `/item/${candidate.item.id}`,
+            kind: 'last-call',
+            title: copy.title,
+            body: copy.body,
+            url: '/',
             dateStr: clock.dateStr,
-            itemId: candidate.item.id,
-            items: [toNudgeItem(candidate.item)],
-            snoozed: candidate.snoozed,
+            itemId: open.length === 1 ? open[0].id : undefined,
+            items: open.map(toNudgeItem),
           }
           const reports = await deliverNudge(nudge, base, channelState)
-          noteFailures(summary, user.user_id, 'cue', reports)
-          summary.cues += 1
+          noteFailures(summary, user.user_id, 'last-call', reports)
+          summary.lastCalls += 1
         }
       }
-    }
 
-    /* ── The streak-at-risk last call ──────────────────────────────────── */
+      /* ── The stakes settlement ─────────────────────────────────────────── */
 
-    if (lastCallDue) {
-      const open = lastCallItems(items, clock.dateStr, ctx)
-      const copy = lastCallCopy(open)
+      for (const day of pendingDays) {
+        const report = await settleOneDay(service, {
+          userId: user.user_id,
+          dateStr: day,
+          timezone,
+          items,
+          activation: ctx,
+          extensionEnabled: channelState.extensionEnabled,
+          configs: channelState.configs,
+          secrets: channelState.secrets,
+        })
 
-      // Stamp even when there is nothing to say. "Everything is done" is not a
-      // notification anyone asked for, but it IS an answered question, and
-      // leaving the stamp off would re-ask it every tick for the rest of the
-      // window.
-      const { error: stampError } = await service
-        .from('user_settings')
-        .update({ habit_last_call_date: clock.dateStr })
-        .eq('user_id', user.user_id)
+        for (const note of report.notes) summary.notes.push(`${user.user_id}: ${day} ${note}`)
 
-      if (stampError) {
-        summary.notes.push(`${user.user_id}: last-call stamp failed — ${stampError.message}`)
-      } else if (copy) {
-        const nudge: Nudge = {
-          kind: 'last-call',
-          title: copy.title,
-          body: copy.body,
-          url: '/',
-          dateStr: clock.dateStr,
-          itemId: open.length === 1 ? open[0].id : undefined,
-          items: open.map(toNudgeItem),
+        // Stamp only on a CLEAN settlement. A day whose claim write failed has
+        // recorded nothing and acted on nothing, so advancing past it would
+        // forgive it permanently — and the catch-up window exists precisely so
+        // the next tick can finish the job.
+        if (report.notes.length > 0) break
+
+        const { error: stampError } = await service
+          .from('user_settings')
+          .update({ stakes_settled_date: day })
+          .eq('user_id', user.user_id)
+
+        if (stampError) {
+          summary.notes.push(`${user.user_id}: settle stamp failed — ${stampError.message}`)
+          break
         }
-        const reports = await deliverNudge(nudge, base, channelState)
-        noteFailures(summary, user.user_id, 'last-call', reports)
-        summary.lastCalls += 1
+        summary.daysSettled += 1
       }
+    } catch (err) {
+      summary.notes.push(
+        `${user.user_id}: skipped — ${err instanceof Error ? err.message : String(err)}`,
+      )
     }
   }
 
   return summary
+}
+
+/**
+ * Take exclusive ownership of the cues about to be delivered.
+ *
+ * Two shapes, because the two kinds of candidate are claimed against different
+ * state:
+ *
+ *   · a scheduled cue is claimed by moving reminder_sent_date to today, ONLY
+ *     from a row where it is not already today;
+ *   · a snoozed cue is claimed by clearing the snooze, ONLY from a row whose
+ *     reminder_snooze_until is still the exact value this tick read. That
+ *     compare-and-swap is what stops the clear from destroying a NEWER snooze
+ *     armed after the bookkeeping read — the user's second tap becoming a
+ *     silent no-op.
+ *
+ * Returns the candidates whose claim actually changed a row, or null if the
+ * database refused the write outright.
+ */
+async function claimCandidates(
+  service: ServiceClient,
+  userId: string,
+  dateStr: string,
+  candidates: readonly ReminderCandidate[],
+  book: Map<string, BookkeepingRow>,
+): Promise<ReminderCandidate[] | null> {
+  const scheduled = candidates.filter((c) => !c.snoozed)
+  const snoozed = candidates.filter((c) => c.snoozed)
+  const won: ReminderCandidate[] = []
+
+  if (scheduled.length > 0) {
+    const { data, error } = await service
+      .from('items')
+      .update({ reminder_sent_date: dateStr })
+      .in('id', scheduled.map((c) => c.item.id))
+      .eq('user_id', userId)
+      .or(`reminder_sent_date.is.null,reminder_sent_date.neq.${dateStr}`)
+      .select('id')
+    if (error) return null
+    const ids = new Set(((data ?? []) as { id: string }[]).map((row) => row.id))
+    won.push(...scheduled.filter((c) => ids.has(c.item.id)))
+  }
+
+  // One statement each: the CAS value differs per row, so these cannot batch.
+  // Snoozes are rare and short-lived, so the loop is a handful of rows at most.
+  for (const candidate of snoozed) {
+    const held = book.get(candidate.item.id)?.reminder_snooze_until
+    if (!held) continue
+    const { data, error } = await service
+      .from('items')
+      .update({ reminder_snooze_until: null, reminder_snooze_date: null })
+      .eq('id', candidate.item.id)
+      .eq('user_id', userId)
+      .eq('reminder_snooze_until', held)
+      .select('id')
+    if (error) return null
+    if ((data ?? []).length > 0) won.push(candidate)
+  }
+
+  return won
 }
 
 function noteFailures(

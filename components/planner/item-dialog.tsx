@@ -78,6 +78,7 @@ import {
   itemTypeName,
   isPausable,
   isCollectible,
+  isRemindable,
 } from '@/lib/item-registry';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
@@ -726,6 +727,11 @@ export function ItemDialog({
             config.dateAnchored && fromConfig.dateAnchored ? from.startDate : base.startDate,
           timeBucket: from.timeBucket,
           startTime: from.startTime,
+          // Carried like every other typed-in field: someone who set a cue and
+          // then realised this is really a habit has not changed their mind
+          // about the cue.
+          reminderTime: from.reminderTime,
+          reminderAnchor: from.reminderAnchor,
           duration: exposed('duration') ? from.duration : base.duration,
           timesPerDay: fromConfig.counters.dailyCounts ? from.timesPerDay : base.timesPerDay,
           repeatFrequency: chosenFrequency ? from.repeatFrequency : base.repeatFrequency,
@@ -998,6 +1004,14 @@ export function ItemDialog({
     const collectible = editingItem
       ? isCollectible(editingItem)
       : getItemTypeConfig(type).collectible;
+
+    // Same shape, same reason. See the Remind chip below.
+    const remindable = editingItem ? isRemindable(editingItem) : config.remindable;
+    // A cue can only fire on a day the item OCCURS on, and a date-anchored type
+    // with no date occurs on none — so the control has to say so rather than
+    // accept a time that will never fire. Habits are un-anchored and never hit
+    // this; an undated braindump task always does.
+    const reminderNeedsDate = config.dateAnchored && !d.startDate;
 
     const toggleRoutine = (routineId: string, on: boolean) => {
       if (!editingItem) {
@@ -1623,8 +1637,12 @@ export function ItemDialog({
 
         {/* Remind — the cue itself. Gated on the registry capability rather
             than on `type === 'habit'`, so a custom type that declares
-            `remindable` gets the control without a branch here. */}
-        {config.remindable && (
+            `remindable` gets the control without a branch here.
+            In EDIT mode it asks isRemindable(item), which adds the subtask
+            rule — the isCollectible pattern above, and for the same reason: a
+            subtask surfaces only inside its parent, so the scan discards a
+            reminder set on one and the control would have promised nothing. */}
+        {remindable && (
           <PropertyChip
             icon={Bell}
             label="Remind"
@@ -1643,6 +1661,13 @@ export function ItemDialog({
                     data-sub-input
                   />
                 </div>
+
+                {d.reminderTime && reminderNeedsDate && (
+                  <p className="text-muted-foreground px-2 pb-2 text-[10px]">
+                    Give this a date and it will fire. Without one there is no day
+                    for the reminder to land on.
+                  </p>
+                )}
 
                 {d.reminderTime && (
                   <>

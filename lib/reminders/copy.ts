@@ -74,9 +74,11 @@ export function reminderCopy(
   const parts: string[] = []
   if (candidate.anchor) {
     parts.push(candidate.anchor)
-  } else {
+  } else if (candidate.at) {
     parts.push(formatCueTime(candidate.at, timeFormat))
   }
+  // `at` can be empty: a snooze tapped on a LAST CALL re-asks about an item
+  // that may carry no per-item cue at all, so there is no stated time to echo.
   const streak = streakOf(candidate.item)
   if (streak > 0) parts.push(streakPhrase(streak))
   return { title: candidate.item.title, body: parts.join(DOT) }

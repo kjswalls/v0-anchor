@@ -338,7 +338,14 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   // Reminders (migration 029). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the
   // behavior, not a fallback (compare `group` above, where null would corrupt).
-  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  if ('reminderTime' in updates) {
+    row.reminder_time = updates.reminderTime ?? null;
+    // Re-arm today. reminder_sent_date records only the DAY, so moving a cue
+    // from 07:00 to 21:00 after the morning one has fired would otherwise be
+    // silently ignored until tomorrow — the user changes the time, watches
+    // nothing happen, and concludes reminders are broken.
+    row.reminder_sent_date = null;
+  }
   if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   // Pause (migration 024). These allowlists gate EVERY write, the app's own
   // included — updateItem early-returns on an empty mapped row, so omitting
@@ -377,8 +384,15 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   // because the two lists are deliberately never merged.
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
-  // Reminders (029) — same split, same reason.
-  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  // Reminders (029) — same split, same reason, including the re-arm.
+  if ('reminderTime' in updates) {
+    row.reminder_time = updates.reminderTime ?? null;
+    // Re-arm today. reminder_sent_date records only the DAY, so moving a cue
+    // from 07:00 to 21:00 after the morning one has fired would otherwise be
+    // silently ignored until tomorrow — the user changes the time, watches
+    // nothing happen, and concludes reminders are broken.
+    row.reminder_sent_date = null;
+  }
   if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   return row;
 }
@@ -657,6 +671,31 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
   recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
 }
 
+/**
+ * Columns added by migration 029 that the UPDATE path may name before the
+ * migration has run.
+ *
+ * The insert path guards these positionally (reminderColumns, above) because it
+ * builds its own row. The update path cannot: the ItemDialog's whole-item save
+ * passes DRAFT_KEYS, which now includes the reminder fields, so EVERY modal
+ * edit names reminder_time — and PostgREST rejects the entire statement with
+ * PGRST204 when one named column is missing. Unguarded, that means a deploy
+ * that lands before `pnpm db:push` breaks editing any item at all, not merely
+ * editing its reminder.
+ *
+ * The retry below is loadSettings' fallback, applied to items: drop the
+ * not-yet-migrated columns and try once more, so the edit lands and only the
+ * reminder half is deferred.
+ */
+const REMINDER_UPDATE_COLUMNS = ['reminder_time', 'reminder_anchor', 'reminder_sent_date'] as const;
+
+/** True only for "the database doesn't have a column we asked for". */
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703' || error.code === 'PGRST204') return true;
+  return /column\b.*\bdoes not exist/i.test(error.message ?? '');
+}
+
 export async function updateItem(
   id: string,
   type: string,
@@ -667,7 +706,31 @@ export async function updateItem(
   const row = updatesToRow(type, updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+  let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+
+  if (error && isMissingColumnError(error)) {
+    const stable: Record<string, unknown> = { ...row };
+    let dropped = false;
+    for (const column of REMINDER_UPDATE_COLUMNS) {
+      if (column in stable) {
+        delete stable[column];
+        dropped = true;
+      }
+    }
+    if (dropped) {
+      console.warn(
+        `[db] items is missing a column this build writes (${error.message}). ` +
+          'Retrying without the migration-029 reminder columns — the reminder was not saved. ' +
+          'Apply supabase/migrations/029_habit_reminders.sql to fix this.',
+      );
+      if (Object.keys(stable).length > 0) {
+        ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
+      } else {
+        error = null;
+      }
+    }
+  }
+
   if (error) throw error;
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
   recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createServiceClient } from '@/lib/supabase-service';
-import { CHANNEL_SETTINGS, isKnownSecretKey } from '@/lib/reminders/channel-config';
+import { EXTENSION_SETTINGS, isKnownSecretKey } from '@/lib/extension-settings';
 
 /**
  * Channel credentials — the write-only surface.
@@ -72,7 +72,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const channel = body.channel;
-  if (!channel || !CHANNEL_SETTINGS.some((spec) => spec.slug === channel)) {
+  if (!channel || !EXTENSION_SETTINGS.some((spec) => spec.slug === channel)) {
     return NextResponse.json({ error: 'Unknown channel' }, { status: 400 });
   }
   if (!body.values || typeof body.values !== 'object') {

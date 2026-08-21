@@ -47,7 +47,27 @@ alter table items
   -- so a timestamptz is the honest column. It overrides reminder_sent_date on
   -- the next scan (the day's cue has already been sent — that is precisely the
   -- state a snooze exists to re-open) and is cleared as it fires.
-  add column if not exists reminder_snooze_until timestamptz;
+  add column if not exists reminder_snooze_until timestamptz,
+  -- Which local day the snooze BELONGS to, yyyy-MM-dd.
+  --
+  -- Carried beside the instant because the instant alone cannot answer the two
+  -- questions that matter, and getting either wrong is worse than having no
+  -- snooze at all:
+  --
+  --   1. WHICH DAY does the re-asked cue credit? A snooze tapped at 23:55 and
+  --      due at 00:10 would otherwise be delivered against tomorrow, and its
+  --      Done button would tick tomorrow's box for yesterday's habit.
+  --   2. WHEN DOES IT EXPIRE? A snooze is cleared as it fires, but it only
+  --      fires while the item still wants doing — so completing the habit in
+  --      the app instead leaves the row armed forever. Because a matured snooze
+  --      deliberately bypasses both the day stamp and the delivery window, that
+  --      stale row would then fire at the first tick after midnight on the next
+  --      day the habit is due, and stamp that day, suppressing the real cue.
+  --
+  -- Both are answered by refusing to deliver a snooze whose day is not today.
+  -- A snooze that crosses midnight is dropped rather than moved: "in 15
+  -- minutes" at 23:55 is, in practice, "not tonight".
+  add column if not exists reminder_snooze_date text;
 
 do $$
 begin
@@ -73,6 +93,15 @@ create index if not exists items_reminder_time_idx
 create index if not exists items_reminder_snooze_idx
   on items (reminder_snooze_until)
   where reminder_snooze_until is not null;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'items_reminder_snooze_date_check') then
+    alter table items
+      add constraint items_reminder_snooze_date_check
+      check (reminder_snooze_date is null or reminder_snooze_date ~ '^\d{4}-\d{2}-\d{2}$');
+  end if;
+end$$;
 
 -- ─── Per-user reminder settings ──────────────────────────────────────────────
 
