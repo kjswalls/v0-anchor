@@ -296,8 +296,9 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency ?? null;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
-  if ('completedDates' in updates) row.completed_dates = updates.completedDates ?? [];
-  if ('skippedDates' in updates) row.skipped_dates = updates.skippedDates ?? [];
+  // completedDates / skippedDates are DELIBERATELY absent — see the note on
+  // reconcileDateArrays. They are not dropped: updateItem routes them through
+  // the per-date intent RPCs before this allowlist ever runs.
   if ('order' in updates && updates.order != null) row.order = updates.order;
   if ('inProjectBlock' in updates) row.in_project_block = updates.inProjectBlock ?? null;
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;
@@ -328,8 +329,8 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   if ('groupId' in updates) row.group_id = updates.groupId ?? null;
   if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
-  if ('completedDates' in updates && updates.completedDates != null) row.completed_dates = updates.completedDates;
-  if ('skippedDates' in updates && updates.skippedDates != null) row.skipped_dates = updates.skippedDates;
+  // completedDates / skippedDates: intent-routed by updateItem, never written
+  // as an absolute array. See reconcileDateArrays.
   if ('dailyCounts' in updates && updates.dailyCounts != null) row.daily_counts = updates.dailyCounts;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
@@ -628,11 +629,29 @@ export async function updateItem(
   userId?: string,
   client?: DbClient,
 ): Promise<void> {
-  const row = updatesToRow(type, updates);
-  if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
-  if (error) throw error;
+  // Per-date arrays are applied as intents and removed from the body BEFORE
+  // the allowlist sees it — they have no column mapping any more.
+  const routedDates = 'completedDates' in updates || 'skippedDates' in updates;
+  const reconciled = routedDates
+    ? await reconcileDateArrays(supabase, id, type, updates as Record<string, unknown>)
+    : (updates as Record<string, unknown>);
+
+  const row = updatesToRow(type, reconciled as Partial<Task> | Partial<Habit>);
+  if (Object.keys(row).length === 0) {
+    // A body carrying ONLY completedDates/skippedDates leaves an empty row, but
+    // it is not a no-op — the intents above already landed. Fall through to the
+    // notify so it still emits the webhook and feed entry that an absolute-array
+    // update used to, rather than going silent for exactly the agent bodies this
+    // reconciliation exists to serve.
+    if (!routedDates) return;
+  } else {
+    const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+    if (error) throw error;
+  }
+  // Reports the ORIGINAL updates, arrays included: the dates really are set now,
+  // and the webhook payload is a pinned external contract — narrowing it to the
+  // post-reconcile body would drop completion changes from tasks.updated.
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
   recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
 }
@@ -778,6 +797,139 @@ export async function setItemCompletion(
     adjust_streak: adjustStreak,
   });
   if (error) throw error;
+}
+
+/**
+ * Declare the desired skip state for one date (migration 029) — the twin of
+ * setItemCompletion, and idempotent for the same reasons.
+ *
+ * Skip exclusivity (a skipped occurrence is not a completed one) is NOT here:
+ * callers that need it issue a setItemCompletion(false) alongside, because that
+ * RPC owns the streak column and two RPCs with a claim on streak is the desync
+ * migration 020 exists to prevent.
+ */
+export async function setItemSkip(
+  id: string,
+  type: string,
+  dateStr: string,
+  skipped: boolean,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.rpc('set_item_skip', {
+    item_id: id,
+    item_type: type,
+    date_str: dateStr,
+    skipped,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Translate an ABSOLUTE completedDates/skippedDates array in an update body
+ * into per-date intents, and strip it from the updates the allowlist will see.
+ *
+ * THE HAZARD THIS CLOSES. Both arrays used to be written whole:
+ * `row.completed_dates = updates.completedDates`. That makes the writer's copy
+ * the new truth, which is only safe while every writer holds the complete
+ * history. Two writers don't:
+ *
+ *   * The OpenClaw plugin's update_task sends "the full set of ISO date strings
+ *     representing all completion dates" (openclaw-plugin/src/tools.ts) — a set
+ *     a model composed from injected context, not one read from this row.
+ *   * Any client reading a windowed slice of the arrays rather than all of it,
+ *     which is where this codebase is headed.
+ *
+ * WHAT THIS DOES AND DOES NOT FIX. The diff is SYMMETRIC: a date in the body
+ * that the row lacks is set, a date on the row that the body lacks is cleared.
+ * That is byte-for-byte the old outcome, deliberately — this is a mechanism
+ * change, not a semantic one — including for `streak`, which a whole-array write
+ * never moved and still doesn't (see adjustStreak below). What it buys is that
+ * the write now goes through
+ * the atomic per-date RPCs, so it no longer clobbers a concurrent toggle, no
+ * longer inverts intent against a stale client (migration 020's two flaws,
+ * which skipped_dates still had because it never got an RPC), and no longer has
+ * a column mapping anything can reach by accident.
+ *
+ * It does NOT make a partial writer safe, and cannot: "the writer retracted
+ * this date" and "the writer never saw this date" are indistinguishable in an
+ * absolute array. Making them distinguishable needs a declared window — retract
+ * only within the range the writer was actually served, never outside it — and
+ * that constant belongs to the read-windowing change, which is where the
+ * partial writers come from in the first place. Until then every writer still
+ * holds full history, so symmetric is correct.
+ *
+ * THE OBLIGATION THAT LEAVES: windowing reads without scoping retraction here
+ * turns this into silent history deletion. The two must land together.
+ *
+ * planner-store's undo/redo path has open-coded this diff since the unified
+ * items refactor (it deletes completedDates from the patch and replays it as
+ * intents). This is that guard, moved to the boundary where nothing can bypass
+ * it. The store still emits intents directly on its hot paths — it knows the
+ * delta already and shouldn't pay for a read to rediscover it.
+ */
+async function reconcileDateArrays(
+  supabase: DbClient,
+  id: string,
+  type: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const hasCompleted = 'completedDates' in updates;
+  const hasSkipped = 'skippedDates' in updates;
+  if (!hasCompleted && !hasSkipped) return updates;
+
+  const rest = { ...updates };
+  delete rest.completedDates;
+  delete rest.skippedDates;
+
+  const { data, error } = await supabase
+    .from('items')
+    .select('completed_dates, skipped_dates')
+    .eq('id', id)
+    .eq('type', type)
+    .maybeSingle();
+  // No row (deleted, wrong type, another tenant's id under RLS) means there is
+  // nothing to reconcile against. Returning `rest` lets the caller's remaining
+  // fields take their normal path — including the no-op early return when the
+  // body carried nothing else.
+  if (error || !data) {
+    if (error) console.error('completion reconcile read failed', error);
+    return rest;
+  }
+
+  const row = data as { completed_dates: string[] | null; skipped_dates: string[] | null };
+  const intents: Promise<void>[] = [];
+
+  if (hasCompleted) {
+    const desired = new Set((updates.completedDates as string[] | null) ?? []);
+    const current = new Set(row.completed_dates ?? []);
+    // adjustStreak=false, matching the absolute write this replaces: a whole-array
+    // update never moved streak (the allowlist carried it as its own field, and
+    // callers that want it moved say so). Letting the reconciled intents adjust it
+    // would make streak jump by the SIZE OF THE DIFF — an agent body that dropped a
+    // year of dates would decrement it to zero — which is a new behavior smuggled
+    // in under a mechanism change. Same reasoning as undo/redo's absolute restore.
+    for (const d of desired) {
+      if (!current.has(d)) intents.push(setItemCompletion(id, type, d, true, false, supabase));
+    }
+    for (const d of current) {
+      if (!desired.has(d)) intents.push(setItemCompletion(id, type, d, false, false, supabase));
+    }
+  }
+
+  if (hasSkipped) {
+    const desired = new Set((updates.skippedDates as string[] | null) ?? []);
+    const current = new Set(row.skipped_dates ?? []);
+    for (const d of desired) {
+      if (!current.has(d)) intents.push(setItemSkip(id, type, d, true, supabase));
+    }
+    for (const d of current) {
+      if (!desired.has(d)) intents.push(setItemSkip(id, type, d, false, supabase));
+    }
+  }
+
+  await Promise.all(intents);
+  return rest;
 }
 
 /**

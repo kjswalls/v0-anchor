@@ -17,6 +17,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
     deleteItem: vi.fn(async () => {}),
     restoreItem: vi.fn(async () => {}),
     setItemCompletion: vi.fn(async () => {}),
+    setItemSkip: vi.fn(async () => {}),
     createProject: vi.fn(async () => {}),
     updateProject: vi.fn(async () => {}),
     deleteProject: vi.fn(async () => {}),
@@ -138,7 +139,10 @@ describe('setItemSkipped', () => {
     expect(isSkippedOnDate(task, TODAY)).toBe(true);
     expect(isSkippedOnDate(task, '2026-03-11')).toBe(false);
 
-    expect(db.updateItem).toHaveBeenCalledWith('daily-task', 'task', { skippedDates: [TODAY] });
+    // Per-date intent (migration 029), never the recomputed array: a client
+    // that wrote skippedDates whole would make its own copy the server truth.
+    expect(db.setItemSkip).toHaveBeenCalledWith('daily-task', 'task', TODAY, true);
+    expect(vi.mocked(db.updateItem).mock.calls.every(([, , u]) => !('skippedDates' in u))).toBe(true);
   });
 
   it('unskips the same date back off the list', () => {
@@ -149,18 +153,19 @@ describe('setItemSkipped', () => {
 
   it('is intent-based: a repeat of the current state writes nothing', () => {
     store().setItemSkipped('daily-task', false);
-    expect(db.updateItem).not.toHaveBeenCalled();
+    expect(db.setItemSkip).not.toHaveBeenCalled();
 
     store().setItemSkipped('daily-task', true);
-    vi.mocked(db.updateItem).mockClear();
+    vi.mocked(db.setItemSkip).mockClear();
     store().setItemSkipped('daily-task', true);
-    expect(db.updateItem).not.toHaveBeenCalled();
+    expect(db.setItemSkip).not.toHaveBeenCalled();
   });
 
   it('no-ops on a one-shot task', () => {
     store().setItemSkipped('one-shot', true);
     expect(itemById('one-shot').skippedDates).toEqual([]);
     expect(db.updateItem).not.toHaveBeenCalled();
+    expect(db.setItemSkip).not.toHaveBeenCalled();
   });
 
   it('clears a completion recorded for the skipped date', () => {
@@ -191,10 +196,17 @@ describe('setItemSkipped', () => {
   });
 });
 
-describe('the task update allowlist persists skippedDates', () => {
-  // Guards the seam the db-allowlists suite catches generically: a schema field
-  // that diffs but never persists would make undo/redo of a skip silently drop.
-  it('maps skippedDates onto skipped_dates for tasks', () => {
-    expect(updatesToRow('task', { skippedDates: [TODAY] })).toEqual({ skipped_dates: [TODAY] });
+describe('the task update allowlist refuses skippedDates', () => {
+  // The inverse of what this block used to assert. skipped_dates no longer has
+  // a column mapping: updateItem intercepts the field and replays it as
+  // per-date intents, because an absolute write lets any writer holding a
+  // partial copy of the array delete every date it never knew about — the
+  // hazard that blocks windowing the arrays on read.
+  //
+  // The seam this originally guarded (a schema field that diffs but never
+  // persists, silently dropping undo/redo of a skip) is covered instead by the
+  // intent replay in planner-store's restore path — see the undo test above.
+  it('maps skippedDates onto no column at all for tasks', () => {
+    expect(updatesToRow('task', { skippedDates: [TODAY] })).toEqual({});
   });
 });

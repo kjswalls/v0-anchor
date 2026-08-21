@@ -40,6 +40,7 @@ import {
   deleteItem as dbDeleteItem,
   restoreItem as dbRestoreItem,
   setItemCompletion as dbSetItemCompletion,
+  setItemSkip as dbSetItemSkip,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
@@ -1951,16 +1952,17 @@ export const usePlannerStore = create<PlannerStore>()(
               skippedDates: newSkippedDates,
               streak: completed ? habit.streak + 1 : Math.max(0, habit.streak - 1),
             });
+            const clearsSkip = completed && (habit.skippedDates ?? []).includes(dateStr);
             dbWrites.push(() => {
-              // Streak + completedDates are server-owned on the RPC. The companion
-              // update carries status AND skippedDates — the RPC never touches
-              // skipped_dates, so the skip-clear must persist here or it reappears
-              // on reload (matches toggleHabitStatus, which passes skippedDates).
+              // Streak + completedDates are server-owned on the completion RPC,
+              // which never touches skipped_dates — so the skip-clear needs its
+              // own write or it reappears on reload. That write is a per-date
+              // intent (029), never the recomputed array: only `dateStr` moved.
               dbSetItemCompletion(item.id, 'habit', dateStr, completed).catch(console.error);
-              dbUpdateItem(item.id, 'habit', {
-                status: newStatus,
-                skippedDates: newSkippedDates,
-              }).catch(console.error);
+              if (clearsSkip) {
+                dbSetItemSkip(item.id, 'habit', dateStr, false).catch(console.error);
+              }
+              dbUpdateItem(item.id, 'habit', { status: newStatus }).catch(console.error);
             });
           } else {
             const task = item as TaskItem;
@@ -2214,7 +2216,10 @@ export const usePlannerStore = create<PlannerStore>()(
         if (clearCompletion) {
           dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
         }
-        dbUpdateItem(id, dbTypeOf(item), { skippedDates: optimistic.skippedDates }).catch(console.error);
+        // Per-date intent, not the whole array: this path knows the one date
+        // that moved, so it says so. Writing `optimistic.skippedDates` whole
+        // would make this client's copy the new server truth.
+        dbSetItemSkip(id, dbTypeOf(item), dateStr, skipped).catch(console.error);
       },
 
       /**
@@ -2374,7 +2379,14 @@ export const usePlannerStore = create<PlannerStore>()(
         ));
 
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
-        const { completedDates: _cd, streak: _st, ...rest } = optimistic;
+        // skippedDates joins completedDates and streak in the exclusion list:
+        // all three are per-date/server-owned state that the companion update
+        // must not clobber with this client's recomputed copy. The skip moves
+        // through its own intent RPC, and only when it actually changed.
+        const { completedDates: _cd, streak: _st, skippedDates: _sd, ...rest } = optimistic;
+        if (wasSkipped !== (status === 'skipped')) {
+          dbSetItemSkip(id, 'habit', dateStr, status === 'skipped').catch(console.error);
+        }
         dbUpdateItem(id, 'habit', rest).catch(console.error);
         if (status === 'done' && !wasCompleted) celebrateCompletion();
       },
@@ -3264,11 +3276,15 @@ function applyHistoryState(
       return;
     }
     const patch = diffItem(cur, item);
-    // completedDates must never be written as an absolute array from a
-    // snapshot — the live flow's set_item_completion RPC owns that column, and
-    // a clobber here would race an in-flight completion. Replay the delta as
-    // per-date intents instead (adjustStreak=false: the patch below restores
-    // streak absolutely).
+    // completedDates/skippedDates must never be written as an absolute array
+    // from a snapshot — the set_item_completion / set_item_skip RPCs own those
+    // columns, and a clobber here would race an in-flight toggle. Replay the
+    // delta as per-date intents instead (adjustStreak=false on completion: the
+    // patch below restores streak absolutely).
+    //
+    // updateItem now reconciles these at the boundary too, so a miss here is no
+    // longer data loss — but doing it in-place keeps the restore to one round
+    // trip per changed date instead of a read plus the same intents.
     if ('completedDates' in patch) {
       delete patch.completedDates;
       const curDates = new Set(cur.completedDates ?? []);
@@ -3278,6 +3294,17 @@ function applyHistoryState(
       });
       curDates.forEach((d) => {
         if (!restoredDates.has(d)) dbSetItemCompletion(item.id, dbType(item), d, false, false).catch(console.error);
+      });
+    }
+    if ('skippedDates' in patch) {
+      delete patch.skippedDates;
+      const curSkips = new Set(cur.skippedDates ?? []);
+      const restoredSkips = new Set(item.skippedDates ?? []);
+      restoredSkips.forEach((d) => {
+        if (!curSkips.has(d)) dbSetItemSkip(item.id, dbType(item), d, true).catch(console.error);
+      });
+      curSkips.forEach((d) => {
+        if (!restoredSkips.has(d)) dbSetItemSkip(item.id, dbType(item), d, false).catch(console.error);
       });
     }
     if (Object.keys(patch).length > 0) {
