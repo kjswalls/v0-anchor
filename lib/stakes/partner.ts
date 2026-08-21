@@ -18,8 +18,7 @@
  * Secrets: none.
  */
 
-import { postToChannel, requireString } from '../reminders/channels/http'
-import { assertSafeUrl } from '../reminders/channels/http'
+import { assertSafeUrl, postToChannel, requireString } from '../reminders/channels/http'
 import { partnerDigest } from './copy'
 import type { StakeAdapter } from './types'
 

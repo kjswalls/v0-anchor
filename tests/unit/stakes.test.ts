@@ -152,6 +152,12 @@ describe('parseGoalMap', () => {
     expect(parseGoalMap('nonsense, : , a:b').get('a')).toBe('b');
     expect(parseGoalMap(undefined).size).toBe(0);
   });
+
+  // A goal slug cannot contain a colon; a habit title very much can.
+  it('splits on the last colon, so a colon in the title survives', () => {
+    const map = parseGoalMap('Reading: 30 minutes: read30');
+    expect(map.get('reading: 30 minutes')).toBe('read30');
+  });
 });
 
 /* ── Copy ─────────────────────────────────────────────────────────────────── */

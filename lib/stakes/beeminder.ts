@@ -34,10 +34,14 @@ export function parseGoalMap(raw: unknown): Map<string, string> {
   const map = new Map<string, string>()
   if (typeof raw !== 'string') return map
   for (const pair of raw.split(',')) {
-    const [title, goal] = pair.split(':')
-    if (!title || !goal) continue
-    const key = title.trim().toLowerCase()
-    const slug = goal.trim()
+    // Split on the LAST colon, not the first: a Beeminder goal slug cannot
+    // contain one, but a habit called "Reading: 30 minutes" very much can, and
+    // splitting at the first would map "Reading" to " 30 minutes" — a goal that
+    // does not exist, failing silently on every settlement.
+    const at = pair.lastIndexOf(':')
+    if (at === -1) continue
+    const key = pair.slice(0, at).trim().toLowerCase()
+    const slug = pair.slice(at + 1).trim()
     if (key && slug) map.set(key, slug)
   }
   return map
