@@ -123,7 +123,14 @@ function ControlFor({
 
   const commit = () => {
     dirty.current = false;
-    if (draft !== String(value)) onWrite(draft);
+    if (draft === String(value)) return;
+    onWrite(draft);
+    // A write-only credential renders empty BY CONTRACT — its read() returns ''
+    // whatever is stored — so `value` never changes and the sync effect above
+    // never fires. Without this the typed token stays sitting in the box,
+    // covering the placeholder that is the only signal anything was saved, and
+    // the next blur re-sends it.
+    if (record.textVariant === 'secret') setDraft('');
   };
 
   switch (record.control) {
