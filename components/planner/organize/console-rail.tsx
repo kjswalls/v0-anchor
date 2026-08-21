@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 export type ConsoleSection =
   | 'routines'
   | 'programs'
+  | 'goals'
   | 'projects'
   | 'types'
   | 'groups'
@@ -35,6 +36,10 @@ export type ConsoleSection =
 export const CONSOLE_SECTIONS = [
   { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES' },
   { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS' },
+  // Third in CONTAINERS, and last of the three on purpose: routines and
+  // programs answer "is this on today", goals answer "why is any of it here".
+  // The daily questions sit above the long one.
+  { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS' },
   { id: 'projects', label: 'Projects', group: 'LABELS', eyebrow: 'PROJECTS' },
   // Item types sits ABOVE Habit groups (Kirby, 2026-08-11 decision 7). Folding
   // habit groups into routines is a recorded deferral; putting types between

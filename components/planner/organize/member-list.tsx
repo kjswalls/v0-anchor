@@ -158,6 +158,7 @@ export function ItemMemberList({
   hiddenIds,
   testPrefix,
   orderable = false,
+  eligible,
   onChange,
 }: {
   /** Only used to disarm the search when the selection changes. */
@@ -186,6 +187,15 @@ export function ItemMemberList({
    * reshuffles.
    */
   orderable?: boolean;
+  /**
+   * Which items may be added, when plain collectibility is not the question.
+   *
+   * Goals need it: a milestone must additionally be one-shot and a check-in
+   * must be recurring, so the picker for those lists is narrower than the one
+   * for plain members. Defaults to `isCollectible`, which is what every
+   * container asked before and what routines and programs still ask.
+   */
+  eligible?: (item: Item) => boolean;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -254,7 +264,8 @@ export function ItemMemberList({
    * user-defined type joins routines the day it is created.
    */
   const q = query.trim().toLowerCase();
-  const pool = items.filter((i) => isCollectible(i) && !memberIds.includes(i.id));
+  const admits = eligible ?? isCollectible;
+  const pool = items.filter((i) => admits(i) && !memberIds.includes(i.id));
   const candidates = (q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool).slice(
     0,
     PICKER_LIMIT

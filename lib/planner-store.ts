@@ -695,6 +695,7 @@ const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
   group: 'habit group',
   routine: 'routine',
   program: 'program',
+  goal: 'goal',
 };
 
 // Set the label for the next action that will be saved to history
@@ -3314,6 +3315,15 @@ export const usePlannerStore = create<PlannerStore>()(
               if (state.programs.some((p) => p.id === program.id)) return null;
               return { programs: [...state.programs, program] };
             }
+            case 'goal': {
+              const goal = entry.entity as Goal;
+              if (state.goals.some((g) => g.id === goal.id)) return null;
+              // All three role arrays arrive hydrated, WITH their roles — see
+              // listDeleted. Restored from bare ids they would come back as
+              // plain members, which is a silent change to the goal's progress
+              // denominator that the visible gate (the row is back) cannot see.
+              return { goals: [...state.goals, goal] };
+            }
           }
         })();
         if (!next) return;
@@ -3352,6 +3362,12 @@ export const usePlannerStore = create<PlannerStore>()(
             break;
           case 'program':
             dbRestoreProgram(userId, entry.id).catch(console.error);
+            break;
+          case 'goal':
+            // No withReleaseGrace above for this kind, deliberately: a goal
+            // suppresses nothing, so restoring one releases nothing onto the
+            // canvas and there is no grace period to open.
+            dbRestoreGoal(userId, entry.id).catch(console.error);
             break;
         }
       },

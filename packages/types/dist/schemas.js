@@ -309,7 +309,7 @@ export const GOAL_FIELDS = Object.keys(GoalSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
 // One entity, discriminated by `type`. The task/habit branches are structurally
 // identical to Task/Habit so projections (item → legacy shape) are plain field
-// subsets. User-defined types (goal, …) travel under a CLOSED 'custom'
+// subsets. User-defined types (errand, …) travel under a CLOSED 'custom'
 // envelope with the type's machine name in `customType` — an open type: string
 // branch would destroy TypeScript's discriminated narrowing at every
 // `item.type === '…'` site in the app. The DB stores the slug itself in
@@ -318,7 +318,15 @@ const taskItemObject = z.object({ type: z.literal('task'), ...taskShape });
 const habitItemObject = z.object({ type: z.literal('habit'), ...habitShape });
 const customItemObject = z.object({
     type: z.literal('custom'),
-    /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+    /**
+     * The user-defined type's machine name (item_types.name), e.g. 'errand'.
+     *
+     * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
+     * (GoalSchema above, migration 029), and an item type of the same name is a
+     * different thing in a different namespace. Both keep working — the console
+     * shows them in different sections — but the example should not teach the
+     * collision.
+     */
     customType: z.string(),
     ...taskShape,
 });

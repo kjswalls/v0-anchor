@@ -274,3 +274,44 @@ describe('create-with-membership', () => {
     expect(usePlannerStore.getState().goals[0].memberIds).toHaveLength(1);
   });
 });
+
+describe('the trash keeps a goal’s roles', () => {
+  it('restores each member into the role it held, not as plain members', () => {
+    // The near-miss the console's own Phase 4 recorded, one level worse: a bin
+    // snapshot of bare ids would bring every milestone and check-in back as a
+    // plain member — silently changing the goal's progress denominator, while
+    // the visible gate (the row is back on the list) passes either way.
+    const entry = {
+      kind: 'goal' as const,
+      id: 'g9',
+      name: 'Learn Chinese',
+      deletedAt: '2026-08-01T00:00:00.000Z',
+      entity: goal({
+        id: 'g9',
+        memberIds: ['m1'],
+        milestoneIds: ['s1', 's2'],
+        checkinIds: ['c1'],
+      }),
+    };
+    usePlannerStore.setState({ goals: [] } as never);
+    usePlannerStore.getState().restoreFromTrash(entry);
+
+    const restored = usePlannerStore.getState().goals[0];
+    expect(restored.milestoneIds).toEqual(['s1', 's2']);
+    expect(restored.checkinIds).toEqual(['c1']);
+    expect(restored.memberIds).toEqual(['m1']);
+    expect(db.restoreGoal).toHaveBeenCalledWith(U, 'g9');
+  });
+
+  it('is a no-op when the goal is already back', () => {
+    usePlannerStore.setState({ goals: [goal({ id: 'g9' })] } as never);
+    usePlannerStore.getState().restoreFromTrash({
+      kind: 'goal' as const,
+      id: 'g9',
+      name: 'Learn Chinese',
+      deletedAt: '2026-08-01T00:00:00.000Z',
+      entity: goal({ id: 'g9' }),
+    });
+    expect(usePlannerStore.getState().goals).toHaveLength(1);
+  });
+});

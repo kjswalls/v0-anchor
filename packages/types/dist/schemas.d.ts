@@ -915,7 +915,15 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
-    /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+    /**
+     * The user-defined type's machine name (item_types.name), e.g. 'errand'.
+     *
+     * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
+     * (GoalSchema above, migration 029), and an item type of the same name is a
+     * different thing in a different namespace. Both keep working — the console
+     * shows them in different sections — but the example should not teach the
+     * collision.
+     */
     customType: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "custom";
@@ -1294,7 +1302,15 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
-    /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+    /**
+     * The user-defined type's machine name (item_types.name), e.g. 'errand'.
+     *
+     * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
+     * (GoalSchema above, migration 029), and an item type of the same name is a
+     * different thing in a different namespace. Both keep working — the console
+     * shows them in different sections — but the example should not teach the
+     * collision.
+     */
     customType: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "custom";
@@ -3036,7 +3052,15 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"custom">;
-        /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+        /**
+         * The user-defined type's machine name (item_types.name), e.g. 'errand'.
+         *
+         * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
+         * (GoalSchema above, migration 029), and an item type of the same name is a
+         * different thing in a different namespace. Both keep working — the console
+         * shows them in different sections — but the example should not teach the
+         * collision.
+         */
         customType: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         type: "custom";

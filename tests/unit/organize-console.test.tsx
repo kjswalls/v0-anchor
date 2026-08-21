@@ -39,14 +39,19 @@ const tick = async () =>
 describe('the Organize console frame', () => {
   afterEach(cleanup);
 
-  it('exposes all six sections as tabs, in the decided order', () => {
+  it('exposes all seven sections as tabs, in the decided order', () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
     // Item types ABOVE Habit groups — decision 7. The order is asserted rather
     // than assumed because it is free to change now and awkward once the
     // habit-groups-into-routines fold starts.
+    //
+    // Goals sit LAST in CONTAINERS: routines and programs answer "is this on
+    // today", goals answer "why is any of it here", and the daily questions
+    // belong above the long one.
     expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
       'Routines',
       'Programs',
+      'Goals',
       'Projects',
       'Item types',
       'Habit groups',
@@ -119,7 +124,7 @@ describe('the Organize console frame', () => {
     tab('Routines').focus();
     fireEvent.focus(tab('Routines'));
 
-    for (const next of ['Programs', 'Projects', 'Item types', 'Habit groups', 'Trash']) {
+    for (const next of ['Programs', 'Goals', 'Projects', 'Item types', 'Habit groups', 'Trash']) {
       fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       await tick();
       expect(tab(next)).toHaveFocus();

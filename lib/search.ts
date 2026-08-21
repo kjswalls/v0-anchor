@@ -11,7 +11,7 @@ import { containerRef } from './container-registry';
  * Keyword grammar:
  *   task:foo      → type filter 'task', "foo" becomes search text
  *   habit:foo     → type filter 'habit', "foo" becomes search text
- *   type:goal     → type filter by registry name (custom types; also accepts
+ *   type:errand   → type filter by registry name (custom types; also accepts
  *                   type:task / type:habit)
  *   priority:high → priority filter (low|medium|high), value consumed
  *   project:Name  → project filter, value consumed

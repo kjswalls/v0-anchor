@@ -125,7 +125,7 @@ function allItems(): Item[] {
 
 /**
  * Candidates for a typed query, via the omnibar's own search — so the keyword
- * grammar comes along for free: "complete project:Work", "delete type:goal".
+ * grammar comes along for free: "complete project:Work", "delete type:errand".
  * searchItems returns nothing for an empty query (by design, for the search
  * surface), which is why the empty case reads the projections directly.
  */
@@ -188,7 +188,7 @@ export function itemContainer(item: Item): { name: string; glyph: string } | und
 
 /**
  * Row glyph. Custom types get the icon picked when the type was created, which
- * is the only thing distinguishing a "goal" row from a task row at a glance.
+ * is the only thing distinguishing an "errand" row from a task row at a glance.
  */
 export function itemIcon(item: Item): LucideIcon {
   const name = itemTypeName(item);

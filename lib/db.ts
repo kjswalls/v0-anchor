@@ -2034,7 +2034,7 @@ export async function restoreHabitGroup(userId: string, id: string, client?: DbC
 // The Trash (Organize console, Phase 4)
 // ============================================================
 
-export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program';
+export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program' | 'goal';
 
 /**
  * One row of the bin: what it is, what it was called, when it went, and the
@@ -2093,7 +2093,7 @@ export interface TrashEntry {
    * then, so the reconnection has to be read back out of the database here.
    */
   memberIds?: string[];
-  entity: Item | Project | HabitGroupType | Routine | Program;
+  entity: Item | Project | HabitGroupType | Routine | Program | Goal;
 }
 
 /** A row shape plus the stamp `select('*')` returns but the interface omits. */
@@ -2147,7 +2147,12 @@ export async function listDeleted(
   const supabase = client ?? createClient();
   const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
 
-  const [items, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
+  const [
+    items, projects, groups,
+    routines, routineMembers,
+    programs, programItems, programRoutines,
+    goals, goalMembers,
+  ] =
     await Promise.all([
       deleted(supabase.from('items').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('projects').select('*')).order('deleted_at', { ascending: false }),
@@ -2162,6 +2167,15 @@ export async function listDeleted(
         .eq('user_id', userId).order('item_id', { ascending: true }),
       supabase.from('program_routines').select('program_id, routine_id')
         .eq('user_id', userId).order('routine_id', { ascending: true }),
+      deleted(supabase.from('goals').select('*')).order('deleted_at', { ascending: false }),
+      // The ROLE comes back with the id, and that is the whole point. A bin
+      // snapshot carrying bare ids would restore every milestone and check-in
+      // as a plain member — silently changing the goal's progress denominator,
+      // while the visible gate (the row is back) passes either way.
+      supabase.from('goal_items').select('goal_id, item_id, role, sort_order')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('item_id', { ascending: true }),
     ]);
 
   // One failure fails the lot. A partial bin is worse than an error: a user
@@ -2169,7 +2183,8 @@ export async function listDeleted(
   // without it and conclude it is gone for good.
   const failure =
     items.error ?? projects.error ?? groups.error ?? routines.error ??
-    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error;
+    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error ??
+    goals.error ?? goalMembers.error;
   if (failure) throw failure;
 
   const itemRows = (items.data ?? []) as Trashed<ItemRow>[];
@@ -2187,6 +2202,21 @@ export async function listDeleted(
   const itemsByRoutine = groupIds((routineMembers.data ?? []) as Record<string, string>[], 'routine_id', 'item_id');
   const itemsByProgram = groupIds((programItems.data ?? []) as Record<string, string>[], 'program_id', 'item_id');
   const routinesByProgram = groupIds((programRoutines.data ?? []) as Record<string, string>[], 'program_id', 'routine_id');
+
+  // Role-split, matching fetchGoals — including its degrade-to-member rule for
+  // a role this build does not recognise, so a restore can never drop a member
+  // out of every array.
+  const membersByGoal = new Map<string, GoalMembers>();
+  for (const row of (goalMembers.data ?? []) as { goal_id: string; item_id: string; role: string }[]) {
+    let entry = membersByGoal.get(row.goal_id);
+    if (!entry) {
+      entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
+      membersByGoal.set(row.goal_id, entry);
+    }
+    if (row.role === 'milestone') entry.milestoneIds.push(row.item_id);
+    else if (row.role === 'checkin') entry.checkinIds.push(row.item_id);
+    else entry.memberIds.push(row.item_id);
+  }
 
   const entries: TrashEntry[] = [];
 
@@ -2273,6 +2303,26 @@ export async function listDeleted(
         pausedUntil: row.paused_until ?? undefined,
         sortOrder: row.sort_order ?? undefined,
         itemIds: itemsByRoutine.get(row.id) ?? [],
+      },
+    });
+  }
+
+  for (const row of (goals.data ?? []) as Trashed<GoalRow>[]) {
+    entries.push({
+      kind: 'goal', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.icon ?? undefined, color: row.color ?? undefined,
+      entity: {
+        id: row.id,
+        name: row.name,
+        why: row.why ?? undefined,
+        icon: row.icon ?? undefined,
+        color: row.color ?? undefined,
+        state: (row.state as Goal['state']) ?? 'active',
+        startsOn: row.starts_on ?? undefined,
+        targetOn: row.target_on ?? undefined,
+        achievedAt: row.achieved_at ?? undefined,
+        sortOrder: row.sort_order ?? undefined,
+        ...(membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
       },
     });
   }
