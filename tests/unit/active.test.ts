@@ -100,6 +100,40 @@ describe('isOpenLoopOn — what still wants doing', () => {
     expect(isOpenLoopOn(habit({ dailyCounts: { '2026-08-15': 1 } }), '2026-08-15')).toBe(false);
   });
 
+  // A counted habit is discharged by REACHING its target, not by being touched.
+  // This read `> 0`, so one tally of a 3×-a-day habit closed the day while the
+  // row still drew 1/3 — every surface asking this question was disagreeing
+  // with the grid, and the streak still broke at midnight.
+  it('a counted habit stays open until it reaches its target', () => {
+    const water = (count: number) =>
+      habit({ timesPerDay: 3, dailyCounts: { '2026-08-15': count } });
+    expect(isOpenLoopOn(water(0), '2026-08-15')).toBe(true);
+    expect(isOpenLoopOn(water(1), '2026-08-15')).toBe(true);
+    expect(isOpenLoopOn(water(2), '2026-08-15')).toBe(true);
+    expect(isOpenLoopOn(water(3), '2026-08-15')).toBe(false);
+    // Over-tallying is still done, not re-opened.
+    expect(isOpenLoopOn(water(4), '2026-08-15')).toBe(false);
+  });
+
+  // The guard that keeps this from being a behavior change for anything else.
+  it('a habit with no target is still closed by a single tally', () => {
+    expect(isOpenLoopOn(habit({ dailyCounts: { '2026-08-15': 1 } }), '2026-08-15')).toBe(false);
+    expect(
+      isOpenLoopOn(habit({ timesPerDay: 1, dailyCounts: { '2026-08-15': 1 } }), '2026-08-15'),
+    ).toBe(false);
+  });
+
+  // Marking it done at the target writes completedDates, which short-circuits
+  // above — so the two paths agree even if a count is missing.
+  it('an explicit completion beats an incomplete tally', () => {
+    const done = habit({
+      timesPerDay: 3,
+      dailyCounts: { '2026-08-15': 1 },
+      completedDates: ['2026-08-15'],
+    });
+    expect(isOpenLoopOn(done, '2026-08-15')).toBe(false);
+  });
+
   it('a mark on another day leaves today open', () => {
     expect(isOpenLoopOn(habit({ completedDates: ['2026-08-14'] }), '2026-08-15')).toBe(true);
   });

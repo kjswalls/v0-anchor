@@ -42,6 +42,15 @@ they teach people to take the device off).
 
 ## Locked design decisions
 
+0. **The ticks are scheduled by Postgres, not by the host.** `pg_cron` + `pg_net`
+   (migration 032) call the two `/api/cron` routes every five minutes, with the app URL
+   and the shared secret in Vault. Vercel's Hobby plan rejects any cron more frequent than
+   daily *at deploy time*, and five-minute resolution is not a nicety: both jobs exist to
+   catch a moment in the USER's local day, so a daily job is right for one timezone and
+   wrong for every other. pg_cron was already this project's scheduler (013, re-pointed by
+   019 and 024) and is indifferent to hosting plans. The routes stay ordinary
+   authenticated GETs, so any other scheduler can still drive them.
+
 1. **`reminder_time` is a local wall-clock string, never a timestamp.** "07:30, every
    weekday, wherever I am standing" is not an instant. `items.reminder_at` (a timestamptz
    inherited by migration 019 and read by nothing) was deliberately left alone rather than
@@ -86,10 +95,17 @@ they teach people to take the device off).
     date-anchored recurring item with no `startDate` occurs on NO day. Unscheduling a
     recurring task to the braindump produces precisely that row, and the looser reading
     nudged daily about something no view renders.
-11. **One user's failure costs only that user.** The per-user loop has an error boundary;
+11. **A counted habit is discharged by reaching its target, not by being touched.**
+    `isOpenLoopOn` read `dailyCounts[day] > 0`, so one tally of a 3×-a-day habit closed
+    the day everywhere — while the row still drew 1/3 and the streak still broke at
+    midnight. It now compares against `timesPerDay ?? 1`, which leaves every ordinary
+    habit unchanged and makes the grid, the reminder, the EOD review, Beacon and the
+    settlement finally agree about what "done" means. Fixed in the predicate, never
+    locally in reminders — a second opinion about "done" is worse than the symptom.
+12. **One user's failure costs only that user.** The per-user loop has an error boundary;
     the route returns 200 with notes rather than 500, which would silently drop everyone
     later in the list.
-12. **Secrets never reach the browser.** Non-secret channel config lives in
+13. **Secrets never reach the browser.** Non-secret channel config lives in
    `user_extensions.config` (user-readable by RLS); credentials live in `user_secrets`,
    which is service-role only (migration 012's posture). The settings UI shows *set / not
    set*, never the value.
@@ -145,14 +161,16 @@ Where the evidence says the power actually is, once attention is not the bottlen
   window falls inside the vanished hour (e.g. 02:30 in a zone jumping 02:00 → 03:00) is
   skipped that day. Catching it would mean firing the cue at a materially different time,
   which is the thing decision 5 refuses to do. Twice a year, for cues set in one hour.
-- **A counted habit stops being nudged after its first tally.** `wantsDoingOn` composes
-  `isOpenLoopOn`, whose `dailyCounts[day] > 0` rule closes the loop on tally one — so a
-  `timesPerDay: 3` habit at 1/3 goes quiet while the grid still shows it unfinished. This
-  is the shared app-wide definition and diverging locally would be worse than the symptom.
-  **Open question for a human:** should `isOpenLoopOn` itself learn about `timesPerDay`?
-  That is a change to every surface, not to reminders.
+- **DST spring-forward** is the only clock case left unhandled — see above.
 
 ## Deferred / open
+
+- **Counted habits get one cue, not N.** With the predicate fixed, a 3×-a-day habit now
+  stays open all day and is named by the last call — but its single `reminder_time` still
+  fires once. Most counted-habit apps solve this with either several reminder times per
+  item or an interval ("every 3h between 09:00 and 21:00"). `reminder_time` would become
+  `reminder_times text[]`; the scan already loops candidates, so the change is mostly the
+  picker. Worth doing only if one cue plus the last call turns out not to be enough.
 
 - Whether `remindable` should stay true for `task` (it is today — the cost is zero, since
   the scan gates on `reminder_time is not null`, and the dialog now says so when a task
