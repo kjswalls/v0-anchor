@@ -356,8 +356,17 @@ export async function fetchTestGoal(
 } | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SECRET_KEY!;
+  // `deleted_at=is.null` and `order=created_at.desc`, both load-bearing.
+  //
+  // WITHOUT the filter this helper can never observe a delete: removeGoal is a
+  // SOFT delete (the 30-day trash, so goal_items survive a restore), so a poll
+  // for null would spin until the expect timeout on a row that is still there.
+  // WITHOUT the order it returns whichever row the heap hands back, which is
+  // fine only while a spec creates exactly one goal per prefix — the moment one
+  // creates two, "the test goal" becomes arbitrary.
   const res = await fetch(
-    `${url}/rest/v1/goals?user_id=eq.${testUserId()}&select=id,name,state,why,target_on`,
+    `${url}/rest/v1/goals?user_id=eq.${testUserId()}&deleted_at=is.null` +
+      `&order=created_at.desc&select=id,name,state,why,target_on`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } }
   );
   if (!res.ok) throw new Error(`[fetchTestGoal] ${res.status} ${await res.text()}`);

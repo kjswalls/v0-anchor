@@ -67,6 +67,16 @@ test.describe('goals', () => {
       'aria-selected',
       'true'
     );
+    // Fail in ten seconds with the real cause rather than in two minutes with
+    // none. `goal-add` is disabled while `goalsAvailable` is false — exactly the
+    // state of a database without migration 029 — and waitForAppReady's
+    // `data-loaded` gate does not cover that flag, so the click below would
+    // block on actionability for the whole describe timeout and take the other
+    // cases down with it under `mode: 'serial'`.
+    await expect(
+      page.getByTestId('goals-unavailable'),
+      'goals are unavailable on this account — is migration 029 applied?'
+    ).toHaveCount(0);
   }
 
   /** Close, and PROVE it closed — see programs.spec.ts on the two-Escape dance. */
@@ -133,8 +143,11 @@ test.describe('goals', () => {
 
     // Stored as a MILESTONE, not a plain member. The arrays are an app-side
     // view of one join table; only reading the table back proves the role.
-    const goal = await fetchTestGoal(scope.prefix);
-    expect(goal).not.toBeNull();
+    // POLLED, not awaited once: the goal was written by a fire-and-forget
+    // `dbCreateGoal(...).catch(console.error)`, and three UI actions is not a
+    // guarantee the round trip landed.
+    await expect.poll(async () => (await fetchTestGoal(scope.prefix))?.name).toBe(name);
+    const goal = (await fetchTestGoal(scope.prefix))!;
     await expect
       .poll(async () => {
         const rows = await fetchTestGoalMembers(goal!.id);
@@ -170,12 +183,25 @@ test.describe('goals', () => {
     await row.getByTestId('item-complete-button').click();
 
     // OFFERS. Achieving is a statement about a stretch of your life, and the
-    // app must never make it for you — so the toast appears and the goal is
-    // still active until the action is clicked.
-    await expect(page.getByText(/milestone/i).first()).toBeVisible();
-    await expect.poll(async () => (await fetchTestGoal(scope.prefix))?.state).toBe('active');
+    // app must never make it for you.
+    //
+    // Asserted against the TOAST, not against `getByText(/milestone/i)`: the
+    // row this test just created renders `<span class="sr-only">Milestone of
+    // …</span>`, and `sr-only` keeps a 1x1 box, so that matcher was green
+    // whether or not the offer ever appeared. Clicking the action IS the proof
+    // the offer was made, so it comes before the DB read — a poll in between
+    // can outlive the toast's 8s life and fail as "button not found", which
+    // says nothing about goals.
+    const offer = page
+      .locator('[data-sonner-toast]')
+      .filter({ hasText: name })
+      .getByRole('button', { name: 'Mark achieved' });
+    await expect(offer).toBeVisible();
 
-    await page.getByRole('button', { name: 'Mark achieved' }).click();
+    // Still active WHILE the offer stands — the "without taking it" half.
+    expect((await fetchTestGoal(scope.prefix))?.state).toBe('active');
+
+    await offer.click();
     await expect.poll(async () => (await fetchTestGoal(scope.prefix))?.state).toBe('achieved');
   });
 
@@ -190,6 +216,9 @@ test.describe('goals', () => {
     const checkin = scope.title('review');
     await page.getByTestId('goal-new-checkin-new-name').fill(checkin);
     await page.getByTestId('goal-new-checkin-add').click();
+    await expect(
+      page.getByTestId('goal-checkin-member-row').filter({ hasText: checkin })
+    ).toBeVisible();
 
     await page.getByTestId('goal-state-achieved').click();
 
@@ -198,6 +227,77 @@ test.describe('goals', () => {
     await expect(windDown.getByText(checkin)).toBeVisible();
     // It NAMES them and offers the verb; it never acts on the goal's behalf.
     await expect(windDown.getByTestId('goal-wind-down-delete')).toBeVisible();
+
+    // And the promise itself: achieving touched nothing. The member is still
+    // there and still a check-in — the goal writes to its members never.
+    const goal = (await fetchTestGoal(scope.prefix))!;
+    await expect
+      .poll(async () => (await fetchTestGoalMembers(goal.id)).map((r) => r.role).sort())
+      .toEqual(['checkin']);
+  });
+
+  test('a new check-in reaches the canvas, not just the goal', async ({ page }) => {
+    // The Phase 3 blocker, pinned. It shipped bucketed-but-undated, and a
+    // recurring TASK is gated by its anchor — deriveDayItems returns false on
+    // `!startDate` before it ever reaches shouldShowOnDate — so it rendered on
+    // no column, while the bucket also kept it out of the braindump. The
+    // wind-down assertion in the test above passed the whole time, which is
+    // exactly why this one exists: it asserts the CONSEQUENCE, not the field.
+    const name = scope.title('oncanvas');
+    const checkin = scope.title('sundayreview');
+    await createGoal(page, name);
+    await page.getByTestId('goal-row').filter({ hasText: name }).click();
+    await page.getByTestId('goal-new-checkin-new-name').fill(checkin);
+    await page.getByTestId('goal-new-checkin-add').click();
+    await closeConsole(page);
+    await waitForAppReady(page);
+
+    // Seeded weekly-on-Sunday and anchored at today, so it renders on the next
+    // Sunday at the latest. Walk forward rather than assuming today is one.
+    await expect
+      .poll(
+        async () => {
+          for (let i = 0; i < 7; i += 1) {
+            if (await page.getByText(checkin).first().isVisible().catch(() => false)) return true;
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(150);
+          }
+          return false;
+        },
+        { message: 'the new check-in never appeared on any day of the coming week' }
+      )
+      .toBe(true);
+  });
+
+  test('completing a check-in offers the note and the trip back', async ({ page }) => {
+    // The plan's Verification gates name this case by name, and it is the one
+    // the phase exists for: a check-in is completed where every recurring item
+    // is, so the bridge has to come to the completion rather than wait on the
+    // goal page. Without it Phase 3 is a recurring task with extra bookkeeping.
+    const name = scope.title('bridge');
+    const checkin = scope.title('weeklyreview');
+    await createGoal(page, name);
+    await page.getByTestId('goal-row').filter({ hasText: name }).click();
+    await page.getByTestId('goal-new-checkin-new-name').fill(checkin);
+    await page.getByTestId('goal-new-checkin-add').click();
+    await closeConsole(page);
+    await waitForAppReady(page);
+
+    // Walk to the day it falls on — seeded weekly-on-Sunday, anchored today.
+    let row = page.locator('[data-testid="item-card"]').filter({ hasText: checkin });
+    for (let i = 0; i < 7 && !(await row.count()); i += 1) {
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(150);
+      row = page.locator('[data-testid="item-card"]').filter({ hasText: checkin });
+    }
+    await expect(row.first(), 'the check-in never appeared on any day this week').toBeVisible();
+
+    await row.first().getByTestId('item-complete-button').click();
+
+    const toast = page.locator('[data-sonner-toast]').filter({ hasText: name });
+    await expect(toast).toBeVisible();
+    await expect(toast.getByRole('button', { name: 'Add a note' })).toBeVisible();
+    await expect(toast.getByRole('button', { name: 'View goal' })).toBeVisible();
   });
 
   test('deleting a goal leaves its members alone', async ({ page }) => {
@@ -211,10 +311,20 @@ test.describe('goals', () => {
     await page.getByTestId('goal-new-milestone-add').click();
 
     await page.getByTestId('delete-goal').click();
-    await page.getByRole('button', { name: 'Delete goal' }).click();
+    // By testid, not by label: confirm-dialog.tsx carries this id precisely
+    // because the confirm LABEL is caller-supplied and "Delete" collides with
+    // three other buttons in the app.
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+    await page.getByTestId('confirm-dialog-confirm').click();
 
     await expect.poll(async () => await fetchTestGoal(scope.prefix)).toBeNull();
     await closeConsole(page);
+
+    // RELOADED. Without this the braindump being asserted is the same in-memory
+    // items[] that removeGoal never touches by construction — so the test would
+    // pass on optimistic state while the failure it exists to catch (a cascade
+    // taking the members with the goal) lives entirely in the database.
+    await reloadApp(page);
     await waitForAppReady(page);
     await expect(page.getByTestId('braindump').getByText(milestone)).toBeVisible();
   });

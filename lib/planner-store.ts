@@ -1318,26 +1318,57 @@ export const usePlannerStore = create<PlannerStore>()(
        * typing — see recordCheckin.
        */
       const offerCheckinNote = (item: Item, dateStr: string) => {
-        const state = get();
-        const goal = state.goals.find(
+        // EVERY active goal this item checks in for, not the first one found.
+        // Locked decision 2 lets an item hold a role in several goals, and
+        // `heldElsewhere` only stops two roles within ONE goal — so picking the
+        // first meant a shared check-in always named the same goal and wrote
+        // its notes there, leaving the other goal's history permanently empty
+        // no matter how many were written. The note is one reflection on one
+        // sitting; the goals it serves all get it.
+        const goals = get().goals.filter(
           (g) => g.state === 'active' && g.checkinIds.includes(item.id),
         );
-        if (!goal) return;
-        toast(`Checked in on ${goal.name}`, {
+        if (goals.length === 0) return;
+        const label =
+          goals.length === 1 ? goals[0].name : `${goals[0].name} +${goals.length - 1}`;
+        toast(`Checked in on ${label}`, {
           description: 'Anything worth remembering about this one?',
           action: {
             label: 'Add a note',
             onClick: () => {
-              // A prompt, deliberately: the alternative is a dialog, and the
-              // single ActiveDialog slot is exactly what makes that unsafe from
-              // inside the EOD review. A richer capture is the deferred guided
-              // check-in flow, which gets its own surface rather than borrowing
-              // one that is already occupied.
-              const note = typeof window !== 'undefined' ? window.prompt(
-                `How is ${goal.name} going?`,
-              ) : null;
+              // A native prompt, and the honest reason is that there is nowhere
+              // else to put it yet. ui-store DOES carry a second modal slot
+              // (`confirmRequest`, rendered beside ActiveDialog), so a modal
+              // raised while EOD is open is a solved problem here — but that
+              // slot confirms, it does not capture text. Building the surface
+              // that does is the guided check-in flow, which is a recorded
+              // deferral. Consequence to know: a browser that has suppressed
+              // dialogs returns null silently and the note is simply not saved.
+              const note = window.prompt(
+                goals.length === 1 ? `How is ${goals[0].name} going?` : 'How is it going?',
+              );
               if (!note?.trim()) return;
-              dbRecordCheckin(item.id, dbTypeOf(item), goal.id, dateStr, note.trim());
+              // Re-read at CLICK time, like the achievement offer beside it —
+              // eight seconds is long enough to undo the completion, delete the
+              // goal, or demote the item out of the role.
+              const live = get().goals.filter(
+                (g) => g.state === 'active' && g.checkinIds.includes(item.id),
+              );
+              for (const goal of live) {
+                dbRecordCheckin(item.id, dbTypeOf(item), goal.id, dateStr, note.trim());
+              }
+            },
+          },
+          // The second half of the bridge, which the plan pins by name
+          // ("· Add a note · View goal"): the trip BACK to the goal is the part
+          // a completion cannot otherwise offer, and the whole argument for the
+          // bridge is that it comes to the completion rather than waiting. It
+          // uses sonner's cancel slot as a second button — never a library
+          // limit, just an omission.
+          cancel: {
+            label: 'View goal',
+            onClick: () => {
+              if (typeof window !== 'undefined') window.location.assign(`/goal/${goals[0].id}`);
             },
           },
           duration: 8000,

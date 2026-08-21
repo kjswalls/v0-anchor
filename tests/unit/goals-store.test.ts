@@ -30,14 +30,20 @@ vi.mock('@/lib/db', async (importOriginal) => {
     updateGoal: vi.fn(async () => {}),
     deleteGoal: vi.fn(async () => {}),
     restoreGoal: vi.fn(async () => {}),
+    recordCheckin: vi.fn(),
   };
 });
 vi.mock('@/lib/supabase', () => ({ createClient: () => ({}) }));
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+// The bridge and the achievement offer both speak through sonner; the tests
+// invoke the toast's own action the way a user would click it.
+vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
+vi.mock('@/lib/completion-confetti', () => ({ celebrateCompletion: vi.fn() }));
 
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
+import { toast } from 'sonner';
 import type { Goal, Item } from '@/lib/planner-types';
 
 const U = 'user-1';
@@ -478,5 +484,45 @@ describe('Phase 2 — the goal surface', () => {
     expect(created.timeBucket).toBeUndefined();
     expect(created.isScheduled).toBe(false);
     expect(created.startDate).toBeUndefined();
+  });
+});
+
+describe('the check-in bridge', () => {
+  const recurring = (over: Partial<Extract<Item, { type: 'task' }>> = {}): Item =>
+    task({ id: 'c1', title: 'Weekly review', repeatFrequency: 'daily', startDate: '2026-08-01', ...over });
+
+  it('writes the note against every active goal the item checks in for', () => {
+    // Filing under the first match left a shared check-in's second goal with a
+    // permanently empty history, no matter how many notes were written.
+    const spy = vi.spyOn(window, 'prompt').mockReturnValue('tones are getting easier');
+    usePlannerStore.setState({
+      items: [recurring()],
+      goals: [
+        goal({ id: 'g1', name: 'Chinese', checkinIds: ['c1'] }),
+        goal({ id: 'g2', name: 'Reading', checkinIds: ['c1'] }),
+      ],
+    } as never);
+
+    usePlannerStore.getState().toggleTaskStatus('c1', undefined, new Date('2026-08-23T12:00:00'));
+    // The toast's action is what writes; invoke it the way the user would.
+    const call = (toast as unknown as { mock: { calls: unknown[][] } }).mock.calls.at(-1);
+    const opts = call?.[1] as { action?: { onClick: () => void } } | undefined;
+    opts?.action?.onClick();
+
+    const written = (db.recordCheckin as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(written.map((c) => c[2]).sort()).toEqual(['g1', 'g2']);
+    // And against the OCCURRENCE date, not the moment of typing.
+    expect(written.every((c) => c[3] === '2026-08-23')).toBe(true);
+    spy.mockRestore();
+  });
+
+  it('says nothing when the item is nobody’s check-in', () => {
+    usePlannerStore.setState({
+      items: [recurring()],
+      goals: [goal({ memberIds: ['c1'] })],
+    } as never);
+    (toast as unknown as { mockClear: () => void }).mockClear();
+    usePlannerStore.getState().toggleTaskStatus('c1', undefined, new Date('2026-08-23T12:00:00'));
+    expect(toast).not.toHaveBeenCalled();
   });
 });

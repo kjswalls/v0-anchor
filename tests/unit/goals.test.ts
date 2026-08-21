@@ -449,3 +449,35 @@ describe('check-in standing', () => {
     expect(standing).toEqual({ item: null, nextDue: null, lastDone: null, dueToday: false });
   });
 });
+
+describe('the check-in bridge’s goal selection', () => {
+  // The store action itself is driven in goals-store.test.ts; this pins the
+  // rule it depends on — which goals a completed item checks in for. Getting
+  // this wrong filed every note under whichever goal sorted first and left the
+  // other's history permanently empty, no matter how many were written.
+  const goalWith = (id: string, checkinIds: string[], state: 'active' | 'achieved' = 'active') => ({
+    id,
+    name: `Goal ${id}`,
+    state,
+    memberIds: [],
+    milestoneIds: [],
+    checkinIds,
+  });
+
+  const goalsForCheckin = (goals: ReturnType<typeof goalWith>[], itemId: string) =>
+    goals.filter((g) => g.state === 'active' && g.checkinIds.includes(itemId));
+
+  it('returns EVERY active goal the item checks in for', () => {
+    const goals = [goalWith('a', ['c1']), goalWith('b', ['c1']), goalWith('c', ['other'])];
+    expect(goalsForCheckin(goals, 'c1').map((g) => g.id)).toEqual(['a', 'b']);
+  });
+
+  it('ignores ended goals', () => {
+    const goals = [goalWith('a', ['c1'], 'achieved'), goalWith('b', ['c1'])];
+    expect(goalsForCheckin(goals, 'c1').map((g) => g.id)).toEqual(['b']);
+  });
+
+  it('is empty for an item that is nobody’s check-in', () => {
+    expect(goalsForCheckin([goalWith('a', ['c1'])], 'x')).toEqual([]);
+  });
+});

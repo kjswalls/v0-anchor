@@ -461,41 +461,43 @@ export function recordCheckin(
 /**
  * Every check-in note a goal has collected, newest first.
  *
- * Read across the goal's check-in ITEMS rather than by goal id, because
- * `item_events` is keyed on the item — it deliberately carries no FK to
- * anything, so a note survives its item's hard delete. The goal filter is
- * applied on the payload afterwards: an item can serve two goals, and a note
- * belongs to the one it was written for.
+ * Filtered on the PAYLOAD's `goalId` in the query, not on the goal's live
+ * check-in item ids. That is what makes `item_events`' founding property real
+ * here: the table deliberately carries no FK, so a note outlives its item's
+ * hard delete — but reading it through `goal.checkinIds` handed that promise
+ * straight back, because `goal_items` cascades on the item's purge, the id
+ * leaves the array, and the note becomes unqueryable. Which is precisely the
+ * path the wind-down's Delete puts a user on: achieve the goal, retire the
+ * check-in, and a month later the goal's written record of the whole thing is
+ * gone.
+ *
+ * Filtering server-side also fixes an ordering bug the client-side version had:
+ * `.limit(50)` applied BEFORE the goal filter, so a check-in item shared with a
+ * busier goal could return zero of this goal's notes.
  */
-export async function fetchCheckins(
-  itemIds: readonly string[],
-  goalId: string,
-  client?: DbClient,
-): Promise<ItemEvent[]> {
-  if (!itemEventsAvailable || itemIds.length === 0) return [];
+export async function fetchCheckins(goalId: string, client?: DbClient): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable) return [];
   const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('item_events')
     .select('id, item_id, item_type, action, payload, created_at')
-    .in('item_id', [...itemIds])
     .eq('action', 'checkin')
+    .eq('payload->>goalId', goalId)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(100);
   if (error) {
     if (missingEventsTable(error)) itemEventsAvailable = false;
     else console.error('item_events checkin fetch failed', error);
     return [];
   }
-  return ((data ?? []) as Record<string, unknown>[])
-    .map((row) => ({
-      id: row.id as string,
-      itemId: row.item_id as string,
-      itemType: row.item_type as string,
-      action: row.action as string,
-      payload: (row.payload ?? {}) as Record<string, unknown>,
-      createdAt: row.created_at as string,
-    }))
-    .filter((e) => e.payload.goalId === goalId);
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    itemId: row.item_id as string,
+    itemType: row.item_type as string,
+    action: row.action as string,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at as string,
+  }));
 }
 
 export async function fetchItemEvents(itemId: string, client?: DbClient): Promise<ItemEvent[]> {

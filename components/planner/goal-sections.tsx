@@ -335,17 +335,20 @@ export function CheckinHistory({
   itemsById: Map<string, Item>;
 }) {
   const [events, setEvents] = useState<ItemEvent[] | null>(null);
-  const ids = goal.checkinIds;
 
   useEffect(() => {
     let cancelled = false;
-    fetchCheckins(ids, goal.id).then((rows) => {
+    // Cleared FIRST. `/goal/a` → `/goal/b` reconciles the same component
+    // instance, so without this the previous goal's notes — private text —
+    // keep rendering under the new goal's heading until the fetch lands.
+    setEvents(null);
+    fetchCheckins(goal.id).then((rows) => {
       if (!cancelled) setEvents(rows);
     });
     return () => {
       cancelled = true;
     };
-  }, [ids, goal.id]);
+  }, [goal.id]);
 
   // Quiet when the table is not deployed or nothing has been written — the
   // ActivitySection convention: a bonus surface, never an empty state. It owns
@@ -358,7 +361,7 @@ export function CheckinHistory({
       <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
         Check-in history
       </h2>
-      {events.slice(0, 8).map((e) => {
+      {events.slice(0, 24).map((e) => {
         const dateStr = typeof e.payload.dateStr === 'string' ? e.payload.dateStr : null;
         const note = typeof e.payload.note === 'string' ? e.payload.note : '';
         const item = itemsById.get(e.itemId);

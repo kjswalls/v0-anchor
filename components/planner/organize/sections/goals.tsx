@@ -16,6 +16,7 @@ import {
   matching,
   parseDay,
   useLiveItemIds,
+  useToday,
 } from '@/lib/collections';
 import { Eyebrow, ObjectRow, Segmented, SegmentedOption } from '../primitives';
 import {
@@ -145,6 +146,7 @@ export function GoalsSection({
 
   const [query, setQuery] = useState('');
   const liveItemIds = useLiveItemIds();
+  const { todayStr } = useToday();
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
@@ -182,10 +184,17 @@ export function GoalsSection({
    * about the cadence is stored on the goal — one timing per item, the
    * membership-only principle programs-routines locked.
    *
-   * Bucketed, unlike a milestone, and for the reason the milestone is not: a
-   * check-in is recurring, so `shouldShowOnDate` puts it on a column with no
-   * `startDate` at all — the bucket is what decides WHERE in that column it
-   * lands, and without one deriveDayItems drops it from every bucket.
+   * DATED and bucketed, unlike a milestone — and the first version of this was
+   * bucketed but undated, on a premise that is exactly backwards. A recurring
+   * TASK is gated by its anchor: `deriveDayItems` returns false on
+   * `!task.startDate` BEFORE it ever reaches `shouldShowOnDate`, and then
+   * requires `startDate <= dateStr`. (Habits are the un-anchored type; check-ins
+   * created here are tasks.) So without a start date the check-in rendered on no
+   * column at all, while the bucket kept it out of the braindump too — the one
+   * combination the item dialog itself cannot produce.
+   *
+   * Anchored at TODAY: the cadence starts now, and an anchor in the past would
+   * back-date occurrences nobody agreed to.
    */
   const createCheckin = (goal: Goal, title: string) => {
     addTask(
@@ -194,6 +203,7 @@ export function GoalsSection({
         status: 'pending',
         isScheduled: false,
         order: 0,
+        startDate: todayStr,
         timeBucket: 'anytime',
         repeatFrequency: 'custom',
         // Sunday. A weekly review wants the seam between weeks, and picking a
@@ -654,7 +664,8 @@ function EndedNotice({
           ? 'This still repeats on its own schedule.'
           : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
         Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'}{' '}
-        goal never edits its members. Keep them, or retire them here.
+        goal never edits its members. Keep them as they are, open one to park it in a program,
+        or delete it for good.
       </TeachingLine>
       <div className="flex flex-col gap-1">
         {recurring.map((item) => (
@@ -665,11 +676,17 @@ function EndedNotice({
           >
             {/* The item's own surface, where the Program chip is how you park
                 something for a season without losing its history. */}
+            <span className="min-w-0 flex-1 truncate">{item.title}</span>
+            {/* LABELLED. Decision 5's third affordance — park it in a program
+                rather than end it — used to be prose inside the DELETE confirm,
+                which meant discovering the non-destructive option required
+                opening a dialog whose button says Delete. */}
             <Link
               href={`/item/${item.id}`}
-              className="hover:text-foreground min-w-0 flex-1 truncate transition-colors"
+              data-testid="goal-wind-down-open"
+              className="text-muted-foreground hover:text-foreground shrink-0 text-[11px] transition-colors"
             >
-              {item.title}
+              Open
             </Link>
             <button
               type="button"

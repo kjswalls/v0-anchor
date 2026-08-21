@@ -695,10 +695,17 @@ table as ONE set. Four rules, each closing a found defect:
   item is completed — a row on the grid, a line in the EOD review — and NOT on
   the goal page, so the note, the history and the trip back to the goal come to
   the completion rather than waiting at a surface the user has no reason to
-  visit. `offerCheckinNote` fires from BOTH completion verbs (a habit can serve
-  as a check-in; `isCheckinEligible` asks only that the item recurs) as a toast
-  with an "Add a note" action — a toast for the same single-slot reason the
-  achievement offer is one.
+  visit. `offerCheckinNote` fires from the two SINGLE-item completion verbs —
+  the recurring branch of `toggleTaskStatus` and `toggleHabitStatus` — which
+  between them cover the grid row, the day schedule, project blocks, the EOD
+  review, the morning tray and the palette (a habit can serve as a check-in;
+  `isCheckinEligible` asks only that the item recurs). It does NOT fire from
+  `setItemsCompleted`, the multi-select bulk verb, which skips
+  `celebrateCompletion` too — the house posture for a verb acting on twenty
+  items at once, and a limit worth stating rather than the "every completion
+  surface" this bullet first claimed. The toast carries both halves the plan
+  pins: "Add a note", and "View goal" — the trip back is the part a completion
+  cannot otherwise offer, and it was briefly dropped.
 
   **The note is written against the OCCURRENCE date, not the moment of typing.**
   `recordCheckin` puts `dateStr` in the payload; `created_at` is when the note
@@ -743,8 +750,65 @@ table as ONE set. Four rules, each closing a found defect:
   page's Organize button responding at all, and an inline milestone being
   findable in the braindump.
 
-  **Gates:** 1376 unit tests green (78 files), lint 0 errors, `pnpm build`
+  **Gates:** 1381 unit tests green (78 files), lint 0 errors, `pnpm build`
   clean, tsc at baseline 23.
+
+  **Phase 3 implementation review (2026-08-21).** Three lenses (check-in
+  mechanics; the unrun e2e spec, read statically; scope + wind-down + fidelity).
+  **Three blockers — one in the feature, two in the spec.**
+
+  *The seeded check-in rendered on no planner surface* — Phase 2's milestone bug
+  with the sign flipped, and found independently by two lenses. It shipped
+  bucketed-but-undated on the premise that "a recurring item lands on a column
+  with no startDate at all". That is true of HABITS. A recurring TASK is gated by
+  its anchor: `deriveDayItems` returns false on `!task.startDate` BEFORE it
+  reaches `shouldShowOnDate`, and the bucket simultaneously excluded it from the
+  braindump — the one combination the item dialog itself cannot produce. Twelve
+  lines above it, `createMilestone`'s docblock states the rule correctly and
+  records having already paid for this exact mistake. Now anchored at today.
+
+  *The e2e spec would have failed on its first run for reasons unrelated to the
+  feature*, which is the whole argument for reading it against the house's
+  earned lessons rather than shipping it unread. `fetchTestGoal` had no
+  `deleted_at` filter, so the delete case polled a soft-deleted row that is
+  still there — it could never observe a delete. And `closeConsole` pressed
+  Escape once against `role=dialog`, where three existing specs press up to four
+  times against the OVERLAY and pre-check the alert overlay first: the omnibar's
+  Escape handler stops propagation, so the first press can be spent on the
+  palette, and a confirm still animating holds the layer. programs.spec's
+  docblock says that one cost an hour of a real run.
+
+  **Assertions that passed for the wrong reason, also caught by reading.** The
+  achievement case matched `getByText(/milestone/i)` — satisfied by the row's own
+  `sr-only` "Milestone of …" label, which Tailwind keeps as a 1×1 visible box —
+  so it was green whether or not the offer ever appeared; and its "still active"
+  poll read the value the insert had just written. The delete case never
+  reloaded, so it proved only that `removeGoal` does not touch `items[]` in
+  memory, while the failure it exists to catch lives entirely in the database.
+  Both fixed, plus the bridge case the plan's own gates name by name, which the
+  spec did not have.
+
+  **Feature should-fixes:** a note was filed under whichever goal sorted first,
+  so a check-in shared by two goals left the second's history permanently empty
+  — it now records for every active goal the item serves, re-read at click time.
+  `fetchCheckins` read through `goal.checkinIds`, which handed back
+  `item_events`' founding property: the join row cascades on the item's purge,
+  the id leaves the array, and the notes become unqueryable — exactly the path
+  the wind-down's own Delete puts a user on. It queries `payload->>goalId` now,
+  which also fixes a 50-row cap applied before the goal filter. The toast had
+  lost the "View goal" half the plan pins by name. `CheckinHistory` painted the
+  previous goal's private notes under the next goal's heading while its fetch
+  was in flight. And decision 5's third affordance — park it in a program rather
+  than end it — was prose reachable only by opening a dialog whose button says
+  Delete; it is a labelled control now.
+
+  **Recorded rather than fixed:** `window.prompt` is the only native dialog in
+  the app. `ui-store` does carry a second modal slot (`confirmRequest`), so a
+  modal raised while EOD is open is a solved problem here — but that slot
+  confirms, it does not capture text, and building the surface that does is the
+  guided check-in flow, already a recorded deferral. Consequence to know: a
+  browser that has suppressed dialogs returns null and the note is silently not
+  saved.
 
 
 - **Phase 4 — external/AI.** **Decision 3's agent-PATCH demotion** lands here
@@ -801,8 +865,21 @@ two-files-sharing-a-DELETE lesson), check-in bridge case in Phase 3. Phase 4: li
 calls against a running server (the programs 39-call standard) + plugin-context
 tests in THIS repo (CI does not gate the plugin — the ten-tests precedent). Plugin
 smoke: context parses with the OLD published schema while goals[] is present.
-CLAUDE.md's Plans paragraph gains this plan alongside unified-items.md once
-approved.
+CLAUDE.md's Plans paragraph names this plan alongside unified-items.md
+(done 2026-08-21 — four phases have shipped, so a reader landing in
+lib/goals.ts or the store's goal slice needs the pointer).
+
+**State of the gates as of Phase 3:** tests/unit/goals.test.ts (31) and
+goals-store.test.ts (28) cover the predicates, the membership write semantics,
+progress, check-in standing, the demotion rule, the bulk-verb exclusions and
+the bridge's goal selection. tests/e2e/goals.spec.ts exists with seven cases
+INCLUDING the check-in bridge case named above — and has **never been
+executed**: no `.env.test` in the build environment and migration 029 is not
+applied. Its first real run is still owed, and three of its defects were found
+by static review rather than by running it (a soft-delete poll that could never
+observe a delete, a one-press Escape where the house helpers press four, and an
+achievement assertion satisfied by an sr-only label). Treat the remainder as
+unproven.
 
 ## Deferred for a decision (recorded, not designed)
 

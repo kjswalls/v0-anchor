@@ -122,7 +122,9 @@ export default async function globalSetup() {
     // FKs cascade.
     const foundGoals = await rest(`goals?user_id=eq.${userId}&select=id,name`);
     if (!foundGoals.ok) {
-      console.warn(`[globalSetup] goal sweep skipped (${foundGoals.status})`);
+      console.warn(
+        `[globalSetup] goal sweep skipped (${foundGoals.status}): ${await foundGoals.text()}`
+      );
     } else {
       const litter = ((await foundGoals.json()) as { id: string; name: string | null }[]).filter(
         (row) => row.name?.startsWith(TEST_TITLE_PREFIX)
@@ -131,7 +133,8 @@ export default async function globalSetup() {
         const ids = litter.map((row) => row.id).join(',');
         const swept = await rest(`goals?id=in.(${ids})`, { method: 'DELETE' });
         if (swept.ok) console.log(`[globalSetup] swept ${litter.length} leftover test goal(s)`);
-        else console.warn(`[globalSetup] goal sweep failed (${swept.status})`);
+        else
+          console.warn(`[globalSetup] goal sweep failed (${swept.status}): ${await swept.text()}`);
       }
     }
   } else {
