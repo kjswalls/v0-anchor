@@ -301,15 +301,18 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── anchor_create_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_create_collection',
-    label: 'Anchor: Create Routine or Program',
+    label: 'Anchor: Create Routine, Program or Goal',
     description:
       'Create a ROUTINE (a small reusable set of items — a morning routine — ' +
-      'that can be paused as one) or a PROGRAM (a period of life, like a ' +
+      'that can be paused as one), a PROGRAM (a period of life, like a ' +
       'summer or a term, holding items and/or routines that appear only while ' +
-      'it is on). Members must already exist; create the items first and pass ' +
-      'their ids. Subtasks cannot be members.',
+      'it is on), or a GOAL (a long-horizon aspiration — learn Chinese, build ' +
+      'the business — holding work in three roles). Members must already ' +
+      'exist; create the items first and pass their ids. Subtasks cannot be ' +
+      'members. Goals HIDE NOTHING: use a program if the intent is to set work ' +
+      'aside for a season.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program' }),
+      kind: Type.String({ description: 'routine | program | goal' }),
       name: Type.String({ description: 'Display name' }),
       itemIds: Type.Optional(Type.Array(Type.String(), { description: 'Member task/habit UUIDs' })),
       routineIds: Type.Optional(
@@ -318,12 +321,36 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       state: Type.Optional(
         Type.String({
           description:
-            'Programs only. auto (default) follows startsOn/endsOn; active and ' +
-            'paused are manual overrides that IGNORE the dates until changed back.',
+            'Programs: auto (default) follows startsOn/endsOn; active and ' +
+            'paused are manual overrides that IGNORE the dates until changed ' +
+            'back. Goals: active (default) | achieved | abandoned.',
         }),
       ),
-      startsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD, inclusive' })),
+      startsOn: Type.Optional(
+        Type.String({ description: 'YYYY-MM-DD, inclusive. Programs and goals.' }),
+      ),
       endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD, inclusive' })),
+      why: Type.Optional(Type.String({ description: "Goals only — the motivation line" })),
+      targetOn: Type.Optional(
+        Type.String({ description: 'Goals only, YYYY-MM-DD — when it is meant to be done' }),
+      ),
+      memberIds: Type.Optional(
+        Type.Array(Type.String(), { description: 'Goals only — ordinary work the goal contains' }),
+      ),
+      milestoneIds: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            'Goals only — ONE-SHOT targets. Their startDate is the target date. ' +
+            'A repeating item is refused: it never finishes, so it can never be reached.',
+        }),
+      ),
+      checkinIds: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            'Goals only — RECURRING reviews of how the goal is going. A ' +
+            'one-shot item is refused: give it a repeatFrequency first.',
+        }),
+      ),
     }),
     async execute(_toolCallId: string, params: CollectionParams) {
       return writeCollection(cfg, params, 'POST')
@@ -333,17 +360,19 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── anchor_update_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_update_collection',
-    label: 'Anchor: Update Routine or Program',
+    label: 'Anchor: Update Routine, Program or Goal',
     description:
-      'Update a routine or program. Membership arrays REPLACE the whole set ' +
-      'rather than adding to it — read the current members from context first ' +
-      'and send the full intended list. To switch a program on or off, set ' +
-      'state: active or paused; to hand it back to its dates, set state: auto. ' +
-      'Prefer state: auto when the user describes a period ("all summer") so ' +
-      'it turns itself off on time.',
+      'Update a routine, program or goal. Membership arrays REPLACE the whole ' +
+      'set rather than adding to it — read the current members from context ' +
+      'first and send the full intended list. To switch a program on or off, ' +
+      'set state: active or paused; to hand it back to its dates, set state: ' +
+      'auto. Prefer state: auto when the user describes a period ("all ' +
+      'summer") so it turns itself off on time. To close a goal, set state: ' +
+      'achieved or abandoned — the achievement date is stamped for you, and ' +
+      'setting state back to active clears it. Goals do not pause.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program' }),
-      id: Type.String({ description: 'Routine or program UUID' }),
+      kind: Type.String({ description: 'routine | program | goal' }),
+      id: Type.String({ description: 'Routine, program or goal UUID' }),
       name: Type.Optional(Type.String()),
       itemIds: Type.Optional(
         Type.Array(Type.String(), { description: 'FULL replacement member list' }),
@@ -351,9 +380,32 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       routineIds: Type.Optional(
         Type.Array(Type.String(), { description: 'FULL replacement routine list (programs only)' }),
       ),
-      state: Type.Optional(Type.String({ description: 'Programs only: auto | active | paused' })),
-      startsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD' })),
+      state: Type.Optional(
+        Type.String({
+          description:
+            'Programs: auto | active | paused. Goals: active | achieved | abandoned.',
+        }),
+      ),
+      startsOn: Type.Optional(Type.String({ description: 'Programs and goals, YYYY-MM-DD' })),
       endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD' })),
+      why: Type.Optional(Type.String({ description: 'Goals only — the motivation line' })),
+      targetOn: Type.Optional(Type.String({ description: 'Goals only, YYYY-MM-DD' })),
+      memberIds: Type.Optional(
+        Type.Array(Type.String(), { description: 'Goals only — FULL replacement member list' }),
+      ),
+      milestoneIds: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            'Goals only — FULL replacement list of one-shot targets. An item ' +
+            'holds exactly ONE role per goal, so naming the same id here and ' +
+            'in another array is refused rather than resolved.',
+        }),
+      ),
+      checkinIds: Type.Optional(
+        Type.Array(Type.String(), {
+          description: 'Goals only — FULL replacement list of recurring reviews',
+        }),
+      ),
     }),
     async execute(_toolCallId: string, params: CollectionParams & { id: string }) {
       return writeCollection(cfg, params, 'PATCH')
@@ -363,18 +415,22 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── anchor_delete_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'anchor_delete_collection',
-    label: 'Anchor: Delete Routine or Program',
+    label: 'Anchor: Delete Routine, Program or Goal',
     description:
-      'Soft-delete a routine or program (recoverable for 30 days). Its MEMBERS ' +
-      'are not deleted — they are released and become visible again ' +
-      'immediately. To hide the members instead, pause the collection.',
+      'Soft-delete a routine, program or goal (recoverable for 30 days). Its ' +
+      'MEMBERS are not deleted — they are released and become visible again ' +
+      'immediately. To hide the members instead, pause the collection. For a ' +
+      'goal that is over rather than mistaken, prefer state: achieved or ' +
+      'abandoned — that keeps the record and its milestones.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program' }),
-      id: Type.String({ description: 'Routine or program UUID' }),
+      kind: Type.String({ description: 'routine | program | goal' }),
+      id: Type.String({ description: 'Routine, program or goal UUID' }),
     }),
     async execute(_toolCallId: string, params: { kind: string; id: string }) {
       const path = COLLECTION_PATHS[params.kind]
-      if (!path) return errorResult(400, `kind must be routine or program (got "${params.kind}")`)
+      if (!path) {
+        return errorResult(400, `kind must be one of ${COLLECTION_KINDS} (got "${params.kind}")`)
+      }
       const res = await fetch(`${cfg.anchorUrl}/api/agent/${path}/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
@@ -396,6 +452,28 @@ const PAUSE_PATHS: Record<string, string | undefined> = {
 const COLLECTION_PATHS: Record<string, string | undefined> = {
   routine: 'routines',
   program: 'programs',
+  goal: 'goals',
+}
+
+/** Human list for the 400s, so the message tracks the map above. */
+const COLLECTION_KINDS = Object.keys(COLLECTION_PATHS).join(', ')
+
+/**
+ * Keys that belong to exactly one kind. Anything not listed for the kind being
+ * written is dropped before the request — the API strips unknown keys anyway,
+ * but forwarding them makes the plugin's own log read as though a routine were
+ * handed a date range it silently lost.
+ */
+const KIND_KEYS: Record<string, readonly string[]> = {
+  routine: ['name', 'itemIds'],
+  program: ['name', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
+  goal: ['name', 'why', 'state', 'startsOn', 'targetOn', 'memberIds', 'milestoneIds', 'checkinIds'],
+}
+
+const KIND_LABELS: Record<string, string> = {
+  routine: 'Routine',
+  program: 'Program',
+  goal: 'Goal',
 }
 
 interface CollectionParams {
@@ -407,6 +485,12 @@ interface CollectionParams {
   state?: string
   startsOn?: string
   endsOn?: string
+  /** Goals only. */
+  why?: string
+  targetOn?: string
+  memberIds?: string[]
+  milestoneIds?: string[]
+  checkinIds?: string[]
 }
 
 async function writeCollection(
@@ -415,18 +499,14 @@ async function writeCollection(
   method: 'POST' | 'PATCH',
 ) {
   const path = COLLECTION_PATHS[params.kind]
-  if (!path) return errorResult(400, `kind must be routine or program (got "${params.kind}")`)
+  if (!path) return errorResult(400, `kind must be one of ${COLLECTION_KINDS} (got "${params.kind}")`)
 
   const { kind, id, ...fields } = params
-  // Program-only keys are dropped rather than forwarded for a routine. The API
-  // strips unknown keys anyway, but sending them makes the plugin's own log
-  // read as though a routine were given a date range it silently lost.
-  const body: Record<string, unknown> = { ...fields }
-  if (kind === 'routine') {
-    delete body.routineIds
-    delete body.state
-    delete body.startsOn
-    delete body.endsOn
+  const allowed = KIND_KEYS[kind]
+  const body: Record<string, unknown> = {}
+  for (const key of allowed) {
+    const value = (fields as Record<string, unknown>)[key]
+    if (value !== undefined) body[key] = value
   }
 
   const url =
@@ -441,5 +521,5 @@ async function writeCollection(
   const text = await res.text()
   if (!res.ok) return errorResult(res.status, text)
   markCacheDirty()
-  return textResult(`${kind === 'routine' ? 'Routine' : 'Program'} saved: ${text}`)
+  return textResult(`${KIND_LABELS[kind]} saved: ${text}`)
 }

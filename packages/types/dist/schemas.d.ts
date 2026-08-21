@@ -2449,6 +2449,293 @@ export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     endsOn?: string | null | undefined;
     routineIds?: string[] | undefined;
 }>;
+export declare const GoalCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** The motivation line. Rendered on the goal surface and handed to Beacon. */
+    why: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** Lifecycle. Omitted on create → 'active'. */
+    state: z.ZodOptional<z.ZodEnum<["active", "achieved", "abandoned"]>>;
+    startsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    targetOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    memberIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    milestoneIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    checkinIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    paused: z.ZodOptional<z.ZodUnknown>;
+    pausedUntil: z.ZodOptional<z.ZodUnknown>;
+    achievedAt: z.ZodOptional<z.ZodUnknown>;
+    id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
+    name: z.ZodString;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name: string;
+    id?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name: string;
+    id?: string | null | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>;
+export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.ZodObject<{
+    /** The motivation line. Rendered on the goal surface and handed to Beacon. */
+    why: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    /** Lifecycle. Omitted on create → 'active'. */
+    state: z.ZodOptional<z.ZodEnum<["active", "achieved", "abandoned"]>>;
+    startsOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    targetOn: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    memberIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    milestoneIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    checkinIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    paused: z.ZodOptional<z.ZodUnknown>;
+    pausedUntil: z.ZodOptional<z.ZodUnknown>;
+    achievedAt: z.ZodOptional<z.ZodUnknown>;
+    name: z.ZodOptional<z.ZodString>;
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    color: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    sortOrder: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+}, "strip", z.ZodTypeAny, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}, {
+    name?: string | undefined;
+    color?: string | null | undefined;
+    paused?: unknown;
+    icon?: string | null | undefined;
+    sortOrder?: number | null | undefined;
+    pausedUntil?: unknown;
+    state?: "active" | "achieved" | "abandoned" | undefined;
+    startsOn?: string | null | undefined;
+    why?: string | null | undefined;
+    targetOn?: string | null | undefined;
+    achievedAt?: unknown;
+    memberIds?: string[] | undefined;
+    milestoneIds?: string[] | undefined;
+    checkinIds?: string[] | undefined;
+}>;
 export declare const AnchorContextResponseSchema: z.ZodObject<{
     userId: z.ZodString;
     userTimezone: z.ZodOptional<z.ZodString>;
@@ -3386,6 +3673,82 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         endsOn?: string | undefined;
         updatedAt?: string | undefined;
     }>, "many">>;
+    /**
+     * The containers that say WHY work exists (schemaVersion 5+).
+     *
+     * Unlike routines and programs, a goal suppresses nothing — so an item's
+     * absence from tasks[] is never explained by a goal. These are here for the
+     * opposite reason: so an agent asked "how is Learn Chinese going" can answer
+     * from progress and the next milestone rather than guessing from item titles.
+     * Optional, like every array before it: a plugin built against an older
+     * schema strips the key rather than throwing.
+     */
+    goals: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        /** The motivation line — why this goal exists. Rendered on the goal surface, handed to Beacon. */
+        why: z.ZodOptional<z.ZodString>;
+        /** icon:<LucideName> token, matching the container convention. */
+        icon: z.ZodOptional<z.ZodString>;
+        /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+        color: z.ZodOptional<z.ZodString>;
+        sortOrder: z.ZodOptional<z.ZodNumber>;
+        state: z.ZodEnum<["active", "achieved", "abandoned"]>;
+        /** Optional horizon (yyyy-MM-dd). `targetOn` is what the countdown and the behind/ahead read measure against. */
+        startsOn: z.ZodOptional<z.ZodString>;
+        targetOn: z.ZodOptional<z.ZodString>;
+        /**
+         * Stamped when `state` becomes 'achieved', cleared when it returns to
+         * 'active'.
+         *
+         * App-written and IN db.ts's update allowlist — the deliberate opposite of
+         * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+         * owns it. The reason is undo: this field rides GOAL_FIELDS into the
+         * container diff, which is what makes one ⌘Z after "Mark achieved" restore
+         * `state: 'active'` AND clear the stamp together. Left out, undo would
+         * restore the state and strand the timestamp.
+         *
+         * A write that does not CHANGE the state must never restamp it: re-achieving
+         * an achieved goal would drag a multi-year achievement date forward, and
+         * retried PATCHes are expected traffic (whole-array membership replacement is
+         * designed for retry idempotence). The rule lives beside the state verb.
+         */
+        achievedAt: z.ZodOptional<z.ZodString>;
+        /** Ordinary supporting work — the daily practice habit, the odd task. */
+        memberIds: z.ZodArray<z.ZodString, "many">;
+        /** Achievement checkpoints, in timeline order (goal_items.sort_order). */
+        milestoneIds: z.ZodArray<z.ZodString, "many">;
+        /** Recurring reviews. */
+        checkinIds: z.ZodArray<z.ZodString, "many">;
+    }, "strip", z.ZodTypeAny, {
+        id: string;
+        name: string;
+        state: "active" | "achieved" | "abandoned";
+        memberIds: string[];
+        milestoneIds: string[];
+        checkinIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        achievedAt?: string | undefined;
+    }, {
+        id: string;
+        name: string;
+        state: "active" | "achieved" | "abandoned";
+        memberIds: string[];
+        milestoneIds: string[];
+        checkinIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        achievedAt?: string | undefined;
+    }>, "many">>;
     schemaVersion: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     userId: string;
@@ -3565,6 +3928,21 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         endsOn?: string | undefined;
         updatedAt?: string | undefined;
     }[] | undefined;
+    goals?: {
+        id: string;
+        name: string;
+        state: "active" | "achieved" | "abandoned";
+        memberIds: string[];
+        milestoneIds: string[];
+        checkinIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        achievedAt?: string | undefined;
+    }[] | undefined;
     schemaVersion?: number | undefined;
 }, {
     userId: string;
@@ -3743,6 +4121,21 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         startsOn?: string | undefined;
         endsOn?: string | undefined;
         updatedAt?: string | undefined;
+    }[] | undefined;
+    goals?: {
+        id: string;
+        name: string;
+        state: "active" | "achieved" | "abandoned";
+        memberIds: string[];
+        milestoneIds: string[];
+        checkinIds: string[];
+        color?: string | undefined;
+        icon?: string | undefined;
+        sortOrder?: number | undefined;
+        startsOn?: string | undefined;
+        why?: string | undefined;
+        targetOn?: string | undefined;
+        achievedAt?: string | undefined;
     }[] | undefined;
     schemaVersion?: number | undefined;
 }>;

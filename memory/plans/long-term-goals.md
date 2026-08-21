@@ -811,13 +811,37 @@ table as ONE set. Four rules, each closing a found defect:
   saved.
 
 
-- **Phase 4 — external/AI.** **Decision 3's agent-PATCH demotion** lands here
-  with the rest of the write-path validation — until it does, an OpenClaw write
-  can make a milestone recurring with nothing taking the role back. Beacon
-  section + focused-item goal line; context
-  `goals[]` at schemaVersion 5; agent routes with the full refusal set; plugin arm
-  (unpublished until the next release). Verified by live calls against a running
-  server, not just types — the programs Phase-4 standard.
+- [x] **Phase 4 — external/AI** (built 2026-08-21). Beacon's `### Goals` section
+  (active-only, double-guarded, suppression-aware `next`) + the `- Serves:` line in
+  the focused-item block, with the byte-pinned no-focus output unchanged; `goals[]`
+  on `/api/agent/context` at **schemaVersion 5**, spread-or-omit so an unreachable
+  table sends nothing rather than `[]`; `GoalCreateSchema`/`GoalUpdateSchema` with
+  the three refusals (`paused`/`pausedUntil` → pointer at `state` and at programs,
+  caller-chosen `achievedAt`, inverted window) plus the cross-array role overlap
+  rejection; `POST/PATCH/DELETE /api/agent/goals` with ownership pre-checks,
+  registry-predicate role validation, per-role `withTrashedMembersKept`, and
+  server-derived `achievedAt`; **decision 3's second enforcement point** — the
+  agent item PATCH now demotes a role its own `repeatFrequency` edit invalidated,
+  gated on `'repeatFrequency' in fields` exactly as the store's `updateItemAction`
+  is, reported as `{ success: true, demoted: [...] }` and never able to fail the
+  caller's edit; `lib/agent-api.ts`'s `ContainerKind` renamed to
+  `GatedContainerKind` (the plan's own pre-build finding — goals do NOT get a row
+  in `CONTAINER_API`, they have three role arrays and no pause verb); plugin arm —
+  `goals` on the cache, a `## Goals` context section that lists facts and derives
+  no fraction, and a `kind: 'goal'` arm on all three collection tools with the
+  per-kind key allowlist replacing the routine-only delete list.
+  **Gates:** 1434 unit tests green (80 files), lint 0 errors, `pnpm build` clean,
+  types dist matches src, tsc error count unchanged from baseline (23 both sides).
+  New: `agent-goal-write.test.ts` (21 — the schema refusals and the two pure
+  resolvers) and `agent-goal-routes.test.ts` (23 — the handlers against a
+  filter-aware in-memory Postgres stand-in), plus `goals[]` additivity cases in
+  `agent-schemas.test.ts` and a goals block in `plugin-context.test.ts`.
+  **The plan's live-server gate is NOT met and is still owed** — this container
+  has no Supabase credentials, so no goal route has ever spoken to a database.
+  The route tests are the substitute, and they are honest about being one: a fake
+  cannot catch a PostgREST behaviour nobody modelled. The first live call should
+  be a create-with-membership, since that is the path where a wrong column name
+  would be silent.
 - Each phase gets the house adversarial review before its commit lands.
 
 ## Behavioral invariants to preserve (regression traps)

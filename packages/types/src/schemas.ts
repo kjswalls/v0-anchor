@@ -731,6 +731,135 @@ export const ProgramUpdateSchema = z
   .superRefine(rejectInvertedRange)
   .superRefine(rejectProgramPauseVerb)
 
+// ── Agent API: goals ──────────────────────────────────────────────────────────
+// Same posture as routines and programs: an agent acting for the user should
+// reach what the user reaches. Membership arrives as whole id ARRAYS per ROLE,
+// matching db.ts's union reconcile and the store, and for the same idempotence
+// reason — a retried PATCH cannot double-add.
+
+/**
+ * A goal switches through `state`, and `achievedAt` is DERIVED from it.
+ *
+ * Both keys are carried in the shape only so this refine can see them and
+ * refuse with a pointer, the way `rejectProgramPauseVerb` does. Zod strips
+ * unknown keys, so without this an agent sending the verb it has learned
+ * everywhere else — `paused: true`, or a hand-picked `achievedAt` — gets
+ * `200 {success:true}` and a goal that did not move. A write with no effect
+ * that reports success is how an agent concludes the job is done.
+ *
+ * The `achievedAt` half is the `pausedAt` argument exactly: an agent-chosen
+ * timestamp is wrong in both directions — backdated it claims an achievement
+ * that had not happened, postdated it leaves a goal that reads achieved with no
+ * date. The server derives it from the state change.
+ */
+const rejectGoalDerivedFields = (
+  data: { paused?: unknown; pausedUntil?: unknown; achievedAt?: unknown },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.paused !== undefined || data.pausedUntil !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'goals do not pause — they suppress nothing, so there is nothing to hide. ' +
+        "Use state: 'achieved' or 'abandoned' to close one, or put the work in a " +
+        'program if the intent is to hide it for a season.',
+      path: ['state'],
+    })
+  }
+  if (data.achievedAt !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "achievedAt is derived from `state` — send state: 'achieved' and the server " +
+        'stamps it (and clears it when the goal reopens).',
+      path: ['state'],
+    })
+  }
+}
+
+/**
+ * A goal whose target precedes its start describes a window that never opens.
+ * `timeElapsed` returns null for it, so every ahead/behind reading on the goal
+ * surface silently disappears while the header still promises a target date.
+ */
+const rejectInvertedGoalWindow = (
+  data: { startsOn?: string | null; targetOn?: string | null },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.startsOn && data.targetOn && data.startsOn > data.targetOn) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'startsOn must not be after targetOn — that window never opens',
+      path: ['targetOn'],
+    })
+  }
+}
+
+/**
+ * One item, one role per goal — the primary key says so, and a body naming the
+ * same id twice is two contradictory instructions rather than a preference.
+ * Rejecting beats picking, the same call `rejectResumeWithDate` makes.
+ */
+const rejectOverlappingGoalRoles = (
+  data: { memberIds?: string[]; milestoneIds?: string[]; checkinIds?: string[] },
+  ctx: z.RefinementCtx,
+) => {
+  const seen = new Map<string, string>()
+  for (const key of ['milestoneIds', 'checkinIds', 'memberIds'] as const) {
+    for (const id of data[key] ?? []) {
+      const already = seen.get(id)
+      if (already && already !== key) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `item ${id} was given two roles at once (${already} and ${key}) — an item holds exactly one role per goal`,
+          path: [key],
+        })
+        return
+      }
+      seen.set(id, key)
+    }
+  }
+}
+
+const goalShape = {
+  /** The motivation line. Rendered on the goal surface and handed to Beacon. */
+  why: clearable(z.string()),
+  /** Lifecycle. Omitted on create → 'active'. */
+  state: GoalStateSchema.optional(),
+  startsOn: clearable(DateOnlySchema),
+  targetOn: clearable(DateOnlySchema),
+  memberIds: z.array(z.string().uuid()).optional(),
+  milestoneIds: z.array(z.string().uuid()).optional(),
+  checkinIds: z.array(z.string().uuid()).optional(),
+  // Carried only to be refused, with a pointer — see rejectGoalDerivedFields.
+  paused: z.unknown().optional(),
+  pausedUntil: z.unknown().optional(),
+  achievedAt: z.unknown().optional(),
+}
+
+export const GoalCreateSchema = z
+  .object({
+    ...containerIdentityShape,
+    id: OptionalIdSchema,
+    ...goalShape,
+  })
+  .superRefine(rejectInvertedGoalWindow)
+  .superRefine(rejectOverlappingGoalRoles)
+  .superRefine(rejectGoalDerivedFields)
+
+export const GoalUpdateSchema = z
+  .object({
+    ...containerIdentityShape,
+    name: z.string().min(1).optional(),
+    ...goalShape,
+  })
+  // Sees only what the PATCH carries, so it catches a body that INTRODUCES an
+  // inverted window. Half a window patched against a stored other half still
+  // reaches the store unchecked — the same limitation ProgramUpdateSchema has.
+  .superRefine(rejectInvertedGoalWindow)
+  .superRefine(rejectOverlappingGoalRoles)
+  .superRefine(rejectGoalDerivedFields)
+
 // ── API response schemas ───────────────────────────────────────────────────────
 
 export const AnchorContextResponseSchema = z.object({
@@ -752,6 +881,17 @@ export const AnchorContextResponseSchema = z.object({
   // one. Absent means "this server did not say".
   routines: z.array(RoutineSchema).optional(),
   programs: z.array(ProgramSchema).optional(),
+  /**
+   * The containers that say WHY work exists (schemaVersion 5+).
+   *
+   * Unlike routines and programs, a goal suppresses nothing — so an item's
+   * absence from tasks[] is never explained by a goal. These are here for the
+   * opposite reason: so an agent asked "how is Learn Chinese going" can answer
+   * from progress and the next milestone rather than guessing from item titles.
+   * Optional, like every array before it: a plugin built against an older
+   * schema strips the key rather than throwing.
+   */
+  goals: z.array(GoalSchema).optional(),
   // Additive (old clients strip unknown keys). 2 = tasks/habits are
   // projections of the unified items table; 3 = items[] present; 4 = routines[]
   // and programs[] present, so a consumer can explain WHY an item it remembers

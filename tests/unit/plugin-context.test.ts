@@ -42,6 +42,7 @@ function seed(over: Record<string, unknown> = {}) {
     items,
     routines: [],
     programs: [],
+    goals: [],
     fetchedAt: Date.now(),
     ...over,
   } as never);
@@ -178,5 +179,107 @@ describe('plugin buildFullContext — collections', () => {
     expect(out).toContain('Routine: Morning [id: r1] (paused)');
     // Anchored to end-of-line: a live routine carries no state suffix at all.
     expect(out).toMatch(/Routine: Evening \[id: r2\]$/m);
+  });
+});
+
+/**
+ * Goals in the plugin's context (plan Phase 4).
+ *
+ * The section is deliberately fact-only — no derived fraction — because
+ * lib/goals.ts owns progress and lives on the other side of the package
+ * boundary. These tests pin that contract: what is listed, in what order, and
+ * what is left out.
+ */
+describe('plugin buildFullContext — goals', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  const goal = (over: Record<string, unknown> = {}) => ({
+    id: 'g1',
+    name: 'Learn Chinese',
+    state: 'active',
+    memberIds: [],
+    milestoneIds: [],
+    checkinIds: [],
+    ...over,
+  });
+
+  it('says nothing at all when there are no goals', () => {
+    seed({ items: [task('t1', 'A')] });
+    expect(buildFullContext()).not.toContain('## Goals');
+  });
+
+  it('omits the section when every goal has ended', () => {
+    seed({
+      items: [task('t1', 'A')],
+      goals: [goal({ state: 'achieved' }), goal({ id: 'g2', state: 'abandoned' })],
+    });
+    // A header over nothing is worse than no header: it invites the model to
+    // answer "you have goals" and then find none to name.
+    expect(buildFullContext()).not.toContain('## Goals');
+  });
+
+  it('renders the window, the why, and each role', () => {
+    seed({
+      items: [
+        task('m1', 'HSK 3 exam', { startDate: '2026-12-01' }),
+        task('c1', 'Weekly review', { repeatFrequency: 'weekly' }),
+        task('w1', 'Order textbook'),
+      ],
+      goals: [
+        goal({
+          why: 'so I can talk to my in-laws',
+          startsOn: '2026-01-01',
+          targetOn: '2027-01-01',
+          milestoneIds: ['m1'],
+          checkinIds: ['c1'],
+          memberIds: ['w1'],
+        }),
+      ],
+    });
+    const out = buildFullContext();
+    expect(out).toContain('- Learn Chinese [id: g1] (2026-01-01 → 2027-01-01)');
+    expect(out).toContain('why: so I can talk to my in-laws');
+    expect(out).toContain('- milestone: HSK 3 exam [id: m1] [pending] (2026-12-01)');
+    expect(out).toContain('- check-in: Weekly review [id: c1]');
+    expect(out).toContain('- also holds: Order textbook');
+  });
+
+  it('marks a past-target milestone overdue and orders undated ones last', () => {
+    seed({
+      items: [
+        task('m1', 'Someday', {}),
+        task('m2', 'Missed', { startDate: '2026-07-01' }),
+        task('m3', 'Soon', { startDate: '2026-09-01' }),
+      ],
+      goals: [goal({ milestoneIds: ['m1', 'm2', 'm3'] })],
+    });
+    const out = buildFullContext();
+    expect(out).toContain('- milestone: Missed [id: m2] [pending] (2026-07-01, overdue)');
+    // Future date carries no overdue marker.
+    expect(out).toContain('- milestone: Soon [id: m3] [pending] (2026-09-01)');
+    const lines = out.split('\n').filter((l) => l.includes('milestone:'));
+    expect(lines.map((l) => l.match(/milestone: (\w+)/)![1])).toEqual([
+      'Missed',
+      'Soon',
+      'Someday',
+    ]);
+  });
+
+  it('skips ids whose item is not in items[]', () => {
+    // The dangling-id rule: membership survives a member's soft delete, so the
+    // arrays legitimately name ids the wire no longer carries. Rendering them
+    // as bare uuids would invite the model to act on a trashed item.
+    seed({ items: [task('t1', 'A')], goals: [goal({ milestoneIds: ['gone'], memberIds: ['gone'] })] });
+    const out = buildFullContext();
+    expect(out).toContain('- Learn Chinese [id: g1]');
+    expect(out).not.toContain('gone');
+    expect(out).not.toContain('also holds:');
   });
 });

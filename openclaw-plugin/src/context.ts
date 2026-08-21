@@ -1,4 +1,4 @@
-import type { Item, Program, Routine } from '@anchor-app/types'
+import type { Goal, Item, Program, Routine } from '@anchor-app/types'
 import { getCache } from './cache.js'
 import type { AnchorCache } from './plugin-types.js'
 
@@ -52,6 +52,7 @@ export function buildFullContext(): string {
   }
 
   lines.push(...renderCollections(cache.routines, cache.programs, today))
+  lines.push(...renderGoals(cache.goals, cache.items, today))
   lines.push(...renderPaused(cache, today))
 
   return lines.join('\n')
@@ -97,6 +98,63 @@ function renderCollections(routines: Routine[], programs: Program[], today: stri
   for (const p of programs) {
     const range = p.startsOn || p.endsOn ? ` ${p.startsOn ?? '…'} → ${p.endsOn ?? '…'}` : ''
     lines.push(`- Program: ${p.name} [id: ${p.id}] (${p.state}${range})`)
+  }
+  return lines
+}
+
+/**
+ * Long-horizon goals, with their milestones spelled out.
+ *
+ * ACTIVE goals only: an achieved or abandoned goal is a record of finished
+ * work, and listing it here would put its milestones back in front of a model
+ * that is being asked what to do next.
+ *
+ * Milestones are listed rather than SUMMARIZED into a fraction on purpose. The
+ * app derives progress in one place (lib/goals.ts) under rules this side cannot
+ * see — cancelled checkpoints leave both sides of the ratio, trashed ones too,
+ * and a custom type's "done" status is whatever its registry entry says. A
+ * percentage computed out here would be a second resolver that disagrees with
+ * the app's own number the first time either rule moves. The rows below are
+ * facts: a title, a target date, and an id to act on.
+ */
+function renderGoals(goals: Goal[], items: Item[], today: string): string[] {
+  // Item is a discriminated union and the habit arm carries no startDate. A
+  // habit can never hold the milestone role (it never finishes), but the map
+  // lookup below hands back the union either way.
+  const startDateOf = (i: Item): string | undefined => ('startDate' in i ? i.startDate : undefined)
+
+  const active = goals.filter((g) => g.state === 'active')
+  if (!active.length) return []
+
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const lines = ['\n## Goals']
+  for (const goal of active) {
+    const window =
+      goal.startsOn || goal.targetOn ? ` (${goal.startsOn ?? '…'} → ${goal.targetOn ?? '…'})` : ''
+    lines.push(`- ${goal.name} [id: ${goal.id}]${window}`)
+    if (goal.why) lines.push(`  why: ${goal.why}`)
+
+    // Date-ordered, undated last — the same order the goal surface shows, so a
+    // model reading this and a user reading the app see the same sequence.
+    const milestones = goal.milestoneIds
+      .map((id) => byId.get(id))
+      .filter((i): i is Item => !!i)
+      .sort((a, b) =>
+        (startDateOf(a) ?? '9999-12-31').localeCompare(startDateOf(b) ?? '9999-12-31'),
+      )
+    for (const m of milestones) {
+      const on = startDateOf(m)
+      const when = on ? ` (${on}${on < today ? ', overdue' : ''})` : ''
+      lines.push(`  - milestone: ${m.title} [id: ${m.id}] [${m.status}]${when}`)
+    }
+    for (const id of goal.checkinIds) {
+      const c = byId.get(id)
+      if (c) lines.push(`  - check-in: ${c.title} [id: ${c.id}]`)
+    }
+    const members = goal.memberIds.map((id) => byId.get(id)).filter((i): i is Item => !!i)
+    if (members.length) {
+      lines.push(`  - also holds: ${members.map((m) => m.title).join(', ')}`)
+    }
   }
   return lines
 }

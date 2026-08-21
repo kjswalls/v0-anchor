@@ -29,6 +29,8 @@ export {
   RoutineUpdateSchema,
   ProgramCreateSchema,
   ProgramUpdateSchema,
+  GoalCreateSchema,
+  GoalUpdateSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
 } from './schemas.js'
