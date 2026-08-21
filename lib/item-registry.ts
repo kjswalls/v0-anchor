@@ -134,6 +134,17 @@ export interface ItemTypeConfig {
     /** Minutes a block occupies on the schedule grid when no duration is set. */
     defaultBlockMinutes: number
   }
+  /**
+   * May this type carry a daily cue (items.reminder_time, migration 029)?
+   *
+   * Capability, NOT intent: an item of a remindable type with no reminder_time
+   * is the overwhelming majority and costs nothing — the reminder scan's index
+   * is partial on `reminder_time is not null`. What the flag decides is whether
+   * the ItemDialog offers the control at all.
+   *
+   * Ask {@link isRemindable}, which adds the subtask rule.
+   */
+  remindable: boolean
   /** May live in / return to the braindump (sidebar unschedule drop). */
   braindumpEligible: boolean
   /** Unfinished items roll forward in EOD review / morning check. */
@@ -209,6 +220,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     // nothing read, so wiring it up would have silently doubled every such
     // block — the value follows the behavior, not the reverse.
     schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: true,
     carryForwardEligible: true,
     defaultTimeBucket: null,
@@ -345,6 +357,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     // itself. This was false only because there was no field to store the drag
     // into; it was never a statement that habits are momentary.
     schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: false,
     carryForwardEligible: false,
     defaultTimeBucket: null,
@@ -451,6 +464,7 @@ export function buildCustomTypeConfig(
     agentAssignable: true,
     // 30 to match the built-in types — see the note on task.schedule.
     schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: true,
     // The store's task actions operate on any task-like item (Phase 6b), so
     // dated custom items roll forward in morning check / EOD like tasks do.
@@ -553,6 +567,23 @@ export function isSkippable(item: Item): boolean {
 export function isPausable(item: Item): boolean {
   if ('parentItemId' in item && item.parentItemId) return false
   return getItemTypeConfig(itemTypeName(item)).pausable
+}
+
+/**
+ * May this item carry a daily cue?
+ *
+ * Capability AND not-a-subtask, the isPausable rule and for the same reason: a
+ * subtask surfaces only inside its parent's detail panel, so a notification
+ * naming one would point at a row the user cannot navigate to.
+ *
+ * Deliberately NOT AND-ed with recurrence. A reminder answers "today, at this
+ * hour", which a one-shot dated task wants exactly as much as a habit does —
+ * the recurrence question is asked later, by the scan's due-today filter, and
+ * asking it here would silently drop the reminder a user set on a real task.
+ */
+export function isRemindable(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).remindable
 }
 
 /** May this item join routines and programs? Same subtask rule as isPausable. */

@@ -2,6 +2,7 @@
 export {
   PrioritySchema,
   TimeBucketSchema,
+  TimeOfDaySchema,
   TaskStatusSchema,
   HabitStatusSchema,
   RepeatFrequencySchema,

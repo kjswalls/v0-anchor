@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase-service';
+import { sendPushToUser } from '@/lib/push-send';
+import { checkCronAuth } from '@/lib/cron-auth';
 
 /**
  * GET /api/cron/eod-notify
@@ -12,20 +14,8 @@ import { createServiceClient } from '@/lib/supabase-service';
  * If CRON_SECRET is not set: returns 500 in production, bypasses auth in development.
  */
 export async function GET(req: NextRequest) {
-  // Auth check
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    // In production, fail closed if secret is not configured
-    if (process.env.NODE_ENV !== 'development') {
-      return NextResponse.json({ error: 'CRON secret not configured' }, { status: 500 });
-    }
-    // In development, allow bypass
-  } else {
-    const authHeader = req.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  const denied = checkCronAuth(req);
+  if (denied) return denied.response;
 
   const service = createServiceClient();
 
@@ -46,11 +36,6 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
   let notified = 0;
-
-  // Construct the base URL for internal fetch calls
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    `https://${req.headers.get('host')}`;
 
   for (const user of users) {
     const { user_id: userId, eod_review_time: eodReviewTime, timezone, last_eod_notified_date: lastNotifiedDate } = user;
@@ -83,35 +68,21 @@ export async function GET(req: NextRequest) {
       : nowMinutes >= eodMinutes && nowMinutes < windowEndMinutes;
     if (!inWindow) continue;
 
-    // Send push notification
+    // Send push notification. This used to POST to /api/push/send — i.e. this
+    // deployment calling itself over HTTP, reconstructing its own origin from a
+    // Host header and authenticating to itself with the service key. The
+    // delivery moved to lib/push-send.ts when the reminder scan became a second
+    // caller; there is no isolation to lose, since both ends were always the
+    // same process.
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      let pushResponse: Response;
-      try {
-        pushResponse = await fetch(`${appUrl}/api/push/send`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-service-key': process.env.SUPABASE_SECRET_KEY ?? '',
-          },
-          body: JSON.stringify({
-            userId,
-            title: 'End of day 🌙',
-            body: "How'd today go?",
-            url: '/?eod=1',
-          }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      if (!pushResponse.ok) {
-        console.error('[eod-notify] Push send failed for', userId, pushResponse.status);
-        continue;
-      }
+      await sendPushToUser(service, userId, {
+        title: 'End of day 🌙',
+        body: "How'd today go?",
+        url: '/?eod=1',
+        tag: `anchor-eod-${userToday}`,
+      });
     } catch (err) {
-      console.error('[eod-notify] Push fetch threw for', userId, err);
+      console.error('[eod-notify] Push failed for', userId, err);
       continue;
     }
 

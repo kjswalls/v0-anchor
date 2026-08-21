@@ -16,6 +16,7 @@ import { useViewStore } from '@/lib/view-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -109,6 +110,9 @@ export default function SettingsPage() {
     (s) => `${s.morningCheckEnabled}|${s.morningAutoAgeEnabled}|${s.morningAutoAgeDays}`
   );
   const eodTick = useEODStore((s) => `${s.eodReviewEnabled}|${s.eodReviewTime}`);
+  const reminderTick = useReminderStore(
+    (s) => `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}`
+  );
   // apiKey rides the tick VERBATIM, not as a set/unset flag: one non-empty key
   // replacing another is exactly what a flag can't see, and the text controls
   // commit on blur by comparing their draft against the last RENDERED value —
@@ -181,6 +185,7 @@ export default function SettingsPage() {
       sidebarTick,
       morningTick,
       eodTick,
+      reminderTick,
       aiTick,
       paletteTick,
       extensionsTick,

@@ -11,6 +11,7 @@ import {
   Flame,
   Folder,
   Moon,
+  Bell,
   Pause as PauseIcon,
   Play as PlayIcon,
   Maximize2,
@@ -289,6 +290,10 @@ export interface ItemDraft {
   repeatDays: number[];
   repeatMonthDay: number;
   timesPerDay: string;
+  /** HH:mm for this item's daily cue, or '' for no reminder (migration 029). */
+  reminderTime: string;
+  /** The implementation-intention phrase the cue is worded around. */
+  reminderAnchor: string;
   /**
    * Routine ids, ADD MODE ONLY. In edit mode the chip writes membership live
    * through the store, because a routine is not a column on the item — it is a
@@ -315,10 +320,12 @@ export const DRAFT_KEYS = [
   'repeatDays',
   'repeatMonthDay',
   'timesPerDay',
+  'reminderTime',
+  'reminderAnchor',
 ] as const satisfies readonly (keyof ItemDraft)[];
 
 /** Typed, not picked — these wait for blur instead of saving on every pause. */
-const TYPED_KEYS: readonly string[] = ['title', 'notes'];
+const TYPED_KEYS: readonly string[] = ['title', 'notes', 'reminderAnchor'];
 
 /**
  * The store payload for the draft fields named in `keys`, and nothing else.
@@ -348,6 +355,13 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
     updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
     updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
   }
+  // Reminder fields are one control, so touching either writes both — the same
+  // rule the three repeat fields follow. '' means "no reminder": the DB column
+  // is null-means-off, and undefined is what the allowlist turns into null.
+  if (wants('reminderTime', 'reminderAnchor')) {
+    updates.reminderTime = d.reminderTime || undefined;
+    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
+  }
   return updates;
 }
 
@@ -364,6 +378,13 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
     updates.repeatFrequency = d.repeatFrequency;
     updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
     updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
+  }
+  // Reminder fields are one control, so touching either writes both — the same
+  // rule the three repeat fields follow. '' means "no reminder": the DB column
+  // is null-means-off, and undefined is what the allowlist turns into null.
+  if (wants('reminderTime', 'reminderAnchor')) {
+    updates.reminderTime = d.reminderTime || undefined;
+    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
   }
   return updates;
 }
@@ -397,6 +418,10 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     repeatDays: [],
     repeatMonthDay: 1,
     timesPerDay: '1',
+    // Off by default. A reminder is a thing Anchor does to you unprompted, so
+    // it is opted into per item rather than seeded on for every new one.
+    reminderTime: '',
+    reminderAnchor: '',
     routineIds: [],
     programIds: [],
     newContainer: {
@@ -439,6 +464,8 @@ function draftFromItem(item: Item): ItemDraft {
     repeatDays: item.repeatDays || [],
     repeatMonthDay: item.repeatMonthDay || 1,
     timesPerDay: item.type === 'habit' ? item.timesPerDay?.toString() || '1' : '1',
+    reminderTime: item.reminderTime || '',
+    reminderAnchor: item.reminderAnchor || '',
     // Always empty, and that is not an oversight: in edit mode the membership
     // chips read the LIVE join off the store and write through
     // updateRoutine/updateProgram, so a draft copy would be a second source of
@@ -772,6 +799,8 @@ export function ItemDialog({
         repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
+        reminderTime: d.reminderTime || undefined,
+        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
       }, { routineIds: d.routineIds, programIds: d.programIds });
@@ -787,6 +816,8 @@ export function ItemDialog({
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
+        reminderTime: d.reminderTime || undefined,
+        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
       }, { routineIds: d.routineIds, programIds: d.programIds });
     }
 
@@ -1585,6 +1616,66 @@ export function ItemDialog({
                       )}
                     </div>
                   ))}
+              </>
+            )}
+          </PropertyChip>
+        )}
+
+        {/* Remind — the cue itself. Gated on the registry capability rather
+            than on `type === 'habit'`, so a custom type that declares
+            `remindable` gets the control without a branch here. */}
+        {config.remindable && (
+          <PropertyChip
+            icon={Bell}
+            label="Remind"
+            value={d.reminderTime || undefined}
+            contentClassName="w-[19rem]"
+          >
+            {(close) => (
+              <>
+                <ChipSectionLabel>Nudge me at</ChipSectionLabel>
+                <div className="px-2 pb-2">
+                  <Input
+                    type="time"
+                    value={d.reminderTime}
+                    onChange={(e) => patch({ reminderTime: e.target.value })}
+                    className="h-9 text-sm"
+                    data-sub-input
+                  />
+                </div>
+
+                {d.reminderTime && (
+                  <>
+                    <ChipSectionLabel>Right after</ChipSectionLabel>
+                    <div className="px-2 pb-2">
+                      <Input
+                        value={d.reminderAnchor}
+                        onChange={(e) => patch({ reminderAnchor: e.target.value })}
+                        placeholder="I pour my coffee"
+                        className="h-9 text-sm"
+                        data-sub-input
+                      />
+                      {/* The one piece of copy in this dialog that is trying to
+                          change what the user types. An event you already do is
+                          a better cue than a clock, and this field is what the
+                          notification actually says — so the hint has to appear
+                          where the sentence is being written, not in a doc. */}
+                      <p className="text-muted-foreground mt-1.5 text-[10px]">
+                        Optional, and worth it. Something you already do beats a
+                        time — it&apos;s what the reminder will say.
+                      </p>
+                    </div>
+                    <ChipOption
+                      tone="muted"
+                      onSelect={() => {
+                        patch({ reminderTime: '', reminderAnchor: '' });
+                        close();
+                      }}
+                    >
+                      No reminder
+                    </ChipOption>
+                  </>
+                )}
               </>
             )}
           </PropertyChip>

@@ -6,6 +6,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore, REMINDER_DEFAULTS } from '@/lib/reminder-store';
 import { loadSettings, saveSettings } from '@/lib/settings-service';
 import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
@@ -158,6 +159,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       useEODStore.setState({
         eodReviewEnabled: settings.eod_review_enabled ?? false,
         eodReviewTime: settings.eod_review_time ?? '21:00',
+      });
+
+      // Reminder settings (migration 029). setState rather than an action, like
+      // the EOD line above: the store holds no user-scoped derived state that a
+      // stamp would have to guard, because it is not persisted — see its note.
+      useReminderStore.setState({
+        remindersEnabled: settings.habit_reminders_enabled ?? REMINDER_DEFAULTS.remindersEnabled,
+        lastCallEnabled: settings.habit_last_call_enabled ?? REMINDER_DEFAULTS.lastCallEnabled,
+        lastCallTime: settings.habit_last_call_time ?? REMINDER_DEFAULTS.lastCallTime,
       });
 
       if (settings.theme) {

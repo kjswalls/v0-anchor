@@ -7,6 +7,18 @@ export const HabitStatusSchema = z.enum(['pending', 'done', 'skipped']);
 export const RepeatFrequencySchema = z.enum([
     'none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom',
 ]);
+/**
+ * 24-hour local wall-clock 'HH:mm'.
+ *
+ * Enforced at the WRITE boundary only. Migration 029 puts the same shape in a
+ * CHECK constraint, so an unvalidated agent body would 500 at Postgres instead
+ * of 400 here — the reasoning TaskCreateSchema already applies to uuids and the
+ * aiStatus vocabulary. The READ shapes stay plain `z.string()`: a row written
+ * before the constraint existed must never fail the whole context safeParse.
+ */
+export const TimeOfDaySchema = z
+    .string()
+    .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'Must be a 24-hour HH:mm time');
 // Normalize legacy "weekly" (removed in migration 014) to "custom" before enum validation
 const normalizeWeekly = (val) => val === 'weekly' ? 'custom' : val;
 // Pre-unification schemas silently stripped `notes` as an unknown key, so a
@@ -54,6 +66,29 @@ const pauseFields = {
      * sweep's resume grace.
      */
     pausedUntil: z.string().optional(),
+};
+// ── Shared reminder fields (migration 029) ─────────────────────────────────────
+// A recurring cue for one item. Spread into BOTH taskShape and habitShape for
+// the same reason pauseFields is — habitShape declares its own recurrence block
+// and consumes no shared schema, so one edit site would silently reach task +
+// custom only.
+//
+// Additive-optional, so an already-deployed OpenClaw build strips both keys off
+// the legacy projections rather than rejecting them (the drift rule in
+// CLAUDE.md: tasks[]/habits[] are external contracts, and `safeParse` throws on
+// a REQUIRED field it has never seen, not on an unknown one).
+const reminderFields = {
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.string().optional(),
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.string().optional(),
 };
 // custom frequency requires at least one repeat day — shared by every item shape
 const requireCustomDays = (data, ctx) => {
@@ -195,6 +230,7 @@ const taskShape = {
     aiResult: z.string().optional(),
     ...RecurrenceFieldsSchema.shape,
     ...pauseFields,
+    ...reminderFields,
 };
 const habitShape = {
     id: z.string(),
@@ -231,6 +267,7 @@ const habitShape = {
     currentDayCount: z.number().optional(),
     notes: NotesSchema,
     ...pauseFields,
+    ...reminderFields,
 };
 export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays);
 export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays);
@@ -364,6 +401,8 @@ export const TaskCreateSchema = z
     // stay loose) — a bad uuid or status must 400 here, not 500 at Postgres.
     parentItemId: z.string().uuid().optional(),
     aiStatus: z.enum(['queued', 'working', 'blocked', 'done', 'failed']).optional(),
+    // Strict here, loose in taskShape — same split as aiStatus above.
+    reminderTime: TimeOfDaySchema.optional(),
 })
     // Create schemas SPREAD the shapes, so anything added to taskShape becomes an
     // accepted create-body field automatically (that propagation is how habit
@@ -408,6 +447,7 @@ export const HabitCreateSchema = z
     repeatMonthDay: z.number().int().optional(),
     timesPerDay: z.number().int().optional(),
     currentDayCount: z.number().int().optional(),
+    reminderTime: TimeOfDaySchema.optional(),
 })
     // See TaskCreateSchema — pause is not agent-writable in v1, and groupId is
     // resolved server-side from `group` rather than accepted.
@@ -450,6 +490,10 @@ export const TaskUpdateSchema = z
     // stays cheap forever; the read side is deliberately loose.
     aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
     aiResult: clearable(z.string()),
+    // Clearable both: null is how a reminder is turned OFF (migration 029's
+    // null-means-off contract), which a plain .optional() could not express.
+    reminderTime: clearable(TimeOfDaySchema),
+    reminderAnchor: clearable(z.string()),
     ...pauseVerbShape,
 })
     .superRefine(requireCustomDays)
@@ -474,6 +518,9 @@ export const HabitUpdateSchema = z
     timesPerDay: clearable(z.number().int()),
     currentDayCount: clearable(z.number().int()),
     notes: clearable(z.string()),
+    // See TaskUpdateSchema — clearable is the off switch, not a nicety.
+    reminderTime: clearable(TimeOfDaySchema),
+    reminderAnchor: clearable(z.string()),
     ...pauseVerbShape,
 })
     .superRefine(requireCustomDays)

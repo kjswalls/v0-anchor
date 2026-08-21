@@ -14,6 +14,7 @@ import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle }
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP } from '@/lib/extension-registry';
@@ -181,6 +182,7 @@ const view = () => useViewStore.getState();
 const sidebar = () => useSidebarStore.getState();
 const morning = () => useMorningStore.getState();
 const eod = () => useEODStore.getState();
+const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const ext = () => useExtensionsStore.getState();
 const palette = () => usePaletteStore.getState();
@@ -504,6 +506,48 @@ export const SETTINGS: SettingRecord[] = [
     read: () => eod().eodReviewTime,
     write: (v) => eod().setEodReviewTime(String(v)),
     defaultValue: '21:00',
+  },
+  {
+    id: 'rituals.reminders',
+    pane: 'rituals',
+    label: 'Habit reminders',
+    description:
+      'A nudge at the time you set on each habit. Set the time on the habit itself — this is the switch that lets any of them through.',
+    control: 'switch',
+    dbColumn: 'habit_reminders_enabled',
+    keywords: ['remind', 'nudge', 'alarm', 'prompt', 'cue', 'notify', 'ping', 'alert'],
+    read: () => reminders().remindersEnabled,
+    write: (v) => reminders().setRemindersEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.lastCall',
+    pane: 'rituals',
+    label: 'Last call',
+    // Names the mechanism honestly. It is not a second copy of the reminder —
+    // a repeat of the same prompt is what people stop reading — it is a
+    // different message, once, that says what the day still owes.
+    description: 'One message in the evening naming what is still open, and the streak riding on it.',
+    control: 'switch',
+    dependsOn: 'rituals.reminders',
+    dbColumn: 'habit_last_call_enabled',
+    keywords: ['streak', 'evening', 'risk', 'final', 'nudge', 'lose', 'before bed'],
+    read: () => reminders().lastCallEnabled,
+    write: (v) => reminders().setLastCallEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.lastCallTime',
+    pane: 'rituals',
+    label: 'Last call at',
+    description: 'Late enough that the day has had its chance; early enough to still act on it.',
+    control: 'time',
+    dependsOn: 'rituals.lastCall',
+    dbColumn: 'habit_last_call_time',
+    keywords: ['when', 'hour', 'evening', 'schedule', 'time'],
+    read: () => reminders().lastCallTime,
+    write: (v) => reminders().setLastCallTime(String(v)),
+    defaultValue: '20:30',
   },
   {
     id: 'rituals.push',

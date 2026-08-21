@@ -66,6 +66,9 @@ interface ItemRow {
   // pausing (migration 024) — shared by every type
   paused_at?: string | null;
   paused_until?: string | null;
+  // reminders (migration 029) — shared by every remindable type
+  reminder_time?: string | null;
+  reminder_anchor?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -103,6 +106,8 @@ function itemFromRow(row: ItemRow): Item {
       aiResult: row.ai_result ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
+      reminderTime: row.reminder_time ?? undefined,
+      reminderAnchor: row.reminder_anchor ?? undefined,
     };
   }
   if (row.type === 'habit') {
@@ -128,6 +133,8 @@ function itemFromRow(row: ItemRow): Item {
       notes: row.notes ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
+      reminderTime: row.reminder_time ?? undefined,
+      reminderAnchor: row.reminder_anchor ?? undefined,
     };
   }
   return {
@@ -163,6 +170,8 @@ function itemFromRow(row: ItemRow): Item {
     aiResult: row.ai_result ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
+    reminderTime: row.reminder_time ?? undefined,
+    reminderAnchor: row.reminder_anchor ?? undefined,
   };
 }
 
@@ -203,6 +212,23 @@ function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'gro
   return item.projectId !== undefined ? { project_id: item.projectId } : {};
 }
 
+/**
+ * Reminder columns, emitted ONLY when set — the third instance of the
+ * pauseColumns/containerColumns guard, for the identical reason: PostgREST
+ * rejects an INSERT naming a column absent from its schema cache (PGRST204),
+ * so writing these unconditionally would break EVERY item create against a
+ * database that has not run migration 029, not merely reminder-bearing ones.
+ *
+ * The app deploys on push while `pnpm db:push` is a separate manual step, so
+ * that window is real rather than theoretical.
+ */
+function reminderColumns(item: Item): Partial<Pick<ItemRow, 'reminder_time' | 'reminder_anchor'>> {
+  return {
+    ...(item.reminderTime !== undefined ? { reminder_time: item.reminderTime } : {}),
+    ...(item.reminderAnchor !== undefined ? { reminder_anchor: item.reminderAnchor } : {}),
+  };
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -227,6 +253,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       notes: item.notes ?? null,
       ...pauseColumns(item),
       ...containerColumns(item),
+      ...reminderColumns(item),
     };
   }
   // task and custom items share the task-shaped column set; the DB type is
@@ -261,6 +288,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ai_result: item.aiResult ?? null,
     ...pauseColumns(item),
     ...containerColumns(item),
+    ...reminderColumns(item),
   };
 }
 
@@ -307,6 +335,11 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
   if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // Reminders (migration 029). Nulls pass through and MEAN something here —
+  // null is how a reminder is turned off, so a `?? null` guard is the
+  // behavior, not a fallback (compare `group` above, where null would corrupt).
+  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   // Pause (migration 024). These allowlists gate EVERY write, the app's own
   // included — updateItem early-returns on an empty mapped row, so omitting
   // them here would make the store's pause verb (and every undo/redo restore
@@ -344,6 +377,9 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   // because the two lists are deliberately never merged.
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
+  // Reminders (029) — same split, same reason.
+  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   return row;
 }
 

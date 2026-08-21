@@ -24,6 +24,10 @@ export interface UserSettingsRow {
   morning_auto_age_days?: number;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
+  /** Master switch for per-item reminders (migration 029). */
+  habit_reminders_enabled?: boolean;
+  habit_last_call_enabled?: boolean;
+  habit_last_call_time?: string;
   /**
    * Active ground palette slug (lib/theme-palettes.ts). Deliberately absent
    * from DEFAULT_SETTINGS: undefined means "never chosen on any device", and
@@ -54,6 +58,9 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   morning_auto_age_days: 30,
   eod_review_time: '21:00',
   eod_review_enabled: false,
+  habit_reminders_enabled: false,
+  habit_last_call_enabled: false,
+  habit_last_call_time: '20:30',
 };
 
 /**
@@ -98,10 +105,17 @@ const STABLE_SETTINGS_COLUMNS = [
  * round-trip on databases that predate it and nothing else; a column moved up
  * too early wipes everyone's settings, so err towards leaving it here.
  *
- * Currently: migration 022 (morning auto-age). Migration 025 (theme_palette)
- * graduated to stable on 2026-08-12 once it was applied to prod.
+ * Currently: migration 022 (morning auto-age) and migration 029 (habit
+ * reminders). Migration 025 (theme_palette) graduated to stable on 2026-08-12
+ * once it was applied to prod.
  */
-const PENDING_SCHEMA_COLUMNS = ['morning_auto_age_enabled', 'morning_auto_age_days'] as const;
+const PENDING_SCHEMA_COLUMNS = [
+  'morning_auto_age_enabled',
+  'morning_auto_age_days',
+  'habit_reminders_enabled',
+  'habit_last_call_enabled',
+  'habit_last_call_time',
+] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');
 const STABLE_SETTINGS_SELECT = STABLE_SETTINGS_COLUMNS.join(',');
