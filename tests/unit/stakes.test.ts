@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { settleDay, stakeEligible } from '@/lib/stakes/day';
+
+/** settleDay with "every item is old enough" — the common case under test. */
+const settleDay0 = (
+  items: Parameters<typeof settleDay>[0],
+  dateStr: string,
+  activation: Parameters<typeof settleDay>[2],
+) => settleDay(items, dateStr, activation, () => undefined);
 import { parseAmountCents, pledgeAdapter } from '@/lib/stakes/pledge';
 import { parseGoalMap, beeminderAdapter } from '@/lib/stakes/beeminder';
 import { partnerAdapter } from '@/lib/stakes/partner';
@@ -38,13 +45,13 @@ const stakeCtx = (over: Partial<StakeContext> = {}): StakeContext => ({
 
 describe('settleDay', () => {
   it('counts a completed occurrence as a hit', () => {
-    const out = settleDay([habit({ completedDates: [DAY] })], DAY, ctx);
+    const out = settleDay0([habit({ completedDates: [DAY] })], DAY, ctx);
     expect(out.hits.map((i) => i.id)).toEqual(['h1']);
     expect(out.misses).toEqual([]);
   });
 
   it('counts an untouched occurrence as a miss', () => {
-    const out = settleDay([habit()], DAY, ctx);
+    const out = settleDay0([habit()], DAY, ctx);
     expect(out.misses.map((i) => i.id)).toEqual(['h1']);
   });
 
@@ -52,19 +59,19 @@ describe('settleDay', () => {
   // makes the honest gesture the expensive one, and teaches people to let
   // things lapse silently instead.
   it('counts a skipped occurrence as NEITHER', () => {
-    const out = settleDay([habit({ skippedDates: [DAY] })], DAY, ctx);
+    const out = settleDay0([habit({ skippedDates: [DAY] })], DAY, ctx);
     expect(out.hits).toEqual([]);
     expect(out.misses).toEqual([]);
   });
 
   it('counts a tallied counted habit as a hit', () => {
-    const out = settleDay([habit({ dailyCounts: { [DAY]: 2 } })], DAY, ctx);
+    const out = settleDay0([habit({ dailyCounts: { [DAY]: 2 } })], DAY, ctx);
     expect(out.hits).toHaveLength(1);
   });
 
   it('ignores a day the habit does not occur on', () => {
     // 2026-08-15 is a Saturday.
-    const out = settleDay([habit({ repeatFrequency: 'weekdays' })], '2026-08-15', ctx);
+    const out = settleDay0([habit({ repeatFrequency: 'weekdays' })], '2026-08-15', ctx);
     expect(out.hits).toEqual([]);
     expect(out.misses).toEqual([]);
   });
@@ -72,18 +79,40 @@ describe('settleDay', () => {
   // Billing someone for a pause would make the pause button cost money.
   it('never charges for a suppressed day', () => {
     const paused = habit({ pausedAt: '2026-08-01T12:00:00Z', pausedUntil: '2026-09-01' });
-    expect(settleDay([paused], DAY, ctx).misses).toEqual([]);
+    expect(settleDay0([paused], DAY, ctx).misses).toEqual([]);
   });
 
   it('never charges for a day inside a paused program', () => {
     const program = { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['h1'], routineIds: [] } as Program;
-    const out = settleDay([habit()], DAY, { ...ctx, programs: [program] });
+    const out = settleDay0([habit()], DAY, { ...ctx, programs: [program] });
     expect(out.misses).toEqual([]);
+  });
+
+  // Habits are un-anchored by design, so occursOn says a daily habit occurred
+  // on every matching day back to the beginning of time — and settlement looks
+  // at YESTERDAY. Without this guard every habit you create is billed for the
+  // day before you created it, and with catch-up, for the week before.
+  it('never charges for a day that ended before the habit existed', () => {
+    const created = (id: string) => (id === 'h1' ? '2026-08-11' : undefined);
+    const out = settleDay([habit()], DAY, ctx, created);
+    expect(out.misses).toEqual([]);
+    expect(out.hits).toEqual([]);
+  });
+
+  it('does settle the day the habit was created on', () => {
+    const created = () => DAY;
+    expect(settleDay([habit()], DAY, ctx, created).misses).toHaveLength(1);
+  });
+
+  // A read failure must not forgive a day permanently — the stamp only advances
+  // on a clean settlement, so "unknown" has to mean "do not exclude".
+  it('treats an unknown creation day as no exclusion', () => {
+    expect(settleDay([habit()], DAY, ctx, () => undefined).misses).toHaveLength(1);
   });
 
   it('leaves tasks out — a stake needs a lapse, and a one-off has none', () => {
     expect(stakeEligible(task({ startDate: DAY }))).toBe(false);
-    expect(settleDay([task({ startDate: DAY })], DAY, ctx).misses).toEqual([]);
+    expect(settleDay0([task({ startDate: DAY })], DAY, ctx).misses).toEqual([]);
   });
 });
 
@@ -237,6 +266,7 @@ describe('settleOneDay — claim then act', () => {
     dateStr: DAY,
     timezone: TZ,
     items: [habit({ title: 'Reading' })],
+    createdOn: () => undefined,
     activation: ctx,
     configs: { pledge: { amount: '10', currency: 'GBP', charity: 'X' } },
     secrets: {},

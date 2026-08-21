@@ -18,7 +18,7 @@
 
 import { resolveEnabled } from '../extension-registry'
 import type { createServiceClient } from '../supabase-service'
-import { settleDay, type DayOutcome } from './day'
+import { settleDay, type CreatedOnLookup, type DayOutcome } from './day'
 import { beeminderAdapter } from './beeminder'
 import { pledgeAdapter } from './pledge'
 import { partnerAdapter } from './partner'
@@ -37,6 +37,8 @@ export interface SettleInput {
   dateStr: string
   timezone: string
   items: readonly Item[]
+  /** Local creation day per item id — see CreatedOnLookup for why it is required. */
+  createdOn: CreatedOnLookup
   activation: ActivationContext
   extensionEnabled: Record<string, boolean>
   configs: Record<string, Record<string, unknown>>
@@ -61,7 +63,12 @@ export async function settleOneDay(
   service: ServiceClient,
   input: SettleInput,
 ): Promise<SettleReport> {
-  const outcome: DayOutcome = settleDay(input.items, input.dateStr, input.activation)
+  const outcome: DayOutcome = settleDay(
+    input.items,
+    input.dateStr,
+    input.activation,
+    input.createdOn,
+  )
   const report: SettleReport = {
     dateStr: input.dateStr,
     hits: outcome.hits.length,

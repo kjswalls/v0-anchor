@@ -448,12 +448,21 @@ export async function runReminderScan(
 
       /* ── The stakes settlement ─────────────────────────────────────────── */
 
+      // When each item came into existence, in the user's own days. Read here
+      // rather than carried on the Item, and read only when a day is actually
+      // owed. Without it every newly created habit is settled as a miss for the
+      // day before it existed — see CreatedOnLookup.
+      const createdOn = pendingDays.length > 0
+        ? await loadCreatedOn(service, user.user_id, timezone)
+        : () => undefined
+
       for (const day of pendingDays) {
         const report = await settleOneDay(service, {
           userId: user.user_id,
           dateStr: day,
           timezone,
           items,
+          createdOn,
           activation: ctx,
           extensionEnabled: channelState.extensionEnabled,
           configs: channelState.configs,
@@ -487,6 +496,39 @@ export async function runReminderScan(
   }
 
   return summary
+}
+
+/**
+ * Each item's creation day, in the user's timezone.
+ *
+ * A lookup rather than a map at the call site so a failed read degrades to
+ * "unknown", which settleDay treats as "do not exclude" — the same answer it
+ * gave before this existed. That is the right direction for a READ failure:
+ * refusing to settle at all would let a transient error forgive a day
+ * permanently, since the stamp only advances on a clean settlement.
+ */
+async function loadCreatedOn(
+  service: ServiceClient,
+  userId: string,
+  timezone: string,
+): Promise<(itemId: string) => string | undefined> {
+  const { data, error } = await service
+    .from('items')
+    .select('id, created_at')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+
+  if (error || !data) return () => undefined
+
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timezone })
+  const byId = new Map<string, string>()
+  for (const row of data as { id: string; created_at: string | null }[]) {
+    if (!row.created_at) continue
+    const at = new Date(row.created_at)
+    if (Number.isNaN(at.getTime())) continue
+    byId.set(row.id, formatter.format(at))
+  }
+  return (itemId: string) => byId.get(itemId)
 }
 
 /**

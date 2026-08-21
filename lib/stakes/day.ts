@@ -42,16 +42,36 @@ export function stakeEligible(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).counters.streak
 }
 
+/**
+ * When each item came into existence, as the user's local day (yyyy-MM-dd).
+ *
+ * Required by settleDay, and NOT optional, because the thing it prevents costs
+ * money. Habits are un-anchored by design (migration 019 keeps start_date NULL
+ * so history is not retroactively hidden), so `occursOn` says a daily habit
+ * occurred on every matching day back to the beginning of time. Settlement
+ * looks at YESTERDAY — so without this, every habit you create is settled as a
+ * miss for the day before you created it, and with catch-up enabled, for the
+ * week before.
+ *
+ * items.created_at is deliberately not on the Item schema (it is infrastructure,
+ * not user data), so the settlement reads it separately and passes it in.
+ */
+export type CreatedOnLookup = (itemId: string) => string | undefined
+
 export function settleDay(
   items: readonly Item[],
   dateStr: string,
   ctx: ActivationContext,
+  createdOn: CreatedOnLookup,
 ): DayOutcome {
   const hits: Item[] = []
   const misses: Item[] = []
 
   for (const item of items) {
     if (!stakeEligible(item)) continue
+    // Nothing can be owed for a day that ended before the habit existed.
+    const born = createdOn(item.id)
+    if (born !== undefined && born > dateStr) continue
     if (!occursOn(item, dateStr, ctx.userTimezone)) continue
     // A suppressed day is not a missed day. Pausing a habit — or the program
     // that holds it — is a decision the user made, and billing them for it
