@@ -1046,10 +1046,80 @@ observe a delete, a one-press Escape where the house helpers press four, and an
 achievement assertion satisfied by an sr-only label). Treat the remainder as
 unproven.
 
-**Updated 2026-08-22.** Migration 036 is no longer one of the reasons — it is
-applied and verified (see Phase 0). The e2e run and the Phase-4 live agent calls
-are blocked on the BUILD ENVIRONMENT, on two independent things, and the second
-one is the one that matters:
+**Updated 2026-08-22, after the first four real runs.** Migration 036 is applied
+and verified (see Phase 0), and **goals.spec.ts has now executed** — not from
+this build environment, which still cannot reach the database, but in CI, whose
+`e2e-tests` job holds the five secrets as job-level env. Opening the PR was
+what ran it: that job is gated `if: pull_request || workflow_dispatch`, so a
+direct push to main would have skipped the gate entirely.
+
+**Result: six of the seven cases pass. One does not.**
+
+Two defects were found by running it, both in the TEST rather than the app, and
+both of the kind static review cannot see:
+
+- `an ended goal names the work it leaves running` waited for
+  `goal-checkin-member-row`. member-list renders each row as
+  `${testPrefix}-member`, so the id is `goal-checkin-member`; the `-row` suffix
+  exists nowhere in `components/`, `app/` or `lib/`. Fixed, and now passing.
+  Every other `getByTestId` in the file was then resolved against the
+  components — this was the only unmatched one.
+- the seven-day `ArrowRight` walk sat INSIDE `expect.poll`, whose callback
+  re-runs until the poll times out, so it pressed on well past a week and could
+  pass on an occurrence outside the range its own failure message describes.
+  Bounded outside the assertion now.
+
+**Still failing: `completing a check-in offers the note and the trip back`** —
+the check-in bridge, which the Verification gates above name as the case Phase 3
+exists for. It fails at the day walk: `[data-testid="item-card"]` filtered by
+the check-in title is never found, on all three attempts, across three separate
+runs. What is known:
+
+- It is not the app. The sibling case creates a check-in identically and passes,
+  and `goalProgress`/membership assertions elsewhere in the file confirm the row
+  reaches the database.
+- **The first hypothesis was wrong, and the record should say so.** `item-card`
+  is emitted by `task-row.tsx` alone — the Schedule layout renders
+  `schedule-block` — and layout is per-user state that `view-matrix.spec`
+  corrupts when it dies inside `pickDisplay`. That explained why the case passed
+  at 21:40 and failed at 22:09 with no relevant change. Both day-walking cases
+  now pin scope and layout through the helpers that assert `data-view-scope` /
+  `data-view-layout`. **The symptom is identical with the pin in place**, so
+  layout was not the cause, or not the only one.
+- The pin is kept regardless: scope genuinely matters here, because an arrow key
+  steps SEVEN days under Week and would stride the walk past the occurrence.
+- Unverified suspicion for whoever picks this up: the walk drives navigation with
+  `page.keyboard.press('ArrowRight')`, which needs canvas focus. Radix returns
+  focus to the trigger when a dropdown closes, and `waitForTimeout(150)` between
+  presses is a race either way. `navigateToDate` in `helpers/app.ts` asserts
+  `data-date` after each step instead of assuming the keypress landed, and is
+  probably what this walk should use.
+
+**Why it was left failing rather than fixed:** it cannot be reproduced from this
+environment (see the two blockers below), so every hypothesis costs a ~30-minute
+blind CI round trip — and the suite is degrading independently while that runs:
+24.1m/7 failed/120 passed → 26.0m/7/122 → 31.8m/9/119, with `organize:460` and
+`pause:99` newly failing, neither touched by this branch. Kirby's call
+(2026-08-22) was to land the rest and fix this in a follow-up. It is documented,
+NOT skipped or quarantined — the test still runs and still fails, which is the
+only honest way to leave it.
+
+**Six pre-existing failures are not this branch's** and were not fixed here:
+`sidebar-resize` (3), `view-matrix` (1), `week-scale` (2). They survive two
+retries at `workers: 1`, so they are deterministic rather than the shared-user
+flake `playwright.config.ts` describes. `view-matrix` deserves its own PR for a
+reason beyond being red: it corrupts shared display settings for everything that
+runs after it.
+
+**And the e2e job is `continue-on-error: true`, so every one of these has been
+invisible behind a green check.** Demonstrated on this very PR: run 407 reported
+`conclusion: success` at the run level while its E2E job concluded `failure` with
+seven red tests. Making that job gate is worth doing once the six are fixed;
+doing it before then would just make every PR red on failures that predate it.
+
+**Still owed, and still blocked here:** the Phase-4 live agent calls (the
+programs 39-call standard). Two independent blockers, and the second is the one
+that matters:
 
 1. No `.env.test`, and it cannot be synthesised here. `testEnv()` demands five
    vars. Two are recoverable from the Supabase MCP (project URL, anon key); three
@@ -1060,16 +1130,13 @@ one is the one that matters:
 2. **The sandbox's network policy denies outbound HTTPS to `*.supabase.co`.**
    Measured, not inferred: `registry.npmjs.org` 200, `github.com` 400, the project
    host 000 with `CONNECT tunnel failed, response 403` from the agent proxy. So
-   even handed all five secrets, `next dev` could not reach the database and every
-   spec would fail at `loginTestUser`. The Supabase MCP works only because it
-   routes through Anthropic's relay rather than container egress — which is why
-   the migration could be applied from an environment that cannot run the tests
-   against it.
+   even handed all five secrets, `next dev` could not reach the database. The
+   Supabase MCP works only because it routes through Anthropic's relay rather
+   than container egress — which is why the migration could be applied from an
+   environment that cannot run anything against it.
 
-So these two gates need either a network policy that allows the project host, or
-a run from a machine that already has `.env.test`. Applying 036 was the part that
-had to happen centrally and now has; the gates are unchanged in what they demand.
-Do not read "036 applied" as "e2e passed" — nothing in goals.spec.ts has run yet.
+Do not read "036 applied" as "the gates passed". One e2e case is red and the
+live agent calls have not run.
 
 ## Deferred for a decision (recorded, not designed)
 
