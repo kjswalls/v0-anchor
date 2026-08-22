@@ -232,6 +232,8 @@ different meanings will mislead every later reader.
 
 ## Target DB shape (migration 036)
 
+**APPLIED and ledger-recorded 2026-08-22** (details in the Phase 0 entry).
+
 **Renumbered 029 → 036 on 2026-08-22, exactly as this section warned.** 028's own
 header records the same thing happening — "ledger first, directory second" — and
 it happened twice over here. `origin/main` had grown 029_set_item_skip,
@@ -515,11 +517,56 @@ table as ONE set. Four rules, each closing a found defect:
   distributed identically file-by-file. (Two files this commit edits carry
   pre-existing errors, `pause.test.ts` and `sweep-receipt.test.ts`; the claim is
   that nothing was introduced, not that the touched files were clean.)
-  **Renumbered to 036 and still NOT applied (2026-08-22).** The ledger was read
-  live: tip 035, four versions ahead of `origin/main`'s directory. See the
-  migration-number note above. Deploy order is safe either way: no existing table
-  gains a column, so every pre-existing write path is byte-identical against a
-  pre-036 database.
+  **Renumbered to 036 and APPLIED 2026-08-22.** The ledger was read live before
+  applying: tip still 035, four versions ahead of `origin/main`'s directory, so
+  036 was still the first free version. See the migration-number note above.
+  Deploy order is safe either way: no existing table gains a column, so every
+  pre-existing write path is byte-identical against a pre-036 database.
+
+  Applied out-of-band through the Supabase MCP (no `supabase` CLI and no
+  `.env.local` in that environment), so version `036`/`goals` was written to
+  `supabase_migrations.schema_migrations` in the same session, as this file's
+  header instructs. Verified after the fact rather than assumed, because every
+  structural piece in this file is in a guarded DO block and a skipped guard is
+  silent by construction: `pg_constraint` shows both composite FKs
+  (`(goal_id,user_id)→goals`, `(item_id,user_id)→items`, both CASCADE), the
+  `goal_items` PK, and both CHECKs (`goals_state_check`, `goal_items_role_check`)
+  present with the intended definitions; both tables have `relrowsecurity` true
+  and their policy; `goals_user_idx` and `goal_items_user_item_idx` exist; and
+  `goals_updated_at` is the ONLY non-internal trigger across the two tables —
+  `goal_items` correctly has none, which is the invariant that would otherwise
+  make every role change throw at runtime.
+
+  **The cron re-list was correct, and that was worth checking.** 032–035 landed
+  out-of-band while this branch was in flight, so the live `purge-deleted-items`
+  body was read back one more time immediately before applying. Those four
+  versions added two SEPARATE jobs (`anchor-reminders`, `anchor-eod-notify`) and
+  never touched the purge job, so the eight DELETEs this file re-lists still
+  matched the live body exactly. Post-apply the job is jobid 7, active, `0 0 * * *`,
+  with nine DELETEs — the eight plus goals — and the `item_events` 180-day line
+  still present.
+
+  **The constraints were then exercised, not just read.** `pg_constraint` proves a
+  constraint EXISTS; it does not prove the live table behaves. Since the review's
+  sharpest Phase-4 finding was that the unit fake's fake-DB hid four real
+  violations, the schema was probed with actual writes inside a DO block that
+  ends in `raise exception`, so the whole probe rolls back (verified after: both
+  tables back to 0 rows). Results, all against the live tables:
+  default role `member`; junk `role` rejected 23514; junk `state` rejected 23514;
+  a duplicate `(goal_id,item_id)` rejected 23505; a membership row whose `user_id`
+  does not match the goal's rejected 23503 — the cross-tenant forgery the composite
+  FKs exist to make unrepresentable; `state='achieved'` accepted; a **role UPDATE
+  succeeding**, which is the positive control for `goal_items` having no
+  `updated_at` trigger (with one, every role change throws at runtime); and 0
+  orphaned join rows after deleting the goal, so the nightly purge cannot strand
+  membership.
+
+  `notify pgrst, 'reload schema'` was sent after the DDL. Supabase's own event
+  trigger normally reloads PostgREST on DDL, but a stale cache here fails in the
+  worst available way: `fetchGoals` treats PGRST205 as "table missing" and latches
+  `goalsAvailable = false`, which disables the entire feature silently rather than
+  erroring. The reload could not be confirmed over HTTP from the build environment
+  (see the gates note below), so first load in a real browser is what proves it.
 
   **The cron body was wrong, and silently.** 036's purge rewrite was authored
   against 024's job — seven DELETEs — but 030 had since added
@@ -993,12 +1040,36 @@ goals-store.test.ts (28) cover the predicates, the membership write semantics,
 progress, check-in standing, the demotion rule, the bulk-verb exclusions and
 the bridge's goal selection. tests/e2e/goals.spec.ts exists with seven cases
 INCLUDING the check-in bridge case named above — and has **never been
-executed**: no `.env.test` in the build environment and migration 036 is not
-applied. Its first real run is still owed, and three of its defects were found
+executed**. Its first real run is still owed, and three of its defects were found
 by static review rather than by running it (a soft-delete poll that could never
 observe a delete, a one-press Escape where the house helpers press four, and an
 achievement assertion satisfied by an sr-only label). Treat the remainder as
 unproven.
+
+**Updated 2026-08-22.** Migration 036 is no longer one of the reasons — it is
+applied and verified (see Phase 0). The e2e run and the Phase-4 live agent calls
+are blocked on the BUILD ENVIRONMENT, on two independent things, and the second
+one is the one that matters:
+
+1. No `.env.test`, and it cannot be synthesised here. `testEnv()` demands five
+   vars. Two are recoverable from the Supabase MCP (project URL, anon key); three
+   are not — `SUPABASE_SECRET_KEY` (service-role; the MCP exposes publishable keys
+   only, by design) and the dedicated Playwright user's `TEST_USER_EMAIL` /
+   `TEST_USER_PASSWORD`. There is no `vercel` CLI here either, so
+   `vercel env pull` is not a route.
+2. **The sandbox's network policy denies outbound HTTPS to `*.supabase.co`.**
+   Measured, not inferred: `registry.npmjs.org` 200, `github.com` 400, the project
+   host 000 with `CONNECT tunnel failed, response 403` from the agent proxy. So
+   even handed all five secrets, `next dev` could not reach the database and every
+   spec would fail at `loginTestUser`. The Supabase MCP works only because it
+   routes through Anthropic's relay rather than container egress — which is why
+   the migration could be applied from an environment that cannot run the tests
+   against it.
+
+So these two gates need either a network policy that allows the project host, or
+a run from a machine that already has `.env.test`. Applying 036 was the part that
+had to happen centrally and now has; the gates are unchanged in what they demand.
+Do not read "036 applied" as "e2e passed" — nothing in goals.spec.ts has run yet.
 
 ## Deferred for a decision (recorded, not designed)
 

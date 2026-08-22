@@ -29,7 +29,7 @@
 -- it added columns to `items` that itemToRow would name on every INSERT, and
 -- PostgREST rejects an INSERT naming a column missing from its schema cache
 -- (PGRST204). This migration touches no existing table's columns at all, so
--- every pre-existing write path is byte-identical against a pre-029 database.
+-- every pre-existing write path is byte-identical against a pre-036 database.
 -- The only new surface is fetchGoals, which returns null on a missing table
 -- (42P01/PGRST205) so that the store can latch the whole feature off. Note the
 -- CAN: the store slice, its `goalsAvailable` flag and the write-path gating
@@ -42,7 +42,7 @@
 -- rule — ledger first, directory second — after versions arrived on the remote
 -- from branches that had not merged here yet. Check `pnpm db:list` before
 -- applying, and if this is applied out of band via the SQL editor or MCP,
--- record version 029 in supabase_migrations.schema_migrations immediately or
+-- record version 036 in supabase_migrations.schema_migrations immediately or
 -- `db push` will try to replay it later.
 -- ─────────────────────────────────────────────────────────────────────────────
 
