@@ -151,7 +151,7 @@ export interface ScanSummary {
   daysSettled: number
   /** Non-fatal problems, one line each. */
   notes: string[]
-  /** True when migration 029 has not been applied — the scan is a no-op. */
+  /** True when migration 032 has not been applied — the scan is a no-op. */
   migrationMissing?: boolean
 }
 
@@ -266,16 +266,16 @@ export async function runReminderScan(
 
   if (error && isMissingColumn(error)) {
     stakesAvailable = false
-    summary.notes.push('migration 031 not applied — settling is off, reminders continue')
+    summary.notes.push('migration 034 not applied — settling is off, reminders continue')
     ;({ data: users, error } = await readUsers(REMINDER_COLUMNS, false))
   }
 
   if (error) {
-    // A database without migration 029 must degrade to silence, not to a 500
+    // A database without migration 032 must degrade to silence, not to a 500
     // that pages someone: the cron fires every few minutes, so an error here
     // is an alert storm about a migration that simply has not run yet.
     if (isMissingColumn(error)) {
-      return { ...summary, migrationMissing: true, notes: ['migration 029 not applied'] }
+      return { ...summary, migrationMissing: true, notes: ['migration 032 not applied'] }
     }
     throw new Error(error.message)
   }
@@ -300,7 +300,7 @@ export async function runReminderScan(
 
   if (bookError) {
     if (isMissingColumn(bookError)) {
-      return { ...summary, migrationMissing: true, notes: ['migration 029 not applied'] }
+      return { ...summary, migrationMissing: true, notes: ['migration 032 not applied'] }
     }
     throw new Error(bookError.message)
   }

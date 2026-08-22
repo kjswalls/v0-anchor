@@ -291,7 +291,7 @@ export interface ItemDraft {
   repeatDays: number[];
   repeatMonthDay: number;
   timesPerDay: string;
-  /** HH:mm for this item's daily cue, or '' for no reminder (migration 029). */
+  /** HH:mm for this item's daily cue, or '' for no reminder (migration 032). */
   reminderTime: string;
   /** The implementation-intention phrase the cue is worded around. */
   reminderAnchor: string;

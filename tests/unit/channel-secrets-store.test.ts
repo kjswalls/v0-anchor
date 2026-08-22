@@ -33,7 +33,7 @@ describe('hydrate', () => {
     expect(state.setKeys).toEqual({ 'phone-call': ['authToken'] });
   });
 
-  it('latches unavailable when migration 030 has not landed', async () => {
+  it('latches unavailable when migration 033 has not landed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ unavailable: true }))));
     await useChannelSecretsStore.getState().hydrate('u1');
     expect(useChannelSecretsStore.getState().available).toBe(false);

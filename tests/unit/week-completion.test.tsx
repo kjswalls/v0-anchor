@@ -30,6 +30,7 @@ vi.mock('@/lib/db', () => ({
   deleteItem: vi.fn(async () => {}),
   restoreItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
+  setItemSkip: vi.fn(async () => {}),
   createProject: vi.fn(async () => {}),
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
@@ -258,6 +259,6 @@ describe('skip (already fixed for #194) stays on the row date', () => {
     fireEvent.click(screen.getByTestId('item-skip-button'));
 
     expect(taskById('daily-task').skippedDates).toEqual([ROW_DAY]);
-    expect(db.updateItem).toHaveBeenCalledWith('daily-task', 'task', { skippedDates: [ROW_DAY] });
+    expect(db.setItemSkip).toHaveBeenCalledWith('daily-task', 'task', ROW_DAY, true);
   });
 });

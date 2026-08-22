@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 029_habit_reminders.sql — per-item reminders and the streak-at-risk last call
+-- 032_habit_reminders.sql — per-item reminders and the streak-at-risk last call
 --
 -- Anchor could already reach a device (migration 009's push_subscriptions, the
 -- eod-notify cron) but only ever for ONE moment a day: the end-of-day review.
@@ -132,5 +132,22 @@ begin
     alter table user_settings
       add constraint user_settings_last_call_time_check
       check (habit_last_call_time is null or habit_last_call_time ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
+  end if;
+end$$;
+
+-- ─── Re-point the windowed read view ─────────────────────────────────────────
+-- REQUIRED, and silent if forgotten. Migration 031 serves every full-item read
+-- through public.items_windowed, whose column list is FROZEN at creation time —
+-- so the five columns added above would be missing from the view, fetchItems
+-- would read them back as undefined, and every reminder would simply never
+-- fire, with no error anywhere to explain it. 031's own header spells out the
+-- rule: any later migration that adds a column to items ends with this call.
+--
+-- Guarded so this file still applies to a database that predates 031: the
+-- columns land either way, and the view is rebuilt if there is one.
+do $$
+begin
+  if to_regprocedure('public.rebuild_items_windowed()') is not null then
+    perform public.rebuild_items_windowed();
   end if;
 end$$;

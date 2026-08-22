@@ -10,7 +10,7 @@ export const RepeatFrequencySchema = z.enum([
 /**
  * 24-hour local wall-clock 'HH:mm'.
  *
- * Enforced at the WRITE boundary only. Migration 029 puts the same shape in a
+ * Enforced at the WRITE boundary only. Migration 032 puts the same shape in a
  * CHECK constraint, so an unvalidated agent body would 500 at Postgres instead
  * of 400 here — the reasoning TaskCreateSchema already applies to uuids and the
  * aiStatus vocabulary. The READ shapes stay plain `z.string()`: a row written
@@ -67,7 +67,7 @@ const pauseFields = {
      */
     pausedUntil: z.string().optional(),
 };
-// ── Shared reminder fields (migration 029) ─────────────────────────────────────
+// ── Shared reminder fields (migration 032) ─────────────────────────────────────
 // A recurring cue for one item. Spread into BOTH taskShape and habitShape for
 // the same reason pauseFields is — habitShape declares its own recurrence block
 // and consumes no shared schema, so one edit site would silently reach task +
@@ -80,7 +80,7 @@ const pauseFields = {
 const reminderFields = {
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.string().optional(),
@@ -490,7 +490,7 @@ export const TaskUpdateSchema = z
     // stays cheap forever; the read side is deliberately loose.
     aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
     aiResult: clearable(z.string()),
-    // Clearable both: null is how a reminder is turned OFF (migration 029's
+    // Clearable both: null is how a reminder is turned OFF (migration 032's
     // null-means-off contract), which a plain .optional() could not express.
     reminderTime: clearable(TimeOfDaySchema),
     reminderAnchor: clearable(z.string()),

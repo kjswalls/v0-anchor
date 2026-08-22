@@ -4,7 +4,7 @@
  * Claim-then-act, and everything below exists to make that true:
  *
  *   1. Every enabled adapter says what it would record (`plan`) — pure.
- *   2. All of it is inserted against the unique index from migration 031, with
+ *   2. All of it is inserted against the unique index from migration 034, with
  *      duplicates ignored.
  *   3. Everything still UNCOMMITTED for this day is read back — which is the
  *      rows just claimed, plus anything an earlier tick claimed and failed to

@@ -22,7 +22,7 @@ import { create } from 'zustand';
 interface ChannelSecretsStore {
   /** Sparse: channel slug → the credential keys that have a value stored. */
   setKeys: Record<string, string[]>;
-  /** False once a fetch proved migration 030 has not landed here. */
+  /** False once a fetch proved migration 033 has not landed here. */
   available: boolean;
   hydratedUserId: string | null;
 

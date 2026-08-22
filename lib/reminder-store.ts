@@ -27,7 +27,7 @@ interface ReminderStore {
   /** HH:mm, local. */
   lastCallTime: string;
   /**
-   * The nightly settlement (migration 031). Its own switch, NOT folded into
+   * The nightly settlement (migration 034). Its own switch, NOT folded into
    * remindersEnabled: keeping the accounting while turning off the nagging is a
    * real thing to want, and one switch for both would make silencing Anchor
    * also silently forgive every miss.

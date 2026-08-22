@@ -135,7 +135,7 @@ export interface ItemTypeConfig {
     defaultBlockMinutes: number
   }
   /**
-   * May this type carry a daily cue (items.reminder_time, migration 029)?
+   * May this type carry a daily cue (items.reminder_time, migration 032)?
    *
    * Capability, NOT intent: an item of a remindable type with no reminder_time
    * is the overwhelming majority and costs nothing — the reminder scan's index

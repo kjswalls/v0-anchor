@@ -5,7 +5,7 @@
  * idempotency story.
  *
  * `plan` says what the day WOULD record, as rows. The settlement writes those
- * rows first, against a unique index (migration 031), and keeps only the ones
+ * rows first, against a unique index (migration 034), and keeps only the ones
  * that were genuinely new. `commit` then performs the outside-world side effect
  * for exactly those.
  *

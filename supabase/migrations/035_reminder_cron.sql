@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 032_reminder_cron.sql — drive the ticks from Postgres, not from the host
+-- 035_reminder_cron.sql — drive the ticks from Postgres, not from the host
 --
 -- WHY THIS EXISTS. vercel.json declared both cron jobs at */5. On Vercel's Hobby
 -- plan a cron expression that fires more than once a day is rejected AT DEPLOY

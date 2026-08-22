@@ -131,7 +131,7 @@ describe('localClock', () => {
 /* ── The scan ─────────────────────────────────────────────────────────────── */
 
 describe('runReminderScan', () => {
-  it('degrades to silence when migration 029 has not been applied', async () => {
+  it('degrades to silence when migration 032 has not been applied', async () => {
     const { service } = makeService({
       'user_settings.select': { error: { code: '42703', message: 'column does not exist' } },
     });

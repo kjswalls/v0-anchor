@@ -34,7 +34,7 @@ export async function GET() {
     .maybeSingle();
 
   if (error) {
-    // A database without migration 030 means "nothing is configured", which is
+    // A database without migration 033 means "nothing is configured", which is
     // true and renderable — not an error state for the settings page to explain.
     if (error.code === '42703' || /column\b.*\bdoes not exist/i.test(error.message ?? '')) {
       return NextResponse.json({ secrets: {}, unavailable: true });

@@ -43,7 +43,7 @@ they teach people to take the device off).
 ## Locked design decisions
 
 0. **The ticks are scheduled by Postgres, not by the host.** `pg_cron` + `pg_net`
-   (migration 032) call the two `/api/cron` routes every five minutes, with the app URL
+   (migration 035) call the two `/api/cron` routes every five minutes, with the app URL
    and the shared secret in Vault. Vercel's Hobby plan rejects any cron more frequent than
    daily *at deploy time*, and five-minute resolution is not a nicety: both jobs exist to
    catch a moment in the USER's local day, so a daily job is right for one timezone and
@@ -114,7 +114,7 @@ they teach people to take the device off).
 
 ## Phase 1 — Tier 1, in-app (shipped)
 
-- **Migration 029.** `items.reminder_time` / `reminder_anchor` / `reminder_sent_date` /
+- **Migration 032.** `items.reminder_time` / `reminder_anchor` / `reminder_sent_date` /
   `reminder_snooze_until`; `user_settings.habit_reminders_enabled` /
   `habit_last_call_enabled` / `habit_last_call_time` / `habit_last_call_date`.
 - **Registry capability** `remindable` + `isRemindable()` (subtask rule, as `isPausable`).

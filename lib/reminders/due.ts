@@ -234,7 +234,7 @@ export function dueReminders(
     // orphaned because the user completed the habit in the app rather than on
     // the notification — fires at the first tick after midnight on the next day
     // the item is due AND stamps that day, suppressing the real cue. See
-    // migration 029's note on reminder_snooze_date.
+    // migration 032's note on reminder_snooze_date.
     const snoozed =
       snoozeDate === clock.dateStr && hasMatured(snoozeUntil, clock.nowMs)
 

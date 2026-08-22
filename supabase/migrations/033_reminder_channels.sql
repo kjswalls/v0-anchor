@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 030_reminder_channels.sql — credentials for the Tier 2 delivery channels
+-- 033_reminder_channels.sql — credentials for the Tier 2 delivery channels
 --
 -- Phase 1 could reach one place: a browser that had accepted push. Phase 2 adds
 -- channels that reach the room the habit happens in (a speaker), and the pocket

@@ -162,7 +162,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         eodReviewTime: settings.eod_review_time ?? '21:00',
       });
 
-      // Reminder settings (migration 029). setState rather than an action, like
+      // Reminder settings (migration 032). setState rather than an action, like
       // the EOD line above: the store holds no user-scoped derived state that a
       // stamp would have to guard, because it is not persisted — see its note.
       useReminderStore.setState({

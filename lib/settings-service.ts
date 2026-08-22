@@ -24,11 +24,11 @@ export interface UserSettingsRow {
   morning_auto_age_days?: number;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
-  /** Master switch for per-item reminders (migration 029). */
+  /** Master switch for per-item reminders (migration 032). */
   habit_reminders_enabled?: boolean;
   habit_last_call_enabled?: boolean;
   habit_last_call_time?: string;
-  /** The nightly stakes settlement (migration 031). */
+  /** The nightly stakes settlement (migration 034). */
   stakes_enabled?: boolean;
   stakes_settle_time?: string;
   /**

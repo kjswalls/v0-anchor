@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 031_stakes.sql — the day, settled
+-- 034_stakes.sql — the day, settled
 --
 -- Tiers 1 and 2 are about ATTENTION: get the cue in front of the person at the
 -- moment it can still change the day. That has a ceiling, and the ceiling is

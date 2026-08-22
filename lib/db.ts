@@ -4,6 +4,7 @@ type DbClient = any;
 import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
+import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
 
 /**
  * DB-level type value for an item: custom items store their user-defined slug
@@ -66,7 +67,7 @@ interface ItemRow {
   // pausing (migration 024) — shared by every type
   paused_at?: string | null;
   paused_until?: string | null;
-  // reminders (migration 029) — shared by every remindable type
+  // reminders (migration 032) — shared by every remindable type
   reminder_time?: string | null;
   reminder_anchor?: string | null;
 }
@@ -217,7 +218,7 @@ function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'gro
  * pauseColumns/containerColumns guard, for the identical reason: PostgREST
  * rejects an INSERT naming a column absent from its schema cache (PGRST204),
  * so writing these unconditionally would break EVERY item create against a
- * database that has not run migration 029, not merely reminder-bearing ones.
+ * database that has not run migration 032, not merely reminder-bearing ones.
  *
  * The app deploys on push while `pnpm db:push` is a separate manual step, so
  * that window is real rather than theoretical.
@@ -324,8 +325,9 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('repeatFrequency' in updates) row.repeat_frequency = updates.repeatFrequency ?? null;
   if ('repeatDays' in updates) row.repeat_days = updates.repeatDays ?? null;
   if ('repeatMonthDay' in updates) row.repeat_month_day = updates.repeatMonthDay ?? null;
-  if ('completedDates' in updates) row.completed_dates = updates.completedDates ?? [];
-  if ('skippedDates' in updates) row.skipped_dates = updates.skippedDates ?? [];
+  // completedDates / skippedDates are DELIBERATELY absent — see the note on
+  // reconcileDateArrays. They are not dropped: updateItem routes them through
+  // the per-date intent RPCs before this allowlist ever runs.
   if ('order' in updates && updates.order != null) row.order = updates.order;
   if ('inProjectBlock' in updates) row.in_project_block = updates.inProjectBlock ?? null;
   if ('previousStartTime' in updates) row.previous_start_time = updates.previousStartTime ?? null;
@@ -335,7 +337,7 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
   if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
-  // Reminders (migration 029). Nulls pass through and MEAN something here —
+  // Reminders (migration 032). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the
   // behavior, not a fallback (compare `group` above, where null would corrupt).
   // Nothing clears the dedupe stamp here, deliberately: reminder_sent_key
@@ -365,8 +367,8 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   if ('groupId' in updates) row.group_id = updates.groupId ?? null;
   if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
-  if ('completedDates' in updates && updates.completedDates != null) row.completed_dates = updates.completedDates;
-  if ('skippedDates' in updates && updates.skippedDates != null) row.skipped_dates = updates.skippedDates;
+  // completedDates / skippedDates: intent-routed by updateItem, never written
+  // as an absolute array. See reconcileDateArrays.
   if ('dailyCounts' in updates && updates.dailyCounts != null) row.daily_counts = updates.dailyCounts;
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
@@ -381,7 +383,7 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   // because the two lists are deliberately never merged.
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
-  // Reminders (029) — same split, same reason, including the re-arm.
+  // Reminders (032) — same split, same reason, including the re-arm.
   // Nothing clears the dedupe stamp here, deliberately: reminder_sent_key
   // contains the TIME the cue was sent for, so retiming re-arms it by itself.
   // Clearing on write instead would fire the cue a second time on any unrelated
@@ -501,17 +503,59 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
 
 // ---- Item CRUD ----
 
+/**
+ * The relation every full-item READ goes through (migration 031): `items` with
+ * completed_dates/skipped_dates trimmed to COMPLETION_READ_WINDOW_DAYS, and
+ * every other column passed through. security_invoker=true, so the own-rows RLS
+ * policy on items still applies exactly as it does to a direct read.
+ *
+ * WRITES NEVER USE THIS. They target `items`, and per-date writes go through the
+ * intent RPCs — including reconcileDateArrays' read, which needs the UNTRIMMED
+ * arrays to diff against and would otherwise treat everything outside the window
+ * as a retraction.
+ */
+const ITEMS_READ_VIEW = 'items_windowed';
+
+let itemsWindowAvailable = true;
+/** False once a query proved migration 031 isn't applied yet. */
+export function getItemsWindowAvailable(): boolean {
+  return itemsWindowAvailable;
+}
+
+/**
+ * The read relation, degrading to the base table when the view is absent.
+ *
+ * Vercel builds on push while `pnpm db:push` is a manual step, so an app that
+ * hard-required the view would take out every read in that window — the same
+ * hazard 027 documents on the write side, and the reason containerColumns and
+ * pauseColumns exist. Falling back serves untrimmed arrays, which is the old
+ * behaviour: bigger, never wrong.
+ */
+function itemsReadFrom(supabase: DbClient) {
+  return supabase.from(itemsWindowAvailable ? ITEMS_READ_VIEW : 'items');
+}
+
+const missingItemsWindow = (error: { code?: string } | null) =>
+  error?.code === '42P01' || error?.code === 'PGRST205';
+
 export async function fetchItems(userId: string, type?: string, client?: DbClient): Promise<Item[]> {
   const supabase = client ?? createClient();
-  let query = supabase
-    .from('items')
-    .select('*')
-    .eq('user_id', userId)
-    .is('deleted_at', null);
-  if (type) query = query.eq('type', type);
-  const { data, error } = await query
-    .order('order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true });
+  const run = async () => {
+    let query = itemsReadFrom(supabase)
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+    if (type) query = query.eq('type', type);
+    return query
+      .order('order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
+  };
+
+  let { data, error } = await run();
+  if (missingItemsWindow(error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    ({ data, error } = await run());
+  }
   if (error) throw error;
   return (data as ItemRow[]).map(itemFromRow);
 }
@@ -653,7 +697,7 @@ async function withResolvedContainer(
 }
 
 /**
- * Columns added by migration 029 that a write may name before the migration has
+ * Columns added by migration 032 that a write may name before the migration has
  * run.
  *
  * reminderColumns (above) already omits them from an INSERT when no reminder is
@@ -700,8 +744,8 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
     if (dropped) {
       console.warn(
         `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying the create without the migration-029 reminder columns — the item is ' +
-          'saved, its reminder is not. Apply supabase/migrations/029_habit_reminders.sql.',
+          'Retrying the create without the migration-032 reminder columns — the item is ' +
+          'saved, its reminder is not. Apply supabase/migrations/032_habit_reminders.sql.',
       );
       ({ error } = await supabase.from('items').insert(stable));
     }
@@ -723,35 +767,56 @@ export async function updateItem(
   userId?: string,
   client?: DbClient,
 ): Promise<void> {
-  const row = updatesToRow(type, updates);
-  if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+  // Per-date arrays are applied as intents and removed from the body BEFORE
+  // the allowlist sees it — they have no column mapping any more.
+  const routedDates = 'completedDates' in updates || 'skippedDates' in updates;
+  const reconciled = routedDates
+    ? await reconcileDateArrays(supabase, id, type, updates as Record<string, unknown>)
+    : (updates as Record<string, unknown>);
 
-  if (error && isMissingColumnError(error)) {
-    const stable: Record<string, unknown> = { ...row };
-    let dropped = false;
-    for (const column of REMINDER_WRITE_COLUMNS) {
-      if (column in stable) {
-        delete stable[column];
-        dropped = true;
+  const row = updatesToRow(type, reconciled as Partial<Task> | Partial<Habit>);
+  if (Object.keys(row).length === 0) {
+    // A body carrying ONLY completedDates/skippedDates leaves an empty row, but
+    // it is not a no-op — the intents above already landed. Fall through to the
+    // notify so it still emits the webhook and feed entry that an absolute-array
+    // update used to, rather than going silent for exactly the agent bodies this
+    // reconciliation exists to serve.
+    if (!routedDates) return;
+  } else {
+    let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+
+    // Schema-behind fallback, applied AFTER reconciliation so it can only ever
+    // drop reminder columns — the per-date arrays are already gone from `row`
+    // by this point and are never candidates for it.
+    if (error && isMissingColumnError(error)) {
+      const stable: Record<string, unknown> = { ...row };
+      let dropped = false;
+      for (const column of REMINDER_WRITE_COLUMNS) {
+        if (column in stable) {
+          delete stable[column];
+          dropped = true;
+        }
+      }
+      if (dropped) {
+        console.warn(
+          `[db] items is missing a column this build writes (${error.message}). ` +
+            'Retrying without the migration-032 reminder columns — the reminder was not saved. ' +
+            'Apply supabase/migrations/032_habit_reminders.sql to fix this.',
+        );
+        if (Object.keys(stable).length > 0) {
+          ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
+        } else {
+          error = null;
+        }
       }
     }
-    if (dropped) {
-      console.warn(
-        `[db] items is missing a column this build writes (${error.message}). ` +
-          'Retrying without the migration-029 reminder columns — the reminder was not saved. ' +
-          'Apply supabase/migrations/029_habit_reminders.sql to fix this.',
-      );
-      if (Object.keys(stable).length > 0) {
-        ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
-      } else {
-        error = null;
-      }
-    }
+
+    if (error) throw error;
   }
-
-  if (error) throw error;
+  // Reports the ORIGINAL updates, arrays included: the dates really are set now,
+  // and the webhook payload is a pinned external contract — narrowing it to the
+  // post-reconcile body would drop completion changes from tasks.updated.
   if (userId) notifyItemChange(userId, type, { action: 'update', id, updates });
   recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
 }
@@ -897,6 +962,154 @@ export async function setItemCompletion(
     adjust_streak: adjustStreak,
   });
   if (error) throw error;
+}
+
+/**
+ * Declare the desired skip state for one date (migration 029) — the twin of
+ * setItemCompletion, and idempotent for the same reasons.
+ *
+ * Skip exclusivity (a skipped occurrence is not a completed one) is NOT here:
+ * callers that need it issue a setItemCompletion(false) alongside, because that
+ * RPC owns the streak column and two RPCs with a claim on streak is the desync
+ * migration 020 exists to prevent.
+ */
+export async function setItemSkip(
+  id: string,
+  type: string,
+  dateStr: string,
+  skipped: boolean,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase.rpc('set_item_skip', {
+    item_id: id,
+    item_type: type,
+    date_str: dateStr,
+    skipped,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Translate an ABSOLUTE completedDates/skippedDates array in an update body
+ * into per-date intents, and strip it from the updates the allowlist will see.
+ *
+ * THE HAZARD THIS CLOSES. Both arrays used to be written whole:
+ * `row.completed_dates = updates.completedDates`. That makes the writer's copy
+ * the new truth, which is only safe while every writer holds the complete
+ * history. Two writers don't:
+ *
+ *   * The OpenClaw plugin's update_task sends "the full set of ISO date strings
+ *     representing all completion dates" (openclaw-plugin/src/tools.ts) — a set
+ *     a model composed from injected context, not one read from this row.
+ *   * Every client, since migration 031: fetchItems now reads items_windowed,
+ *     so what a browser holds is the last COMPLETION_READ_WINDOW_DAYS of a
+ *     history that may run for years.
+ *
+ * HOW IT RESOLVES. Additions are unconditional: a date in the body that the row
+ * lacks is set. Retractions are BOUNDED — a date on the row that the body omits
+ * is cleared only if it falls inside COMPLETION_RETRACTION_WINDOW_DAYS. Outside
+ * that window it is left alone, because "the writer retracted this date" and
+ * "the writer was never sent this date" are indistinguishable in an absolute
+ * array, and only one of those two readings is recoverable if you guess wrong.
+ *
+ * That bound is the other half of migration 031, which trims reads to
+ * COMPLETION_READ_WINDOW_DAYS. THE TWO MUST NOT BE SEPARATED: windowing reads
+ * without bounding retraction here turns every agent write into silent history
+ * deletion, and the read window is what creates partial writers in the first
+ * place. The retraction window is deliberately the larger of the two so that a
+ * client whose fetch has gone stale can still retract what it was actually
+ * served — see lib/completion-window.ts for why the gap exists.
+ *
+ * `streak` is untouched either way: a whole-array write never moved it, and the
+ * reconciled intents pass adjustStreak=false so they don't either.
+ *
+ * What this buys beyond the windowing: the write goes through the atomic
+ * per-date RPCs, so it no longer clobbers a concurrent toggle, no longer inverts
+ * intent against a stale client (migration 020's two flaws, which skipped_dates
+ * still had because it never got an RPC), and no longer has a column mapping
+ * anything can reach by accident.
+ *
+ * planner-store's undo/redo path has open-coded this diff since the unified
+ * items refactor (it deletes completedDates from the patch and replays it as
+ * intents). This is that guard, moved to the boundary where nothing can bypass
+ * it. The store still emits intents directly on its hot paths — it knows the
+ * delta already and shouldn't pay for a read to rediscover it.
+ */
+async function reconcileDateArrays(
+  supabase: DbClient,
+  id: string,
+  type: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const hasCompleted = 'completedDates' in updates;
+  const hasSkipped = 'skippedDates' in updates;
+  if (!hasCompleted && !hasSkipped) return updates;
+
+  const rest = { ...updates };
+  delete rest.completedDates;
+  delete rest.skippedDates;
+
+  const { data, error } = await supabase
+    .from('items')
+    .select('completed_dates, skipped_dates')
+    .eq('id', id)
+    .eq('type', type)
+    .maybeSingle();
+  // No row (deleted, wrong type, another tenant's id under RLS) means there is
+  // nothing to reconcile against. Returning `rest` lets the caller's remaining
+  // fields take their normal path — including the no-op early return when the
+  // body carried nothing else.
+  if (error || !data) {
+    if (error) console.error('completion reconcile read failed', error);
+    return rest;
+  }
+
+  const row = data as { completed_dates: string[] | null; skipped_dates: string[] | null };
+  const intents: Promise<void>[] = [];
+
+  // The retraction bound. A date the body omits is cleared ONLY if it falls
+  // inside the window an absolute writer could plausibly have been served;
+  // anything older is untouchable through this path, because a writer that was
+  // never sent a date cannot be retracting it. Dates are YYYY-MM-DD, so the
+  // string compare is a chronological one.
+  const cutoff = windowStart(COMPLETION_RETRACTION_WINDOW_DAYS);
+  const retractable = (d: string) => d >= cutoff;
+
+  if (hasCompleted) {
+    const desired = new Set((updates.completedDates as string[] | null) ?? []);
+    const current = new Set(row.completed_dates ?? []);
+    // adjustStreak=false, matching the absolute write this replaces: a whole-array
+    // update never moved streak (the allowlist carried it as its own field, and
+    // callers that want it moved say so). Letting the reconciled intents adjust it
+    // would make streak jump by the SIZE OF THE DIFF — an agent body that dropped a
+    // year of dates would decrement it to zero — which is a new behavior smuggled
+    // in under a mechanism change. Same reasoning as undo/redo's absolute restore.
+    for (const d of desired) {
+      if (!current.has(d)) intents.push(setItemCompletion(id, type, d, true, false, supabase));
+    }
+    for (const d of current) {
+      if (!desired.has(d) && retractable(d)) {
+        intents.push(setItemCompletion(id, type, d, false, false, supabase));
+      }
+    }
+  }
+
+  if (hasSkipped) {
+    const desired = new Set((updates.skippedDates as string[] | null) ?? []);
+    const current = new Set(row.skipped_dates ?? []);
+    for (const d of desired) {
+      if (!current.has(d)) intents.push(setItemSkip(id, type, d, true, supabase));
+    }
+    for (const d of current) {
+      if (!desired.has(d) && retractable(d)) {
+        intents.push(setItemSkip(id, type, d, false, supabase));
+      }
+    }
+  }
+
+  await Promise.all(intents);
+  return rest;
 }
 
 /**
@@ -1932,9 +2145,13 @@ export async function listDeleted(
   const supabase = client ?? createClient();
   const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
 
-  const [items, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
+  const [initialItems, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
     await Promise.all([
-      deleted(supabase.from('items').select('*')).order('deleted_at', { ascending: false }),
+      // Windowed like every other full-item read (031). Deliberately the SAME
+      // relation as fetchItems: a bin serving untrimmed arrays while the live
+      // store holds trimmed ones would put two shapes of the same item in one
+      // store, and a restore-then-undo would diff them against each other.
+      deleted(itemsReadFrom(supabase).select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('projects').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('habit_groups').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('routines').select('*')).order('deleted_at', { ascending: false }),
@@ -1948,6 +2165,16 @@ export async function listDeleted(
       supabase.from('program_routines').select('program_id, routine_id')
         .eq('user_id', userId).order('routine_id', { ascending: true }),
     ]);
+
+  // The view may simply not be deployed yet (see itemsReadFrom). Latch and retry
+  // the one query that used it, rather than failing a bin whose other seven
+  // queries succeeded.
+  let items = initialItems;
+  if (missingItemsWindow(items.error) && itemsWindowAvailable) {
+    itemsWindowAvailable = false;
+    items = await deleted(itemsReadFrom(supabase).select('*'))
+      .order('deleted_at', { ascending: false });
+  }
 
   // One failure fails the lot. A partial bin is worse than an error: a user
   // hunting for a deleted routine would find a Trash that renders happily

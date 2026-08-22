@@ -7,7 +7,7 @@ export declare const RepeatFrequencySchema: z.ZodEnum<["none", "daily", "weekday
 /**
  * 24-hour local wall-clock 'HH:mm'.
  *
- * Enforced at the WRITE boundary only. Migration 029 puts the same shape in a
+ * Enforced at the WRITE boundary only. Migration 032 puts the same shape in a
  * CHECK constraint, so an unvalidated agent body would 500 at Postgres instead
  * of 400 here — the reasoning TaskCreateSchema already applies to uuids and the
  * aiStatus vocabulary. The READ shapes stay plain `z.string()`: a row written
@@ -190,7 +190,7 @@ export declare const ProgramSchema: z.ZodObject<{
 export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -379,7 +379,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -526,7 +526,7 @@ export declare const PROGRAM_FIELDS: (keyof z.infer<typeof ProgramSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -720,7 +720,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -866,7 +866,7 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
 export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -1066,7 +1066,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -1197,7 +1197,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
 }>, z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -1294,7 +1294,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
 }>, z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-     * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
      */
     reminderTime: z.ZodOptional<z.ZodString>;
@@ -2578,7 +2578,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     tasks: z.ZodArray<z.ZodEffects<z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-         * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
          */
         reminderTime: z.ZodOptional<z.ZodString>;
@@ -2767,7 +2767,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-         * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
          */
         reminderTime: z.ZodOptional<z.ZodString>;
@@ -2959,7 +2959,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     items: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-         * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
          */
         reminderTime: z.ZodOptional<z.ZodString>;
@@ -3090,7 +3090,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }>, z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-         * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
          */
         reminderTime: z.ZodOptional<z.ZodString>;
@@ -3187,7 +3187,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }>, z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
-         * reminder. NOT a timestamp: see migration 029 on why the instant-shaped
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
          */
         reminderTime: z.ZodOptional<z.ZodString>;
