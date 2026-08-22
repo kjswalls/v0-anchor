@@ -1233,15 +1233,23 @@ export const usePlannerStore = create<PlannerStore>()(
           state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
         // `Aug 21`, not `2026-08-21`. Local to the store rather than imported
         // from lib/collections, which is a hooks module — a store importing
-        // React hooks is a cycle waiting to happen. Built at UTC noon and
-        // rendered in the USER's zone, so the day shown is the day stored —
-        // never `new Date('yyyy-mm-dd')`, which is UTC midnight and formats as
-        // the previous day west of Greenwich.
+        // React hooks is a cycle waiting to happen.
+        //
+        // Built at UTC noon and rendered in UTC, so the day shown is the day
+        // STORED, in every zone. targetOn is a calendar date — no time, no
+        // zone — so converting it to one is wrong by construction, and the
+        // conversion is not hypothetical: UTC noon rendered at UTC+12 or +14
+        // (Auckland, Kiritimati) lands on the following day, so a goal due
+        // `2026-08-21` would read "Aug 22" to those users. `tz` below is a
+        // different question and still needs the user's zone — it asks what
+        // TODAY is, which is genuinely zone-dependent. Note also why noon and
+        // not midnight: `new Date('yyyy-mm-dd')` is UTC midnight and formats
+        // as the previous day anywhere west of Greenwich.
         const formatGoalDay = (dateStr: string) => {
           const [y, m, d] = dateStr.split('-').map(Number);
           if (!y || !m || !d) return dateStr;
           return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString(undefined, {
-            timeZone: tz,
+            timeZone: 'UTC',
             month: 'short',
             day: 'numeric',
           });

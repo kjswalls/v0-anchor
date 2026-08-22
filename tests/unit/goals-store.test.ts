@@ -83,6 +83,11 @@ beforeEach(() => {
     projects: [],
     habitGroups: [],
     goalsAvailable: true,
+    // Reset with the rest of it. Nothing set this until the UTC+14 case below,
+    // and the moment something did it leaked forward into every later test in
+    // the file — the check-in bridge does date math and started reading a zone
+    // it never asked for.
+    userTimezone: undefined,
   } as never);
 });
 
@@ -466,6 +471,28 @@ describe('Phase 2 — the goal surface', () => {
     } as never);
     usePlannerStore.getState().toggleTaskStatus('s1');
     expect(usePlannerStore.getState().goals[0].state).toBe('active');
+  });
+
+  it('renders a far target as the day STORED, in a zone ahead of UTC', () => {
+    // targetOn is a calendar date — no time, no zone — so the day shown must
+    // not depend on who is looking. The regression this pins was self-inflicted
+    // and one commit old: formatGoalDay built the date at UTC noon and then
+    // rendered it in the USER's zone, which at UTC+12/+14 is already tomorrow.
+    // A goal due 2026-12-01 read "Dec 2" in Auckland and Kiritimati.
+    //
+    // Kiritimati (UTC+14) is the widest offset there is, so it fails loudest;
+    // Auckland would do, and is the zone goals.test.ts already uses.
+    usePlannerStore.setState({
+      userTimezone: 'Pacific/Kiritimati',
+      items: [task({ id: 's1', title: 'Sit HSK 3' })],
+      goals: [goal({ milestoneIds: ['s1'], targetOn: '2999-12-01' })],
+    } as never);
+    usePlannerStore.getState().toggleTaskStatus('s1');
+
+    const call = vi.mocked(toast).mock.calls.at(-1);
+    const description = (call?.[1] as { description?: string } | undefined)?.description ?? '';
+    expect(description).toContain('Dec 1');
+    expect(description).not.toContain('Dec 2');
   });
 
   it('stays quiet while any milestone is still open', () => {
