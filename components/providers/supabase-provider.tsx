@@ -6,10 +6,12 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore, REMINDER_DEFAULTS } from '@/lib/reminder-store';
 import { loadSettings, saveSettings } from '@/lib/settings-service';
 import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { useTheme } from 'next-themes';
@@ -160,6 +162,17 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         eodReviewTime: settings.eod_review_time ?? '21:00',
       });
 
+      // Reminder settings (migration 032). setState rather than an action, like
+      // the EOD line above: the store holds no user-scoped derived state that a
+      // stamp would have to guard, because it is not persisted — see its note.
+      useReminderStore.setState({
+        remindersEnabled: settings.habit_reminders_enabled ?? REMINDER_DEFAULTS.remindersEnabled,
+        lastCallEnabled: settings.habit_last_call_enabled ?? REMINDER_DEFAULTS.lastCallEnabled,
+        lastCallTime: settings.habit_last_call_time ?? REMINDER_DEFAULTS.lastCallTime,
+        stakesEnabled: settings.stakes_enabled ?? REMINDER_DEFAULTS.stakesEnabled,
+        stakesSettleTime: settings.stakes_settle_time ?? REMINDER_DEFAULTS.stakesSettleTime,
+      });
+
       if (settings.theme) {
         setThemeRef.current(settings.theme);
       }
@@ -288,6 +301,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // gates the overdue sweep, and extensions must never be able to fail
         // the data load.
         useExtensionsStore.getState().hydrate(session.user.id);
+        // Which channel credentials are SET — never their values. Same
+        // fire-and-forget posture: a settings page that cannot say "saved" is a
+        // cosmetic loss; a planner that failed to load is not.
+        useChannelSecretsStore.getState().hydrate(session.user.id);
       }
     });
 
@@ -296,11 +313,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         loadPlanner(session.user.id);
         hydrateSettings(session.user.id);
         useExtensionsStore.getState().hydrate(session.user.id);
+        useChannelSecretsStore.getState().hydrate(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         loadedUserId.current = null;
         clearStore();
         useExtensionsStore.getState().reset();
+        useChannelSecretsStore.getState().reset();
         // clearStore only resets the planner. The morning store holds
         // account-owned settings too — including the auto-age switch, which
         // drives an unattended mutation — and it persists them to a

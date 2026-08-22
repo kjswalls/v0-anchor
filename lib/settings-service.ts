@@ -24,6 +24,22 @@ export interface UserSettingsRow {
   morning_auto_age_days?: number;
   eod_review_time?: string;
   eod_review_enabled?: boolean;
+  /** Master switch for per-item reminders (migration 032). */
+  habit_reminders_enabled?: boolean;
+  habit_last_call_enabled?: boolean;
+  habit_last_call_time?: string;
+  /** The nightly stakes settlement (migration 034). */
+  stakes_enabled?: boolean;
+  stakes_settle_time?: string;
+  /**
+   * The settlement's own bookkeeping. The client writes it in exactly ONE
+   * place — switching stakes on, to close the books on everything before today
+   * — and reads it nowhere: no store hydrates it, so a stale copy can never be
+   * written back to re-open a day that was already settled. Deliberately absent
+   * from DEFAULT_SETTINGS for the same reason; there is no client-side default
+   * for a value only the server should move.
+   */
+  stakes_settled_date?: string;
   /**
    * Active ground palette slug (lib/theme-palettes.ts). Deliberately absent
    * from DEFAULT_SETTINGS: undefined means "never chosen on any device", and
@@ -54,6 +70,11 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   morning_auto_age_days: 30,
   eod_review_time: '21:00',
   eod_review_enabled: false,
+  habit_reminders_enabled: false,
+  habit_last_call_enabled: false,
+  habit_last_call_time: '20:30',
+  stakes_enabled: false,
+  stakes_settle_time: '03:00',
 };
 
 /**
@@ -98,10 +119,23 @@ const STABLE_SETTINGS_COLUMNS = [
  * round-trip on databases that predate it and nothing else; a column moved up
  * too early wipes everyone's settings, so err towards leaving it here.
  *
- * Currently: migration 022 (morning auto-age). Migration 025 (theme_palette)
- * graduated to stable on 2026-08-12 once it was applied to prod.
+ * Currently: migration 022 (morning auto-age), 029 (habit reminders) and 031
+ * (stakes). Migration 025 (theme_palette) graduated to stable on 2026-08-12
+ * once it was applied to prod.
  */
-const PENDING_SCHEMA_COLUMNS = ['morning_auto_age_enabled', 'morning_auto_age_days'] as const;
+const PENDING_SCHEMA_COLUMNS = [
+  'morning_auto_age_enabled',
+  'morning_auto_age_days',
+  'habit_reminders_enabled',
+  'habit_last_call_enabled',
+  'habit_last_call_time',
+  'stakes_enabled',
+  'stakes_settle_time',
+  // Listed for the WRITE path: flushSettings drops these when the database is
+  // behind, and without it a pre-031 database would reject the whole batched
+  // upsert. It rides along in the select too, where nothing reads it.
+  'stakes_settled_date',
+] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');
 const STABLE_SETTINGS_SELECT = STABLE_SETTINGS_COLUMNS.join(',');

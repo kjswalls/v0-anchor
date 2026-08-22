@@ -39,8 +39,20 @@ describe('settings manifest — structure', () => {
   });
 
   it('every id is dotted and stable-looking', () => {
+    // Two shapes, both permanent — these ids are the deep links and the e2e
+    // handles, so the point of this test is that they look DELIBERATE, not that
+    // they are short.
+    //
+    //   pane.setting                      — a hand-written record.
+    //   extensions.<slug>[.<field>]       — a record generated per extension in
+    //                                       channelRecords(). The slug segment
+    //                                       is the extension's own permanent
+    //                                       slug, which is kebab-case by the
+    //                                       user_extensions CHECK constraint,
+    //                                       so hyphens are admitted HERE and
+    //                                       nowhere else.
     for (const s of SETTINGS) {
-      expect(s.id, s.id).toMatch(/^[a-z]+\.[a-zA-Z]+$/);
+      expect(s.id, s.id).toMatch(/^[a-z]+\.[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9]*)?$/);
     }
   });
 

@@ -67,6 +67,9 @@ interface ItemRow {
   // pausing (migration 024) — shared by every type
   paused_at?: string | null;
   paused_until?: string | null;
+  // reminders (migration 032) — shared by every remindable type
+  reminder_time?: string | null;
+  reminder_anchor?: string | null;
 }
 
 function itemFromRow(row: ItemRow): Item {
@@ -104,6 +107,8 @@ function itemFromRow(row: ItemRow): Item {
       aiResult: row.ai_result ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
+      reminderTime: row.reminder_time ?? undefined,
+      reminderAnchor: row.reminder_anchor ?? undefined,
     };
   }
   if (row.type === 'habit') {
@@ -129,6 +134,8 @@ function itemFromRow(row: ItemRow): Item {
       notes: row.notes ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
+      reminderTime: row.reminder_time ?? undefined,
+      reminderAnchor: row.reminder_anchor ?? undefined,
     };
   }
   return {
@@ -164,6 +171,8 @@ function itemFromRow(row: ItemRow): Item {
     aiResult: row.ai_result ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
+    reminderTime: row.reminder_time ?? undefined,
+    reminderAnchor: row.reminder_anchor ?? undefined,
   };
 }
 
@@ -204,6 +213,23 @@ function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'gro
   return item.projectId !== undefined ? { project_id: item.projectId } : {};
 }
 
+/**
+ * Reminder columns, emitted ONLY when set — the third instance of the
+ * pauseColumns/containerColumns guard, for the identical reason: PostgREST
+ * rejects an INSERT naming a column absent from its schema cache (PGRST204),
+ * so writing these unconditionally would break EVERY item create against a
+ * database that has not run migration 032, not merely reminder-bearing ones.
+ *
+ * The app deploys on push while `pnpm db:push` is a separate manual step, so
+ * that window is real rather than theoretical.
+ */
+function reminderColumns(item: Item): Partial<Pick<ItemRow, 'reminder_time' | 'reminder_anchor'>> {
+  return {
+    ...(item.reminderTime !== undefined ? { reminder_time: item.reminderTime } : {}),
+    ...(item.reminderAnchor !== undefined ? { reminder_anchor: item.reminderAnchor } : {}),
+  };
+}
+
 function itemToRow(userId: string, item: Item): ItemRow {
   if (item.type === 'habit') {
     return {
@@ -228,6 +254,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
       notes: item.notes ?? null,
       ...pauseColumns(item),
       ...containerColumns(item),
+      ...reminderColumns(item),
     };
   }
   // task and custom items share the task-shaped column set; the DB type is
@@ -262,6 +289,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ai_result: item.aiResult ?? null,
     ...pauseColumns(item),
     ...containerColumns(item),
+    ...reminderColumns(item),
   };
 }
 
@@ -309,6 +337,15 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
   if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
+  // Reminders (migration 032). Nulls pass through and MEAN something here —
+  // null is how a reminder is turned off, so a `?? null` guard is the
+  // behavior, not a fallback (compare `group` above, where null would corrupt).
+  // Nothing clears the dedupe stamp here, deliberately: reminder_sent_key
+  // contains the TIME the cue was sent for, so retiming re-arms it by itself.
+  // Clearing on write instead would fire the cue a second time on any unrelated
+  // edit, because the item dialog's whole-item save names every field.
+  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   // Pause (migration 024). These allowlists gate EVERY write, the app's own
   // included — updateItem early-returns on an empty mapped row, so omitting
   // them here would make the store's pause verb (and every undo/redo restore
@@ -346,6 +383,13 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   // because the two lists are deliberately never merged.
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
+  // Reminders (032) — same split, same reason, including the re-arm.
+  // Nothing clears the dedupe stamp here, deliberately: reminder_sent_key
+  // contains the TIME the cue was sent for, so retiming re-arms it by itself.
+  // Clearing on write instead would fire the cue a second time on any unrelated
+  // edit, because the item dialog's whole-item save names every field.
+  if ('reminderTime' in updates) row.reminder_time = updates.reminderTime ?? null;
+  if ('reminderAnchor' in updates) row.reminder_anchor = updates.reminderAnchor ?? null;
   return row;
 }
 
@@ -721,10 +765,61 @@ async function withResolvedContainer(
   return id === undefined ? item : { ...item, projectId: id ?? undefined };
 }
 
+/**
+ * Columns added by migration 032 that a write may name before the migration has
+ * run.
+ *
+ * reminderColumns (above) already omits them from an INSERT when no reminder is
+ * set, and the update path cannot do even that: the ItemDialog's whole-item
+ * save passes DRAFT_KEYS, which includes the reminder fields, so EVERY modal
+ * edit names reminder_time. PostgREST rejects the entire statement with
+ * PGRST204 when one named column is missing, so unguarded that means a deploy
+ * landing before `pnpm db:push` breaks editing any item at all — and creating
+ * one WITH a reminder loses it outright.
+ *
+ * The retry both paths use is loadSettings' fallback applied to items: drop the
+ * not-yet-migrated columns and try once more, so the write lands and only the
+ * reminder half is deferred.
+ */
+const REMINDER_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor'] as const;
+
+/** True only for "the database doesn't have a column we asked for". */
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703' || error.code === 'PGRST204') return true;
+  return /column\b.*\bdoes not exist/i.test(error.message ?? '');
+}
+
 export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const linked = await withResolvedContainer(supabase, userId, item);
-  const { error } = await supabase.from('items').insert(itemToRow(userId, linked));
+  const row = itemToRow(userId, linked) as unknown as Record<string, unknown>;
+  let { error } = await supabase.from('items').insert(row);
+
+  // reminderColumns already omits these when no reminder is set, so a plain
+  // create against a pre-029 database is fine. Creating an item WITH a reminder
+  // is not: PostgREST rejects the whole insert with PGRST204 and the item is
+  // lost outright — a worse outcome than the update path's, which this retry
+  // was written for. Same fallback, applied to the insert.
+  if (error && isMissingColumnError(error)) {
+    const stable = { ...row };
+    let dropped = false;
+    for (const column of REMINDER_WRITE_COLUMNS) {
+      if (column in stable) {
+        delete stable[column];
+        dropped = true;
+      }
+    }
+    if (dropped) {
+      console.warn(
+        `[db] items is missing a column this build writes (${error.message}). ` +
+          'Retrying the create without the migration-032 reminder columns — the item is ' +
+          'saved, its reminder is not. Apply supabase/migrations/032_habit_reminders.sql.',
+      );
+      ({ error } = await supabase.from('items').insert(stable));
+    }
+  }
+
   if (error) throw error;
   const dbType = itemDbType(item);
   notifyItemChange(userId, dbType, {
@@ -758,7 +853,34 @@ export async function updateItem(
     // reconciliation exists to serve.
     if (!routedDates) return;
   } else {
-    const { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+    let { error } = await supabase.from('items').update(row).eq('id', id).eq('type', type);
+
+    // Schema-behind fallback, applied AFTER reconciliation so it can only ever
+    // drop reminder columns — the per-date arrays are already gone from `row`
+    // by this point and are never candidates for it.
+    if (error && isMissingColumnError(error)) {
+      const stable: Record<string, unknown> = { ...row };
+      let dropped = false;
+      for (const column of REMINDER_WRITE_COLUMNS) {
+        if (column in stable) {
+          delete stable[column];
+          dropped = true;
+        }
+      }
+      if (dropped) {
+        console.warn(
+          `[db] items is missing a column this build writes (${error.message}). ` +
+            'Retrying without the migration-032 reminder columns — the reminder was not saved. ' +
+            'Apply supabase/migrations/032_habit_reminders.sql to fix this.',
+        );
+        if (Object.keys(stable).length > 0) {
+          ({ error } = await supabase.from('items').update(stable).eq('id', id).eq('type', type));
+        } else {
+          error = null;
+        }
+      }
+    }
+
     if (error) throw error;
   }
   // Reports the ORIGINAL updates, arrays included: the dates really are set now,
@@ -1202,6 +1324,62 @@ export async function fetchUserExtensions(
   return Object.fromEntries(
     (data as { slug: string; enabled: boolean }[]).map((row) => [row.slug, row.enabled]),
   );
+}
+
+/**
+ * Per-extension settings (user_extensions.config), keyed by slug.
+ *
+ * A SEPARATE call from fetchUserExtensions rather than a wider select on it,
+ * deliberately. That function's `Record<string, boolean> | null` return is the
+ * availability latch the extensions store gates every write on, and widening it
+ * would mean re-deriving "is the table there" from a different shape at the one
+ * place that must never get it wrong. The two run in the same Promise.all, so
+ * the extra call costs no wall-clock.
+ *
+ * Same missing-table contract as its sibling: null means "not deployed".
+ */
+export async function fetchUserExtensionConfigs(
+  userId: string,
+  client?: DbClient,
+): Promise<Record<string, Record<string, unknown>> | null> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('user_extensions')
+    .select('slug, config')
+    .eq('user_id', userId);
+  if (error) {
+    if (error.code === '42P01' || error.code === 'PGRST205') return null;
+    throw error;
+  }
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const row of data as { slug: string; config: unknown }[]) {
+    if (row.config && typeof row.config === 'object') {
+      out[row.slug] = row.config as Record<string, unknown>;
+    }
+  }
+  return out;
+}
+
+/**
+ * Replace one extension's config blob.
+ *
+ * Whole-object, not a merge: the caller (the store) already holds the merged
+ * value, and a server-side merge would need a read-modify-write that races the
+ * next keystroke. `enabled` is omitted from the upsert payload on purpose — the
+ * column has a DB default of false, so naming it here would silently switch an
+ * extension OFF whenever someone edited its settings before toggling it on.
+ */
+export async function setUserExtensionConfig(
+  userId: string,
+  slug: string,
+  config: Record<string, unknown>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('user_extensions')
+    .upsert({ user_id: userId, slug, config }, { onConflict: 'user_id,slug', ignoreDuplicates: false });
+  if (error) throw error;
 }
 
 export async function setUserExtensionEnabled(

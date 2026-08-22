@@ -314,9 +314,22 @@ export function isOpenLoopOn(item: Item, dateStr: string): boolean {
   if (isRecurring(item)) {
     if (isCompletedOnDate(item, day)) return false;
     if (isSkippedOnDate(item, day)) return false;
-    // Habit-only, and only when timesPerDay is in play; absent elsewhere.
+    // A counted habit is discharged by REACHING its target, not by being
+    // touched. This read `> 0`, which meant one tally of a 3×-a-day habit
+    // closed the day — while the row still drew 1/3 and the stepper still
+    // wanted two more. Every surface that asks this question was therefore
+    // disagreeing with the grid: the reminder went quiet, the EOD review
+    // stopped listing it, Beacon stopped mentioning it, and the streak still
+    // broke at midnight.
+    //
+    // `timesPerDay ?? 1` is what keeps this from being a behavior change for
+    // anything else: an ordinary habit has no target, so any count still
+    // discharges it exactly as before. Only habits with a real target move.
     const counts = (item as { dailyCounts?: Record<string, number> }).dailyCounts;
-    if (counts && (counts[day] ?? 0) > 0) return false;
+    if (counts) {
+      const target = (item as { timesPerDay?: number }).timesPerDay ?? 1;
+      if ((counts[day] ?? 0) >= Math.max(1, target)) return false;
+    }
     return true;
   }
   return item.status === 'pending';

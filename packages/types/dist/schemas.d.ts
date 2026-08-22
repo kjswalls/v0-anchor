@@ -4,6 +4,16 @@ export declare const TimeBucketSchema: z.ZodEnum<["anytime", "morning", "afterno
 export declare const TaskStatusSchema: z.ZodEnum<["pending", "completed", "cancelled"]>;
 export declare const HabitStatusSchema: z.ZodEnum<["pending", "done", "skipped"]>;
 export declare const RepeatFrequencySchema: z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>;
+/**
+ * 24-hour local wall-clock 'HH:mm'.
+ *
+ * Enforced at the WRITE boundary only. Migration 032 puts the same shape in a
+ * CHECK constraint, so an unvalidated agent body would 500 at Postgres instead
+ * of 400 here — the reasoning TaskCreateSchema already applies to uuids and the
+ * aiStatus vocabulary. The READ shapes stay plain `z.string()`: a row written
+ * before the constraint existed must never fail the whole context safeParse.
+ */
+export declare const TimeOfDaySchema: z.ZodString;
 export declare const RecurrenceFieldsSchema: z.ZodObject<{
     repeatFrequency: z.ZodOptional<z.ZodEffects<z.ZodEnum<["none", "daily", "weekdays", "weekends", "monthly", "custom"]>, "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom", unknown>>;
     repeatDays: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
@@ -258,6 +268,17 @@ export declare const GoalSchema: z.ZodObject<{
 }>;
 export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
+    /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
      * retro-suppress every unmarked occurrence back through July.
@@ -329,6 +350,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -357,6 +380,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -385,6 +410,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -413,6 +440,8 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -428,6 +457,17 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
+    /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
      * retro-suppress every unmarked occurrence back through July.
@@ -480,6 +520,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -501,6 +543,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -522,6 +566,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -543,6 +589,8 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -556,6 +604,17 @@ export declare const ROUTINE_FIELDS: (keyof z.infer<typeof RoutineSchema>)[];
 export declare const PROGRAM_FIELDS: (keyof z.infer<typeof ProgramSchema>)[];
 export declare const GOAL_FIELDS: (keyof z.infer<typeof GoalSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -630,6 +689,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -659,6 +720,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -688,6 +751,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -717,6 +782,8 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -732,6 +799,17 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
+    /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
      * retro-suppress every unmarked occurrence back through July.
@@ -786,6 +864,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -808,6 +888,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -830,6 +912,8 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -852,12 +936,25 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
 export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -943,6 +1040,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -973,6 +1072,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1003,6 +1104,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1033,6 +1136,8 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1047,6 +1152,17 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiResult?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -1121,6 +1237,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1150,6 +1268,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1163,6 +1283,17 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
 }>, z.ZodObject<{
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -1218,6 +1349,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -1240,11 +1373,24 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, z.ZodObject<{
+    /**
+     * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+     * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+     * items.reminder_at column was left alone rather than reused.
+     */
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -1330,6 +1476,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1360,6 +1508,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1389,6 +1539,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1419,6 +1571,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -1441,6 +1595,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1470,6 +1626,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1500,6 +1658,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
@@ -1522,6 +1682,8 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     duration?: number | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1573,6 +1735,12 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     parentItemId: z.ZodOptional<z.ZodString>;
     aiStatus: z.ZodOptional<z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>>;
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -1629,6 +1797,8 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1654,6 +1824,8 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1679,6 +1851,8 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1704,6 +1878,8 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
@@ -1733,6 +1909,12 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     repeatMonthDay: z.ZodOptional<z.ZodNumber>;
     timesPerDay: z.ZodOptional<z.ZodNumber>;
     currentDayCount: z.ZodOptional<z.ZodNumber>;
+    reminderTime: z.ZodOptional<z.ZodString>;
+    /**
+     * The implementation-intention phrase the cue is rehearsed as — "after I pour
+     * my coffee". Free text, never parsed; rendered into the notification body.
+     */
+    reminderAnchor: z.ZodOptional<z.ZodString>;
     /**
      * ISO timestamp the pause began. Load-bearing, not decorative: it is the
      * resolver's LOWER bound, without which a pause started in August would
@@ -1767,6 +1949,8 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1785,6 +1969,8 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1803,6 +1989,8 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1821,6 +2009,8 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
@@ -1860,6 +2050,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     assignee: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     aiStatus: z.ZodOptional<z.ZodNullable<z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>>>;
     aiResult: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reminderTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reminderAnchor: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | null | undefined;
@@ -1872,6 +2064,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1898,6 +2092,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1924,6 +2120,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1950,6 +2148,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -1976,6 +2176,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -2002,6 +2204,8 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     project?: string | null | undefined;
@@ -2042,6 +2246,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timesPerDay: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     currentDayCount: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     notes: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reminderTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    reminderAnchor: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     status?: "pending" | "done" | "skipped" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -2054,6 +2260,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2073,6 +2281,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2092,6 +2302,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2111,6 +2323,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2130,6 +2344,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2149,6 +2365,8 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     duration?: number | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
+    reminderTime?: string | null | undefined;
+    reminderAnchor?: string | null | undefined;
     title?: string | undefined;
     notes?: string | null | undefined;
     group?: string | undefined;
@@ -2870,6 +3088,17 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     fetchedAt: z.ZodString;
     tasks: z.ZodArray<z.ZodEffects<z.ZodObject<{
         /**
+         * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+         * items.reminder_at column was left alone rather than reused.
+         */
+        reminderTime: z.ZodOptional<z.ZodString>;
+        /**
+         * The implementation-intention phrase the cue is rehearsed as — "after I pour
+         * my coffee". Free text, never parsed; rendered into the notification body.
+         */
+        reminderAnchor: z.ZodOptional<z.ZodString>;
+        /**
          * ISO timestamp the pause began. Load-bearing, not decorative: it is the
          * resolver's LOWER bound, without which a pause started in August would
          * retro-suppress every unmarked occurrence back through July.
@@ -2941,6 +3170,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2969,6 +3200,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -2997,6 +3230,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3025,6 +3260,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3039,6 +3276,17 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiResult?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
+        /**
+         * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+         * items.reminder_at column was left alone rather than reused.
+         */
+        reminderTime: z.ZodOptional<z.ZodString>;
+        /**
+         * The implementation-intention phrase the cue is rehearsed as — "after I pour
+         * my coffee". Free text, never parsed; rendered into the notification body.
+         */
+        reminderAnchor: z.ZodOptional<z.ZodString>;
         /**
          * ISO timestamp the pause began. Load-bearing, not decorative: it is the
          * resolver's LOWER bound, without which a pause started in August would
@@ -3092,6 +3340,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3113,6 +3363,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3134,6 +3386,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3155,6 +3409,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3212,6 +3468,17 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         color?: string | undefined;
     }>, "many">;
     items: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
+        /**
+         * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+         * items.reminder_at column was left alone rather than reused.
+         */
+        reminderTime: z.ZodOptional<z.ZodString>;
+        /**
+         * The implementation-intention phrase the cue is rehearsed as — "after I pour
+         * my coffee". Free text, never parsed; rendered into the notification body.
+         */
+        reminderAnchor: z.ZodOptional<z.ZodString>;
         /**
          * ISO timestamp the pause began. Load-bearing, not decorative: it is the
          * resolver's LOWER bound, without which a pause started in August would
@@ -3286,6 +3553,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3315,6 +3584,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3328,6 +3599,17 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
     }>, z.ZodObject<{
+        /**
+         * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+         * items.reminder_at column was left alone rather than reused.
+         */
+        reminderTime: z.ZodOptional<z.ZodString>;
+        /**
+         * The implementation-intention phrase the cue is rehearsed as — "after I pour
+         * my coffee". Free text, never parsed; rendered into the notification body.
+         */
+        reminderAnchor: z.ZodOptional<z.ZodString>;
         /**
          * ISO timestamp the pause began. Load-bearing, not decorative: it is the
          * resolver's LOWER bound, without which a pause started in August would
@@ -3383,6 +3665,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3405,11 +3689,24 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, z.ZodObject<{
+        /**
+         * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
+         * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
+         * items.reminder_at column was left alone rather than reused.
+         */
+        reminderTime: z.ZodOptional<z.ZodString>;
+        /**
+         * The implementation-intention phrase the cue is rehearsed as — "after I pour
+         * my coffee". Free text, never parsed; rendered into the notification body.
+         */
+        reminderAnchor: z.ZodOptional<z.ZodString>;
         /**
          * ISO timestamp the pause began. Load-bearing, not decorative: it is the
          * resolver's LOWER bound, without which a pause started in August would
@@ -3495,6 +3792,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3525,6 +3824,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3554,6 +3855,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3584,6 +3887,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3606,6 +3911,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3635,6 +3942,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3665,6 +3974,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3687,6 +3998,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3897,6 +4210,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3927,6 +4242,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -3968,6 +4285,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -3998,6 +4317,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -4020,6 +4341,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -4091,6 +4414,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -4121,6 +4446,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -4162,6 +4489,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
@@ -4192,6 +4521,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
@@ -4214,6 +4545,8 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         duration?: number | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;

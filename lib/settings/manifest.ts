@@ -14,9 +14,13 @@ import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle }
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP } from '@/lib/extension-registry';
+import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
+import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
+import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
@@ -134,6 +138,22 @@ export interface SettingCtx {
 
 export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info';
 
+/**
+ * Which shape a `text` control takes.
+ *
+ * Replaces a hardcoded `record.id === 'beacon.apiKey'` in setting-row: that
+ * test was fine while exactly one record needed a single-line input, and became
+ * a growing list of ids the moment the channel credentials arrived. A record
+ * says what it IS; the row decides how to draw it.
+ *
+ *   line      — one-line input.
+ *   secret    — one-line password input that never renders its stored value.
+ *               `read` returns '' by contract; the placeholder says whether
+ *               something is saved.
+ *   multiline — a textarea, and the only variant that takes the full width.
+ */
+export type TextVariant = 'line' | 'secret' | 'multiline';
+
 export interface SettingOption {
   value: string;
   label: string;
@@ -154,6 +174,14 @@ export interface SettingRecord {
   /** Exact-hit tokens that outrank everything. Lowercase, single word. */
   aliases?: string[];
   options?: SettingOption[];
+  /** `text` controls only. Defaults to 'multiline' for backwards compatibility. */
+  textVariant?: TextVariant;
+  /**
+   * Input placeholder. A function when it has to reflect state the value
+   * cannot — a write-only credential renders empty whether or not one is
+   * stored, so "Saved — type to replace" is the only place that fact fits.
+   */
+  placeholder?: string | ((ctx: SettingCtx) => string);
   /** Behind the per-pane Advanced disclosure, and excluded from search unless opted in. */
   advanced?: boolean;
   /** Renders indented under its parent and is disabled while the parent is off. */
@@ -181,17 +209,154 @@ const view = () => useViewStore.getState();
 const sidebar = () => useSidebarStore.getState();
 const morning = () => useMorningStore.getState();
 const eod = () => useEODStore.getState();
+const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const ext = () => useExtensionsStore.getState();
+const channelSecrets = () => useChannelSecretsStore.getState();
 const palette = () => usePaletteStore.getState();
 
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
 const extUnavailable = () =>
   ext().available ? null : 'Needs a database update that has not landed here yet.';
 
+/**
+ * The master switch a delivery channel or stake adapter actually rides on.
+ *
+ * Both live in Rituals, and `dependsOn` cannot express this — the settings
+ * manifest requires a parent and child to share a pane. Without saying it
+ * somewhere, an extension can be switched on and fully credentialed while the
+ * switch that governs it is off, which makes the toggle and its four config
+ * fields a control that silently does nothing. `unavailable` is the right
+ * mechanism: the row stays visible, with the reason inline, rather than
+ * vanishing or lying.
+ */
+const masterSwitchFor = (slug: string): { label: string; on: () => boolean } =>
+  STAKE_SLUGS.has(slug)
+    ? { label: 'Settle the day', on: () => reminders().stakesEnabled }
+    : { label: 'Habit reminders', on: () => reminders().remindersEnabled };
+
+const STAKE_SLUGS = new Set(STAKE_SETTINGS.map((spec) => spec.slug));
+
 function labelFor(options: SettingOption[] | undefined, value: string | boolean): string {
   const hit = options?.find((o) => o.value === String(value));
   return hit ? hit.label : String(value);
+}
+
+/**
+ * The reminder delivery channels, as settings records.
+ *
+ * GENERATED rather than hand-written, which is the one place this manifest
+ * bends its own rule that every setting is declared here explicitly. The reason
+ * is that these records are not independent settings — they are the fields a
+ * channel declares in lib/reminders/channel-config.ts, and that declaration
+ * already has to be exact because the API validates writes against it. Two
+ * hand-maintained copies of the same field list would drift, and the failure
+ * mode of drifting is silent: a field the settings page offers and the API
+ * rejects, or a credential the page never asks for and the channel then waits
+ * for forever.
+ *
+ * Ids are `extensions.<slug>` for the toggle and `extensions.<slug>.<key>` for
+ * each field, and they are PERMANENT — they are the deep links and the e2e
+ * handles, exactly like a hand-written record's.
+ *
+ * The secret fields are the unusual ones: `read` returns '' unconditionally,
+ * because the server will not tell us the value and a store that held one would
+ * defeat the point of keeping it in user_secrets. The placeholder carries the
+ * only state there is — saved, or not.
+ */
+function channelRecords(): SettingRecord[] {
+  const records: SettingRecord[] = [];
+
+  /**
+   * Keywords minus anything that merely restates the label.
+   *
+   * A channel's terms are written for the CHANNEL ("beeminder", "twilio"), and
+   * they are exactly right on its credential fields — nobody finds "Auth token"
+   * by typing "Auth token". On the extension's own toggle, though, one of them
+   * usually IS the label, which adds nothing (search indexes labels already) and
+   * trips the manifest's own "never just the label" rule. Filtering per record
+   * lets each spec keep one natural keyword list instead of two hand-pruned
+   * ones that drift.
+   */
+  const usable = (label: string, keywords: string[]) =>
+    keywords.filter((k) => k !== label.toLowerCase());
+
+  for (const spec of EXTENSION_SETTINGS) {
+    const manifest = extensionManifest(spec.slug);
+    if (!manifest) continue;
+    const toggleId = `extensions.${spec.slug}`;
+    const master = masterSwitchFor(spec.slug);
+    const gated = () =>
+      extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in Rituals`);
+
+    records.push({
+      id: toggleId,
+      pane: 'extensions',
+      label: manifest.name,
+      description: manifest.description,
+      control: 'switch',
+      keywords: usable(manifest.name, [...spec.keywords, 'remind', 'nudge', 'notification']),
+      unavailable: gated,
+      read: () => ext().isEnabled(spec.slug),
+      write: (v, ctx) => {
+        if (ctx.userId) ext().setEnabled(ctx.userId, spec.slug, Boolean(v));
+      },
+      defaultValue: false,
+    });
+
+    for (const field of spec.config) {
+      records.push({
+        id: `${toggleId}.${field.key}`,
+        pane: 'extensions',
+        label: field.label,
+        description: field.description,
+        control: 'text',
+        textVariant: 'line',
+        placeholder: field.placeholder,
+        dependsOn: toggleId,
+        // The channel's hand-authored terms, plus any the field declares. NOT
+        // derived from the label: search already indexes labels, and a keyword
+        // that merely restates one is what the manifest's own rule forbids.
+        keywords: usable(field.label, [...spec.keywords, ...(field.keywords ?? [])]),
+        unavailable: gated,
+        read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
+        write: (v, ctx) => {
+          if (ctx.userId) ext().setConfigValue(ctx.userId, spec.slug, field.key, String(v).trim());
+        },
+        defaultValue: '',
+      });
+    }
+
+    for (const field of spec.secrets) {
+      records.push({
+        id: `${toggleId}.${field.key}`,
+        pane: 'extensions',
+        label: field.label,
+        description: field.description,
+        control: 'text',
+        textVariant: 'secret',
+        placeholder: () =>
+          channelSecrets().isSet(spec.slug, field.key) ? 'Saved — type to replace' : 'Not set',
+        dependsOn: toggleId,
+        keywords: usable(field.label, [
+          ...spec.keywords,
+          'token', 'secret', 'credential', 'key', 'password',
+        ]),
+        unavailable: () =>
+          !channelSecrets().available
+            ? 'Needs a database update that has not landed here yet.'
+            : master.on()
+              ? null
+              : `needs ${master.label}, in Rituals`,
+        // Write-only: there is nothing to read back, by design.
+        read: () => '',
+        write: (v) => channelSecrets().setSecret(spec.slug, field.key, String(v).trim()),
+        defaultValue: '',
+      });
+    }
+  }
+
+  return records;
 }
 
 /* ---------------------------------------------------------------- records */
@@ -506,6 +671,77 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: '21:00',
   },
   {
+    id: 'rituals.reminders',
+    pane: 'rituals',
+    label: 'Habit reminders',
+    description:
+      'A nudge at the time you set on each habit. Set the time on the habit itself — this is the switch that lets any of them through.',
+    control: 'switch',
+    dbColumn: 'habit_reminders_enabled',
+    keywords: ['remind', 'nudge', 'alarm', 'prompt', 'cue', 'notify', 'ping', 'alert'],
+    read: () => reminders().remindersEnabled,
+    write: (v) => reminders().setRemindersEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.lastCall',
+    pane: 'rituals',
+    label: 'Last call',
+    // Names the mechanism honestly. It is not a second copy of the reminder —
+    // a repeat of the same prompt is what people stop reading — it is a
+    // different message, once, that says what the day still owes.
+    description: 'One message in the evening naming what is still open, and the streak riding on it.',
+    control: 'switch',
+    dependsOn: 'rituals.reminders',
+    dbColumn: 'habit_last_call_enabled',
+    keywords: ['streak', 'evening', 'risk', 'final', 'nudge', 'lose', 'before bed'],
+    read: () => reminders().lastCallEnabled,
+    write: (v) => reminders().setLastCallEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.lastCallTime',
+    pane: 'rituals',
+    label: 'Last call at',
+    description: 'Late enough that the day has had its chance; early enough to still act on it.',
+    control: 'time',
+    dependsOn: 'rituals.lastCall',
+    dbColumn: 'habit_last_call_time',
+    keywords: ['when', 'hour', 'evening', 'schedule', 'time'],
+    read: () => reminders().lastCallTime,
+    write: (v) => reminders().setLastCallTime(String(v)),
+    defaultValue: '20:30',
+  },
+  {
+    id: 'rituals.stakes',
+    pane: 'rituals',
+    label: 'Settle the day',
+    // Says what it does and what it does NOT do, because the extensions behind
+    // it can cost money and "settle" alone does not warn anyone.
+    description:
+      'Once a night, work out what yesterday came to and report it to whatever you have attached — a Beeminder goal, a pledge, a person. Nothing happens until you turn one of those on.',
+    control: 'switch',
+    dbColumn: 'stakes_enabled',
+    keywords: ['stakes', 'settle', 'ledger', 'accountability', 'beeminder', 'pledge', 'consequence', 'money'],
+    read: () => reminders().stakesEnabled,
+    write: (v) => reminders().setStakesEnabled(Boolean(v)),
+    defaultValue: false,
+  },
+  {
+    id: 'rituals.stakesTime',
+    pane: 'rituals',
+    label: 'Settle at',
+    description:
+      'Settles the day before. Late enough that nothing is still in flight — an end-of-day review can credit yesterday after midnight.',
+    control: 'time',
+    dependsOn: 'rituals.stakes',
+    dbColumn: 'stakes_settle_time',
+    keywords: ['when', 'hour', 'overnight', 'night', 'schedule'],
+    read: () => reminders().stakesSettleTime,
+    write: (v) => reminders().setStakesSettleTime(String(v)),
+    defaultValue: '03:00',
+  },
+  {
     id: 'rituals.push',
     pane: 'rituals',
     label: 'Push notifications',
@@ -553,6 +789,8 @@ export const SETTINGS: SettingRecord[] = [
     label: 'Custom instructions',
     description: 'What Beacon should know about how you work. Sent with every message.',
     control: 'text',
+    textVariant: 'multiline',
+    placeholder: "I plan in two-hour blocks and I'd rather you were blunt…",
     keywords: ['system prompt', 'personality', 'context', 'about me', 'profile', 'memory'],
     read: () => ai().systemPrompt,
     write: (v) => ai().setSystemPrompt(String(v)),
@@ -564,6 +802,9 @@ export const SETTINGS: SettingRecord[] = [
     label: 'OpenAI key',
     description: 'Stored on this device only, never synced.',
     control: 'text',
+    // Was selected by `record.id === 'beacon.apiKey'` inside setting-row.
+    textVariant: 'secret',
+    placeholder: 'sk-…',
     advanced: true,
     keywords: ['api key', 'token', 'credential', 'openai', 'sk'],
     unavailable: () => (ai().provider === 'openai' ? null : 'only used by Beacon (OpenAI)'),
@@ -673,6 +914,9 @@ export const SETTINGS: SettingRecord[] = [
     },
     defaultValue: false,
   },
+
+  // The delivery channels and their fields — see channelRecords().
+  ...channelRecords(),
 ];
 
 /**

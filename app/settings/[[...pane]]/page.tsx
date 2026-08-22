@@ -16,9 +16,11 @@ import { useViewStore } from '@/lib/view-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
+import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
 import { resetOnboardingComplete } from '@/lib/user-profile';
@@ -109,6 +111,11 @@ export default function SettingsPage() {
     (s) => `${s.morningCheckEnabled}|${s.morningAutoAgeEnabled}|${s.morningAutoAgeDays}`
   );
   const eodTick = useEODStore((s) => `${s.eodReviewEnabled}|${s.eodReviewTime}`);
+  const reminderTick = useReminderStore(
+    (s) =>
+      `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
+      `${s.stakesEnabled}|${s.stakesSettleTime}`
+  );
   // apiKey rides the tick VERBATIM, not as a set/unset flag: one non-empty key
   // replacing another is exactly what a flag can't see, and the text controls
   // commit on blur by comparing their draft against the last RENDERED value —
@@ -122,7 +129,14 @@ export default function SettingsPage() {
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(
-    (s) => `${s.available}|${JSON.stringify(s.enabled)}`
+    // configs rides along VERBATIM, for the aiTick reason: the text controls
+    // commit on blur by comparing their draft against the last RENDERED value,
+    // so a stale value prop silently drops the next edit.
+    (s) => `${s.available}|${JSON.stringify(s.enabled)}|${JSON.stringify(s.configs)}`
+  );
+  // Only which keys are set — the store cannot hold a value to leak.
+  const channelSecretsTick = useChannelSecretsStore(
+    (s) => `${s.available}|${JSON.stringify(s.setKeys)}`
   );
 
   const signOut = useCallback(async () => {
@@ -181,9 +195,11 @@ export default function SettingsPage() {
       sidebarTick,
       morningTick,
       eodTick,
+      reminderTick,
       aiTick,
       paletteTick,
       extensionsTick,
+      channelSecretsTick,
     ]
   );
 
