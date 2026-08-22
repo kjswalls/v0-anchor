@@ -28,6 +28,7 @@ import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
@@ -280,6 +281,7 @@ export function AppShell() {
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
       const planner = usePlannerStore.getState();
+      const milestoneIds = milestoneItemIds(planner.goals);
       // What the primary drop resolved to: a bucket always, and — for a TIMED
       // slot (an hour cell) — a clock time. A timed target schedules the whole
       // group AT that time so they land as visible blocks; an untimed target
@@ -289,7 +291,13 @@ export function AppShell() {
       const selectedDayStr = toDateStr(selectedDate, userTz);
       let acted = false;
       if (overId === 'sidebar') {
-        if (taskLikeIds.length) {
+        // `acted` gates the selection clear and the drop animation, so it has
+        // to mean "something was written". unscheduleTasks refuses milestones
+        // (their startDate is a goal's target date), so an all-milestone
+        // selection dragged here would have cleared the selection and animated
+        // a success over zero writes.
+        const writable = taskLikeIds.filter((id) => !milestoneIds.has(id));
+        if (writable.length) {
           planner.unscheduleTasks(groupIds);
           acted = true;
         }

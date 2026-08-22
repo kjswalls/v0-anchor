@@ -113,6 +113,30 @@ export default async function globalSetup() {
         else console.warn(`[globalSetup] sweep failed (${swept.status}): ${await swept.text()}`);
       }
     }
+
+    // Goals, by the same read-then-delete-by-id rule and for the same reason:
+    // an aborted spec's afterEach never runs, and a leftover goal is not merely
+    // clutter — it renders in the console list, in the omnibar's capped goal
+    // channel, and as a dynamic palette command, so it degrades the very
+    // locators later specs depend on. `goal_items` needs no line; the composite
+    // FKs cascade.
+    const foundGoals = await rest(`goals?user_id=eq.${userId}&select=id,name`);
+    if (!foundGoals.ok) {
+      console.warn(
+        `[globalSetup] goal sweep skipped (${foundGoals.status}): ${await foundGoals.text()}`
+      );
+    } else {
+      const litter = ((await foundGoals.json()) as { id: string; name: string | null }[]).filter(
+        (row) => row.name?.startsWith(TEST_TITLE_PREFIX)
+      );
+      if (litter.length) {
+        const ids = litter.map((row) => row.id).join(',');
+        const swept = await rest(`goals?id=in.(${ids})`, { method: 'DELETE' });
+        if (swept.ok) console.log(`[globalSetup] swept ${litter.length} leftover test goal(s)`);
+        else
+          console.warn(`[globalSetup] goal sweep failed (${swept.status}): ${await swept.text()}`);
+      }
+    }
   } else {
     console.warn(
       `[globalSetup] refusing to sweep items for ${env.email} — it does not look like a ` +

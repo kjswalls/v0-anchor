@@ -15,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useMorningStore } from '@/lib/morning-store';
 import { OVERDUE_COHORT_LABELS, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
 import { itemTypeName } from '@/lib/item-registry';
@@ -231,6 +232,8 @@ export function MorningTriageList({
   const isSheet = variant === 'sheet';
 
   const liveItems = usePlannerStore((s) => s.items);
+  const goals = usePlannerStore((s) => s.goals);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
   const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
   const moveTaskToDate = usePlannerStore((s) => s.moveTaskToDate);
   const moveTasksToDate = usePlannerStore((s) => s.moveTasksToDate);
@@ -293,8 +296,18 @@ export function MorningTriageList({
     staleReasonFor(usePlannerStore.getState().items.find((i) => i.id === id));
 
   /** Untouched this session AND still real — the only rows "Move all" may act on. */
+  // Milestones are excluded here, at the same seam that already drops stale and
+  // already-actioned rows — NOT left to moveTasksToDate to refuse. The verb does
+  // refuse them (a milestone's startDate is the goal's target date, not a
+  // scheduling intention), but this list also drives the button's count AND the
+  // per-row `{kind:'today'}` receipts below. Left in, a refused milestone would
+  // wear "Moved to today · Undo" for a write that never happened — the exact
+  // hazard handleMoveAll's own comment names three lines down.
   const carryable = snapshot.filter(
-    (t) => !actions.has(t.id) && staleReasonFor(liveById.get(t.id)) === null
+    (t) =>
+      !actions.has(t.id) &&
+      staleReasonFor(liveById.get(t.id)) === null &&
+      !milestoneIds.has(t.id)
   );
 
   const setAction = (id: string, action: RowAction) =>

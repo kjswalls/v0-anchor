@@ -105,10 +105,27 @@ export interface ItemTypeConfig {
    */
   pausable: boolean
   /**
-   * May this type be collected into routines and programs? Membership is what
-   * lets a whole slice of life switch off at once.
+   * May this type be collected into routines, programs and goals? Membership is
+   * what lets a whole slice of life switch off at once — and, for goals, what
+   * lets a slice of life have a reason.
    */
   collectible: boolean
+  /**
+   * May an item of this type be a goal's MILESTONE — an achievement checkpoint
+   * whose completion moves the goal's progress?
+   *
+   * False for habits, and not as a slight: a milestone needs a single "done"
+   * event to hang an achievement on, and a habit's whole design is that it has
+   * none (per-date completion, an opaque streak, no terminal state). A habit
+   * serves a goal as a plain `member`, which is the honest role for it.
+   *
+   * Ask `isMilestoneEligible(item)` rather than reading the flag: the capability
+   * is only half the question, because the role also requires the item to be
+   * one-shot. A recurring item's scalar status never moves (migration 016
+   * semantics), so a recurring milestone would be permanently un-achievable and
+   * progress would lie forever.
+   */
+  milestoneEligible: boolean
   /** Participates in manual ordering (the "order" column + reorder actions). */
   orderable: boolean
   /** Which container table names this type resolves against. */
@@ -207,6 +224,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     skipStatus: null,
     pausable: true,
     collectible: true,
+    milestoneEligible: true,
     orderable: true,
     containerKind: 'projects',
     containerRequired: false,
@@ -344,6 +362,10 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     skipStatus: 'skipped',
     pausable: true,
     collectible: true,
+    // A habit has no single completion to be a checkpoint — it has a per-date
+    // history and a streak. It serves a goal as a member, or as a `checkin`
+    // when the goal wants a recurring review.
+    milestoneEligible: false,
     orderable: false,
     containerKind: 'habitGroups',
     containerRequired: true,
@@ -446,6 +468,9 @@ export function buildCustomTypeConfig(
     // tasks — a new type needs no work to join a routine or a program.
     pausable: true,
     collectible: true,
+    // Task-shaped here too: a one-shot custom item completes exactly like a
+    // task, which is all a milestone needs.
+    milestoneEligible: true,
     // Manual ordering is per-type ("order" sequences would collide); custom
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
@@ -586,8 +611,57 @@ export function isRemindable(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).remindable
 }
 
-/** May this item join routines and programs? Same subtask rule as isPausable. */
+/** May this item join routines, programs and goals? Same subtask rule as isPausable. */
 export function isCollectible(item: Item): boolean {
   if ('parentItemId' in item && item.parentItemId) return false
   return getItemTypeConfig(itemTypeName(item)).collectible
+}
+
+/**
+ * May this item be a goal's MILESTONE?
+ *
+ * Three conditions, and the last one is the one that bites: it must be
+ * collectible at all (which excludes subtasks, for the reason isPausable gives
+ * — a subtask has no independent presence), its type must have a terminal
+ * completion (`milestoneEligible`), and it must be ONE-SHOT.
+ *
+ * The recurrence clause is the inverse of isSkippable's: a skip needs another
+ * occurrence to exist, and a milestone needs there to be no other occurrence.
+ * A recurring item never moves its scalar `status` (migration 016 — per-date
+ * completion is the truth), so a recurring milestone can never be counted
+ * achieved and the goal reads permanently behind, with no way for the user to
+ * see why.
+ *
+ * This is asked at role-GRANT time. It cannot police a later edit — the item
+ * dialog and the agent PATCH route can make an existing milestone recurring
+ * long afterwards — so the store answers that by DEMOTING the role to 'member'
+ * with a receipt, never by refusing the edit. See memory/plans/long-term-goals.md
+ * locked decision 3.
+ */
+export function isMilestoneEligible(item: Item): boolean {
+  if (!isCollectible(item)) return false
+  if (!getItemTypeConfig(itemTypeName(item)).milestoneEligible) return false
+  return !isRecurring(item)
+}
+
+/**
+ * May this item be a goal's CHECK-IN — a recurring review of how the goal is
+ * going?
+ *
+ * The mirror image of the rule above: any collectible type that CAN recur may
+ * serve, habits included ("Weekly Chinese review" is a perfectly good habit).
+ * What it cannot be is one-shot — a check-in that happens once is just a task.
+ *
+ * There is no `checkinEligible` flag because the registry already answers the
+ * type half of the question: `allowedFrequencies` says whether the type can
+ * recur at all, so a future type declaring `['none']` is refused here without
+ * anyone remembering to add a capability for it. Asking the ITEM alone would
+ * miss that, and would also trust a stale `repeatFrequency` on an item whose
+ * type has since stopped allowing recurrence.
+ */
+export function isCheckinEligible(item: Item): boolean {
+  if (!isCollectible(item)) return false
+  const config = getItemTypeConfig(itemTypeName(item))
+  if (!config.allowedFrequencies.some((f) => f !== 'none')) return false
+  return isRecurring(item)
 }

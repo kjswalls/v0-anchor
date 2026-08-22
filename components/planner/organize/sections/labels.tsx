@@ -270,7 +270,7 @@ export function TypesSection({
         }}
         footer={
           <DraftRow
-            placeholder="New type… (e.g. Goal)"
+            placeholder="New type… (e.g. Errand)"
             addLabel="Add item type"
             testPrefix="type"
             autoFocus={focusNew}
@@ -703,7 +703,7 @@ const created = (rows: { id: string; name: string }[], name: string) =>
     rows.find((r) => r.name.toLowerCase() === name.toLowerCase())
   )?.id ?? null;
 
-/** 'Goal' → 'goal', 'Side Quest' → 'side-quest' (the items.type slug). */
+/** 'Errand' → 'errand', 'Side Quest' → 'side-quest' (the items.type slug). */
 const slugForLabel = (label: string) =>
   label
     .trim()

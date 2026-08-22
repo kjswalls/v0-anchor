@@ -131,3 +131,8 @@ Longer-running design docs live in [memory/plans/](memory/plans/) and are commit
 [unified-items.md](memory/plans/unified-items.md) carries the phase ledger and the locked
 design decisions for the items refactor — read it before touching item types, the
 registry, or the agent API.
+[long-term-goals.md](memory/plans/long-term-goals.md) does the same for **goals** — the
+third container role (`aspire`), where milestones and check-ins are ordinary items wearing
+a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
+anything that writes an item's `startDate` in bulk: a milestone's start date is a target
+date, and the sweep and the carry verbs are excluded from it on purpose.

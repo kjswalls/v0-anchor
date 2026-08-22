@@ -325,6 +325,76 @@ export async function cleanupTestCollections(prefix: string): Promise<void> {
 }
 
 /**
+ * The same sweep for `goals`.
+ *
+ * Its own function rather than a third table in cleanupTestCollections, for the
+ * reason cleanupTestLabels gives: an existing spec's afterEach must not start
+ * hard-DELETEing rows it never created. `goal_items` needs no line — the
+ * composite FKs cascade.
+ */
+export async function cleanupTestGoals(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['goals'], prefix);
+}
+
+/**
+ * One goal as STORED, or null while it does not yet exist.
+ *
+ * Every goal write in the app is fire-and-forget, so a DOM assertion right
+ * after a click proves only that the optimistic set() ran — and `page.reload()`
+ * on the strength of it can abort the PATCH still in flight. Poll this before
+ * any reload meant to prove persistence. (fetchTestCollections' lesson, which
+ * that helper's own docblock records paying for once.)
+ */
+export async function fetchTestGoal(
+  prefix: string
+): Promise<{
+  id: string;
+  name: string;
+  state: string;
+  why: string | null;
+  target_on: string | null;
+} | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  // `deleted_at=is.null` and `order=created_at.desc`, both load-bearing.
+  //
+  // WITHOUT the filter this helper can never observe a delete: removeGoal is a
+  // SOFT delete (the 30-day trash, so goal_items survive a restore), so a poll
+  // for null would spin until the expect timeout on a row that is still there.
+  // WITHOUT the order it returns whichever row the heap hands back, which is
+  // fine only while a spec creates exactly one goal per prefix — the moment one
+  // creates two, "the test goal" becomes arbitrary.
+  const res = await fetch(
+    `${url}/rest/v1/goals?user_id=eq.${testUserId()}&deleted_at=is.null` +
+      `&order=created_at.desc&select=id,name,state,why,target_on`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestGoal] ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as {
+    id: string;
+    name: string;
+    state: string;
+    why: string | null;
+    target_on: string | null;
+  }[];
+  return rows.find((row) => row.name?.startsWith(prefix)) ?? null;
+}
+
+/** The roles a goal's members hold, as stored — the join table, not the arrays. */
+export async function fetchTestGoalMembers(
+  goalId: string
+): Promise<{ item_id: string; role: string }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(
+    `${url}/rest/v1/goal_items?goal_id=eq.${goalId}&select=item_id,role`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestGoalMembers] ${res.status} ${await res.text()}`);
+  return (await res.json()) as { item_id: string; role: string }[];
+}
+
+/**
  * The same sweep for the LABEL tables, which the Organize console can now create
  * and which nothing swept before — projects, habit groups and custom item types.
  *

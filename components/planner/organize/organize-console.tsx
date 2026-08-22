@@ -21,6 +21,7 @@ import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
 import { ProgramsSection } from './sections/programs';
+import { GoalsSection } from './sections/goals';
 import { GroupsSection, ProjectsSection, TypesSection } from './sections/labels';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
@@ -310,6 +311,9 @@ function SectionBody({
   }
   if (section === 'programs') {
     return <ProgramsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+  }
+  if (section === 'goals') {
+    return <GoalsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
   }
   if (section === 'projects') {
     return <ProjectsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;

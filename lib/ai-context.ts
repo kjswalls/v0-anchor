@@ -2,7 +2,8 @@ import { format } from 'date-fns'
 import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-registry'
 import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
-import type { Item, Project, HabitGroupType, Routine, Program } from './planner-types'
+import { goalProgress, goalRolesByItem, nextMilestoneVisible } from './goals'
+import type { Item, Project, HabitGroupType, Routine, Program, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
 const MAX_PAUSED_TITLES = 5
@@ -27,6 +28,13 @@ export function buildAnchorContext(state: {
   routines?: Routine[]
   /** Live programs, same reason — an out-of-season program hides its members here too. */
   programs?: Program[]
+  /**
+   * Live goals. NOT for suppression — a goal hides nothing — but for the
+   * opposite question: asked how something long-running is going, Beacon should
+   * answer from progress and the next checkpoint rather than inferring from
+   * item titles.
+   */
+  goals?: Goal[]
 }): string {
   const today = new Date()
   // tz first: `todayStr` is compared against pause intervals that isPausedOn
@@ -68,6 +76,24 @@ export function buildAnchorContext(state: {
       // are in habitShape, and the panel renders the field for them), and a
       // per-item thread about a habit is exactly where that context is wanted.
       if (focus.notes) lines.push(`- Notes: ${focus.notes}`)
+      // What this item is FOR, when it serves a goal. A per-item thread about
+      // "HSK 3 exam" that does not know it is the next checkpoint of Learn
+      // Chinese is missing the single most relevant fact about it — and the
+      // base output is unchanged for every item that serves none, so the pinned
+      // no-focus tests stay byte-exact.
+      const roles = goalRolesByItem(state.goals ?? []).get(focus.id) ?? []
+      if (roles.length > 0) {
+        const said = roles
+          .map((r) =>
+            r.role === 'milestone'
+              ? `a milestone of ${r.goalName}`
+              : r.role === 'checkin'
+                ? `the check-in for ${r.goalName}`
+                : `part of ${r.goalName}`
+          )
+          .join(', ')
+        lines.push(`- Serves: ${said}`)
+      }
       if (subtasks.length > 0) {
         lines.push('- Subtasks:')
         subtasks.forEach((s) =>
@@ -105,6 +131,58 @@ export function buildAnchorContext(state: {
       )
     )
     lines.push('')
+  }
+
+  // --- Goals ---
+  //
+  // ACTIVE goals only, and double-guarded on the RENDERED set the way Paused
+  // is: a user whose only goals are achieved would otherwise get a heading over
+  // nothing. Emitted only when there is something to say, so every byte-pinned
+  // context test stays exact for inputs that have none.
+  //
+  // The lines are suppression-AWARE even though goals never suppress. An item
+  // can sit in a goal and a paused program at once — that is the plan's own
+  // headline example — and naming a suppressed milestone as "next" here would
+  // recommend the exact work the ### Paused section three lines down forbids.
+  // Two contradictory instructions in one prompt is worse than one fewer fact.
+  if (state.goals && state.goals.length > 0) {
+    const suppressedIds = new Set(suppressed.map((i) => i.id))
+    const itemsById = new Map(state.items.map((i) => [i.id, i]))
+    const active = state.goals.filter((g) => g.state === 'active')
+    const goalLines: string[] = []
+    for (const goal of active) {
+      const { achieved, total } = goalProgress(goal, itemsById)
+      const parts: string[] = [total > 0 ? `${achieved}/${total} milestones` : 'no milestones yet']
+      // ADVANCE past a suppressed milestone rather than dropping the line.
+      // Skipping the candidate and taking the next one is what the plan asks
+      // for; dropping it left a goal reading "0/2 milestones" with no name for
+      // either, and a future-dated second milestone appears in no other section
+      // — so Beacon was told the goal exists and given nothing to say about it.
+      const next = nextMilestoneVisible(goal, itemsById, suppressedIds)
+      if (next) {
+        const when = 'startDate' in next && next.startDate ? ` by ${next.startDate}` : ''
+        parts.push(`next: ${next.title}${when}`)
+      }
+      if (goal.targetOn) parts.push(`target ${goal.targetOn}`)
+      goalLines.push(`- ${goal.name} — ${parts.join(' · ')}`)
+      // The WHY, indented under its goal. It is the one line the user wrote
+      // about why any of this matters, and it is what lets an answer be about
+      // the point rather than the schedule.
+      if (goal.why) goalLines.push(`  why: ${goal.why}`)
+    }
+    if (goalLines.length > 0) {
+      // NOT '### Goals'. A user may define a custom item TYPE whose plural is
+      // "Goals" — the registry renders one section per hydrated type as
+      // `### ${labelPlural}` — and two identical headings in one prompt, one
+      // listing items and one listing containers, is worse than a longer name.
+      lines.push('### Long-term goals')
+      lines.push(
+        'What the work is FOR. A goal hides nothing and is never overdue — do ' +
+          'not treat a missed milestone as a failure or suggest abandoning one.'
+      )
+      lines.push(...goalLines)
+      lines.push('')
+    }
   }
 
   // --- Paused ---

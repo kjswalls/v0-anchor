@@ -22,7 +22,7 @@ import {
   Repeat2,
   RotateCcw,
   Trash2,
-  X,
+  X, Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -61,6 +61,8 @@ import {
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
 import { accentColorForName } from '@/lib/accent-colors';
+import { nextMilestone } from '@/lib/goals';
+import { formatShort } from '@/lib/collections';
 import { useUIStore } from '@/lib/ui-store';
 import type {
   Habit,
@@ -304,6 +306,17 @@ export interface ItemDraft {
   routineIds: string[];
   /** Program ids, ADD MODE ONLY — same two-write-paths reasoning as routineIds. */
   programIds: string[];
+  /**
+   * Goal ids, ADD MODE ONLY — same reasoning again.
+   *
+   * No role travels with them: the chip only ever adds a PLAIN MEMBER. The two
+   * roles that constrain their items (a milestone must be one-shot, a check-in
+   * must recur) are granted from the goal's own detail pane, where the picker
+   * can filter by the registry predicate and the user is looking at the goal's
+   * timeline. Offering roles on a chip attached to a half-typed item would
+   * grant a role the demotion rule might take straight back.
+   */
+  goalIds: string[];
   newContainer: { show: boolean; name: string; icon: string };
 }
 
@@ -424,6 +437,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     reminderTime: '',
     reminderAnchor: '',
     routineIds: [],
+    goalIds: [],
     programIds: [],
     newContainer: {
       show: false,
@@ -474,6 +488,7 @@ function draftFromItem(item: Item): ItemDraft {
     // as a column. Present so the object satisfies ItemDraft; deliberately
     // never read on the edit path.
     routineIds: [],
+    goalIds: [],
     programIds: [],
     newContainer: {
       show: false,
@@ -519,7 +534,15 @@ export function ItemDialog({
     collectionsAvailable,
     updateRoutine,
     updateProgram,
+    goals,
+    goalsAvailable,
+    updateGoal,
   } = usePlannerStore();
+
+  // Hoisted out of renderChips, which runs on every render of a component that
+  // subscribes to the whole store — so this rebuilt an N-item Map on every
+  // keystroke in the title field.
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   /**
    * The names a trashed container is still holding.
@@ -743,6 +766,7 @@ export function ItemDialog({
           // hold membership at all, which would otherwise write join rows for
           // an item whose chip is hidden.
           routineIds: config.collectible ? from.routineIds : [],
+          goalIds: config.collectible ? from.goalIds : [],
           programIds: config.collectible ? from.programIds : [],
         },
       };
@@ -809,7 +833,7 @@ export function ItemDialog({
         reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
-      }, { routineIds: d.routineIds, programIds: d.programIds });
+      }, { routineIds: d.routineIds, programIds: d.programIds, goalIds: d.goalIds });
     } else {
       addHabit({
         title: d.title.trim(),
@@ -824,7 +848,7 @@ export function ItemDialog({
         timesPerDay: parseInt(d.timesPerDay) || 1,
         reminderTime: d.reminderTime || undefined,
         reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
-      }, { routineIds: d.routineIds, programIds: d.programIds });
+      }, { routineIds: d.routineIds, programIds: d.programIds, goalIds: d.goalIds });
     }
 
     resetAddDrafts();
@@ -1028,6 +1052,56 @@ export function ItemDialog({
         itemIds: on
           ? [...routine.itemIds, editingItem.id]
           : routine.itemIds.filter((x) => x !== editingItem.id),
+      });
+    };
+
+    // ── goal membership ───────────────────────────────────────────────────
+    const activeGoals = goals.filter((g) => g.state === 'active');
+    // Plain members only. A goal's chip adds the item to the goal; it never
+    // grants a milestone or check-in role, which are the goal's own decision
+    // and are made where its timeline is visible.
+    const memberGoals = editingItem
+      ? goals.filter(
+          (g) =>
+            g.state === 'active' &&
+            [...g.memberIds, ...g.milestoneIds, ...g.checkinIds].includes(editingItem.id),
+        )
+      : goals.filter((g) => d.goalIds.includes(g.id));
+    const memberGoalIds = memberGoals.map((g) => g.id);
+    const goalChipValue =
+      memberGoals.length === 0
+        ? undefined
+        : memberGoals.length === 1
+          ? memberGoals[0].name
+          : `${memberGoals[0].name} +${memberGoals.length - 1}`;
+    // The goals this item served that have since ended. Shown under their own
+    // divider rather than dropped: a still-scheduled milestone of a set-aside
+    // goal is otherwise a row with no explanation anywhere in the app.
+    const endedGoals = editingItem
+      ? goals.filter(
+          (g) =>
+            g.state !== 'active' &&
+            [...g.memberIds, ...g.milestoneIds, ...g.checkinIds].includes(editingItem.id),
+        )
+      : [];
+
+    const toggleGoal = (goalId: string, on: boolean) => {
+      if (!editingItem) {
+        patch({
+          goalIds: on ? [...d.goalIds, goalId] : d.goalIds.filter((x) => x !== goalId),
+        });
+        return;
+      }
+      const goal = goals.find((g) => g.id === goalId);
+      if (!goal) return;
+      // All three arrays travel, always. Removing has to clear whichever role
+      // the item actually held — untick a milestone through this chip and it
+      // must leave the goal, not quietly demote to a member nobody can see.
+      const without = (ids: string[]) => ids.filter((x) => x !== editingItem.id);
+      updateGoal(goalId, {
+        memberIds: on ? [...goal.memberIds, editingItem.id] : without(goal.memberIds),
+        milestoneIds: on ? goal.milestoneIds : without(goal.milestoneIds),
+        checkinIds: on ? goal.checkinIds : without(goal.checkinIds),
       });
     };
 
@@ -1367,6 +1441,100 @@ export function ItemDialog({
                 >
                   <Plus className="size-3.5" />
                   Organize programs…
+                </ChipOption>
+              </div>
+            )}
+          </PropertyChip>
+        )}
+
+        {/* GOALS — and note the gate: `goalsAvailable && collectible`, with NO
+            `goals.length > 0`.
+
+            The two chips above carry that extra condition and it is the
+            programs feature's own recorded failure: with zero containers the
+            chip vanishes, and the chip's popover is one of the few doors to the
+            manager — so the surface that would let you make your first one is
+            hidden until you already have one. On mobile there is no palette and
+            no omnibar, which leaves the braindump's folder button as the only
+            other route. A goal is the container a user is most likely to want
+            before they own any, so its chip renders from zero and its popover
+            leads with the door. */}
+        {goalsAvailable && collectible && (
+          <PropertyChip
+            icon={Target}
+            label="Goal"
+            value={goalChipValue}
+            swatch={memberGoals[0]?.color ?? undefined}
+            swatchShape="square"
+            contentClassName="w-64"
+            testId="item-dialog-goal-chip"
+          >
+            {(close) => (
+              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+                {activeGoals.map((goal) => {
+                  const on = memberGoalIds.includes(goal.id);
+                  const next = nextMilestone(goal, itemsById);
+                  return (
+                    <ChipOption
+                      key={goal.id}
+                      selected={on}
+                      onSelect={() => toggleGoal(goal.id, !on)}
+                      testId="item-dialog-goal-option"
+                      value={goal.id}
+                    >
+                      <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{goal.name}</span>
+                        {/* The one ambient piece of forward pressure a dated
+                            milestone gets. Between creation and its target day
+                            it renders on no surface the user passes, so the
+                            first unprompted encounter would otherwise be the
+                            waiting tray, after it has already been missed. */}
+                        {next && (
+                          <span className="text-muted-foreground truncate text-[11px]">
+                            next: {next.title}
+                            {'startDate' in next && next.startDate
+                              ? ` · ${formatShort(next.startDate)}`
+                              : ''}
+                          </span>
+                        )}
+                      </span>
+                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                    </ChipOption>
+                  );
+                })}
+
+                {endedGoals.length > 0 && (
+                  <>
+                    <div className="text-muted-foreground px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide">
+                      ENDED
+                    </div>
+                    {endedGoals.map((goal) => (
+                      <ChipOption
+                        key={goal.id}
+                        selected
+                        onSelect={() => toggleGoal(goal.id, false)}
+                        testId="item-dialog-goal-ended-option"
+                        value={goal.id}
+                      >
+                        <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
+                        <span className="text-muted-foreground truncate">{goal.name}</span>
+                        <Check className="ml-auto size-3.5 shrink-0" />
+                      </ChipOption>
+                    ))}
+                  </>
+                )}
+
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    close();
+                    useUIStore.getState().openDialog({ type: 'organize', section: 'goals' });
+                  }}
+                  testId="item-dialog-goal-manage"
+                >
+                  <Plus className="size-3.5" />
+                  {activeGoals.length === 0 ? 'Set up a goal…' : 'Organize goals…'}
                 </ChipOption>
               </div>
             )}

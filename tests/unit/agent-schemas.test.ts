@@ -234,4 +234,54 @@ describe('AnchorContextResponseSchema (items[] additivity)', () => {
     expect(r.success).toBe(true);
     expect((r as { data: Record<string, unknown> }).data.programs).toBeUndefined();
   });
+
+  it('parses a v5 response with goals[]', () => {
+    const r = AnchorContextResponseSchema.safeParse({
+      ...base,
+      schemaVersion: 5,
+      goals: [
+        {
+          id: 'g1',
+          name: 'Learn Chinese',
+          why: 'so I can talk to my in-laws',
+          state: 'active',
+          startsOn: '2026-01-01',
+          targetOn: '2027-01-01',
+          memberIds: ['t1'],
+          milestoneIds: ['m1'],
+          checkinIds: ['c1'],
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('still parses a v4 response against the v5 schema (new plugin ↔ old server)', () => {
+    expect(AnchorContextResponseSchema.safeParse({ ...base, schemaVersion: 4 }).success).toBe(true);
+  });
+
+  it('accepts a v5 response that OMITS goals[] rather than sending []', () => {
+    // Migration 036 may not be applied yet; `[]` would tell a model this user
+    // has decided against goals, which is a different claim from "not here".
+    const r = AnchorContextResponseSchema.safeParse({ ...base, schemaVersion: 5 });
+    expect(r.success).toBe(true);
+    expect((r as { data: Record<string, unknown> }).data.goals).toBeUndefined();
+  });
+
+  it('a v5 response with goals[] survives a schema that predates them', () => {
+    // A published plugin carries whatever @anchor-app/types build it was
+    // released with, and it safeParses the WHOLE response — so a strict object
+    // anywhere on this path would brick every cached context the moment goals
+    // ship, not just the goals section. Zod strips unknown keys by default;
+    // this pins that the response object is not `.strict()`. It does NOT prove
+    // the real published build parses a v5 response: that needs the actual
+    // tarball, and the plan's plugin-smoke gate says so.
+    const withGoals = {
+      ...base,
+      schemaVersion: 5,
+      goals: [{ id: 'g1', name: 'Learn Chinese', state: 'active' }],
+    };
+    const oldSchema = AnchorContextResponseSchema.omit({ goals: true });
+    expect(oldSchema.safeParse(withGoals).success).toBe(true);
+  });
 });

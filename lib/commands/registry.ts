@@ -46,6 +46,7 @@ import {
   Repeat as RepeatIcon,
   Pause as PauseIcon,
   Play as PlayIcon,
+  Target,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
@@ -83,7 +84,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { GroupBy, Priority, TimeBucket, Routine, Program } from '../planner-types';
+import type { GroupBy, Priority, TimeBucket, Routine, Program, Goal } from '../planner-types';
 
 /**
  * The command registry.
@@ -1019,6 +1020,17 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'routines' }),
   },
   {
+    id: 'app.goals',
+    label: 'Organize goals',
+    group: 'app',
+    icon: Target,
+    keywords: 'goals milestones check-ins ambitions long term targets progress',
+    aliases: ['goals'],
+    // Ungated, like app.collections and for the same reason: the console
+    // explains an unavailable feature better than a vanished palette row does.
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'goals' }),
+  },
+  {
     id: 'app.shortcuts',
     label: 'Keyboard shortcuts',
     group: 'app',
@@ -1235,7 +1247,66 @@ const programCommands: CommandProvider = () => {
   return cachedProgramCommands;
 };
 
-const PROVIDERS: CommandProvider[] = [customTypeCommands, routineCommands, programCommands];
+let cachedGoals: readonly Goal[] | null = null;
+let cachedGoalCommands: Command[] = [];
+
+/**
+ * "Open Learn Chinese", one per ACTIVE goal.
+ *
+ * One command rather than a pair, because unlike a routine or a program a goal
+ * has no daily switch — its states are a lifecycle decision (achieved, set
+ * aside) that belongs where the milestone list is visible, not on a row you
+ * hit by typing three letters. So the palette's job here is navigation: it is
+ * the fastest route to the goal page, which is the surface a long goal is
+ * actually visited on.
+ *
+ * Memoized on the goal array's identity, and ONLY the array — a goal's
+ * liveness never changes with the calendar the way an `auto` program's does,
+ * so there is no day to key on.
+ *
+ * Ended goals are omitted. They are a record rather than live work, and a
+ * palette that offers three finished goals ahead of the one you are running
+ * has stopped being a shortcut. They stay reachable through the console.
+ *
+ * No aliases, for the reason spelled out above routineCommands: goal names are
+ * free text and a goal called "settings" must not steal /settings.
+ */
+const goalCommands: CommandProvider = () => {
+  const { goals, goalsAvailable } = planner();
+  if (!goalsAvailable) return [];
+  if (goals === cachedGoals) return cachedGoalCommands;
+
+  cachedGoals = goals;
+  cachedGoalCommands = goals
+    .filter((goal) => goal.state === 'active')
+    .map(
+      (goal) =>
+        ({
+          id: `goal.open.${goal.id}`,
+          label: `Open ${goal.name}`,
+          group: 'items',
+          icon: Target,
+          keywords: `goal ${goal.name} milestone progress open`,
+          // Client navigation, with the same fallback app.settings uses. A
+          // hard load would tear down the hydrated store and re-run every
+          // fetch, discarding the undo stack and any in-flight write — for a
+          // move between two sibling client routes.
+          run: (ctx) => {
+            const href = `/goal/${goal.id}`;
+            if (ctx.navigate) ctx.navigate(href);
+            else if (typeof window !== 'undefined') window.location.assign(href);
+          },
+        }) satisfies Command,
+    );
+  return cachedGoalCommands;
+};
+
+const PROVIDERS: CommandProvider[] = [
+  customTypeCommands,
+  routineCommands,
+  programCommands,
+  goalCommands,
+];
 
 /**
  * The registry as every palette surface sees it. Call this rather than reading

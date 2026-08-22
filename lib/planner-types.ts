@@ -29,6 +29,9 @@ export type {
   Routine,
   Program,
   ProgramState,
+  Goal,
+  GoalState,
+  GoalRole,
 } from '@anchor-app/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────
