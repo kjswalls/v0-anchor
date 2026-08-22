@@ -35,6 +35,7 @@ const draft: ItemDraft = {
   // ever leaked into an updates payload the panel would try to persist it as a
   // column. The assertions below prove it doesn't.
   routineIds: ['routine-1'],
+  goalIds: ['goal-1'],
   programIds: ['program-1'],
   newContainer: { show: false, name: '', icon: '' },
 };
@@ -65,11 +66,15 @@ describe('panel writes are scoped to what was touched', () => {
     // membership edit that looks saved and is gone on reload.
     expect(DRAFT_KEYS).not.toContain('routineIds');
     expect(DRAFT_KEYS).not.toContain('programIds');
+    // Goals are the same shape of thing — join rows written through updateGoal,
+    // never a column on the item — so they stay out for the same reason.
+    expect(DRAFT_KEYS).not.toContain('goalIds');
     for (const payload of [
       taskUpdatesFromDraft(draft, DRAFT_KEYS),
       habitUpdatesFromDraft(draft, DRAFT_KEYS),
     ]) {
       expect(payload).not.toHaveProperty('routineIds');
+      expect(payload).not.toHaveProperty('goalIds');
       expect(payload).not.toHaveProperty('programIds');
     }
   });

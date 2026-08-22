@@ -178,6 +178,7 @@ const KIND_LABEL: Record<TrashKind, string> = {
   group: 'Habit group',
   routine: 'Routine',
   program: 'Program',
+  goal: 'Goal',
 };
 
 /**

@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
@@ -110,6 +111,8 @@ export function EODReview() {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
 
   const today = todayStr(userTimezone);
 
@@ -363,11 +366,29 @@ export function EODReview() {
    * happen, and marking it actioned any other way would quietly retire a
    * decision the user never made.
    */
+  /**
+   * May this row be swept up by "Move all to tomorrow"?
+   *
+   * Recurring rows are excluded because moving one rewrites the whole series'
+   * anchor. MILESTONES are excluded for a different reason and the same
+   * consequence: a milestone's `startDate` is not a scheduling intention, it is
+   * the goal's target date — the record of when the checkpoint was meant to
+   * happen — so one habitual evening tap would walk a three-year goal's
+   * deadline forward a day, every night, invisibly. Moving one deliberately is
+   * still offered on the row itself; it is only the sweeping verb that refuses.
+   *
+   * Shared with `movableCount` rather than restated, so the footer button can
+   * never offer a verb that is about to be a no-op.
+   */
+  const isCarryable = (t: Task) =>
+    !justCompletedIds.has(t.id) &&
+    !taskActions.has(t.id) &&
+    !isRecurring(t) &&
+    !milestoneIds.has(t.id);
+
   const handleMoveAllToTomorrow = () => {
     const tomorrow = tomorrowStr(userTimezone);
-    pendingTasks
-      .filter((t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id) && !isRecurring(t))
-      .forEach((t) => handleMoveTo(t.id, tomorrow));
+    pendingTasks.filter(isCarryable).forEach((t) => handleMoveTo(t.id, tomorrow));
   };
 
   const handleDone = async () => {
@@ -378,9 +399,7 @@ export function EODReview() {
   // handleMoveAllToTomorrow uses, recurring exclusion included. It gates the
   // footer button, so counting rows the verb refuses to touch would offer
   // "Move all to tomorrow" on an evening where it is a no-op.
-  const movableCount = pendingTasks.filter(
-    (t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id) && !isRecurring(t)
-  ).length;
+  const movableCount = pendingTasks.filter(isCarryable).length;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>

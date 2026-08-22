@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  ASPIRE_KINDS,
   CLASSIFY_KINDS,
   CONTAINER_KINDS,
   GATE_KINDS,
@@ -26,10 +27,17 @@ import type { Item } from '@/lib/planner-types';
  *
  * Two things are being pinned, and they are different in kind. The first is the
  * ROLE SEAM: classify kinds are the ones an item answers with, gate kinds are
- * the ones that switch it off, and nothing may hold both jobs. That seam is what
- * keeps a routine out of a filter clause and a project out of the scope rail,
- * and it is stated once here rather than implied by which module you happen to
- * be reading.
+ * the ones that switch it off, aspire kinds are the ones that say why the work
+ * matters, and no kind may hold two of those jobs. That seam is what keeps a
+ * routine out of a filter clause, a project out of the scope rail, and a goal
+ * out of both — and it is stated once here rather than implied by which module
+ * you happen to be reading.
+ *
+ * This test is also the tripwire that a new KIND has to walk past. Widening
+ * `ContainerKind` produces exactly one compiler error (the CONTAINER_KINDS
+ * record) because every consumer narrows to one role's union first, so nothing
+ * else in the codebase objects on its own — see the note in the registry's
+ * header. The partition assertions below are what force the question.
  *
  * The second is the REF GRAMMAR, which moved out of lib/filters.ts unchanged.
  * Its cases are all real data: names with colons in them, both spellings of a
@@ -37,24 +45,44 @@ import type { Item } from '@/lib/planner-types';
  */
 
 describe('the role seam', () => {
-  it('sorts the four kinds into classify and gate, and nothing sits in both', () => {
+  it('sorts the five kinds into classify, gate and aspire, and nothing sits in two', () => {
     expect([...CLASSIFY_KINDS]).toEqual(['project', 'group']);
     expect([...GATE_KINDS]).toEqual(['routine', 'program']);
+    expect([...ASPIRE_KINDS]).toEqual(['goal']);
 
     const all = Object.keys(CONTAINER_KINDS) as ContainerKind[];
-    expect(all.length).toBe(CLASSIFY_KINDS.length + GATE_KINDS.length);
+    expect(all.length).toBe(CLASSIFY_KINDS.length + GATE_KINDS.length + ASPIRE_KINDS.length);
+    // Exactly one membership each — asserted as a count rather than the old
+    // `inClassify === !inGate`, which only had two boxes to talk about and
+    // would have quietly passed a kind that was in all three.
     for (const kind of all) {
-      const inClassify = (CLASSIFY_KINDS as readonly string[]).includes(kind);
-      const inGate = (GATE_KINDS as readonly string[]).includes(kind);
-      expect(inClassify).toBe(!inGate);
+      const memberships = [CLASSIFY_KINDS, GATE_KINDS, ASPIRE_KINDS].filter((list) =>
+        (list as readonly string[]).includes(kind),
+      );
+      expect(memberships).toHaveLength(1);
     }
   });
 
-  it('derives the two lists from `role`, so a kind cannot be forgotten in one of them', () => {
+  it('derives the three lists from `role`, so a kind cannot be forgotten in one of them', () => {
     // The lists are Object.values(...).filter(role === …) rather than literals.
-    // If either is ever hand-listed this disagrees the moment a role changes.
+    // If any is ever hand-listed this disagrees the moment a role changes.
     for (const kind of CLASSIFY_KINDS) expect(getContainerKindConfig(kind).role).toBe('classify');
     for (const kind of GATE_KINDS) expect(getContainerKindConfig(kind).role).toBe('gate');
+    for (const kind of ASPIRE_KINDS) expect(getContainerKindConfig(kind).role).toBe('aspire');
+  });
+
+  it('keeps goals out of the two axes that resolve visibility', () => {
+    // The whole argument for a third role rather than a fourth gate. A goal
+    // that reached ScopeKind would suppress its members the day someone paused
+    // it; a goal that reached a container REF would make "which project is this
+    // in?" ambiguous. Both unions are narrowed at their use sites, so this
+    // asserts the property those narrowings depend on.
+    const goal = getContainerKindConfig('goal');
+    expect(goal.itemField).toBeNull();
+    expect(goal.itemTypeKey).toBeNull();
+    expect(goal.unsetLabel).toBeNull();
+    expect((CLASSIFY_KINDS as readonly string[]).includes('goal')).toBe(false);
+    expect((GATE_KINDS as readonly string[]).includes('goal')).toBe(false);
   });
 
   /**
