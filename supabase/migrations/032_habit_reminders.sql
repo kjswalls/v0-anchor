@@ -52,7 +52,7 @@ alter table items
   -- "Not now — ask me again at." Set by the Snooze action on the notification
   -- itself, and the ONE piece of reminder state that is an instant rather than
   -- a wall-clock time: "in 15 minutes" is a real duration from a real moment,
-  -- so a timestamptz is the honest column. It overrides reminder_sent_date on
+  -- so a timestamptz is the honest column. It overrides reminder_sent_key on
   -- the next scan (the day's cue has already been sent — that is precisely the
   -- state a snooze exists to re-open) and is cleared as it fires.
   add column if not exists reminder_snooze_until timestamptz,
@@ -122,8 +122,9 @@ alter table user_settings
   -- reminders habituate to; a changed frame is what they don't.
   add column if not exists habit_last_call_enabled boolean default false,
   add column if not exists habit_last_call_time    text default '20:30',
-  -- Per-user dedupe twin of items.reminder_sent_date, same 'yyyy-MM-dd' rule
-  -- (compare last_eod_notified_date, migration 018).
+  -- Per-user dedupe twin of items.reminder_sent_key. Only a DAY here, with no
+  -- time half: the last call has exactly one time per user, so there is nothing
+  -- for a retime to race (compare last_eod_notified_date, migration 018).
   add column if not exists habit_last_call_date    text;
 
 do $$
