@@ -216,8 +216,12 @@ test.describe('goals', () => {
     const checkin = scope.title('review');
     await page.getByTestId('goal-new-checkin-new-name').fill(checkin);
     await page.getByTestId('goal-new-checkin-add').click();
+    // `goal-checkin-member`, not `-member-row`: member-list renders each row as
+    // `${testPrefix}-member`, and the `-row` suffix this asserted for existed
+    // nowhere in the app. The first real run of this file caught it — static
+    // review had passed over it three times.
     await expect(
-      page.getByTestId('goal-checkin-member-row').filter({ hasText: checkin })
+      page.getByTestId('goal-checkin-member').filter({ hasText: checkin })
     ).toBeVisible();
 
     await page.getByTestId('goal-state-achieved').click();
@@ -254,19 +258,18 @@ test.describe('goals', () => {
 
     // Seeded weekly-on-Sunday and anchored at today, so it renders on the next
     // Sunday at the latest. Walk forward rather than assuming today is one.
-    await expect
-      .poll(
-        async () => {
-          for (let i = 0; i < 7; i += 1) {
-            if (await page.getByText(checkin).first().isVisible().catch(() => false)) return true;
-            await page.keyboard.press('ArrowRight');
-            await page.waitForTimeout(150);
-          }
-          return false;
-        },
-        { message: 'the new check-in never appeared on any day of the coming week' }
-      )
-      .toBe(true);
+    // Bounded OUTSIDE the assertion. Inside expect.poll the callback re-runs
+    // until the poll times out, pressing ArrowRight seven more times each pass —
+    // so the walk never stopped at a week, and a pass could land on an
+    // occurrence far outside the range the failure message claims to describe.
+    let found = false;
+    for (let i = 0; i < 7 && !found; i += 1) {
+      found = await page.getByText(checkin).first().isVisible().catch(() => false);
+      if (found) break;
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(150);
+    }
+    expect(found, 'the new check-in never appeared on any day of the coming week').toBe(true);
   });
 
   test('completing a check-in offers the note and the trip back', async ({ page }) => {
