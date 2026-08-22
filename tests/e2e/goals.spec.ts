@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { reloadApp, runCommand, waitForAppReady } from './helpers/app';
+import { reloadApp, runCommand, setLayout, setScope, waitForAppReady } from './helpers/app';
 import {
   cleanupByTitlePrefix,
   cleanupTestGoals,
@@ -256,6 +256,16 @@ test.describe('goals', () => {
     await closeConsole(page);
     await waitForAppReady(page);
 
+    // PIN THE CANVAS BEFORE WALKING IT. Both of these are per-user settings
+    // shared by the whole suite, and view-matrix.spec mutates them — when it
+    // fails partway through pickDisplay (it currently does) it leaves them
+    // wherever it got to, so this test inherited a different canvas run to run.
+    // Layout matters because `item-card` comes from task-row alone; the Schedule
+    // layout renders `schedule-block`, so the row is on the page under a name
+    // this locator cannot see. Scope matters because an arrow key steps SEVEN
+    // days under Week, so the day walk below would stride straight past it.
+    await setScope(page, 'Day');
+    await setLayout(page, 'Buckets');
     // Seeded weekly-on-Sunday and anchored at today, so it renders on the next
     // Sunday at the latest. Walk forward rather than assuming today is one.
     // Bounded OUTSIDE the assertion. Inside expect.poll the callback re-runs
@@ -286,6 +296,16 @@ test.describe('goals', () => {
     await closeConsole(page);
     await waitForAppReady(page);
 
+    // PIN THE CANVAS BEFORE WALKING IT. Both of these are per-user settings
+    // shared by the whole suite, and view-matrix.spec mutates them — when it
+    // fails partway through pickDisplay (it currently does) it leaves them
+    // wherever it got to, so this test inherited a different canvas run to run.
+    // Layout matters because `item-card` comes from task-row alone; the Schedule
+    // layout renders `schedule-block`, so the row is on the page under a name
+    // this locator cannot see. Scope matters because an arrow key steps SEVEN
+    // days under Week, so the day walk below would stride straight past it.
+    await setScope(page, 'Day');
+    await setLayout(page, 'Buckets');
     // Walk to the day it falls on — seeded weekly-on-Sunday, anchored today.
     let row = page.locator('[data-testid="item-card"]').filter({ hasText: checkin });
     for (let i = 0; i < 7 && !(await row.count()); i += 1) {
