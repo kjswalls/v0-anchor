@@ -1224,20 +1224,28 @@ export const usePlannerStore = create<PlannerStore>()(
        * and a background write can't fire it at a screen nobody is looking at.
        */
       const offerAchievementFor = (itemId: string) => {
+        const state = get();
+        // ONE zone for the whole function. The `far` comparison below already
+        // asked this question of the user's setting; formatGoalDay was asking
+        // it of the runtime, so a goal could be described in one zone and
+        // judged near/far in another.
+        const tz =
+          state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
         // `Aug 21`, not `2026-08-21`. Local to the store rather than imported
         // from lib/collections, which is a hooks module — a store importing
-        // React hooks is a cycle waiting to happen. Parsed at local noon, never
-        // `new Date('yyyy-mm-dd')`, which is UTC midnight and formats as the
-        // previous day west of Greenwich.
+        // React hooks is a cycle waiting to happen. Built at UTC noon and
+        // rendered in the USER's zone, so the day shown is the day stored —
+        // never `new Date('yyyy-mm-dd')`, which is UTC midnight and formats as
+        // the previous day west of Greenwich.
         const formatGoalDay = (dateStr: string) => {
           const [y, m, d] = dateStr.split('-').map(Number);
           if (!y || !m || !d) return dateStr;
-          return new Date(y, m - 1, d, 12).toLocaleDateString(undefined, {
+          return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString(undefined, {
+            timeZone: tz,
             month: 'short',
             day: 'numeric',
           });
         };
-        const state = get();
         const itemsById = new Map(state.items.map((i) => [i.id, i]));
         for (const goal of state.goals) {
           if (goal.state !== 'active') continue;
@@ -1263,9 +1271,7 @@ export const usePlannerStore = create<PlannerStore>()(
           // honest reading of a three-year goal that has defined two near-term
           // checkpoints — telling that user they have finished would be the
           // progress bar's own lie, in words.
-          const far =
-            !!goal.targetOn && goal.targetOn > toDateStr(new Date(), state.userTimezone ??
-              Intl.DateTimeFormat().resolvedOptions().timeZone);
+          const far = !!goal.targetOn && goal.targetOn > toDateStr(new Date(), tz);
           toast(
             far
               ? `All ${total} milestone${total === 1 ? '' : 's'} so far on ${goal.name}`
@@ -2650,39 +2656,56 @@ export const usePlannerStore = create<PlannerStore>()(
         // hooks/use-undo-toast.ts. The old label matched none of them, so a
         // group drag onto the grid produced no toast at ALL: no undo affordance
         // and, once decision 11 arrived, nowhere for the receipt to appear.
+        // MILESTONES KEEP THEIR TARGET DATE, for the reason moveTasksToDate
+        // states at length — but only the DATE is withheld, not the whole drop.
+        // This verb carries time and bucket too, and refusing outright would
+        // silently discard a drag the user plainly meant. So a milestone dropped
+        // on an hour cell gets the hour and keeps its deadline.
+        //
+        // Without this the two halves of the SAME drop handler disagreed: an
+        // untimed week column went through moveTasksToDate and preserved the
+        // target date, while an hour cell one column over rewrote it.
+        const milestones = milestoneItemIds(get().goals);
+        const datedIds = targets
+          .filter((i) => i.type !== 'habit' && !milestones.has(i.id))
+          .map((i) => i.id);
         setNextActionLabel(
           `Schedule items: ${targets.length} items`,
-          landingReceipt(get(), ids, dateStr)
+          // Only the items that actually take the date belong in a receipt that
+          // says where things landed.
+          landingReceipt(get(), datedIds, dateStr)
         );
 
         // All land at the same clock time; the grid's overlap layout tiles them.
-        const taskUpdates: Partial<Task> = {
+        const baseTaskUpdates: Partial<Task> = {
           isScheduled: true,
           timeBucket: corrected,
           startTime: time,
           inProjectBlock: false,
           previousStartTime: undefined,
           previousStartDate: undefined,
-          ...(dateStr ? { startDate: dateStr } : {}),
         };
         const habitUpdates: Partial<Habit> = { timeBucket: corrected, startTime: time };
+        // ONE resolver for the optimistic set() and the DB write, deliberately:
+        // Phase 1's unscheduleTasks bug was exactly two lists that had been
+        // interchangeable until a milestone rule made them differ.
+        const updatesFor = (item: Item): Partial<Task> | Partial<Habit> =>
+          item.type === 'habit'
+            ? habitUpdates
+            : dateStr && !milestones.has(item.id)
+              ? { ...baseTaskUpdates, startDate: dateStr }
+              : baseTaskUpdates;
 
         set((state) =>
           projectItems(
             state.items.map((i) =>
-              idSet.has(i.id)
-                ? ({ ...i, ...(i.type === 'habit' ? habitUpdates : taskUpdates) } as Item)
-                : i
+              idSet.has(i.id) ? ({ ...i, ...updatesFor(i) } as Item) : i
             )
           )
         );
 
         targets.forEach((item) =>
-          dbUpdateItem(
-            item.id,
-            dbTypeOf(item),
-            item.type === 'habit' ? habitUpdates : taskUpdates
-          ).catch(console.error)
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item)).catch(console.error)
         );
       },
 

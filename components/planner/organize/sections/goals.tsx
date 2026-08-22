@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
-import { isCheckinEligible, isMilestoneEligible } from '@/lib/item-registry';
+import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
 import { isRecurring } from '@/lib/recurrence';
 import { goalProgress, isGoalActive, nextMilestone, sortGoalsForDisplay } from '@/lib/goals';
 import { GoalProgressTrack, progressLabel } from '@/components/planner/goal-sections';
@@ -611,7 +611,12 @@ function GoalDetail({
         ids={goal.memberIds}
         itemsById={itemsById}
         testPrefix="goal-member"
-        eligible={(i) => !heldElsewhere(goal, 'memberIds', i.id)}
+        // isCollectible AND not-held-elsewhere. A custom `eligible` REPLACES the
+        // picker's default (`eligible ?? isCollectible` in member-list), so
+        // omitting it here silently widened the pool to subtasks and
+        // non-collectible types — against locked decision 3, which says plain
+        // `member` reuses isCollectible with its subtask exclusion.
+        eligible={(i) => isCollectible(i) && !heldElsewhere(goal, 'memberIds', i.id)}
         onChange={(ids) => members({ memberIds: ids })}
       />
 

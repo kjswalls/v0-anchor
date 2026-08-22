@@ -129,6 +129,12 @@ describe('setGoalState', () => {
     // The key must SURVIVE to the db layer as an explicit clear — dropped as an
     // absent key, the stamp would live on in the row forever.
     expect(db.updateGoal).toHaveBeenLastCalledWith(U, 'g1', { state: 'active', achievedAt: undefined });
+    // ...and that matcher alone does NOT check it. toHaveBeenLastCalledWith uses
+    // toEqual semantics, which treat an absent key and a key set to undefined as
+    // equal — exactly the distinction the comment above calls load-bearing. So
+    // assert the key's PRESENCE, which is the part that reaches the db layer.
+    const patch = vi.mocked(db.updateGoal).mock.lastCall?.[2] ?? {};
+    expect(Object.prototype.hasOwnProperty.call(patch, 'achievedAt')).toBe(true);
   });
 
   it('never restamps a goal already in the requested state', () => {
@@ -247,6 +253,24 @@ describe('the bulk date verbs leave milestone target dates alone', () => {
     const byId = new Map(usePlannerStore.getState().items.map((i) => [i.id, i]));
     expect((byId.get('plain') as { startDate?: string }).startDate).toBeUndefined();
     expect((byId.get('stone') as { startDate?: string }).startDate).toBe('2026-06-30');
+  });
+
+  it('scheduleItemsAt keeps the target date but still takes the time', () => {
+    // The gap this closes: the SAME drop handler routed an untimed week column
+    // through moveTasksToDate (which excludes milestones) and an hour cell one
+    // column over through scheduleItemsAt (which did not), so a milestone's
+    // deadline survived or moved depending on which pixel it was dropped on.
+    //
+    // The date is withheld, NOT the whole drop — this verb also carries a time,
+    // and refusing outright would discard a drag the user plainly meant.
+    seed();
+    usePlannerStore.getState().scheduleItemsAt(['plain', 'stone'], 'morning', '09:00', '2026-06-02');
+    const byId = new Map(usePlannerStore.getState().items.map((i) => [i.id, i]));
+    expect((byId.get('plain') as { startDate?: string }).startDate).toBe('2026-06-02');
+    expect((byId.get('stone') as { startDate?: string }).startDate).toBe('2026-06-30');
+    // The time landed on both, milestone included.
+    expect((byId.get('stone') as { startTime?: string }).startTime).toBe('09:00');
+    expect((byId.get('plain') as { startTime?: string }).startTime).toBe('09:00');
   });
 
   it('still lets a single deliberate reschedule through', () => {

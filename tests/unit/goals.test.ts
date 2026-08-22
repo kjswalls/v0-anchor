@@ -399,7 +399,11 @@ describe('fetchGoals', () => {
 });
 
 describe('check-in standing', () => {
-  const weekly = (over: Partial<Extract<Item, { type: 'task' }>> = {}): Item =>
+  // Named for the CADENCE UNDER TEST, not the value: 'weekly' is not in the
+  // recurrence enum at all (migration 014 removed it; the schema normalizes
+  // the legacy string to 'custom'), so a daily check-in is what actually
+  // exercises the day-walk.
+  const daily = (over: Partial<Extract<Item, { type: 'task' }>> = {}): Item =>
     task({ id: 'c1', title: 'Chinese check-in', repeatFrequency: 'daily', ...over });
 
   const goalWith = (checkinIds: string[]) => ({
@@ -417,7 +421,7 @@ describe('check-in standing', () => {
     // More than 12h east of the server, offset 0 already formatted as tomorrow,
     // so today's occurrence was never probed: on a weekly cadence the page
     // reported NEXT WEEK for a check-in due now.
-    const items = new Map<string, Item>([['c1', weekly()]]);
+    const items = new Map<string, Item>([['c1', daily()]]);
     const standing = checkinStanding(goalWith(['c1']), items, '2026-08-21', 'Pacific/Auckland');
     expect(standing.nextDue).toBe('2026-08-21');
     expect(standing.dueToday).toBe(true);
@@ -428,7 +432,7 @@ describe('check-in standing', () => {
     // Counting only completion made the page say "Due today" for an occurrence
     // the user had struck off the grid an hour earlier.
     const items = new Map<string, Item>([
-      ['c1', weekly({ skippedDates: ['2026-08-21'] })],
+      ['c1', daily({ skippedDates: ['2026-08-21'] })],
     ]);
     const standing = checkinStanding(goalWith(['c1']), items, '2026-08-21', 'UTC');
     expect(standing.nextDue).toBe('2026-08-22');
@@ -437,10 +441,10 @@ describe('check-in standing', () => {
 
   it('reports the last completed occurrence, and nothing when there is none', () => {
     const done = new Map<string, Item>([
-      ['c1', weekly({ completedDates: ['2026-08-14', '2026-08-07'] })],
+      ['c1', daily({ completedDates: ['2026-08-14', '2026-08-07'] })],
     ]);
     expect(checkinStanding(goalWith(['c1']), done, '2026-08-21', 'UTC').lastDone).toBe('2026-08-14');
-    const fresh = new Map<string, Item>([['c1', weekly()]]);
+    const fresh = new Map<string, Item>([['c1', daily()]]);
     expect(checkinStanding(goalWith(['c1']), fresh, '2026-08-21', 'UTC').lastDone).toBeNull();
   });
 

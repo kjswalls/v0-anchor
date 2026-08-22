@@ -677,9 +677,36 @@ async function verifyContainerOwnership(
   // A dropped error is how a missing table (PGRST205, the whole pre-migration
   // deploy window) or a transient PostgREST failure becomes an indistinguishable
   // 404 — the one status that tells a caller to stop retrying and forget the id.
-  // Thrown, it reaches errorResponse and is reported as the server fault it is.
+  // Thrown, it is turned into a server fault by ownershipGate below — which is
+  // the ONLY way this should be called. Every direct caller sat above its
+  // handler's try block, so the throw escaped to Next.js and became a bare 500
+  // with no { error } body: the exact message this throw exists to surface was
+  // the thing being lost.
   if (error) throw error
   return !!data && data.user_id === userId
+}
+
+/**
+ * Ownership check that cannot escape its handler.
+ *
+ * Returns the response to send — 404 when the row is absent or another user's,
+ * an errorResponse when the read itself faulted — or null when the caller owns
+ * the row and the handler should continue.
+ */
+async function ownershipGate(
+  client: DbClient,
+  table: string,
+  id: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  try {
+    if (!(await verifyContainerOwnership(client, table, id, userId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    return null
+  } catch (err) {
+    return errorResponse(err)
+  }
 }
 
 /** Membership arrays in a create/update body, validated together. */
@@ -781,9 +808,8 @@ export function makeContainerItemHandlers(kind: GatedContainerKind) {
     if (auth instanceof NextResponse) return auth
 
     const { id } = await params
-    if (!(await verifyContainerOwnership(auth.serviceClient, config.table, id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, config.table, id, auth.userId)
+    if (denied) return denied
 
     const body = await parseBody(req, config.updateSchema)
     if (body instanceof NextResponse) return body
@@ -856,9 +882,8 @@ export function makeContainerItemHandlers(kind: GatedContainerKind) {
     if (auth instanceof NextResponse) return auth
 
     const { id } = await params
-    if (!(await verifyContainerOwnership(auth.serviceClient, config.table, id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, config.table, id, auth.userId)
+    if (denied) return denied
 
     try {
       // Soft delete, like every other agent DELETE — membership rows survive so
@@ -1195,9 +1220,8 @@ export function makeGoalItemHandlers() {
 
     const { id } = await params
     // Service role bypasses RLS, so ownership is checked here or nowhere.
-    if (!(await verifyContainerOwnership(auth.serviceClient, 'goals', id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, 'goals', id, auth.userId)
+    if (denied) return denied
 
     const body = await parseBody(req, GoalUpdateSchema)
     if (body instanceof NextResponse) return body
@@ -1233,9 +1257,8 @@ export function makeGoalItemHandlers() {
     if (auth instanceof NextResponse) return auth
 
     const { id } = await params
-    if (!(await verifyContainerOwnership(auth.serviceClient, 'goals', id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, 'goals', id, auth.userId)
+    if (denied) return denied
 
     try {
       // Soft delete. Membership rows survive with their ROLES, so a restore
