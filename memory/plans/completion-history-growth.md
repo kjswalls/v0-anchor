@@ -94,9 +94,11 @@ now fails outright; the sequence is drop-view → alter → rebuild, spelled out
    project even with credentials. `tests/e2e/habits.spec.ts` and `pause.spec.ts`
    both touch the skip path that changed, and remain the gap in coverage.
 
-4. **Decide the agent-projection question** (below), then merge.
+4. ~~**Decide the agent-projection question.**~~ **Decided** — keep the agent
+   projection windowed; see below. Merging is now gated only on step 3 (and
+   step 2 if you want the eyeball check first).
 
-### Open decision
+### Open decision — RESOLVED: keep it windowed
 
 `/api/agent/context` now serves the OpenClaw plugin a 400-day slice instead of
 full history. The schema is unchanged so it still `safeParse`s, and a smaller
@@ -105,7 +107,13 @@ change here that reaches outside the app. If you would rather the agent
 projection stay unwindowed, `fetchItems` needs a flag to select the base table
 for that one caller.
 
-Scope confirmed since: `/api/agent/context` is the ONLY external surface
+**Decided: keep the window.** No code change; `/api/agent/context` serves the
+400-day slice like every other read. The schema is unchanged so the plugin still
+`safeParse`s, and the payload is bounded for good. Reopen only if the plugin
+grows a use for multi-year completion history — the escape hatch is still a
+flag on `fetchItems` selecting the base table for that one caller.
+
+Scope confirmed: `/api/agent/context` is the ONLY external surface
 affected. `fetchItems` has three other callers — `planner-store` (the app, which
 is the point), and `fetchTasks`/`fetchHabits`, which no route calls. The
 `/api/agent/tasks` and `/api/agent/habits` routes are POST-only. So this is one
