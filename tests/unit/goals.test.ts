@@ -355,7 +355,7 @@ describe('fetchGoals', () => {
   });
 
   it('files an unrecognised role as a plain member rather than dropping it', async () => {
-    // Unreachable under 029's CHECK, and deliberate: a membership that vanishes
+    // Unreachable under 036's CHECK, and deliberate: a membership that vanishes
     // from every array is unrecoverable, while one that degrades is editable.
     const { client } = makeClient({
       goals: [{ id: G, user_id: U, name: 'G', state: 'active', deleted_at: null }],

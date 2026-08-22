@@ -162,7 +162,7 @@ export const ProgramSchema = z.object({
   updatedAt: z.string().optional(),
 })
 
-// ── Goals (migration 029) ──────────────────────────────────────────────────────
+// ── Goals (migration 036) ──────────────────────────────────────────────────────
 // The third container role. Projects and habit groups CLASSIFY (what an item is
 // about); routines and programs GATE (when it counts); a goal ASPIRES — it says
 // why the work matters and switches nothing off. See lib/container-registry.ts,
@@ -352,7 +352,7 @@ const customItemObject = z.object({
    * The user-defined type's machine name (item_types.name), e.g. 'errand'.
    *
    * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
-   * (GoalSchema above, migration 029), and an item type of the same name is a
+   * (GoalSchema above, migration 036), and an item type of the same name is a
    * different thing in a different namespace. Both keep working — the console
    * shows them in different sections — but the example should not teach the
    * collision.

@@ -230,11 +230,17 @@ different meanings will mislead every later reader.
    detail pane and the page render the same sections — growth is a presentation,
    not a fork.
 
-## Target DB shape (migration 029)
+## Target DB shape (migration 036)
 
-**Before committing to the number: check the remote ledger tip (`pnpm db:list`).**
-028's own header records renumbering because the ledger carried versions from
-branches not in the worktree — "ledger first, directory second."
+**Renumbered 029 → 036 on 2026-08-22, exactly as this section warned.** 028's own
+header records the same thing happening — "ledger first, directory second" — and
+it happened twice over here. `origin/main` had grown 029_set_item_skip,
+030_item_events_retention and 031_items_windowed while this branch was in flight,
+so 029 was taken; and the REMOTE LEDGER was further ahead still, at 035
+(032_habit_reminders, 033_reminder_channels, 034_stakes, 035_reminder_cron) —
+four versions applied out-of-band that exist in no worktree. Reading the
+directory alone would have collided; reading main alone would have collided
+again. 036 is the first free version above the ledger tip.
 
 All idempotent, house RLS pattern, dates as `yyyy-MM-dd` text, tz app-side.
 `updated_at` trigger on `goals` ONLY — never the join table.
@@ -493,7 +499,7 @@ table as ONE set. Four rules, each closing a found defect:
 
 ## Phasing (app must work at every step)
 
-- [x] **Phase 0 — foundations** (built 2026-08-20). Migration 029 (both CHECKs in
+- [x] **Phase 0 — foundations** (built 2026-08-20). Migration 036 (both CHECKs in
   guarded DO blocks); `GoalSchema`/`GoalRoleSchema`/`GoalStateSchema` + `GOAL_FIELDS`
   + committed dist rebuilt (achievedAt in, updatedAt out); db.ts goal CRUD with
   `goalMemberRows` + `reconcileGoalMembers` (one union reconcile, cross-array
@@ -509,13 +515,20 @@ table as ONE set. Four rules, each closing a found defect:
   distributed identically file-by-file. (Two files this commit edits carry
   pre-existing errors, `pause.test.ts` and `sweep-receipt.test.ts`; the claim is
   that nothing was introduced, not that the touched files were clean.)
-  **Migration NOT applied.** The number 029 is unverified against the remote tip:
-  the Supabase CLI resolves via `npx` but the project is not linked
-  (`LegacyProjectNotLinkedError`), and the Supabase MCP — the tool 024's ledger
-  entry records using to apply and verify — is unauthenticated in this session.
-  Verify the tip before applying. Deploy order is safe either way: no existing
-  table gains a column, so every pre-existing write path is byte-identical
-  against a pre-029 database.
+  **Renumbered to 036 and still NOT applied (2026-08-22).** The ledger was read
+  live: tip 035, four versions ahead of `origin/main`'s directory. See the
+  migration-number note above. Deploy order is safe either way: no existing table
+  gains a column, so every pre-existing write path is byte-identical against a
+  pre-036 database.
+
+  **The cron body was wrong, and silently.** 036's purge rewrite was authored
+  against 024's job — seven DELETEs — but 030 had since added
+  `item_events … 180 days` to the same job, and `cron.schedule` replaces a job
+  whole. Applying the original would have retired the activity-feed purge with
+  no error anywhere, which is precisely the failure 030's own header warns any
+  later migration about. The body now matches the LIVE job (read back from
+  `cron.job`) plus the goals line. Nothing in 036 adds a column to `items`, so
+  031's `rebuild_items_windowed()` is not needed.
   **Carried into Phase 1, deliberately:**
   - the untyped history-baseline literal at planner-store.ts:3370 must gain
     `goals` in the SAME commit as the store slice — it cannot be fixed earlier
@@ -738,7 +751,7 @@ table as ONE set. Four rules, each closing a found defect:
   achieved would be the single worst thing this feature could do.
 
   **`tests/e2e/goals.spec.ts` — six cases, and it is UNRUN.** There is no
-  `.env.test` in this environment and migration 029 is not applied, so it cannot
+  `.env.test` in this environment and migration 036 is not applied, so it cannot
   execute here; every prior phase's review recorded that running an e2e is what
   finds its defects, and that step has not happened. What IS verified: `tsc`
   and eslint clean, every one of its fifteen `getByTestId` selectors audited
@@ -980,7 +993,7 @@ goals-store.test.ts (28) cover the predicates, the membership write semantics,
 progress, check-in standing, the demotion rule, the bulk-verb exclusions and
 the bridge's goal selection. tests/e2e/goals.spec.ts exists with seven cases
 INCLUDING the check-in bridge case named above — and has **never been
-executed**: no `.env.test` in the build environment and migration 029 is not
+executed**: no `.env.test` in the build environment and migration 036 is not
 applied. Its first real run is still owed, and three of its defects were found
 by static review rather than by running it (a soft-delete poll that could never
 observe a delete, a one-press Escape where the house helpers press four, and an

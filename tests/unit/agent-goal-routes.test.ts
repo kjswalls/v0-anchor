@@ -37,7 +37,7 @@ interface TableSchema {
   unique: string[][]
 }
 
-/** Only the tables the goal handlers touch, mirroring migration 029 + items. */
+/** Only the tables the goal handlers touch, mirroring migration 036 + items. */
 const SCHEMA: Record<string, TableSchema> = {
   goals: {
     columns: [

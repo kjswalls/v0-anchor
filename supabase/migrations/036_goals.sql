@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 029_goals.sql — long-term goals, and the roles their members play
+-- 036_goals.sql — long-term goals, and the roles their members play
 -- (memory/plans/long-term-goals.md, Phase 0)
 --
 -- A GOAL is a long-horizon container — "Learn Chinese", "Build a $3m business
@@ -251,7 +251,7 @@ end$$;
 -- ─── 3. Trash purge ───────────────────────────────────────────────────────────
 -- Extend the job to `goals`. Membership rows go with their goal by CASCADE, so
 -- they never need a line of their own. The job is REPLACED whole, so every
--- table the 024 version purged is re-listed here — dropping one would silently
+-- table the 024 and 030 versions purged is re-listed here — dropping one would silently
 -- strand its trash forever.
 
 -- NOTE the asymmetry, because the guard below reads like more protection than
@@ -277,6 +277,7 @@ select cron.schedule('purge-deleted-items', '0 0 * * *', $$
   DELETE FROM goals WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
   DELETE FROM tasks WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
   DELETE FROM habits WHERE deleted_at IS NOT NULL AND deleted_at < NOW() - INTERVAL '30 days';
+  DELETE FROM item_events WHERE created_at < NOW() - INTERVAL '180 days';
 $$);
 
 comment on table public.goals is

@@ -69,13 +69,13 @@ test.describe('goals', () => {
     );
     // Fail in ten seconds with the real cause rather than in two minutes with
     // none. `goal-add` is disabled while `goalsAvailable` is false — exactly the
-    // state of a database without migration 029 — and waitForAppReady's
+    // state of a database without migration 036 — and waitForAppReady's
     // `data-loaded` gate does not cover that flag, so the click below would
     // block on actionability for the whole describe timeout and take the other
     // cases down with it under `mode: 'serial'`.
     await expect(
       page.getByTestId('goals-unavailable'),
-      'goals are unavailable on this account — is migration 029 applied?'
+      'goals are unavailable on this account — is migration 036 applied?'
     ).toHaveCount(0);
   }
 

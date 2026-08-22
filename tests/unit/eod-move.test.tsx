@@ -31,6 +31,7 @@ vi.mock('@/lib/db', () => ({
   deleteItem: vi.fn(async () => {}),
   restoreItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
+  setItemSkip: vi.fn(async () => {}),
   createProject: vi.fn(async () => {}),
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
@@ -175,9 +176,12 @@ describe('EOD Skip today', () => {
     render(<EODReview />);
     click('eod-skip-btn-daily');
 
-    expect(db.updateItem).toHaveBeenCalledWith('daily', 'task', { skippedDates: [TODAY] });
+    // The skip persists as a per-date intent (migration 029), not as an
+    // absolute skippedDates array through the update allowlist.
+    expect(db.setItemSkip).toHaveBeenCalledWith('daily', 'task', TODAY, true);
     const writes = vi.mocked(db.updateItem).mock.calls;
     expect(writes.every(([, , u]) => !('startDate' in u) && !('status' in u))).toBe(true);
+    expect(writes.every(([, , u]) => !('skippedDates' in u))).toBe(true);
   });
 
   it('shows a non-shaming receipt, and undo unskips the day', () => {

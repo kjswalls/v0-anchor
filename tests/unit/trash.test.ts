@@ -49,7 +49,12 @@ function makeClient() {
         return row[col] === val;
       });
     const run = () => {
-      const hit = (tables[table] ?? []).filter(match);
+      // items_windowed (migration 031) is a view over items — same rows, with
+      // the two date arrays trimmed. Reads resolve to the same backing rows so
+      // this suite keeps testing the bin's roll-up logic rather than the view;
+      // writes still name `items`, which is what the update assertions check.
+      const backing = table === 'items_windowed' ? 'items' : table;
+      const hit = (tables[backing] ?? []).filter(match);
       if (kind === 'update') {
         updates.push({ table, payload: payload!, filters: [...filters] });
         for (const row of hit) Object.assign(row, payload);

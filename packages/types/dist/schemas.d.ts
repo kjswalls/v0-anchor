@@ -919,7 +919,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
      *
      * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
-     * (GoalSchema above, migration 029), and an item type of the same name is a
+     * (GoalSchema above, migration 036), and an item type of the same name is a
      * different thing in a different namespace. Both keep working — the console
      * shows them in different sections — but the example should not teach the
      * collision.
@@ -1306,7 +1306,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
      *
      * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
-     * (GoalSchema above, migration 029), and an item type of the same name is a
+     * (GoalSchema above, migration 036), and an item type of the same name is a
      * different thing in a different namespace. Both keep working — the console
      * shows them in different sections — but the example should not teach the
      * collision.
@@ -3471,7 +3471,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
          * The user-defined type's machine name (item_types.name), e.g. 'errand'.
          *
          * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
-         * (GoalSchema above, migration 029), and an item type of the same name is a
+         * (GoalSchema above, migration 036), and an item type of the same name is a
          * different thing in a different namespace. Both keep working — the console
          * shows them in different sections — but the example should not teach the
          * collision.

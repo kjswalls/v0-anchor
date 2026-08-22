@@ -261,7 +261,7 @@ describe('AnchorContextResponseSchema (items[] additivity)', () => {
   });
 
   it('accepts a v5 response that OMITS goals[] rather than sending []', () => {
-    // Migration 029 may not be applied yet; `[]` would tell a model this user
+    // Migration 036 may not be applied yet; `[]` would tell a model this user
     // has decided against goals, which is a different claim from "not here".
     const r = AnchorContextResponseSchema.safeParse({ ...base, schemaVersion: 5 });
     expect(r.success).toBe(true);
