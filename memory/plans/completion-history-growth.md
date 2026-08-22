@@ -1,8 +1,10 @@
 # Completion-history growth — session handoff
 
 Branch: `claude/repeating-items-account-growth-7fifa5`, two commits, pushed.
-Nothing merged. **Nothing applied to the database** — that is step 1 below, and
-it has an order that matters.
+Nothing merged. **029, 030 and 031 are all applied to `anchor`
+(ctcspcferkdlzdcqlozq)**, ledger-aligned and verified against the live project —
+see "What was verified" below. The app side is NOT deployed, which is the
+correct order (migrations first; see step 1's note).
 
 ---
 
@@ -63,17 +65,35 @@ now fails outright; the sequence is drop-view → alter → rebuild, spelled out
 
 ## Next steps, in order
 
-1. **`pnpm db:push`.** 031 must reach the database **before** the app build
-   reaches users — the same direction 027 documents. Both new reads degrade to
-   the base table if 031 is missing, so the window is survivable rather than
-   fatal, but it serves untrimmed arrays until pushed. 029 has the same
-   requirement for a different reason: without it every skip calls an RPC that
-   does not exist. 030 is order-independent.
-2. **Sanity-check a real account** once pushed: open a long-running habit's
-   6-month heatmap (the deepest history surface) and confirm it still fills.
-3. **Run the E2E suite** — `pnpm e2e` needs `.env.test` + live Supabase, so it
-   was not run here. `tests/e2e/habits.spec.ts` and `pause.spec.ts` both touch
-   the skip path that changed.
+1. ~~**`pnpm db:push`.**~~ **Done** — all three applied to `anchor`
+   (ctcspcferkdlzdcqlozq) via the Supabase MCP, in the order 029/030 → 031.
+   031 must still reach the database **before** the app build reaches users (the
+   same direction 027 documents); it has, and the app is not deployed, so that
+   ordering holds. Both new reads degrade to the base table if the view is
+   missing, so the window was survivable in the interim rather than fatal.
+
+   **Ledger note.** The MCP stamps `schema_migrations.version` as a TIMESTAMP,
+   not `NNN`. CLAUDE.md requires NNN alignment or `db push` replays the
+   migration later, so each version was corrected by hand after applying. All
+   three now read `029` / `030` / `031`; verified by reading the ledger back,
+   not just by writing it. **Any future MCP-applied migration needs the same
+   correction.**
+
+2. **Sanity-check a real account** — still open, and the one check that needs a
+   browser and a human. Open a long-running habit's 6-month heatmap (the deepest
+   history surface) and confirm it still fills. Nothing in the data can make
+   this fail today (see the no-op note below), so this is a smoke test of the
+   read path, not of the trim.
+
+3. **Run the E2E suite** — still NOT run. `pnpm e2e` was attempted and fails in
+   `globalSetup` before reaching a browser: all five vars in the env contract
+   (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `SUPABASE_SECRET_KEY`, `TEST_USER_EMAIL`, `TEST_USER_PASSWORD`) are unset and
+   there is no `.env.test`. Independently, the sandbox's egress policy denies
+   `ctcspcferkdlzdcqlozq.supabase.co:443`, so the suite could not reach the
+   project even with credentials. `tests/e2e/habits.spec.ts` and `pause.spec.ts`
+   both touch the skip path that changed, and remain the gap in coverage.
+
 4. **Decide the agent-projection question** (below), then merge.
 
 ### Open decision
@@ -85,14 +105,20 @@ change here that reaches outside the app. If you would rather the agent
 projection stay unwindowed, `fetchItems` needs a flag to select the base table
 for that one caller.
 
+Scope confirmed since: `/api/agent/context` is the ONLY external surface
+affected. `fetchItems` has three other callers — `planner-store` (the app, which
+is the point), and `fetchTasks`/`fetchHabits`, which no route calls. The
+`/api/agent/tasks` and `/api/agent/habits` routes are POST-only. So this is one
+decision about one endpoint, not a class of them.
+
 ---
 
 ## What was verified, and how
 
-`pnpm test` 1337 passing (78 files), `pnpm lint` 0 errors, `pnpm build` clean.
-`pnpm e2e` NOT run (see step 3).
+Gate results are at the end of this section; `pnpm e2e` is still NOT run
+(see step 3).
 
-The SQL was executed against a real PostgreSQL 16, not reviewed by eye:
+The SQL was first executed against a real PostgreSQL 16, not reviewed by eye:
 
 - the trim, at the boundary — 399 days in, 401 out
 - **`security_invoker=true` genuinely enforces the own-rows RLS policy through
@@ -104,5 +130,74 @@ The SQL was executed against a real PostgreSQL 16, not reviewed by eye:
 - `set_item_skip` is idempotent in both directions and leaves `streak` alone
 - 029 and 031 both re-apply cleanly
 
-Not verified against the project's actual Supabase — the Supabase MCP server was
-unauthorised in that session.
+### Re-verified against the live `anchor` project, after applying
+
+The bullets above were PostgreSQL 16 on a workstation. Everything below was run
+against ctcspcferkdlzdcqlozq itself (Postgres 17.6), reading state back rather
+than trusting the apply:
+
+- **Ledger** reads `029` / `030` / `031`. No timestamp rows remain.
+- **`items_windowed` exists**, `relkind=v`, `reloptions={security_invoker=true}`.
+- **Column parity is exact**: 46 columns in `items`, 46 in the view, and a
+  two-way `EXCEPT` on (name, ordinal_position, data_type) is empty in both
+  directions. This is the check that matters, because `fetchItems` does
+  `select('*')` and a dropped column would read back as `undefined` in the app
+  with no error anywhere.
+- **RLS genuinely applies through the view on this project.** As role
+  `authenticated` with a user's JWT, the view returns exactly that user's rows
+  (826 of 914) and zero rows belonging to anyone else; swapping the JWT to a
+  second user changes the count to that user's 59, so the bound is tracking the
+  invoker rather than coinciding. As `anon`, both the table and the view return
+  0. Supabase's own linter also raises no `security_definer_view` advisory.
+- **Both arrays are trimmed and only those two**: the stored view definition
+  contains exactly two `window_dates(…, 400)` calls, one per date column, and
+  quotes `"order"` / `"group"`.
+- **The trim boundary re-checked here**: day −400 survives, day −401 is
+  dropped, `null` and `{}` both come back `{}`, and a non-date string is carried
+  by the lexicographic compare rather than raising a cast error — the behaviour
+  the plain `text[]` columns depend on. `window_dates` is `stable`, not
+  `immutable`, so no stale cutoff can be folded into a cached plan.
+- **The cron job is intact**: `purge-deleted-items`, `0 0 * * *`, active, with
+  all 8 DELETEs including `item_events` at 180 days. One job, not two — the
+  unschedule/reschedule in 030 left no duplicate.
+- **`rebuild_items_windowed()` runs on this project**, not just locally.
+  Calling it again is a clean no-op: still 46 columns, still zero parity drift,
+  `security_invoker` still set, grants reinstated, 914 rows readable. The
+  documented recovery path for future migrations is therefore live, not
+  theoretical. (Adding an actual column to test it was NOT done here — that is
+  a schema change to a production table for a test's sake.)
+- **A grant wider than the migration asked for, and why it is fine.** 031
+  grants `select` to `authenticated, service_role`; the project's blanket
+  default privileges also hand `anon` full privileges on new public objects, so
+  `anon` holds SELECT (and nominally INSERT/UPDATE/DELETE) on the view. This is
+  the same posture `items` itself already has, and it is inert: with
+  `security_invoker=true` the own-rows policy evaluates `auth.uid() = user_id`
+  as `null` for `anon`, which is why the `anon` probe above returns 0 rows.
+  Writes through the view are likewise refused by the same policy, and the two
+  windowed columns are expressions, so they are read-only regardless.
+- **PostgREST can see the view.** The `pgrst_ddl_watch` event trigger is enabled
+  on `ddl_command_end`, so the `create view` fired the schema-cache reload. (The
+  REST endpoint itself was not reachable from that sandbox — egress policy — so
+  this is the mechanism, checked in the catalog, rather than a live 200.)
+
+Both migrations are no-ops on today's data, as expected: the oldest date in any
+array is 2026-04-03 (~141 days), nothing is beyond the 400-day horizon, and
+`item_events` has 3616 rows with 0 older than 180 days. So the above verifies
+mechanics, not row deltas.
+
+**One undocumented side effect, found by diffing table against view.** Exactly
+one of the 914 rows differs, and not because of the trim: `window_dates` ends in
+`order by d`, so the view returns SORTED arrays while the table stores
+append-order. That row had `[04-04, 04-03, 04-06, 04-07]` — a habit completed
+out of order. This is harmless and arguably a stabilisation: every consumer of
+`completedDates`/`skippedDates` uses `.includes`, `.length` or `.filter`, and
+nothing anywhere does positional access. Worth knowing before someone writes
+code that assumes append-order, which the base table still has.
+
+### Gates re-run on this branch
+
+`pnpm test` 1337 passing (78 files), `pnpm lint` 0 errors / 53 warnings,
+`pnpm build` clean, and `packages/types/dist` rebuilds with no drift (the gate
+CI fails on). Of the 53 lint warnings, 50 are pre-existing on `main`; the 3 new
+ones are `_cd`/`_st`/`_sd` at `planner-store.ts:2386`, the same deliberate
+underscore-discard idiom `main` already carries at five other sites.
