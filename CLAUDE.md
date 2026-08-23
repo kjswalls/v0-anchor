@@ -46,15 +46,16 @@ composes with the standing rule that commits wait for Kirby's go-ahead.
 2. **During the chat**: make changes on that branch. Leave them uncommitted unless
    Kirby asks otherwise — committing waits for the "done" signal.
 3. **When Kirby says the work is done** (and only then): commit on the branch, push
-   it, and open a PR — `git push -u origin <branch>` then `gh pr create`. Never push
-   to `main` directly.
+   it, and open a PR — `git push -u origin <branch>` then `gh pr create --base main`.
+   Never push to `main` directly.
 4. **Let the review bots run.** Wait for the automated reviewers (CodeRabbit, bug
    bots, CI checks — whatever the PR triggers) to weigh in. Read every comment, then
    fix or explicitly address each one and push the fixes to the same branch.
 5. **Auto-merge once everything is resolved.** When all bot comments are handled and
    checks are green, merge to `origin/main` — prefer `gh pr merge --auto --squash` so
-   GitHub completes the merge the moment required checks pass. Afterward
-   `git checkout main && git pull` to sync local.
+   GitHub completes the merge the moment required checks pass. Because auto-merge lands
+   asynchronously, wait until the PR actually shows as merged, then sync local with
+   `git checkout main && git pull --ff-only origin main`.
 
 "Done" is Kirby's word, not your own read that the task looks finished. Until he says
 so, no commits, pushes, PRs, or merges.
