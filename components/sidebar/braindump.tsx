@@ -73,33 +73,35 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
   };
 
   return (
-    // A sunken tray at the foot of the sidebar — a recessed well (surface-3 + an
-    // inset shadow), deliberately the INVERSE of the raised omnibar just below,
-    // so the two never read as the same control. It sits OUTSIDE the scroll area
-    // as a section child; the list shrinks (flex) to make room, so this rides
-    // just under a short list and pins above the omnibar when the list runs long.
-    // shrink-0 keeps it from compressing. mx-[10px] holds it to the width of the
-    // header's inner pill (which sat inside the capsule's px-[10px]).
+    // Reads as one more task row at the foot of the list — same shape, spacing,
+    // and hover wash as a braindump TaskRow, but with a boxed-plus where the
+    // checkbox would be. It sits OUTSIDE the scroll area as a section child; the
+    // list shrinks (flex) to make room, so this rides just under a short list and
+    // pins above the omnibar when the list runs long. shrink-0 keeps it from
+    // compressing. mx-[14px] mirrors the scroll list's inner px-[14px] and px-2
+    // its rows' own padding, so the plus lands in the same column as the
+    // checkboxes above it.
+    //
+    // -mt-2 cancels the section's gap-2 (both 8px), halving the space to the last
+    // item (the list's own pb-2 still holds ~8px) without going flush. It eats
+    // only the empty flex gap between siblings, landing exactly at the scroll
+    // port's edge — never over a row when a long list is scrolled.
     <div
       data-testid="braindump-quick-add"
       data-focused={focused ? 'true' : 'false'}
       className={cn(
-        'mx-[10px] flex h-[37px] shrink-0 items-center gap-2 rounded-[10px] bg-surface-3 px-[15px] shadow-[var(--shadow-inset-well)] transition-[box-shadow,background-color] duration-150 ease-[var(--ease-out-soft)]',
-        // Hover, only while NOT focused (so focus stays a clean lit recess): a
-        // 1px inner hairline traces the tray on top of the inset well.
-        '[&:hover:not(:focus-within)]:shadow-[var(--shadow-inset-well),inset_0_0_0_1px_var(--border)]',
-        // Focused: the recess LIGHTENS IN PLACE (fill eases toward white but the
-        // inset shadow stays) — it never rises to a raised pill, which would twin
-        // the omnibar's press.
-        focused && 'bg-[var(--surface-3-lit)]'
+        '-mt-2 mx-[14px] flex shrink-0 items-center gap-3 rounded-[5px] px-2 py-1.5',
+        // Match the row hover: a flat --accent wash, landed instantly (no
+        // transition), so hovering the foot of the list feels like hovering a row.
+        'hover:bg-accent'
       )}
     >
       <AddIconButton
         size="md"
         onClick={openFull}
         aria-label="Open the full add dialog"
-        // Brightens from its resting 80% to full foreground while the tray is
-        // focused — no lime; the tray's own fill carries the active state.
+        // Brightens from its resting 80% to full foreground on focus, in step
+        // with the placeholder — the whole row lights up as one.
         className={cn(focused && 'text-foreground')}
       />
       <input
@@ -120,7 +122,12 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         placeholder="Add item"
         aria-label="Add item"
         data-testid="braindump-quick-add-input"
-        className="min-w-0 flex-1 bg-transparent font-content text-content text-foreground placeholder:text-muted-foreground focus:outline-none"
+        className={cn(
+          'min-w-0 flex-1 bg-transparent font-content text-content text-foreground focus:outline-none',
+          // "Add item" sits grayed like a ghost row until you focus it, then
+          // brightens to a real title's foreground — an invitation to type.
+          focused ? 'placeholder:text-foreground' : 'placeholder:text-muted-foreground'
+        )}
       />
       {/* Enter affordance — the row commits on Enter, so surface a ↵ keycap
           while it's focused to make that discoverable. Kept mounted (opacity,
