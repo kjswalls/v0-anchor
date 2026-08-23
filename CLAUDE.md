@@ -57,6 +57,12 @@ composes with the standing rule that commits wait for Kirby's go-ahead.
    asynchronously, wait until the PR actually shows as merged, then sync local with
    `git checkout main && git pull --ff-only origin main`.
 
+`main` is branch-protected: no direct pushes, PRs required, and **Unit tests (Vitest)**
+must pass before merge (native auto-merge is enabled). Docs-only PRs skip CI — the
+`Tests` workflow ignores `**.md`, so that required check never reports and `--auto`
+won't fire; for a Markdown-only PR, once the bots are clean, merge with
+`gh pr merge --admin --squash` (admin override — there's no code to gate).
+
 "Done" is Kirby's word, not your own read that the task looks finished. Until he says
 so, no commits, pushes, PRs, or merges.
 
