@@ -5,10 +5,15 @@ Anchor could already reach a device — migration 009's push subscriptions, the 
 cron — but only ever for one moment a day: the end-of-day review, which fires *after* the
 day is decided. This adds the moments that can still change it.
 
-**Status (2026-08-21):** All three tiers shipped. Tiers 2 and 3 are **optional
+**Status (2026-08-23):** All three tiers shipped. Tiers 2 and 3 are **optional
 extensions**, off by default, on the migration-026 `user_extensions` surface. An
 adversarial review after Phase 1 produced fourteen fixes, folded in before Phase 3
 landed — decisions 9–12 below are its output.
+
+Since then, the two follow-ons the first pass deferred have landed: the **pledge
+ledger has a reader** (`/ledger`, decision 17) and **Beeminder posts at completion
+time** rather than only at settlement (decisions 14–16). Neither needed a
+migration.
 
 ---
 
@@ -110,6 +115,41 @@ they teach people to take the device off).
    which is service-role only (migration 012's posture). The settings UI shows *set / not
    set*, never the value.
 
+14. **A Beeminder datapoint goes up when the box is ticked, not when the day
+    settles — and the settlement stays anyway.** The settle-only version was
+    wrong in a way that costs money: a goal's deadline defaults to midnight and
+    the settlement to 03:00, so every completion was reported three hours after
+    the goal had already derailed. The graph ended up correct (the `daystamp`
+    is right) and the charge did not un-happen. `lib/stakes/live.ts` posts on
+    the tick; the settlement is kept as the BACKSTOP for every completion that
+    never passes through a browser — the lock-screen action, the agent API, an
+    offline tab. The two never coordinate: both claim the SAME ledger row, so
+    whichever arrives first does the work and the other finds it committed.
+15. **An un-ticked completion withdraws its datapoint.** The ledger row carries
+    the datapoint id (encoded into `detail` as `goal#id`, so no migration), and
+    an un-tick deletes the datapoint and then the row. Deleting rather than
+    tombstoning is deliberate: the row IS the claim on the datapoint, so a
+    tombstone would make a re-completion the same day permanently unpostable.
+    Without this, a completion taken back leaves a datapoint satisfying the
+    goal's rate — which defeats the mechanism far more thoroughly than a late
+    datapoint did.
+16. **The completion hook lives at the DB boundary, not in the store.** There
+    are at least five ways to tick a habit (grid checkbox, bulk verb, item
+    panel, EOD review, undo/redo) and every one lands on `setItemCompletion` in
+    lib/db.ts. Hooking them individually is a list that would be wrong within a
+    month. Browser-only, through a dynamic import, so the two zustand stores it
+    gates on never reach the server bundle — `/api/reminders/act` calls
+    `reportLiveCompletion` directly with the service client instead, which is
+    the lib/push-send.ts rule about not fetching our own deployment.
+17. **The ledger is a route, and it is read-only.** `/ledger`, not a settings
+    pane and not a dialog: the pledge notification asserts a number and has to
+    link to the rows behind it, a pane would make the record a preference, and
+    a dialog could not be linked to at all. `stake_events` grants the owner
+    SELECT and nothing else (migration 034) — a ledger the subject can edit is
+    not a ledger, and there is no "mark as paid" for the same reason there is
+    no payment rail. Only PLEDGE MISSES are summed into money: a Beeminder row
+    is a datapoint that went up and a partner row is a digest that went out.
+
 ---
 
 ## Phase 1 — Tier 1, in-app (shipped)
@@ -149,6 +189,17 @@ Where the evidence says the power actually is, once attention is not the bottlen
 - **`accountability-partner`** — a digest to a person who is expecting it. The mechanism is
   "someone is waiting", not volume.
 
+**The reader.** `/ledger` shows every settled day and what it came to, with the
+outstanding pledge total per currency and who it is payable to. Reachable from the
+pledge notification (which is the point — the notification asserts a number), from
+Rituals → Ledger, and from settings search on "owe". Read-only, by RLS and by design.
+
+**The live path.** `lib/stakes/live.ts` posts a Beeminder datapoint the moment a habit
+is ticked, and withdraws it if the tick is taken back. Hooked at `setItemCompletion` in
+lib/db.ts (browser) and called directly by `/api/reminders/act` (lock screen). The
+nightly settlement stays as the backstop; both claim the same ledger row, so only one of
+them ever posts.
+
 ---
 
 ## Known limitations (accepted, not oversights)
@@ -178,14 +229,13 @@ Where the evidence says the power actually is, once attention is not the bottlen
 - Vercel cron plan limits: two crons at `*/5` needs a paid plan. Phase 3's settlement folds
   into the reminder tick rather than claiming a third slot.
 - A per-item "snoozed until" indicator in the UI. The column exists; nothing renders it.
-- The pledge ledger has no reader. `stake_events` is written and RLS-readable, but no
-  surface shows it — "you owe £30" is currently only ever a notification.
-- **Beeminder datapoints are posted at settle time, not at completion time.** With the
-  defaults (settle 03:00, goal deadline midnight) a completion is reported three hours
-  after the goal has already derailed. The `daystamp` makes the graph correct; it does not
-  un-derail. Workaround today: keep the settle time before the goal's deadline. The real
-  fix is posting on completion, which needs a client→server hook this feature does not
-  have — **decide before relying on the money.**
+- **Marking a pledge paid.** The ledger reads; it has no way to record that a debt was
+  settled, so the running total only ever grows. Doing it properly is NOT an RLS update
+  policy (a ledger the subject can edit is not a ledger) — it is a `paid_at` stamp written
+  through a service-role route, i.e. a migration plus an endpoint. Worth doing once the
+  total is large enough to need clearing.
+- The ledger reads the last 180 days with no pagination. A year of daily misses is ~365
+  rows, which renders fine; it will want a bound eventually.
 - **`/api/reminders/secrets` PUT is a read-modify-write of one jsonb.** The store now
   serialises its writes, which closes the reachable path (it is the only writer, and
   tabbing between two credential fields is what used to race). A second client would still

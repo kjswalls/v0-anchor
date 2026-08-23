@@ -91,6 +91,16 @@ export interface ChannelRequest {
   /** JSON body, or a pre-encoded form body with the matching content-type. */
   body: string
   contentType?: string
+  /**
+   * Defaults to POST, which is what every delivery channel sends.
+   *
+   * DELETE exists for one caller: withdrawing a Beeminder datapoint when a
+   * completion is un-ticked. It rides this helper rather than a bare fetch so
+   * the timeout, the redirect refusal and the truncated error text apply to the
+   * retraction exactly as they do to the post — an un-tick that hangs for
+   * thirty seconds is the same outage as a cue that does.
+   */
+  method?: 'POST' | 'DELETE'
 }
 
 /**
@@ -110,7 +120,7 @@ export async function postToChannel(
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const res = await fetch(url, {
-      method: 'POST',
+      method: request.method ?? 'POST',
       headers: {
         'Content-Type': request.contentType ?? 'application/json',
         ...(request.headers ?? {}),

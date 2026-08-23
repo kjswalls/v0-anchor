@@ -116,7 +116,10 @@ export const pledgeAdapter: StakeAdapter = {
       await sendPushToUser(ctx.service, ctx.userId, {
         title: copy.title,
         body: copy.body,
-        url: '/',
+        // The ledger, not the planner. This notification asserts a number, and
+        // the claim the pledge tier makes for itself is that the number is
+        // backed by rows you can read — so the tap has to land on them.
+        url: '/ledger',
         tag: `anchor-pledge-${outcome.dateStr}`,
       })
     } catch (err) {

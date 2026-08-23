@@ -133,6 +133,7 @@ export interface SettingCtx {
     openBugReport: () => void;
     replayTour: () => void;
     signOut: () => void;
+    openLedger: () => void;
   };
 }
 
@@ -742,6 +743,22 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: '03:00',
   },
   {
+    id: 'rituals.ledger',
+    pane: 'rituals',
+    label: 'Ledger',
+    // The reader for what settling produces, one row below the switch that
+    // produces it. The pledge tier's whole claim is that "you owe £30" is
+    // backed by rows a person can look at, and a record with no reader is a
+    // number the app made up.
+    description: 'Every settled day, and what it came to. Read-only — Anchor keeps the record, it cannot take payment.',
+    control: 'action',
+    dependsOn: 'rituals.stakes',
+    keywords: ['owe', 'owed', 'debt', 'pledge', 'history', 'record', 'money', 'settled', 'stakes'],
+    read: () => 'Open',
+    write: (_v, ctx) => ctx.actions?.openLedger(),
+    defaultValue: 'Open',
+  },
+  {
     id: 'rituals.push',
     pane: 'rituals',
     label: 'Push notifications',
@@ -942,7 +959,7 @@ export interface DestinationRecord {
    * when the two dialogs became one console — the split was never about what
    * the user wanted, only about which dialog happened to own the row.
    */
-  action: 'organize' | 'connect-openclaw' | 'openclaw-docs';
+  action: 'organize' | 'connect-openclaw' | 'openclaw-docs' | 'ledger';
   /** For `organize`: which section to land on. */
   section?: string;
 }
@@ -1008,6 +1025,17 @@ export const DESTINATIONS: DestinationRecord[] = [
     where: '/connect',
     keywords: ['openclaw', 'agent', 'connect', 'pair', 'device', 'cli'],
     action: 'connect-openclaw',
+  },
+  {
+    id: 'dest.ledger',
+    label: 'Ledger',
+    where: '/ledger',
+    // "How much do I owe" is what someone types, and none of those words are in
+    // the label. The stake settings are a few rows away in Extensions, so this
+    // record's whole job is catching the search that is about the NUMBER rather
+    // than about configuring anything.
+    keywords: ['owe', 'owed', 'debt', 'pledge', 'stake', 'money', 'charity', 'history', 'record', 'settled'],
+    action: 'ledger',
   },
 ];
 

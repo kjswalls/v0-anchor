@@ -61,7 +61,10 @@ drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
 habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
 from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
-Three rules there are load-bearing and are not obvious from the code shape:
+The one exception is Beeminder, which also posts the instant a habit is ticked
+([lib/stakes/live.ts](lib/stakes/live.ts), hooked at `setItemCompletion`) because a
+datapoint that arrives after the goal's midnight deadline arrives after the money is
+gone. Four rules are load-bearing and are not obvious from the code shape:
 
 - **Nothing re-derives "does this want doing".** `lib/reminders/due.ts` and
   `lib/stakes/day.ts` compose `isOpenLoopOn` + `isItemActiveOn` from
@@ -71,6 +74,12 @@ Three rules there are load-bearing and are not obvious from the code shape:
   database actually changed a row; stake rows are inserted against a unique index and only
   the newly-claimed ones reach the outside world. A cron is at-least-once, and the naive
   order rings a phone twice or charges a pledge twice.
+- **Two writers, one row.** The live Beeminder path and the nightly settlement both claim
+  the same `stake_events` row (unique on user+date+subject+channel) and never coordinate:
+  whichever gets there first posts, the other finds it committed and does nothing. Keep
+  the settlement — it is the backstop for every completion that never passes through a
+  browser. `stake_events` is read at `/ledger` and is SELECT-only to its owner; a ledger
+  the subject can edit is not a ledger.
 - **Channels and stake adapters are declarative and isolated.** One is a manifest entry in
   [lib/extension-registry.ts](lib/extension-registry.ts), a field list in
   [lib/extension-settings.ts](lib/extension-settings.ts), and a `deliver()`/`plan()`+

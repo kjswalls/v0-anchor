@@ -962,6 +962,35 @@ export async function setItemCompletion(
     adjust_streak: adjustStreak,
   });
   if (error) throw error;
+  reportCompletion(id, dateStr, completed);
+}
+
+/**
+ * Tell the server a completion just landed, so a live stake can act on it.
+ *
+ * HOOKED HERE, at the DB boundary, and not in the store — which is the whole
+ * point. There are at least five ways to tick a habit (the grid checkbox, the
+ * bulk verb, the item panel, the EOD review, undo/redo), every one of them ends
+ * up on this RPC, and hooking them individually is a list that would be wrong
+ * within a month. One funnel, one report.
+ *
+ * Browser only, through a dynamic import: this same module is used by
+ * /api/reminders/act on the server, where the two zustand stores the reporter
+ * gates on do not exist and where a fetch back into our own deployment is the
+ * pattern lib/push-send.ts exists to have removed. The act route calls
+ * reportLiveCompletion directly instead.
+ *
+ * Deliberately not awaited and never able to reject. The completion is already
+ * written; this is a report about it, and a Beeminder outage must not surface
+ * as a failed checkbox.
+ */
+function reportCompletion(id: string, dateStr: string, completed: boolean): void {
+  if (typeof window === 'undefined') return;
+  void import('./stakes/live-client')
+    .then((m) => m.reportCompletionFromClient(id, dateStr, completed))
+    .catch(() => {
+      /* Best-effort; the nightly settlement is the backstop. */
+    });
 }
 
 /**

@@ -178,6 +178,7 @@ export default function SettingsPage() {
         openBugReport: () => setLocalDialog('bug'),
         replayTour: () => void replayTour(),
         signOut: () => void signOut(),
+        openLedger: () => router.push('/ledger'),
       },
     }),
     // The ticks are the point: they are not read here, they are what makes this
@@ -188,6 +189,7 @@ export default function SettingsPage() {
       setThemeSmoothly,
       userId,
       push,
+      router,
       replayTour,
       signOut,
       plannerTick,
@@ -211,6 +213,10 @@ export default function SettingsPage() {
       }
       if (record.action === 'openclaw-docs') {
         router.push('/docs/openclaw');
+        return;
+      }
+      if (record.action === 'ledger') {
+        router.push('/ledger');
         return;
       }
       // ui-store is a module singleton and survives client-side navigation, so

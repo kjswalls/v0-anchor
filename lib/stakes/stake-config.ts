@@ -21,7 +21,7 @@ export const STAKE_SETTINGS: ChannelSettingsSpec[] = [
         // The rename caveat is stated where someone can act on it, because the
         // failure is silent: the datapoint simply stops being posted.
         description:
-          'Matched on the habit’s title, so update this if you rename one. Only completions are posted — a miss is the missing datapoint, which is what makes the goal derail. Yesterday’s datapoints go up at your settle time, so keep that before your goal’s deadline.',
+          'Matched on the habit’s title, so update this if you rename one. Only completions are posted — a miss is the missing datapoint, which is what makes the goal derail. Each one goes up the moment you tick the box; un-ticking withdraws it again.',
         keywords: ['mapping', 'slug', 'which goal', 'link'],
       },
     ],

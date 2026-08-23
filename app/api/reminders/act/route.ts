@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
+import { createServiceClient } from '@/lib/supabase-service';
 import { setItemCompletion, updateItem } from '@/lib/db';
+import { reportLiveCompletion } from '@/lib/stakes/live';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { ACTION_DONE, ACTION_SNOOZE, SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
 
@@ -113,6 +115,20 @@ export async function POST(req: NextRequest) {
     .from('items')
     .update({ reminder_snooze_until: null, reminder_snooze_date: null })
     .eq('id', itemId);
+
+  // The lock-screen Done is the most valuable completion this feature has — it
+  // is the one that happens without the app being opened — so it gets the live
+  // stake report too, rather than waiting for the settlement to notice it
+  // hours later. Called directly with a service client: the browser's route
+  // exists because a browser cannot hold one, and this process already can.
+  // Awaited but never fatal — the completion above is already written.
+  const stake = await reportLiveCompletion(createServiceClient(), {
+    userId: user.id,
+    itemId,
+    dateStr: dateStr as string,
+    completed: true,
+  });
+  if (!stake.ok) console.error('[reminders/act] stake report failed:', stake.detail);
 
   return NextResponse.json({ ok: true });
 }
