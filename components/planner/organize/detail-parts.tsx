@@ -450,6 +450,79 @@ export function DraftRow({
  * value does not also collapse the plate. `validate` rejects a value outright
  * (blank, NaN, out of range); a rejected commit restores what was there.
  */
+/**
+ * BufferedInput's multi-line sibling: commits on blur, never per keystroke.
+ *
+ * Same rule and the same reason — every commit arms a history label, `set()`s,
+ * and the subscriber deep-clones the whole snapshot, so a live-bound field turns
+ * one typed sentence into ~60 undo entries and ~60 PATCHes, evicting the user's
+ * real history from a 50-deep stack. It exists because a goal's `why` is the
+ * first genuinely PARAGRAPH-shaped field in the console; every other typed
+ * control here is a single line and uses BufferedInput.
+ *
+ * No Enter-to-commit: Enter is a newline in a textarea, which is the whole point
+ * of using one. Escape reverts, matching its sibling.
+ */
+export function BufferedTextarea({
+  value,
+  onCommit,
+  testId,
+  ariaLabel,
+  placeholder,
+  rows = 2,
+  className,
+}: {
+  value: string;
+  onCommit: (next: string) => void;
+  testId: string;
+  ariaLabel: string;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Render-phase reset — see BufferedInput. Without it, switching the selected
+  // object in the two-pane layout carries the previous one's half-typed text
+  // into the next one's field, and a blur there commits it onto the wrong row.
+  const [last, setLast] = useState(value);
+  if (last !== value) {
+    setLast(value);
+    setDraft(value);
+  }
+
+  const commit = () => {
+    if (draft === value) return;
+    onCommit(draft);
+  };
+
+  useEscapeRung(() => {
+    if (draft === value || document.activeElement !== ref.current) return false;
+    setDraft(value);
+    return true;
+  });
+
+  return (
+    <textarea
+      ref={ref}
+      value={draft}
+      rows={rows}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      data-testid={testId}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      className={cn(
+        'border-border bg-background text-foreground focus-visible:outline-ring placeholder:text-muted-foreground/60',
+        'w-full resize-none rounded-[5px] border px-2 py-1.5 text-sm leading-relaxed',
+        'focus-visible:outline-1 focus-visible:outline-solid',
+        className
+      )}
+    />
+  );
+}
+
 export function BufferedInput({
   value,
   onCommit,

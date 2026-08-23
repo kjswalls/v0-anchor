@@ -1,4 +1,4 @@
-import type { Item, Task, Habit } from './planner-types';
+import type { Item, Task, Habit, Goal } from './planner-types';
 import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
 import { passesContainerFilter, typeNameOf } from './filters';
 import { containerRef } from './container-registry';
@@ -11,7 +11,7 @@ import { containerRef } from './container-registry';
  * Keyword grammar:
  *   task:foo      → type filter 'task', "foo" becomes search text
  *   habit:foo     → type filter 'habit', "foo" becomes search text
- *   type:goal     → type filter by registry name (custom types; also accepts
+ *   type:errand   → type filter by registry name (custom types; also accepts
  *                   type:task / type:habit)
  *   priority:high → priority filter (low|medium|high), value consumed
  *   project:Name  → project filter, value consumed
@@ -144,6 +144,34 @@ const GROUP_LIMIT_DEFAULT = 4;
 const TOTAL_LIMIT = 12;
 
 /**
+ * Goals, as a channel BESIDE the item groups rather than a group inside them.
+ *
+ * `groupResults` is typed to `Item`s, keyed by item TYPE, and its rows are
+ * rendered with `data-item-type`, a `doneStatus` and an edit action — a goal is
+ * none of those, needs a navigate action, and would collide outright with a
+ * user's custom item type literally named `goal` (still the codebase's
+ * canonical example slug in several places).
+ *
+ * Text-only, deliberately: the search grammar's filters (`type:`, `project:`,
+ * `priority:`) are all questions about items, and answering them with goals
+ * would mean inventing a meaning for "goals with high priority". A query that
+ * carries ONE of them and nothing else returns no goals at all, so `type:task`
+ * does not list goals above the task section it asked for.
+ *
+ * Matches the NAME only. Matching `why` as well looked generous and read as a
+ * bug: the row renders the name, so a hit inside a three-sentence motivation
+ * paragraph appeared as a result with no visible reason to be there. The item
+ * rows can match on context because they RENDER their container beside the
+ * title; this row has nowhere to show it.
+ */
+export function searchGoals(raw: string, goals: readonly Goal[]): Goal[] {
+  const query = parseSearchQuery(raw);
+  const text = query.text.trim().toLowerCase();
+  if (!text) return [];
+  return goals.filter((goal) => goal.name.toLowerCase().includes(text));
+}
+
+/**
  * Splits a result set into one section per item type, in registry order
  * (built-ins first, then custom types as the user ordered them).
  *
@@ -151,6 +179,7 @@ const TOTAL_LIMIT = 12;
  * items remain — keep their own section at the end rather than disappearing;
  * getItemTypeConfig falls back to a template for the heading.
  */
+
 export function groupResults(results: SearchResults): SearchGroup[] {
   const byType = new Map<string, Item[]>();
   for (const row of [...results.tasks, ...results.habits] as unknown as Item[]) {

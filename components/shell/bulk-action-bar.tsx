@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { getItemTypeConfig, itemTypeName, isCollectible } from '@/lib/item-registry';
@@ -80,6 +81,7 @@ export function BulkActionBar() {
   const prune = useSelectionStore((s) => s.prune);
 
   const items = usePlannerStore((s) => s.items);
+  const goals = usePlannerStore((s) => s.goals);
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const deleteItems = usePlannerStore((s) => s.deleteItems);
@@ -137,16 +139,29 @@ export function BulkActionBar() {
   // Movable = one-off (a recurring startDate is the recurrence anchor, not a
   // due date) task-likes whose type is date-addressable. Braindumpable = types
   // that can return to the sidebar. Both computed off the registry.
+  //
+  // Milestones are excluded from BOTH, because the store's bulk verbs now
+  // refuse them — a milestone's startDate is a goal's target date, not a
+  // scheduling intention. Counted here they would inflate the bar's own
+  // honesty affordance ("Move to date · 2") with items it is about to fail to
+  // move, and the sidebar drop would animate a success that wrote nothing.
+  const milestones = useMemo(() => milestoneItemIds(goals), [goals]);
   const movable = useMemo(
     () =>
       selected.filter(
-        (i) => getItemTypeConfig(itemTypeName(i)).dateAddressable && !isRecurring(i)
+        (i) =>
+          getItemTypeConfig(itemTypeName(i)).dateAddressable &&
+          !isRecurring(i) &&
+          !milestones.has(i.id)
       ),
-    [selected]
+    [selected, milestones]
   );
   const braindumpable = useMemo(
-    () => selected.filter((i) => getItemTypeConfig(itemTypeName(i)).braindumpEligible),
-    [selected]
+    () =>
+      selected.filter(
+        (i) => getItemTypeConfig(itemTypeName(i)).braindumpEligible && !milestones.has(i.id)
+      ),
+    [selected, milestones]
   );
   const allDone = count > 0 && selected.every((i) => isItemDone(i, dateStr));
 

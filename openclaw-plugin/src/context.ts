@@ -1,4 +1,4 @@
-import type { Item, Program, Routine } from '@anchor-app/types'
+import type { Goal, Item, Program, Routine } from '@anchor-app/types'
 import { getCache } from './cache.js'
 import type { AnchorCache } from './plugin-types.js'
 
@@ -52,7 +52,9 @@ export function buildFullContext(): string {
   }
 
   lines.push(...renderCollections(cache.routines, cache.programs, today))
-  lines.push(...renderPaused(cache, today))
+  const suppressedIds = suppressedItemIds(cache)
+  lines.push(...renderGoals(cache.goals, cache.items, today, suppressedIds))
+  lines.push(...renderPaused(cache, today, suppressedIds))
 
   return lines.join('\n')
 }
@@ -102,6 +104,82 @@ function renderCollections(routines: Routine[], programs: Program[], today: stri
 }
 
 /**
+ * Long-horizon goals, with their milestones spelled out.
+ *
+ * ACTIVE goals only: an achieved or abandoned goal is a record of finished
+ * work, and listing it here would put its milestones back in front of a model
+ * that is being asked what to do next.
+ *
+ * Milestones are listed rather than SUMMARIZED into a fraction on purpose. The
+ * app derives progress in one place (lib/goals.ts) under rules this side cannot
+ * see — cancelled checkpoints leave both sides of the ratio, trashed ones too,
+ * and a custom type's "done" status is whatever its registry entry says. A
+ * percentage computed out here would be a second resolver that disagrees with
+ * the app's own number the first time either rule moves. The rows below are
+ * facts: a title, a target date, and an id to act on.
+ */
+function renderGoals(
+  goals: Goal[],
+  items: Item[],
+  today: string,
+  suppressedIds: ReadonlySet<string>,
+): string[] {
+  // Item is a discriminated union and the habit arm carries no startDate. A
+  // habit can never hold the milestone role (it never finishes), but the map
+  // lookup below hands back the union either way.
+  const startDateOf = (i: Item): string | undefined => ('startDate' in i ? i.startDate : undefined)
+
+  const active = goals.filter((g) => g.state === 'active')
+  if (!active.length) return []
+
+  const byId = new Map(items.map((i) => [i.id, i]))
+  const lines = ['\n## Goals']
+  for (const goal of active) {
+    const window =
+      goal.startsOn || goal.targetOn ? ` (${goal.startsOn ?? '…'} → ${goal.targetOn ?? '…'})` : ''
+    lines.push(`- ${goal.name} [id: ${goal.id}]${window}`)
+    if (goal.why) lines.push(`  why: ${goal.why}`)
+
+    // Date-ordered, undated last — the same order the goal surface shows, so a
+    // model reading this and a user reading the app see the same sequence.
+    const milestones = goal.milestoneIds
+      .map((id) => byId.get(id))
+      .filter((i): i is Item => !!i)
+      .sort((a, b) =>
+        (startDateOf(a) ?? '9999-12-31').localeCompare(startDateOf(b) ?? '9999-12-31'),
+      )
+    for (const m of milestones) {
+      const on = startDateOf(m)
+      // OVERDUE is not "dated in the past". A completed milestone of a mature
+      // goal is always dated in the past, and a cancelled one is a dropped
+      // checkpoint, not a late one — marking either would render a goal that is
+      // going well as a wall of overdue work and invite a model to reschedule
+      // things that are done. And a suppressed item is what the "Set aside"
+      // section below explicitly says is NOT slipping.
+      const late = on && on < today && m.status === 'pending' && !suppressedIds.has(m.id)
+      const aside = suppressedIds.has(m.id) ? ', set aside' : ''
+      const when = on ? ` (${on}${late ? ', overdue' : ''}${aside})` : aside ? ` (${aside.slice(2)})` : ''
+      lines.push(`  - milestone: ${m.title} [id: ${m.id}] [${m.status}]${when}`)
+    }
+    for (const id of goal.checkinIds) {
+      const c = byId.get(id)
+      if (c) {
+        const aside = suppressedIds.has(c.id) ? ' (set aside)' : ''
+        lines.push(`  - check-in: ${c.title} [id: ${c.id}]${aside}`)
+      }
+    }
+    const members = goal.memberIds
+      .map((id) => byId.get(id))
+      .filter((i): i is Item => !!i)
+      .map((m) => (suppressedIds.has(m.id) ? `${m.title} (set aside)` : m.title))
+    if (members.length) {
+      lines.push(`  - also holds: ${members.join(', ')}`)
+    }
+  }
+  return lines
+}
+
+/**
  * The work that is deliberately set aside.
  *
  * Derived as a SET DIFFERENCE — items[] arrives unfiltered while tasks[] and
@@ -116,14 +194,20 @@ function renderCollections(routines: Routine[], programs: Program[], today: stri
  * finished, dropped, or never existed. The last two invite a recreate that
  * duplicates the row.
  */
-function renderPaused(cache: AnchorCache, today: string): string[] {
-  if (!cache.items.length) return []
+function suppressedItemIds(cache: AnchorCache): Set<string> {
   const visible = new Set([...cache.tasks.map((t) => t.id), ...cache.habits.map((h) => h.id)])
   // Only the two projected types. A custom type appears in items[] and in
   // NEITHER projection by design, so without this it would read as suppressed.
-  const suppressed = cache.items.filter(
-    (i) => (i.type === 'task' || i.type === 'habit') && !visible.has(i.id),
+  return new Set(
+    cache.items
+      .filter((i) => (i.type === 'task' || i.type === 'habit') && !visible.has(i.id))
+      .map((i) => i.id),
   )
+}
+
+function renderPaused(cache: AnchorCache, today: string, ids: ReadonlySet<string>): string[] {
+  if (!cache.items.length) return []
+  const suppressed = cache.items.filter((i) => ids.has(i.id))
   if (!suppressed.length) return []
 
   const lines = [

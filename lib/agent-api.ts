@@ -9,6 +9,8 @@ import {
   RoutineUpdateSchema,
   ProgramCreateSchema,
   ProgramUpdateSchema,
+  GoalCreateSchema,
+  GoalUpdateSchema,
 } from '@anchor-app/types'
 import { createServiceClient, resolveUserIdFromApiKey } from './supabase-service'
 import {
@@ -24,13 +26,33 @@ import {
   createProgram,
   updateProgram,
   deleteProgram,
+  createGoal,
+  updateGoal,
+  deleteGoal,
   verifyItemOwnership,
   validateParentItemId,
 } from './db'
 import { resolvePauseWrite, type Pausable } from './active'
-import { isCollectible, isPausable } from './item-registry'
+import {
+  getItemTypeConfig,
+  isCheckinEligible,
+  isCollectible,
+  isMilestoneEligible,
+  isPausable,
+  itemTypeName,
+} from './item-registry'
 import { toDateStr } from './recurrence'
-import type { Habit, Item, KnownItemType, Program, Routine, Task } from './planner-types'
+import { resolveGoalStateWrite, roleStillValid } from './goals'
+import type {
+  Goal,
+  GoalRole,
+  Habit,
+  Item,
+  KnownItemType,
+  Program,
+  Routine,
+  Task,
+} from './planner-types'
 
 /**
  * Shared machinery for the /api/agent/tasks|habits routes. The route files are
@@ -292,19 +314,31 @@ interface JoinTable {
   memberTable: 'items' | 'routines'
 }
 
-/** Gather what {@link withTrashedMembersKept} needs, then apply it. */
+/**
+ * Gather what {@link withTrashedMembersKept} needs, then apply it.
+ *
+ * `role` narrows the "current" set for a goal: each of the three arrays is
+ * replaced independently, so the ids a `milestoneIds` patch may be silently
+ * dropping are the goal's currently-trashed MILESTONES, not its members. Read
+ * unscoped, a trashed member would be re-added as a milestone by a patch that
+ * never mentioned it.
+ */
 async function keepTrashedMembers(
   client: DbClient,
   userId: string,
   join: JoinTable,
   ownerId: string,
   desired: string[],
+  role?: GoalRole,
+  claimedElsewhere?: ReadonlySet<string>,
 ): Promise<string[]> {
-  const { data, error } = await client
+  let query = client
     .from(join.table)
     .select(join.memberCol)
     .eq(join.ownerCol, ownerId)
     .eq('user_id', userId)
+  if (role) query = query.eq('role', role)
+  const { data, error } = await query
   if (error) throw error
   // `unknown` first: the column name is dynamic, so the client cannot infer a
   // row shape and types the select as its error branch.
@@ -313,7 +347,12 @@ async function keepTrashedMembers(
   )
 
   const asked = new Set(desired)
-  const candidates = current.filter((id) => !asked.has(id))
+  const candidates = current.filter(
+    // An id the SAME body hands to another role array is being MOVED, not
+    // dropped — re-adding it here would put it in two arrays at once, which
+    // goalMemberRows refuses outright. See keepTrashedGoalMembers.
+    (id) => !asked.has(id) && !claimedElsewhere?.has(id),
+  )
   // Nothing is being dropped, so nothing can be dropped WRONGLY — skip the
   // liveness read entirely on the common path (an add, or an unchanged set).
   if (candidates.length === 0) return desired
@@ -326,7 +365,10 @@ async function keepTrashedMembers(
     .in('id', candidates)
   if (liveError) throw liveError
   const liveIds = new Set(((live ?? []) as { id: string }[]).map((r) => r.id))
-  return withTrashedMembersKept(desired, current, liveIds)
+  // `candidates`, not `current`: the exclusion above has already removed the
+  // ids this body is moving to another role, and withTrashedMembersKept would
+  // otherwise re-derive them straight back in.
+  return withTrashedMembersKept(desired, candidates, liveIds)
 }
 
 /**
@@ -482,10 +524,28 @@ export function makeAgentItemHandlers(type: KnownItemType) {
       // Nulls survive validation only on clearable fields; the db-layer
       // allowlists translate them into NULL writes.
       await api.update(id, updates as never, auth.userId, auth.serviceClient)
-      return NextResponse.json({ success: true })
     } catch (err) {
       return errorResponse(err)
     }
+
+    // Only two fields can invalidate a role, so only a patch touching one pays
+    // for the scan — `in`, not truthiness, because CLEARING either is exactly
+    // the edit that does it: dropping repeatFrequency turns a check-in back
+    // into a one-shot task, and setting parentItemId turns a milestone into a
+    // subtask that no longer appears in the past-due machinery at all.
+    if ('repeatFrequency' in fields || 'parentItemId' in fields) {
+      try {
+        const demoted = await demoteInvalidGoalRoles(auth.serviceClient, auth.userId, id)
+        if (demoted.length > 0) return NextResponse.json({ success: true, demoted })
+      } catch (err) {
+        // Deliberately swallowed: the caller's edit landed, and reporting a
+        // bookkeeping failure as a failed PATCH would invite a retry of a write
+        // that already succeeded.
+        console.error('goal role demotion failed', err)
+      }
+    }
+
+    return NextResponse.json({ success: true })
   }
 
   const DELETE = async (
@@ -516,10 +576,19 @@ export function makeAgentItemHandlers(type: KnownItemType) {
 // serves routines[] and programs[] alongside the items they gate — the same
 // split tasks and habits have always had.
 
-export type ContainerKind = 'routine' | 'program'
+/**
+ * The GATE-role containers, which is all this file's generic container
+ * machinery covers. Deliberately NOT named `ContainerKind`: the registry in
+ * lib/container-registry.ts exports a type by that name spanning every role
+ * (classify, gate, aspire), and two same-named types with different memberships
+ * would mislead every later reader. Goals are `aspire` — they have three role
+ * arrays and no pause verb — so they get their own handlers below rather than a
+ * row in CONTAINER_API.
+ */
+export type GatedContainerKind = 'routine' | 'program'
 
 interface ContainerApiConfig {
-  payloadKey: ContainerKind
+  payloadKey: GatedContainerKind
   table: 'routines' | 'programs'
   createSchema: ZodType
   updateSchema: ZodType
@@ -538,7 +607,7 @@ interface ContainerApiConfig {
   routineJoin?: JoinTable
 }
 
-const CONTAINER_API: Record<ContainerKind, ContainerApiConfig> = {
+const CONTAINER_API: Record<GatedContainerKind, ContainerApiConfig> = {
   routine: {
     payloadKey: 'routine',
     table: 'routines',
@@ -599,13 +668,45 @@ async function verifyContainerOwnership(
   id: string,
   userId: string,
 ): Promise<boolean> {
-  const { data } = await client
+  const { data, error } = await client
     .from(table)
     .select('user_id')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle()
+  // A dropped error is how a missing table (PGRST205, the whole pre-migration
+  // deploy window) or a transient PostgREST failure becomes an indistinguishable
+  // 404 — the one status that tells a caller to stop retrying and forget the id.
+  // Thrown, it is turned into a server fault by ownershipGate below — which is
+  // the ONLY way this should be called. Every direct caller sat above its
+  // handler's try block, so the throw escaped to Next.js and became a bare 500
+  // with no { error } body: the exact message this throw exists to surface was
+  // the thing being lost.
+  if (error) throw error
   return !!data && data.user_id === userId
+}
+
+/**
+ * Ownership check that cannot escape its handler.
+ *
+ * Returns the response to send — 404 when the row is absent or another user's,
+ * an errorResponse when the read itself faulted — or null when the caller owns
+ * the row and the handler should continue.
+ */
+async function ownershipGate(
+  client: DbClient,
+  table: string,
+  id: string,
+  userId: string,
+): Promise<NextResponse | null> {
+  try {
+    if (!(await verifyContainerOwnership(client, table, id, userId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    return null
+  } catch (err) {
+    return errorResponse(err)
+  }
 }
 
 /** Membership arrays in a create/update body, validated together. */
@@ -649,7 +750,7 @@ async function pausePatchForContainer(
 }
 
 /** POST /api/agent/<routines|programs> */
-export function makeContainerCreateHandler(kind: ContainerKind) {
+export function makeContainerCreateHandler(kind: GatedContainerKind) {
   const config = CONTAINER_API[kind]
   return async function POST(req: NextRequest) {
     const auth = await authenticateAgent(req)
@@ -699,7 +800,7 @@ export function makeContainerCreateHandler(kind: ContainerKind) {
 }
 
 /** PATCH + DELETE /api/agent/<routines|programs>/:id */
-export function makeContainerItemHandlers(kind: ContainerKind) {
+export function makeContainerItemHandlers(kind: GatedContainerKind) {
   const config = CONTAINER_API[kind]
 
   const PATCH = async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
@@ -707,9 +808,8 @@ export function makeContainerItemHandlers(kind: ContainerKind) {
     if (auth instanceof NextResponse) return auth
 
     const { id } = await params
-    if (!(await verifyContainerOwnership(auth.serviceClient, config.table, id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, config.table, id, auth.userId)
+    if (denied) return denied
 
     const body = await parseBody(req, config.updateSchema)
     if (body instanceof NextResponse) return body
@@ -782,9 +882,8 @@ export function makeContainerItemHandlers(kind: ContainerKind) {
     if (auth instanceof NextResponse) return auth
 
     const { id } = await params
-    if (!(await verifyContainerOwnership(auth.serviceClient, config.table, id, auth.userId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+    const denied = await ownershipGate(auth.serviceClient, config.table, id, auth.userId)
+    if (denied) return denied
 
     try {
       // Soft delete, like every other agent DELETE — membership rows survive so
@@ -792,6 +891,380 @@ export function makeContainerItemHandlers(kind: ContainerKind) {
       // and the resolver ignores trashed containers meanwhile, so whatever this
       // was hiding becomes visible again immediately.
       await config.remove(auth.userId, id, auth.serviceClient)
+      return NextResponse.json({ success: true })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  }
+
+  return { PATCH, DELETE }
+}
+
+// ── Goals ─────────────────────────────────────────────────────────────────────
+// Agent-writable from schemaVersion 5. Reads stay on /api/agent/context, which
+// serves goals[] with all three role arrays.
+//
+// Not a row in CONTAINER_API above: a goal holds THREE role arrays rather than
+// one itemIds set, has no pause verb to translate, and derives `achievedAt`
+// from its state. Sharing the generic handler would have meant three optional
+// branches in every one of its steps.
+
+const GOAL_ITEM_JOIN: JoinTable = {
+  table: 'goal_items',
+  ownerCol: 'goal_id',
+  memberCol: 'item_id',
+  memberTable: 'items',
+}
+
+/** The three membership arrays, paired with the role each one grants. */
+const GOAL_ROLE_KEYS = [
+  { key: 'memberIds', role: 'member' },
+  { key: 'milestoneIds', role: 'milestone' },
+  { key: 'checkinIds', role: 'checkin' },
+] as const satisfies readonly { key: string; role: GoalRole }[]
+
+type GoalMemberArrays = {
+  memberIds?: string[]
+  milestoneIds?: string[]
+  checkinIds?: string[]
+}
+
+interface RoleRow extends MemberRow {
+  repeat_frequency: string | null
+}
+
+/**
+ * The registry shape a role predicate needs — capability plus recurrence.
+ *
+ * `repeat_frequency` falls back to the TYPE's default rather than to undefined.
+ * The column is nullable and an agent-created habit leaves it NULL, but every
+ * reader in the app defaults a habit to daily (lib/db.ts's row mapper does it
+ * explicitly), so a NULL habit recurs on every surface the user sees. Read raw,
+ * it would be refused as a check-in — "this item does not repeat" — about an
+ * item the console's own picker offers as eligible.
+ */
+function roleShape(row: RoleRow): Item {
+  const shape = capabilityShape(row) as unknown as Record<string, unknown>
+  const fallback = getItemTypeConfig(itemTypeName(shape as unknown as Item)).defaultFrequency
+  return {
+    ...shape,
+    repeatFrequency: row.repeat_frequency ?? fallback,
+  } as unknown as Item
+}
+
+/**
+ * Every id across the three arrays, checked for existence and collectibility,
+ * then each ROLE id checked against its registry predicate.
+ *
+ * The role half is the agent's copy of the grant-time guard the pickers enforce
+ * by only rendering eligible items (locked decision 3). Without it an agent can
+ * make a recurring item a milestone — a row whose scalar status is frozen by
+ * migration 016 semantics, so the goal reads permanently behind with nothing to
+ * click, and no later item edit demotes it because none is coming.
+ *
+ * One read for all three arrays: the arrays overlap in practice (a whole-set
+ * replacement usually resends most of the goal), and three reads would ask the
+ * same rows the same question.
+ */
+async function validateGoalMembers(
+  client: DbClient,
+  userId: string,
+  body: GoalMemberArrays,
+): Promise<string | null> {
+  const all = [
+    ...(body.memberIds ?? []),
+    ...(body.milestoneIds ?? []),
+    ...(body.checkinIds ?? []),
+  ]
+  if (all.length === 0) return null
+
+  const unique = [...new Set(all)]
+  const { data, error } = await client
+    .from('items')
+    .select('id, type, parent_item_id, repeat_frequency')
+    .eq('user_id', userId)
+    .in('id', unique)
+  if (error) throw error
+
+  const rows = (data ?? []) as RoleRow[]
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const missing = unique.filter((id) => !byId.has(id))
+  if (missing.length > 0) {
+    return `membership references items that do not exist: ${missing.join(', ')}`
+  }
+  const uncollectible = rows.filter((r) => !isCollectible(roleShape(r)))
+  if (uncollectible.length > 0) {
+    return (
+      `membership references items that cannot join a collection: ` +
+      `${uncollectible.map((r) => r.id).join(', ')} ` +
+      `(subtasks belong to their parent and follow its state)`
+    )
+  }
+
+  for (const id of body.milestoneIds ?? []) {
+    if (!isMilestoneEligible(roleShape(byId.get(id)!))) {
+      return (
+        `item ${id} cannot be a milestone: a milestone is a one-shot target that ` +
+        `finishes once, and this item repeats (or is a type that never finishes). ` +
+        `Send it in checkinIds if it is the goal's recurring review, or memberIds ` +
+        `if it is ordinary work the goal contains.`
+      )
+    }
+  }
+  for (const id of body.checkinIds ?? []) {
+    if (!isCheckinEligible(roleShape(byId.get(id)!))) {
+      return (
+        `item ${id} cannot be a check-in: a check-in is a recurring review, and ` +
+        `this item does not repeat (or is a type that cannot). If it is a task ` +
+        `or a habit, set a repeatFrequency on it first; otherwise send it in ` +
+        `milestoneIds if it is a one-shot target, or memberIds if it is ordinary ` +
+        `work the goal contains.`
+      )
+    }
+  }
+  return null
+}
+
+/**
+ * Per-role trash keeping across whichever arrays the body carries.
+ *
+ * The three arrays are replaced independently, but they write ONE join table,
+ * so the keeping cannot be decided one array at a time. Moving a TRASHED
+ * milestone to plain membership sends `{milestoneIds: [], memberIds: [X]}`: the
+ * milestone pass sees X dropped and, finding it trashed, dutifully puts it
+ * back — and goalMemberRows then refuses the body for naming X twice, with a
+ * 500 the caller has no way to avoid. Every id the body names anywhere is
+ * therefore off-limits to the keeping in every OTHER array.
+ */
+async function keepTrashedGoalMembers(
+  client: DbClient,
+  userId: string,
+  goalId: string,
+  body: GoalMemberArrays,
+): Promise<GoalMemberArrays> {
+  const kept: GoalMemberArrays = {}
+  for (const { key, role } of GOAL_ROLE_KEYS) {
+    const desired = body[key]
+    if (!desired) continue
+    const claimedElsewhere = new Set(
+      GOAL_ROLE_KEYS.filter((k) => k.key !== key).flatMap((k) => body[k.key] ?? []),
+    )
+    kept[key] = await keepTrashedMembers(
+      client,
+      userId,
+      GOAL_ITEM_JOIN,
+      goalId,
+      desired,
+      role,
+      claimedElsewhere,
+    )
+  }
+  return kept
+}
+
+/**
+ * Translate the `state` verb into the columns it actually writes.
+ *
+ * `achievedAt` is derived, never sent (GoalCreateSchema/GoalUpdateSchema refuse
+ * it outright): resolveGoalStateWrite returns an EMPTY patch for a same-state
+ * write, so a retried "mark achieved" cannot drag the achievement date forward,
+ * and returning to 'active' clears the stamp.
+ */
+async function goalStatePatch(
+  client: DbClient,
+  userId: string,
+  id: string,
+  state: Goal['state'],
+): Promise<Partial<Goal> | { error: string }> {
+  const { data, error } = await client
+    .from('goals')
+    .select('state, achieved_at')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+  // Same reason as verifyContainerOwnership: a failed READ is not a missing row.
+  if (error) throw error
+  if (!data) return { error: 'Not found' }
+  const row = data as { state: Goal['state']; achieved_at: string | null }
+  const current = { state: row.state, achievedAt: row.achieved_at ?? undefined } as Goal
+  return resolveGoalStateWrite(current, state, new Date().toISOString())
+}
+
+/**
+ * Decision 3's second enforcement point: an item write that invalidates a held
+ * goal role demotes it, never blocks the write.
+ *
+ * The store does this on the UI path with a receipt toast; an agent PATCH is
+ * the OTHER way `repeatFrequency` flips, and until this existed an OpenClaw
+ * write could make a milestone recurring with nothing taking the role back —
+ * leaving a goal permanently behind on an item whose scalar status migration
+ * 016 has frozen.
+ *
+ * Runs AFTER the item update, against the stored row: the body may carry a
+ * partial patch, and it is the resulting shape that decides the role. Failures
+ * here do not fail the PATCH — the item edit is the caller's request and it has
+ * already succeeded; the role is Anchor's bookkeeping.
+ */
+async function demoteInvalidGoalRoles(
+  client: DbClient,
+  userId: string,
+  itemId: string,
+): Promise<{ goalId: string; from: GoalRole }[]> {
+  const { data: rows, error } = await client
+    .from('goal_items')
+    .select('goal_id, role')
+    .eq('user_id', userId)
+    .eq('item_id', itemId)
+    .neq('role', 'member')
+  if (error) throw error
+  const held = (rows ?? []) as { goal_id: string; role: GoalRole }[]
+  if (held.length === 0) return []
+
+  const { data: item, error: itemError } = await client
+    .from('items')
+    .select('id, type, parent_item_id, repeat_frequency')
+    .eq('id', itemId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (itemError) throw itemError
+  if (!item) return []
+  // The same shape the GRANT predicates are asked about, so the two agree.
+  const shape = roleShape(item as RoleRow)
+
+  // Snapshotted BEFORE the write: the receipt names the role being taken away,
+  // and reading it back off the row afterwards would report 'member' every time.
+  const invalid = held
+    .filter((r) => !roleStillValid(r.role, shape))
+    .map((r) => ({ goalId: r.goal_id, from: r.role }))
+  if (invalid.length === 0) return []
+
+  // One row per goal — the PK is (goal_id, item_id), so this is an in-place
+  // role change, never an insert that could collide with a plain membership.
+  const { error: writeError } = await client
+    .from('goal_items')
+    // `sort_order` is cleared with the role. goalMemberRows emits it as null
+    // off the member array for a stated reason — a demoted milestone that kept
+    // its old ordinal sorts ahead of every real member in the array fetchGoals
+    // hands back, and nothing later would reset it.
+    .update({ role: 'member', sort_order: null })
+    .eq('user_id', userId)
+    .eq('item_id', itemId)
+    .in('goal_id', invalid.map((r) => r.goalId))
+  if (writeError) throw writeError
+
+  return invalid
+}
+
+/**
+ * Drop the keys the goal schemas carry only in order to REFUSE them. They never
+ * survive validation, so this is belt-and-braces: a later schema edit that
+ * relaxed one would otherwise write it straight into a column, skipping the
+ * derivation rules the refusal exists to protect.
+ */
+function withoutDerivedGoalKeys(
+  data: unknown,
+): GoalMemberArrays & { state?: Goal['state'] } & Record<string, unknown> {
+  const rest = { ...(data as Record<string, unknown>) }
+  delete rest.paused
+  delete rest.pausedUntil
+  delete rest.achievedAt
+  return rest as GoalMemberArrays & { state?: Goal['state'] } & Record<string, unknown>
+}
+
+/** POST /api/agent/goals */
+export function makeGoalCreateHandler() {
+  return async function POST(req: NextRequest) {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+    const body = await parseBody(req, GoalCreateSchema)
+    if (body instanceof NextResponse) return body
+
+    // The three derived/refused keys never survive validation, but they are
+    // peeled anyway so a schema edit cannot leak them into a column write.
+    const fields = withoutDerivedGoalKeys(body.data)
+
+    try {
+      const problem = await validateGoalMembers(auth.serviceClient, auth.userId, fields)
+      if (problem) return badRequest(problem)
+
+      const entity: Record<string, unknown> = {
+        // Goal's three arrays are required app-side, and the 201 echoes this
+        // entity back — a create that omitted them would hand the caller a goal
+        // object missing the fields every reader indexes. (goalMemberRows skips
+        // an absent array outright, so this is about the echo and the type, not
+        // about making the reconcile fire.)
+        memberIds: [],
+        milestoneIds: [],
+        checkinIds: [],
+        state: 'active',
+        ...fields,
+        id: (fields as { id?: string }).id ?? crypto.randomUUID(),
+      }
+      // A goal born 'achieved' is a record of finished work, and it deserves
+      // the same stamp the achieve verb writes.
+      if (entity.state === 'achieved') entity.achievedAt = new Date().toISOString()
+
+      await createGoal(auth.userId, entity as unknown as Goal, auth.serviceClient)
+      return NextResponse.json({ goal: entity }, { status: 201 })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  }
+}
+
+/** PATCH + DELETE /api/agent/goals/:id */
+export function makeGoalItemHandlers() {
+  const PATCH = async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+
+    const { id } = await params
+    // Service role bypasses RLS, so ownership is checked here or nowhere.
+    const denied = await ownershipGate(auth.serviceClient, 'goals', id, auth.userId)
+    if (denied) return denied
+
+    const body = await parseBody(req, GoalUpdateSchema)
+    if (body instanceof NextResponse) return body
+
+    const { state, ...fields } = withoutDerivedGoalKeys(body.data)
+    const updates: Record<string, unknown> = fields
+
+    try {
+      const problem = await validateGoalMembers(auth.serviceClient, auth.userId, fields)
+      if (problem) return badRequest(problem)
+
+      Object.assign(
+        updates,
+        await keepTrashedGoalMembers(auth.serviceClient, auth.userId, id, fields),
+      )
+
+      if (state !== undefined) {
+        const patch = await goalStatePatch(auth.serviceClient, auth.userId, id, state)
+        // The row vanished between the ownership check and this read.
+        if ('error' in patch) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+        Object.assign(updates, patch)
+      }
+
+      await updateGoal(auth.userId, id, updates as Partial<Goal>, auth.serviceClient)
+      return NextResponse.json({ success: true })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  }
+
+  const DELETE = async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+
+    const { id } = await params
+    const denied = await ownershipGate(auth.serviceClient, 'goals', id, auth.userId)
+    if (denied) return denied
+
+    try {
+      // Soft delete. Membership rows survive with their ROLES, so a restore
+      // inside the 30-day window brings the goal back with its progress
+      // denominator intact rather than as a flat bag of members.
+      await deleteGoal(auth.userId, id, auth.serviceClient)
       return NextResponse.json({ success: true })
     } catch (err) {
       return errorResponse(err)

@@ -114,6 +114,7 @@ async function doFetch(cfg: PluginConfig): Promise<void> {
     items: data.items ?? [],
     routines: data.routines ?? [],
     programs: data.programs ?? [],
+    goals: data.goals ?? [],
     fetchedAt: Date.now(),
   }
 }

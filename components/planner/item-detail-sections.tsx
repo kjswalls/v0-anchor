@@ -191,6 +191,15 @@ function AgentSection({ item }: { item: Item }) {
 function eventLabel(e: ItemEvent): string {
   if (e.action === 'create') return 'Created';
   if (e.action === 'delete') return 'Deleted';
+  // A check-in note reads here as well as on the goal page. It is the one event
+  // whose payload is something the user WROTE, so showing the action alone
+  // would hide the only part worth reading — and an item whose notes live
+  // exclusively on another surface is an item whose own page lies about its
+  // history.
+  if (e.action === 'checkin') {
+    const note = typeof e.payload?.note === 'string' ? e.payload.note.trim() : '';
+    return note ? `Checked in — ${note}` : 'Checked in';
+  }
   const payload = e.payload ?? {};
   // The container ids ride along with every re-file (migration 027) and are an
   // internal mirror of the name beside them — listing both turns "Updated

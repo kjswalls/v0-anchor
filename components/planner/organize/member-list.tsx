@@ -158,6 +158,8 @@ export function ItemMemberList({
   hiddenIds,
   testPrefix,
   orderable = false,
+  eligible,
+  emptyPoolLabel,
   onChange,
 }: {
   /** Only used to disarm the search when the selection changes. */
@@ -186,6 +188,26 @@ export function ItemMemberList({
    * reshuffles.
    */
   orderable?: boolean;
+  /**
+   * Which items may be added, when plain collectibility is not the question.
+   *
+   * Goals need it: a milestone must additionally be one-shot and a check-in
+   * must be recurring, so the picker for those lists is narrower than the one
+   * for plain members. Defaults to `isCollectible`, which is what every
+   * container asked before and what routines and programs still ask.
+   */
+  eligible?: (item: Item) => boolean;
+  /**
+   * What to say when the pool is empty for a reason other than "you already
+   * added everything".
+   *
+   * The default copy — "Everything is already in here." — was true while the
+   * pool was always `isCollectible`. With a narrower `eligible` it can be empty
+   * because NOTHING the user owns qualifies, and telling someone with no
+   * one-shot tasks that every one of them is already a milestone is the kind of
+   * confident wrong answer a picker should never give.
+   */
+  emptyPoolLabel?: string;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -254,7 +276,8 @@ export function ItemMemberList({
    * user-defined type joins routines the day it is created.
    */
   const q = query.trim().toLowerCase();
-  const pool = items.filter((i) => isCollectible(i) && !memberIds.includes(i.id));
+  const admits = eligible ?? isCollectible;
+  const pool = items.filter((i) => admits(i) && !memberIds.includes(i.id));
   const candidates = (q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool).slice(
     0,
     PICKER_LIMIT
@@ -476,7 +499,7 @@ export function ItemMemberList({
                 data-testid={`${testPrefix}-member-none`}
               >
                 {pool.length === 0
-                  ? 'Everything is already in here.'
+                  ? (emptyPoolLabel ?? 'Everything is already in here.')
                   : `Nothing matches “${query.trim()}”.`}
               </p>
             )}

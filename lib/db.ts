@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program } from './planner-types';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
@@ -475,6 +475,75 @@ function recordItemEvent(
       },
       () => {} // network failure — the trace is best-effort by design
     );
+}
+
+/**
+ * Record a check-in against a goal.
+ *
+ * The one event this app writes on PURPOSE rather than as a trace of a
+ * mutation — but it is still filed as a trace, in the same table, because 023
+ * made `action` open text precisely so a later action could be additive rather
+ * than a migration.
+ *
+ * `dateStr` is in the PAYLOAD, and that is the whole design. `created_at` is
+ * when the note was typed; the occurrence it belongs to is a different fact,
+ * and they part company the moment someone completes Sunday's check-in on
+ * Wednesday. Keyed on created_at, that note would file itself into the wrong
+ * week — silently, and forever.
+ *
+ * Fire-and-forget like every other event write: a note is worth keeping, and it
+ * is never worth failing a completion over.
+ */
+export function recordCheckin(
+  itemId: string,
+  itemType: string,
+  goalId: string,
+  dateStr: string,
+  note: string,
+): void {
+  recordItemEvent(itemId, itemType, 'checkin', { goalId, dateStr, note });
+}
+
+/**
+ * Every check-in note a goal has collected, newest first.
+ *
+ * Filtered on the PAYLOAD's `goalId` in the query, not on the goal's live
+ * check-in item ids. That is what makes `item_events`' founding property real
+ * here: the table deliberately carries no FK, so a note outlives its item's
+ * hard delete — but reading it through `goal.checkinIds` handed that promise
+ * straight back, because `goal_items` cascades on the item's purge, the id
+ * leaves the array, and the note becomes unqueryable. Which is precisely the
+ * path the wind-down's Delete puts a user on: achieve the goal, retire the
+ * check-in, and a month later the goal's written record of the whole thing is
+ * gone.
+ *
+ * Filtering server-side also fixes an ordering bug the client-side version had:
+ * `.limit(50)` applied BEFORE the goal filter, so a check-in item shared with a
+ * busier goal could return zero of this goal's notes.
+ */
+export async function fetchCheckins(goalId: string, client?: DbClient): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('id, item_id, item_type, action, payload, created_at')
+    .eq('action', 'checkin')
+    .eq('payload->>goalId', goalId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events checkin fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    itemId: row.item_id as string,
+    itemType: row.item_type as string,
+    action: row.action as string,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at as string,
+  }));
 }
 
 export async function fetchItemEvents(itemId: string, client?: DbClient): Promise<ItemEvent[]> {
@@ -1375,17 +1444,28 @@ export async function setUserExtensionEnabled(
 // create would otherwise appear to succeed and vanish on reload.
 
 /**
- * A missing table means "migration 024 hasn't been applied here" — return null
- * so the store can gate the whole feature off, the fetchItemTypes contract.
- * ANY OTHER error rethrows: a transient network blip or an RLS misconfiguration
- * must not be indistinguishable from "the feature does not exist", because the
- * null latches the feature off (including its write path) until a reload. This
- * discriminates on the error code the way missingEventsTable already does,
- * rather than the looser catch-all fetchItemTypes uses.
+ * A missing table means the feature's migration hasn't been applied here —
+ * return null so the store can gate the whole feature off, the fetchItemTypes
+ * contract. ANY OTHER error rethrows: a transient network blip or an RLS
+ * misconfiguration must not be indistinguishable from "the feature does not
+ * exist", because the null latches the feature off (including its write path)
+ * until a reload. This discriminates on the error code the way
+ * missingEventsTable already does, rather than the looser catch-all
+ * fetchItemTypes uses.
+ *
+ * The migration is a PARAMETER because this helper is shared. It used to
+ * hardcode "024 … programs/routines disabled", so the day goals arrived the one
+ * diagnostic anybody sees during a deploy window pointed at the wrong migration
+ * AND the wrong feature — in exactly the window the message exists to explain.
  */
-function unavailable(fn: string, error: { code?: string; message?: string }): null {
+function unavailable(
+  fn: string,
+  error: { code?: string; message?: string },
+  migration: string,
+  feature: string,
+): null {
   if (error.code === '42P01' || error.code === 'PGRST205') {
-    console.warn(`${fn}: migration 024 not applied yet — programs/routines disabled.`);
+    console.warn(`${fn}: migration ${migration} not applied yet — ${feature} disabled.`);
     return null;
   }
   // Anything else rethrows, and from Phase 2 that propagates out of
@@ -1528,7 +1608,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
       .order('item_id', { ascending: true }),
   ]);
   const error = routines.error ?? members.error;
-  if (error) return unavailable('fetchRoutines', error);
+  if (error) return unavailable('fetchRoutines', error, '024', 'programs/routines');
   const itemIdsByRoutine = new Map<string, string[]>();
   for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
     const list = itemIdsByRoutine.get(row.routine_id);
@@ -1649,7 +1729,7 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
       .order('routine_id', { ascending: true }),
   ]);
   const error = programs.error ?? itemMembers.error ?? routineMembers.error;
-  if (error) return unavailable('fetchPrograms', error);
+  if (error) return unavailable('fetchPrograms', error, '024', 'programs/routines');
   const groupBy = (rows: Record<string, string>[], key: string) => {
     const map = new Map<string, string[]>();
     for (const row of rows) {
@@ -1755,6 +1835,385 @@ export async function restoreProgram(userId: string, id: string, client?: DbClie
   const supabase = client ?? createClient();
   const { error } = await supabase
     .from('programs')
+    .update({ deleted_at: null })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+// ---- Goals (migration 036) ----
+//
+// The third container role: goals say why work matters and suppress nothing.
+// Their one structural difference from routines/programs is that membership
+// carries a ROLE, which is why they do not reuse reconcileMembership.
+
+interface GoalRow {
+  id: string;
+  user_id: string;
+  name: string;
+  why?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  state: string;
+  starts_on?: string | null;
+  target_on?: string | null;
+  achieved_at?: string | null;
+  sort_order?: number | null;
+}
+
+interface GoalMemberRow {
+  goal_id: string;
+  item_id: string;
+  role: string;
+  sort_order?: number | null;
+}
+
+/** The three role arrays, as a goal carries them. */
+export interface GoalMembers {
+  memberIds: string[];
+  milestoneIds: string[];
+  checkinIds: string[];
+}
+
+/**
+ * A membership write, which may name only SOME of the roles.
+ *
+ * An absent array means "leave that role alone", never "empty it". That
+ * distinction is the whole reason this type exists: `syncContainers` diffs
+ * container fields one at a time and patches only what changed, so undo of
+ * "added a milestone" arrives as `{ milestoneIds }` and nothing else. Read as
+ * "empty the other two", it would delete every plain member the goal has.
+ */
+export type GoalMemberPatch = Partial<GoalMembers>;
+
+/**
+ * The role each array carries, and whether that role is ordered.
+ *
+ * Milestones are ordered because the timeline has a sequence; the other two
+ * sort by id (see fetchGoals). Declared once so the flattener and the
+ * reconciler cannot disagree about which arrays exist.
+ */
+const GOAL_ROLE_ARRAYS = [
+  { key: 'milestoneIds', role: 'milestone', ordered: true },
+  { key: 'checkinIds', role: 'checkin', ordered: false },
+  { key: 'memberIds', role: 'member', ordered: false },
+] as const satisfies readonly { key: keyof GoalMembers; role: GoalRole; ordered: boolean }[];
+
+/** Which roles a patch actually speaks to. */
+export function goalRolesInPatch(members: GoalMemberPatch): Set<GoalRole> {
+  return new Set(GOAL_ROLE_ARRAYS.filter((a) => members[a.key] !== undefined).map((a) => a.role));
+}
+
+/**
+ * Flatten the three role arrays into the rows the join table actually holds,
+ * rejecting an id that appears in more than one of them.
+ *
+ * The three-array shape is a READ convenience — the primary key (goal_id,
+ * item_id) guarantees disjointness coming OUT of the database. Going in it
+ * guarantees nothing: the same id in two arrays is two contradictory
+ * instructions about one row, and there is no honest way to pick. As one upsert
+ * batch Postgres would abort the whole statement with 21000 ("ON CONFLICT DO
+ * UPDATE command cannot affect row a second time"); as separate statements it
+ * would be last-write-wins, silently. So this refuses, the way the agent API
+ * refuses `paused: false` with a `pausedUntil` rather than honouring half of it.
+ *
+ * `sort_order` is emitted on EVERY row, explicitly null off the milestone
+ * array. PostgREST bulk upserts need homogeneous keys, and a demoted milestone
+ * that kept its old sort_order would perturb the order its new array comes back
+ * in.
+ */
+export function goalMemberRows(
+  members: GoalMemberPatch,
+): { itemId: string; role: GoalRole; sortOrder: number | null }[] {
+  const rows: { itemId: string; role: GoalRole; sortOrder: number | null }[] = [];
+  const seen = new Map<string, GoalRole>();
+  for (const { key, role, ordered } of GOAL_ROLE_ARRAYS) {
+    const ids = members[key];
+    if (ids === undefined) continue;
+    // Dedupe WITHIN an array quietly (a multi-add UI produces repeats trivially,
+    // and one id twice in one array is not a contradiction) — the same guard
+    // reconcileMembership carries. Across arrays it is a contradiction, below.
+    let i = 0;
+    for (const itemId of new Set(ids)) {
+      const already = seen.get(itemId);
+      if (already && already !== role) {
+        throw new Error(
+          `goal membership: item ${itemId} was given two roles at once (${already} and ${role}). ` +
+            'An item holds exactly one role per goal.',
+        );
+      }
+      seen.set(itemId, role);
+      rows.push({ itemId, role, sortOrder: ordered ? i : null });
+      i += 1;
+    }
+  }
+  return rows;
+}
+
+/**
+ * Reconcile one goal's membership in a SINGLE pass over the roles the caller
+ * named, never one pass per role.
+ *
+ * Two properties, and they pull in opposite directions until you read the rows'
+ * roles — which is why this reads them.
+ *
+ * ONE PASS, because three per-role passes are not equivalent: a milestone
+ * demoted to a plain member appears as "removed" to the milestone pass and
+ * "added" to the member pass, so whichever runs first DELETEs the row the other
+ * is about to insert. With no cross-request transaction, an interruption
+ * between them loses the membership outright — inverting the add-before-remove
+ * guarantee reconcileMembership documents — and an unscoped per-role DELETE can
+ * remove a row another pass has just re-roled. Diffing the whole desired set at
+ * once makes a demotion what it actually is: an UPDATE of one row's role,
+ * expressed as an upsert on the primary key.
+ *
+ * SCOPED TO THE ROLES SUPPLIED, because the caller this exists for does not
+ * send all three arrays. `syncContainers` diffs container fields one at a time
+ * and patches only what changed (planner-store.ts), so undo of "added a
+ * milestone" arrives as `{ milestoneIds }` alone — and it fires the write as
+ * `update(...).catch(console.error)`, so anything thrown here is swallowed and
+ * the undo silently never reaches the database. That is the exact failure the
+ * comment above the routines call site records having already shipped once.
+ * Deletions therefore consider only rows whose role the caller spoke to; a role
+ * the patch is silent about keeps every row it had.
+ *
+ * The two properties compose: a demotion always changes TWO arrays, so both
+ * roles are in scope and the union still resolves it in one statement.
+ */
+async function reconcileGoalMembers(
+  supabase: DbClient,
+  goalId: string,
+  userId: string,
+  members: GoalMemberPatch,
+): Promise<void> {
+  const roles = goalRolesInPatch(members);
+  if (roles.size === 0) return;
+  const desired = goalMemberRows(members);
+
+  const { data, error } = await supabase
+    .from('goal_items')
+    // The role is read, not just the id: without it a partial patch cannot tell
+    // "this row belongs to a role I was not asked about" from "this row is gone".
+    .select('item_id, role')
+    .eq('goal_id', goalId)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const current = (data as { item_id: string; role: string }[] ?? []);
+  const desiredIds = new Set(desired.map((r) => r.itemId));
+  const removed = current
+    .filter((r) => roles.has(r.role as GoalRole) && !desiredIds.has(r.item_id))
+    .map((r) => r.item_id);
+
+  // Additions and re-roles BEFORE removals — the sets are disjoint by
+  // construction, so this can never collide, and an interruption leaves a
+  // visible superset rather than silently dropping members. (Same reasoning,
+  // and same ordering, as reconcileMembership.)
+  if (desired.length > 0) {
+    const rows = desired.map((r) => ({
+      goal_id: goalId,
+      item_id: r.itemId,
+      user_id: userId,
+      role: r.role,
+      sort_order: r.sortOrder,
+    }));
+    const onConflict = 'goal_id,item_id';
+    const { error: upsertError } = await supabase.from('goal_items').upsert(rows, { onConflict });
+    if (upsertError) {
+      // Exactly one survivable failure class, for the same reason as every
+      // other membership write: a member hard-purged since the store last read
+      // it (23503), which an undo replaying a snapshot hits when the item left
+      // the 30-day trash meanwhile. Everything else is systemic and must
+      // surface, or optimistic state diverges silently until the next reload.
+      if (upsertError.code !== '23503') throw upsertError;
+      for (const row of rows) {
+        const { error: rowError } = await supabase.from('goal_items').upsert(row, { onConflict });
+        if (!rowError) continue;
+        if (rowError.code !== '23503') throw rowError;
+        console.warn('goal_items: member no longer exists, membership skipped', row);
+      }
+    }
+  }
+
+  if (removed.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('goal_items')
+      .delete()
+      .eq('goal_id', goalId)
+      .eq('user_id', userId)
+      .in('item_id', removed);
+    if (deleteError) throw deleteError;
+  }
+}
+
+export async function fetchGoals(userId: string, client?: DbClient): Promise<Goal[] | null> {
+  const supabase = client ?? createClient();
+  const [goals, members] = await Promise.all([
+    supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('goal_items')
+      .select('goal_id, item_id, role, sort_order')
+      .eq('user_id', userId)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      // The tiebreak matters for ALL THREE arrays, not just the ordered one:
+      // member and checkin rows carry a null sort_order, so without this their
+      // order is heap order — unspecified, free to reshuffle between identical
+      // fetches, and read by a membership diff as a real change to write back.
+      .order('item_id', { ascending: true }),
+  ]);
+  const error = goals.error ?? members.error;
+  if (error) return unavailable('fetchGoals', error, '036', 'goals');
+
+  const membersByGoal = new Map<string, GoalMembers>();
+  for (const row of (members.data ?? []) as GoalMemberRow[]) {
+    let entry = membersByGoal.get(row.goal_id);
+    if (!entry) {
+      entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
+      membersByGoal.set(row.goal_id, entry);
+    }
+    // An unrecognised role files as a plain member rather than vanishing. The
+    // CHECK constraint makes this unreachable through the app, but a role added
+    // by a newer client (or by hand) must degrade to the harmless role instead
+    // of dropping the membership out of every array — silent disappearance is
+    // how a member becomes unrecoverable.
+    //
+    // The MEMBERSHIP survives; the unknown role does not survive a later write
+    // that names the member role, because the reconcile upserts an explicit
+    // `role` on every desired row. That is the accepted trade: keeping a role
+    // this build cannot name would mean never rewriting a row it cannot
+    // interpret, which is a worse failure — a membership nothing can edit.
+    if (row.role === 'milestone') entry.milestoneIds.push(row.item_id);
+    else if (row.role === 'checkin') entry.checkinIds.push(row.item_id);
+    else entry.memberIds.push(row.item_id);
+  }
+
+  // A fresh literal per goal, never one hoisted `empty` object spread into all
+  // of them: spreading copies the three ARRAY REFERENCES, so every memberless
+  // goal would share one set and the first in-place push would appear on all of
+  // them at once. fetchRoutines avoids this by construction (`?? []`).
+  return (goals.data as GoalRow[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    why: row.why ?? undefined,
+    icon: row.icon ?? undefined,
+    color: row.color ?? undefined,
+    state: (row.state as Goal['state']) ?? 'active',
+    startsOn: row.starts_on ?? undefined,
+    targetOn: row.target_on ?? undefined,
+    achievedAt: row.achieved_at ?? undefined,
+    sortOrder: row.sort_order ?? undefined,
+    ...(membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
+  }));
+}
+
+export async function createGoal(userId: string, goal: Goal, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  // Validate membership BEFORE the insert: goalMemberRows throws on a
+  // cross-array contradiction, and throwing here costs nothing, while throwing
+  // after the insert would need the compensating delete below.
+  const hasMembers = goalMemberRows(goal).length > 0;
+
+  const { error } = await supabase.from('goals').insert({
+    id: goal.id,
+    user_id: userId,
+    name: goal.name,
+    why: goal.why ?? null,
+    icon: goal.icon ?? null,
+    color: goal.color ?? null,
+    state: goal.state,
+    starts_on: goal.startsOn ?? null,
+    target_on: goal.targetOn ?? null,
+    achieved_at: goal.achievedAt ?? null,
+    sort_order: goal.sortOrder ?? null,
+  });
+  if (error) throw error;
+
+  if (hasMembers) {
+    try {
+      await reconcileGoalMembers(supabase, goal.id, userId, goal);
+    } catch (membershipError) {
+      // The goal row is already committed and PostgREST offers no
+      // cross-request transaction, so compensate by hand rather than leaving a
+      // goal the user never asked for. Hard delete, not soft: as far as anyone
+      // outside this function is concerned it never existed.
+      await supabase.from('goals').delete().eq('id', goal.id).eq('user_id', userId);
+      throw membershipError;
+    }
+  }
+}
+
+export async function updateGoal(
+  userId: string,
+  id: string,
+  updates: Partial<Goal>,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const row: Record<string, unknown> = {};
+  if ('name' in updates) row.name = updates.name;
+  if ('why' in updates) row.why = updates.why ?? null;
+  if ('icon' in updates) row.icon = updates.icon ?? null;
+  if ('color' in updates) row.color = updates.color ?? null;
+  // `!= null`, matching updateProgram on the identical NOT NULL + CHECK column.
+  // Every other field here is `?? null`, which is right for a nullable column;
+  // state is the one where null is illegal, so a `{ state: undefined }` patch
+  // (trivially produced by spreading an optional) would otherwise serialise to
+  // an empty body and drop the write with no error.
+  if ('state' in updates && updates.state != null) row.state = updates.state;
+  if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
+  if ('targetOn' in updates) row.target_on = updates.targetOn ?? null;
+  // IN the allowlist, unlike Program.updatedAt — see GoalSchema.achievedAt. Undo
+  // of "Mark achieved" has to clear this stamp in the same replay that restores
+  // the state, and an allowlist that filtered it out would strand the timestamp
+  // on a goal that is active again.
+  if ('achievedAt' in updates) row.achieved_at = updates.achievedAt ?? null;
+  if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  // Validate membership BEFORE committing the column half, so a patch that
+  // renames a goal AND carries a contradictory role assignment persists
+  // neither. createGoal hoists the same call for the same reason; without it a
+  // caller that rolls back optimistic state on the rejection would diverge from
+  // the database on the name it had already written.
+  const memberPatch: GoalMemberPatch = {};
+  if ('memberIds' in updates) memberPatch.memberIds = updates.memberIds;
+  if ('milestoneIds' in updates) memberPatch.milestoneIds = updates.milestoneIds;
+  if ('checkinIds' in updates) memberPatch.checkinIds = updates.checkinIds;
+  const touchesMembers = goalRolesInPatch(memberPatch).size > 0;
+  if (touchesMembers) goalMemberRows(memberPatch);
+
+  if (Object.keys(row).length > 0) {
+    const { error } = await supabase.from('goals').update(row).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  // A patch may name one role array or all three; absent roles are left
+  // untouched rather than emptied. See reconcileGoalMembers.
+  if (touchesMembers) await reconcileGoalMembers(supabase, id, userId, memberPatch);
+}
+
+export async function deleteGoal(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  // Soft delete only. Membership rows deliberately survive so a restore within
+  // the 30-day window brings the goal back intact — with its ROLES, which is
+  // the part a bin snapshot must not flatten: restoring a goal whose members
+  // came back as plain 'member' would silently zero its progress denominator.
+  const { error } = await supabase
+    .from('goals')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function restoreGoal(userId: string, id: string, client?: DbClient): Promise<void> {
+  const supabase = client ?? createClient();
+  const { error } = await supabase
+    .from('goals')
     .update({ deleted_at: null })
     .eq('id', id)
     .eq('user_id', userId);
@@ -2061,7 +2520,7 @@ export async function restoreHabitGroup(userId: string, id: string, client?: DbC
 // The Trash (Organize console, Phase 4)
 // ============================================================
 
-export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program';
+export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program' | 'goal';
 
 /**
  * One row of the bin: what it is, what it was called, when it went, and the
@@ -2120,7 +2579,7 @@ export interface TrashEntry {
    * then, so the reconnection has to be read back out of the database here.
    */
   memberIds?: string[];
-  entity: Item | Project | HabitGroupType | Routine | Program;
+  entity: Item | Project | HabitGroupType | Routine | Program | Goal;
 }
 
 /** A row shape plus the stamp `select('*')` returns but the interface omits. */
@@ -2174,7 +2633,12 @@ export async function listDeleted(
   const supabase = client ?? createClient();
   const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
 
-  const [initialItems, projects, groups, routines, routineMembers, programs, programItems, programRoutines] =
+  const [
+    initialItems, projects, groups,
+    routines, routineMembers,
+    programs, programItems, programRoutines,
+    goals, goalMembers,
+  ] =
     await Promise.all([
       // Windowed like every other full-item read (031). Deliberately the SAME
       // relation as fetchItems: a bin serving untrimmed arrays while the live
@@ -2193,6 +2657,15 @@ export async function listDeleted(
         .eq('user_id', userId).order('item_id', { ascending: true }),
       supabase.from('program_routines').select('program_id, routine_id')
         .eq('user_id', userId).order('routine_id', { ascending: true }),
+      deleted(supabase.from('goals').select('*')).order('deleted_at', { ascending: false }),
+      // The ROLE comes back with the id, and that is the whole point. A bin
+      // snapshot carrying bare ids would restore every milestone and check-in
+      // as a plain member — silently changing the goal's progress denominator,
+      // while the visible gate (the row is back) passes either way.
+      supabase.from('goal_items').select('goal_id, item_id, role, sort_order')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('item_id', { ascending: true }),
     ]);
 
   // The view may simply not be deployed yet (see itemsReadFrom). Latch and retry
@@ -2208,9 +2681,26 @@ export async function listDeleted(
   // One failure fails the lot. A partial bin is worse than an error: a user
   // hunting for a deleted routine would find a Trash that renders happily
   // without it and conclude it is gone for good.
+  //
+  // EXCEPT a table that does not exist yet, which is not a failure — it is an
+  // un-applied migration, and the honest answer for it is "no rows of that
+  // kind", not "the bin is broken". Without this the goals arm took the WHOLE
+  // trash down on every pre-036 database: the bin's consumer turns any
+  // rejection into its terminal state, so items, projects, habit groups,
+  // routines and programs would all have vanished from the 30-day recovery
+  // path until someone ran `db push`. That directly contradicts the deploy-
+  // order promise 036's own header makes, and it is exactly why fetchGoals
+  // returns null rather than throwing.
+  const missingTable = (e: { code?: string } | null) =>
+    !!e && (e.code === '42P01' || e.code === 'PGRST205');
+  const goalsMissing = missingTable(goals.error) || missingTable(goalMembers.error);
+  if (goalsMissing) {
+    console.warn('listDeleted: migration 036 not applied yet — no goals in the bin.');
+  }
   const failure =
     items.error ?? projects.error ?? groups.error ?? routines.error ??
-    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error;
+    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error ??
+    (goalsMissing ? null : (goals.error ?? goalMembers.error));
   if (failure) throw failure;
 
   const itemRows = (items.data ?? []) as Trashed<ItemRow>[];
@@ -2228,6 +2718,21 @@ export async function listDeleted(
   const itemsByRoutine = groupIds((routineMembers.data ?? []) as Record<string, string>[], 'routine_id', 'item_id');
   const itemsByProgram = groupIds((programItems.data ?? []) as Record<string, string>[], 'program_id', 'item_id');
   const routinesByProgram = groupIds((programRoutines.data ?? []) as Record<string, string>[], 'program_id', 'routine_id');
+
+  // Role-split, matching fetchGoals — including its degrade-to-member rule for
+  // a role this build does not recognise, so a restore can never drop a member
+  // out of every array.
+  const membersByGoal = new Map<string, GoalMembers>();
+  for (const row of (goalsMissing ? [] : (goalMembers.data ?? [])) as { goal_id: string; item_id: string; role: string }[]) {
+    let entry = membersByGoal.get(row.goal_id);
+    if (!entry) {
+      entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
+      membersByGoal.set(row.goal_id, entry);
+    }
+    if (row.role === 'milestone') entry.milestoneIds.push(row.item_id);
+    else if (row.role === 'checkin') entry.checkinIds.push(row.item_id);
+    else entry.memberIds.push(row.item_id);
+  }
 
   const entries: TrashEntry[] = [];
 
@@ -2318,6 +2823,34 @@ export async function listDeleted(
     });
   }
 
+  for (const row of (goalsMissing ? [] : (goals.data ?? [])) as Trashed<GoalRow>[]) {
+    entries.push({
+      kind: 'goal', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      icon: row.icon ?? undefined, color: row.color ?? undefined,
+      // What comes back with it, so the bin row can say so BEFORE the click —
+      // which is the one job that surface has. Every other container arm sets
+      // this; a goal restoring twelve memberships was reporting none.
+      memberIds: [
+        ...(membersByGoal.get(row.id)?.milestoneIds ?? []),
+        ...(membersByGoal.get(row.id)?.checkinIds ?? []),
+        ...(membersByGoal.get(row.id)?.memberIds ?? []),
+      ],
+      entity: {
+        id: row.id,
+        name: row.name,
+        why: row.why ?? undefined,
+        icon: row.icon ?? undefined,
+        color: row.color ?? undefined,
+        state: (row.state as Goal['state']) ?? 'active',
+        startsOn: row.starts_on ?? undefined,
+        targetOn: row.target_on ?? undefined,
+        achievedAt: row.achieved_at ?? undefined,
+        sortOrder: row.sort_order ?? undefined,
+        ...(membersByGoal.get(row.id) ?? { memberIds: [], milestoneIds: [], checkinIds: [] }),
+      },
+    });
+  }
+
   for (const row of (programs.data ?? []) as Trashed<ProgramRow>[]) {
     entries.push({
       kind: 'program', id: row.id, name: row.name, deletedAt: row.deleted_at,
@@ -2338,7 +2871,7 @@ export async function listDeleted(
     });
   }
 
-  // Sorted across the five tables, then capped — the per-table `order` above
+  // Sorted across the six tables, then capped — the per-table `order` above
   // only makes each slice internally newest-first. Capping BEFORE the merge
   // would silently hide a routine deleted a minute ago behind a hundred older
   // items.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { HabitItem, TaskItem } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchItems, fetchProjects, fetchHabitGroups, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchHabitGroups, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
 import { isOpenLoopSuppressedOn } from '@/lib/active'
 import { toDateStr } from '@/lib/recurrence'
 
@@ -28,7 +28,15 @@ export async function GET(req: NextRequest) {
   const dbClient = isBearer ? createServiceClient() : undefined
 
   const serviceClient = createServiceClient()
-  const [items, projects, habitGroups, routinesResult, programsResult, settingsResult] =
+  const [
+    items,
+    projects,
+    habitGroups,
+    routinesResult,
+    programsResult,
+    goalsResult,
+    settingsResult,
+  ] =
     await Promise.all([
       fetchItems(userId, undefined, dbClient),
       fetchProjects(userId, dbClient),
@@ -38,6 +46,7 @@ export async function GET(req: NextRequest) {
       // itself hides, and the plugin nags about it.
       fetchRoutines(userId, dbClient),
       fetchPrograms(userId, dbClient),
+      fetchGoals(userId, dbClient),
       serviceClient
         .from('user_settings')
         .select('timezone')
@@ -111,7 +120,10 @@ export async function GET(req: NextRequest) {
     // coalesce. An unreachable table omits the key rather than claiming zero.
     ...(routinesResult ? { routines: routinesResult } : {}),
     ...(programsResult ? { programs: programsResult } : {}),
-    schemaVersion: 4,
+    // Same spread-or-omit rule, and the same reason: `[]` asserts "you have no
+    // goals" to a consumer whose natural repair is to offer to make one.
+    ...(goalsResult ? { goals: goalsResult } : {}),
+    schemaVersion: 5,
   })
 }
 

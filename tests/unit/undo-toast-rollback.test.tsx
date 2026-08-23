@@ -29,6 +29,7 @@ vi.mock('@/lib/db', () => ({
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
   fetchPrograms: vi.fn(async () => []),
+  fetchGoals: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
   deleteItem: vi.fn(async () => {}),

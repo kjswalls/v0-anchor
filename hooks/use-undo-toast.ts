@@ -31,6 +31,14 @@ const SIGNIFICANT_ACTIONS = [
   // carries the same receipt — it needs the toast to show it.
   'Add to ',
   'Remove from ',
+  // A goal role that stopped being true of its item — a milestone made
+  // recurring, a check-in made one-shot. The membership yields rather than the
+  // edit (goals never constrain their members), which means the user's item
+  // edit succeeded and something ELSE quietly changed. That is precisely the
+  // shape of change that needs a receipt: without it the milestone silently
+  // stops counting and the goal reads behind weeks later, with nothing on
+  // screen ever having said so.
+  'Role changed:',
 ];
 
 export function useUndoToast() {

@@ -177,6 +177,69 @@ export const ProgramSchema = z.object({
      */
     updatedAt: z.string().optional(),
 });
+// ── Goals (migration 036) ──────────────────────────────────────────────────────
+// The third container role. Projects and habit groups CLASSIFY (what an item is
+// about); routines and programs GATE (when it counts); a goal ASPIRES — it says
+// why the work matters and switches nothing off. See lib/container-registry.ts,
+// which states that seam in types, and memory/plans/long-term-goals.md.
+//
+// Members are ids carrying a ROLE, split app-side into three arrays because
+// every consumer wants one role's ids at a time: progress counts milestones,
+// the timeline orders them, the check-in bridge asks for checkins. The DB keeps
+// one normalized table (goal_items) whose primary key guarantees the arrays are
+// disjoint on read — the WRITE side must reconcile them as one union, or a
+// milestone demoted to member races itself. See lib/db.ts reconcileGoalMembers.
+export const GoalStateSchema = z.enum(['active', 'achieved', 'abandoned']);
+/**
+ * What a member does for its goal.
+ *
+ * A `milestone` is a one-shot item whose `startDate` IS its target date, so it
+ * renders on the grid that day and goes past due when missed; a `checkin` is a
+ * recurring review. Both requirements are capability questions the registry
+ * answers (`isMilestoneEligible` / recurrence), and a later item edit that
+ * invalidates a held role DEMOTES it to 'member' rather than blocking the edit
+ * — a recurring item's scalar status is frozen by design, so a recurring
+ * "milestone" would make progress lie forever.
+ */
+export const GoalRoleSchema = z.enum(['member', 'milestone', 'checkin']);
+export const GoalSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    /** The motivation line — why this goal exists. Rendered on the goal surface, handed to Beacon. */
+    why: z.string().optional(),
+    /** icon:<LucideName> token, matching the container convention. */
+    icon: z.string().optional(),
+    /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
+    color: z.string().optional(),
+    sortOrder: z.number().optional(),
+    state: GoalStateSchema,
+    /** Optional horizon (yyyy-MM-dd). `targetOn` is what the countdown and the behind/ahead read measure against. */
+    startsOn: z.string().optional(),
+    targetOn: z.string().optional(),
+    /**
+     * Stamped when `state` becomes 'achieved', cleared when it returns to
+     * 'active'.
+     *
+     * App-written and IN db.ts's update allowlist — the deliberate opposite of
+     * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+     * owns it. The reason is undo: this field rides GOAL_FIELDS into the
+     * container diff, which is what makes one ⌘Z after "Mark achieved" restore
+     * `state: 'active'` AND clear the stamp together. Left out, undo would
+     * restore the state and strand the timestamp.
+     *
+     * A write that does not CHANGE the state must never restamp it: re-achieving
+     * an achieved goal would drag a multi-year achievement date forward, and
+     * retried PATCHes are expected traffic (whole-array membership replacement is
+     * designed for retry idempotence). The rule lives beside the state verb.
+     */
+    achievedAt: z.string().optional(),
+    /** Ordinary supporting work — the daily practice habit, the odd task. */
+    memberIds: z.array(z.string()),
+    /** Achievement checkpoints, in timeline order (goal_items.sort_order). */
+    milestoneIds: z.array(z.string()),
+    /** Recurring reviews. */
+    checkinIds: z.array(z.string()),
+});
 // Field shapes are shared between the legacy per-kind schemas (TaskSchema /
 // HabitSchema — the pinned external contract the OpenClaw plugin validates
 // against) and the unified ItemSchema branches. Task and Habit deliberately
@@ -279,10 +342,11 @@ export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape);
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape);
 export const ROUTINE_FIELDS = Object.keys(RoutineSchema.shape);
 export const PROGRAM_FIELDS = Object.keys(ProgramSchema.shape);
+export const GOAL_FIELDS = Object.keys(GoalSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
 // One entity, discriminated by `type`. The task/habit branches are structurally
 // identical to Task/Habit so projections (item → legacy shape) are plain field
-// subsets. User-defined types (goal, …) travel under a CLOSED 'custom'
+// subsets. User-defined types (errand, …) travel under a CLOSED 'custom'
 // envelope with the type's machine name in `customType` — an open type: string
 // branch would destroy TypeScript's discriminated narrowing at every
 // `item.type === '…'` site in the app. The DB stores the slug itself in
@@ -291,7 +355,15 @@ const taskItemObject = z.object({ type: z.literal('task'), ...taskShape });
 const habitItemObject = z.object({ type: z.literal('habit'), ...habitShape });
 const customItemObject = z.object({
     type: z.literal('custom'),
-    /** The user-defined type's machine name (item_types.name), e.g. 'goal'. */
+    /**
+     * The user-defined type's machine name (item_types.name), e.g. 'errand'.
+     *
+     * NOT 'goal', which this example used to be: a Goal is a CONTAINER now
+     * (GoalSchema above, migration 036), and an item type of the same name is a
+     * different thing in a different namespace. Both keep working — the console
+     * shows them in different sections — but the example should not teach the
+     * collision.
+     */
     customType: z.string(),
     ...taskShape,
 });
@@ -641,6 +713,164 @@ export const ProgramUpdateSchema = z
     // and for the same reason: a refine cannot read the row.
     .superRefine(rejectInvertedRange)
     .superRefine(rejectProgramPauseVerb);
+// ── Agent API: goals ──────────────────────────────────────────────────────────
+// Same posture as routines and programs: an agent acting for the user should
+// reach what the user reaches. Membership arrives as whole id ARRAYS per ROLE,
+// matching db.ts's union reconcile and the store, and for the same idempotence
+// reason — a retried PATCH cannot double-add.
+/**
+ * A goal switches through `state`, and `achievedAt` is DERIVED from it.
+ *
+ * Both keys are carried in the shape only so this refine can see them and
+ * refuse with a pointer, the way `rejectProgramPauseVerb` does. Zod strips
+ * unknown keys, so without this an agent sending the verb it has learned
+ * everywhere else — `paused: true`, or a hand-picked `achievedAt` — gets
+ * `200 {success:true}` and a goal that did not move. A write with no effect
+ * that reports success is how an agent concludes the job is done.
+ *
+ * The `achievedAt` half is the `pausedAt` argument exactly: an agent-chosen
+ * timestamp is wrong in both directions — backdated it claims an achievement
+ * that had not happened, postdated it leaves a goal that reads achieved with no
+ * date. The server derives it from the state change.
+ */
+const rejectGoalDerivedFields = (data, ctx) => {
+    if (data.paused !== undefined || data.pausedUntil !== undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'goals do not pause — they suppress nothing, so there is nothing to hide. ' +
+                "Use state: 'achieved' or 'abandoned' to close one, or put the work in a " +
+                'program if the intent is to hide it for a season.',
+            path: ['state'],
+        });
+    }
+    if (data.achievedAt !== undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "achievedAt is derived from `state` — send state: 'achieved' and the server " +
+                'stamps it (and clears it when the goal reopens).',
+            path: ['state'],
+        });
+    }
+};
+/**
+ * The keys a goal does not have, because the OTHER containers do.
+ *
+ * Same argument as the pause verb, and stronger on every axis. `itemIds` is the
+ * membership key on both routines and programs; goals are the only container
+ * that renamed it; and membership is the commonest goal write there is. A
+ * model asked to "add these tasks to my Learn Chinese goal" reaches for
+ * `itemIds`, Zod strips it, `updateGoal` finds an empty patch and issues no
+ * statement at all — and the caller is told 200 for a write that did nothing.
+ * A refusal that names the right key is the only outcome that ends the loop.
+ *
+ * `endsOn` is the same mistake one field over: a program's range ends, a goal
+ * has a target it may well pass.
+ */
+const rejectForeignContainerKeys = (data, ctx) => {
+    if (data.itemIds !== undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'goals do not have itemIds — membership carries a ROLE. Use memberIds for ' +
+                'ordinary work the goal contains, milestoneIds for one-shot targets, or ' +
+                'checkinIds for a recurring review.',
+            path: ['memberIds'],
+        });
+    }
+    if (data.routineIds !== undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'goals hold items, not routines. Put the routine in a program, or add the ' +
+                "routine's items to the goal directly.",
+            path: ['memberIds'],
+        });
+    }
+    if (data.endsOn !== undefined) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'goals have a targetOn, not an endsOn — a target is when it is MEANT to be ' +
+                'done, and passing it does not end the goal.',
+            path: ['targetOn'],
+        });
+    }
+};
+/**
+ * A goal whose target precedes its start describes a window that never opens.
+ * `timeElapsed` returns null for it, so every ahead/behind reading on the goal
+ * surface silently disappears while the header still promises a target date.
+ */
+const rejectInvertedGoalWindow = (data, ctx) => {
+    if (data.startsOn && data.targetOn && data.startsOn > data.targetOn) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'startsOn must not be after targetOn — that window never opens',
+            path: ['targetOn'],
+        });
+    }
+};
+/**
+ * One item, one role per goal — the primary key says so, and a body naming the
+ * same id twice is two contradictory instructions rather than a preference.
+ * Rejecting beats picking, the same call `rejectResumeWithDate` makes.
+ */
+const rejectOverlappingGoalRoles = (data, ctx) => {
+    const seen = new Map();
+    for (const key of ['milestoneIds', 'checkinIds', 'memberIds']) {
+        for (const id of data[key] ?? []) {
+            const already = seen.get(id);
+            if (already && already !== key) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `item ${id} was given two roles at once (${already} and ${key}) — an item holds exactly one role per goal`,
+                    path: [key],
+                });
+                return;
+            }
+            seen.set(id, key);
+        }
+    }
+};
+const goalShape = {
+    /** The motivation line. Rendered on the goal surface and handed to Beacon. */
+    why: clearable(z.string()),
+    /** Lifecycle. Omitted on create → 'active'. */
+    state: GoalStateSchema.optional(),
+    startsOn: clearable(DateOnlySchema),
+    targetOn: clearable(DateOnlySchema),
+    memberIds: z.array(z.string().uuid()).optional(),
+    milestoneIds: z.array(z.string().uuid()).optional(),
+    checkinIds: z.array(z.string().uuid()).optional(),
+    // Carried only to be refused, with a pointer — see rejectGoalDerivedFields
+    // and rejectForeignContainerKeys.
+    paused: z.unknown().optional(),
+    pausedUntil: z.unknown().optional(),
+    achievedAt: z.unknown().optional(),
+    itemIds: z.unknown().optional(),
+    routineIds: z.unknown().optional(),
+    endsOn: z.unknown().optional(),
+};
+export const GoalCreateSchema = z
+    .object({
+    ...containerIdentityShape,
+    id: OptionalIdSchema,
+    ...goalShape,
+})
+    .superRefine(rejectInvertedGoalWindow)
+    .superRefine(rejectOverlappingGoalRoles)
+    .superRefine(rejectGoalDerivedFields)
+    .superRefine(rejectForeignContainerKeys);
+export const GoalUpdateSchema = z
+    .object({
+    ...containerIdentityShape,
+    name: z.string().min(1).optional(),
+    ...goalShape,
+})
+    // Sees only what the PATCH carries, so it catches a body that INTRODUCES an
+    // inverted window. Half a window patched against a stored other half still
+    // reaches the store unchecked — the same limitation ProgramUpdateSchema has.
+    .superRefine(rejectInvertedGoalWindow)
+    .superRefine(rejectOverlappingGoalRoles)
+    .superRefine(rejectGoalDerivedFields)
+    .superRefine(rejectForeignContainerKeys);
 // ── API response schemas ───────────────────────────────────────────────────────
 export const AnchorContextResponseSchema = z.object({
     userId: z.string(),
@@ -661,10 +891,23 @@ export const AnchorContextResponseSchema = z.object({
     // one. Absent means "this server did not say".
     routines: z.array(RoutineSchema).optional(),
     programs: z.array(ProgramSchema).optional(),
+    /**
+     * The containers that say WHY work exists (schemaVersion 5+).
+     *
+     * Unlike routines and programs, a goal suppresses nothing — so an item's
+     * absence from tasks[] is never explained by a goal. These are here for the
+     * opposite reason: so an agent asked "how is Learn Chinese going" can answer
+     * from progress and the next milestone rather than guessing from item titles.
+     * Optional, like every array before it: a plugin built against an older
+     * schema strips the key rather than throwing.
+     */
+    goals: z.array(GoalSchema).optional(),
     // Additive (old clients strip unknown keys). 2 = tasks/habits are
     // projections of the unified items table; 3 = items[] present; 4 = routines[]
     // and programs[] present, so a consumer can explain WHY an item it remembers
-    // is missing from tasks[] instead of concluding it was deleted.
+    // is missing from tasks[] instead of concluding it was deleted; 5 = goals[]
+    // present, so a consumer can say what the work is FOR — progress, the next
+    // milestone, the target — instead of inferring purpose from item titles.
     schemaVersion: z.number().optional(),
 });
 export const AnchorChangeEventSchema = z.object({

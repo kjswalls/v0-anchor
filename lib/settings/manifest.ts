@@ -1008,6 +1008,17 @@ export const DESTINATIONS: DestinationRecord[] = [
     section: 'programs',
   },
   {
+    id: 'dest.goals',
+    label: 'Goals',
+    where: 'Organize',
+    // The nouns someone reaches for when the thing they want is long-horizon:
+    // the container's own word, the two roles it grants, and the shapes people
+    // describe them as before they know the feature exists.
+    keywords: ['goal', 'milestone', 'check-in', 'checkin', 'ambition', 'target', 'long term'],
+    action: 'organize',
+    section: 'goals',
+  },
+  {
     id: 'dest.trash',
     label: 'Recently deleted',
     where: 'Organize',
