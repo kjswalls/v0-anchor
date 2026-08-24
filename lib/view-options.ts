@@ -13,6 +13,7 @@ import {
   Hourglass,
   Shapes,
   ArrowDownAZ,
+  CalendarRange,
   type LucideIcon,
 } from 'lucide-react';
 import type { GroupBy } from './planner-types';
@@ -58,6 +59,7 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<GroupBy>[] = [
   { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'bucket', label: 'Time bucket', icon: Hourglass },
   { value: 'routine', label: 'Routine', icon: Repeat },
+  { value: 'program', label: 'Program', icon: CalendarRange },
 ];
 
 /**
@@ -155,4 +157,6 @@ export const BRAINDUMP_GROUP_BY_OPTIONS: ViewOption<BraindumpGroupBy>[] = [
   { value: 'none', label: 'None', icon: Layers },
   { value: 'type', label: 'Type', icon: Shapes },
   { value: 'project', label: 'Project', icon: Folder },
+  { value: 'routine', label: 'Routine', icon: Repeat },
+  { value: 'program', label: 'Program', icon: CalendarRange },
 ];

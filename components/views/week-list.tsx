@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
-  const { selectedDate, setSelectedDate, routines } = usePlannerStore();
+  const { selectedDate, setSelectedDate, routines, programs } = usePlannerStore();
   const groupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
@@ -35,7 +35,7 @@ function DaySection({ date }: { date: Date }) {
    * ordering when Week × Schedule cannot — a day section has no time axis of its
    * own to contradict.
    */
-  const groups = groupRows(flattenDayRows(day), groupBy, { routines }).map((g) => ({
+  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
     ...g,
     rows: sortRows(g.rows, sortBy),
   }));
@@ -65,7 +65,7 @@ function DaySection({ date }: { date: Date }) {
             // 'none' comes back as one section with an empty label, which is
             // this view's own default look: a flat list under the date heading.
             g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row as never} date={date} />
                 ))}

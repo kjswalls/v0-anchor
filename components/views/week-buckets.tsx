@@ -47,6 +47,7 @@ function WeekBucketCell({
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const tasks = tasksByBucket[bucket];
   const habits = habitsByBucket[bucket];
   // The header count stays "everything in this bucket", project-block tasks
@@ -80,7 +81,7 @@ function WeekBucketCell({
   ];
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
-      ? groupRows(rows, canvasGroupBy, { routines })
+      ? groupRows(rows, canvasGroupBy, { routines, programs })
       : null;
 
   return (
@@ -126,7 +127,7 @@ function WeekBucketCell({
             ))}
             {grouped
               ? grouped.map((g) => (
-                  <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+                  <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
                     {g.rows.map((row) => (
                       <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                     ))}

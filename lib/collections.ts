@@ -12,8 +12,8 @@ import { toDateStr } from '@/lib/recurrence';
 import type { Program, Routine } from '@/lib/planner-types';
 
 /**
- * Shared machinery for the container surfaces — the manager, the ScopeRail, and
- * the Organize console that replaces the first of those.
+ * Shared machinery for the container surfaces — the manager and the Organize
+ * console that replaces it.
  *
  * Extracted out of manage-collections-dialog.tsx rather than copied: every
  * function here encodes a rule that is wrong in a subtly different way if it

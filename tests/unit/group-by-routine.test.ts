@@ -80,6 +80,14 @@ describe('groupRows — group by routine', () => {
     expect(ids(out[1])).toEqual(['loose']);
   });
 
+  it('tags the real routine section as a gate, and the loose bucket as none', () => {
+    // The switch a group header renders keys off this: the real section carries
+    // its {kind, id}; the "No routine" bucket names no container, so no switch.
+    const out = groups([task('a'), task('loose')], [], [routine('r', 'R', ['a'])]);
+    expect(out[0].gate).toEqual({ kind: 'routine', id: 'r' });
+    expect(out[1].gate).toBeUndefined();
+  });
+
   it('gives the unclaimed group a key a routine cannot collide with', () => {
     // Group keys ARE React keys. A routine the user literally named "No routine"
     // would otherwise mount two sections under one key, and the moment the group

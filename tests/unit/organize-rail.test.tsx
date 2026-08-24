@@ -12,8 +12,8 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
  * `role="tablist"`, and two things have to survive it:
  *
  *   1. `getByRole('tab', { name: 'Programs' })` must keep resolving. The e2e suite
- *      drives the manager that way (programs.spec.ts:76, scope-rail.spec.ts) and
- *      Phase 2's acceptance criterion is that both specs run UNCHANGED.
+ *      drives the manager that way (programs.spec.ts) and
+ *      Phase 2's acceptance criterion is that that spec runs UNCHANGED.
  *
  *   2. Radix's RovingFocusGroup must step OVER the non-tab children rather than
  *      landing on them, or ↓ from the last tab in a group walks onto an eyebrow.

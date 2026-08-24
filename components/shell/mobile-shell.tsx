@@ -10,11 +10,11 @@ import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
-import { ScopeRail } from '@/components/sidebar/scope-rail';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
+import { cn } from '@/lib/utils';
 
 /**
  * Mobile layout: slim header + (Today-only) day strip, the active tab's
@@ -82,26 +82,17 @@ export function MobileShell() {
              the mobile echo of the desktop canvas. In light mode canvas and
              backdrop are near-identical, so the border-surface-3 hairline +
              shadow-soft-lg + rounding carry the elevation. */
-          <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-surface-3 bg-canvas shadow-soft-lg">
-            {/* The rail rides the Braindump tab for the same reason the Paused
-                section does: it is the one mobile surface that is about what
-                exists rather than about today, and touch has no other route to
-                the containers. Its hover preview simply never fires here — the
-                switch and the count do all the work, which is also why the
-                count exists rather than the preview alone. */}
-            {activeTab === 'braindump' && (
-              <>
-                <Braindump />
-                {/* px-[10px] and pt-2, not px-2 with no top padding: this panel
-                    sets no gap, and the braindump's own capsules are inset
-                    mx-[10px] on an 8px internal rhythm — so a 2px-wider strip
-                    flush against the quick-add well read as a misaligned fourth
-                    capsule rather than a peer of the other three. */}
-                <div className="shrink-0 px-[10px] pt-2 pb-2">
-                  <ScopeRail />
-                </div>
-              </>
+          <div
+            className={cn(
+              'mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-surface-3 bg-canvas shadow-soft-lg',
+              // The deleted Scope Rail wrapper (pt-2 pb-2) used to hold the
+              // braindump's quick-add well off this panel's rounded bottom
+              // corner; restore that clearance, scoped to the braindump tab so
+              // the Today canvas layout is untouched.
+              activeTab === 'braindump' && 'pb-2'
             )}
+          >
+            {activeTab === 'braindump' && <Braindump />}
             {activeTab === 'today' && <MobileViewRouter />}
           </div>
         )}

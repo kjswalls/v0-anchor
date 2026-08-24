@@ -13,10 +13,11 @@ import type { LucideIcon } from 'lucide-react';
  *
  * The membership rule is narrow on purpose and it is about DECISIONS, not about
  * importance. A notice earns a line here only if there is something the user
- * has to answer. A permanent fact about the world ("4 items live in Summer, and
- * Summer is off") is not a notice — it belongs on the thing it is a fact about,
- * which is why the program count sits on its scope-rail row and the day's
- * suppression line sits in the canvas header beside the date. Put standing
+ * has to answer. A permanent fact about the world ("Summer is off") is not a
+ * notice — it belongs on the thing it is a fact about, which is why a scope's
+ * pause state rides its own switch (its group header, and the Display menu's
+ * Paused-scopes list) and the day's suppression line sits in the canvas header
+ * beside the date. Put standing
  * facts in here and the dock silts up into a notification centre nobody reads,
  * which is the failure mode this surface exists to avoid.
  */

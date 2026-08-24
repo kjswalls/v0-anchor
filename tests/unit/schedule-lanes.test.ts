@@ -3,7 +3,7 @@ import { planLanes, resolveFocus, isReceded, laneBudget, NO_LANES } from '@/lib/
 import { bandOnly, layoutOverlaps } from '@/lib/schedule-overlap';
 import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
 import type { GroupableRow } from '@/lib/grouping';
-import type { Habit, Task } from '@/lib/planner-types';
+import type { Habit, Program, Task } from '@/lib/planner-types';
 
 /**
  * Lanes and focus — how a Schedule grid answers a grouping (Phase 5b).
@@ -116,6 +116,20 @@ describe('planLanes — which answer the grid gets', () => {
 
     expect(plan.mode).toBe('focus');
     expect(plan.lanes.map((l) => l.label)).toEqual(['Mornings', 'No routine']);
+  });
+
+  it('never divides by PROGRAM either, even with a field that could afford lanes', () => {
+    // A program is the other many-to-many gate — its members ride in through the
+    // routines it holds as well as directly — so a lane cannot express
+    // insert-versus-move here for the same reason. Focus-only, like routine.
+    const rows = [t('a'), t('b')];
+    const programs: Program[] = [
+      { id: 'p', name: 'Summer', state: 'auto', itemIds: ['a'], routineIds: [] },
+    ];
+    const plan = planLanes(rows, 'program', { variant: 'day', fieldWidth: 4000, programs });
+
+    expect(plan.mode).toBe('focus');
+    expect(plan.lanes.map((l) => l.label)).toEqual(['Summer', 'No program']);
   });
 
   it('falls back to focus past the lane budget rather than folding an "Other" lane', () => {

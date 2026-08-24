@@ -540,8 +540,8 @@ export function routineStandingOn(
  * routine was carrying the whole time, and for items the same program also held
  * directly. Nothing left; nothing came back.
  *
- * `ScopeRow.flips` and `wouldHide` in the console's programs section already
- * reason this way. This is the third caller, so it stops being copied.
+ * `wouldHide` in the console's programs section already reasons this way — the
+ * shared shape, so it stops being copied.
  *
  * Cost is two `inactiveItemIdsOn` passes, linear in items + memberships, on a
  * pane rendering at most a few dozen members.

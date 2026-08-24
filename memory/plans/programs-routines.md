@@ -1126,3 +1126,37 @@ toast is a consistency question, and decision 10's Paused section is the discove
 answer); and the entity picker lacking a paused annotation (the picker filters by the
 command's own eligibility predicate, so the annotation would be redundant in one picker
 and never render in the other).
+
+---
+
+## Addendum (2026-08-23): the Scope Rail retired for group-by-scope + a menu list
+
+The pinned **Scope Rail** (`components/sidebar/scope-rail.tsx`) is gone. Kirby found the
+permanent column of chrome too costly for a control used occasionally, and its two jobs
+split cleanly onto surfaces that already exist:
+
+- **Toggle an ACTIVE scope → its group header.** Both the braindump and the canvas can now
+  group by **Routine** and **Program** (grouping by program is new — `programGroups` in
+  [lib/grouping.ts](../../lib/grouping.ts), walking a program's transitive membership: its
+  own items plus the items of routines it holds). A gate group's header carries a pause
+  switch ([components/primitives/gate-switch.tsx](../../components/primitives/gate-switch.tsx)),
+  so you flip a scope off where its work lives. On the schedule grid, program is focus-only
+  like routine (a many-to-many axis can't tile into lanes).
+- **Turn a PAUSED scope back on → the Display menu's "Paused scopes" list.** A fully-paused
+  scope has no visible members, so no header — the menu is its always-visible home, on both
+  surfaces (`PausedScopesSection` in
+  [components/primitives/display-menu.tsx](../../components/primitives/display-menu.tsx)).
+  It lists scopes whose OWN switch is off (`!localOn`), so a routine merely held down by a
+  program is not listed — its blocking program is, and turning that on brings it back.
+
+The **write** for every one of these lives in one guarded helper,
+[lib/gate-toggle.ts](../../lib/gate-toggle.ts) `setGateOn`: it re-resolves at CLICK time
+(dateless, decision 3), no-ops when the world already matches, and routes programs through
+`programStateForSwitch` so a binary switch never destroys date-following. `buildScopeRows`
+(the rail's old view-model, kept for the menu) lost its **resolver-delta machinery** — the
+away-count and hover-ghost the minimal switch does not show — and no longer takes `items`.
+
+**Accepted losses** (Kirby signed off): the rail's empty-state teaching line and its "+"
+new-scope button. Discoverability moves to the grouping options, the braindump's folder
+button, and the palette's "Organize routines & programs". **Reversibility rule preserved:**
+"off never leaves the list" now means the Paused-scopes menu, not a rail row.

@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -35,6 +36,10 @@ import {
   type ViewFilters,
 } from '@/lib/filters';
 import { NO_CONTAINER, containerRef, namesOfKind } from '@/lib/container-registry';
+import { buildScopeRows } from '@/lib/scope-rail';
+import { setGateOn } from '@/lib/gate-toggle';
+import { toDateStr } from '@/lib/recurrence';
+import { CategoryIcon } from '@/lib/category-icons';
 import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
@@ -44,7 +49,7 @@ import {
   SORT_BY_OPTIONS,
 } from '@/lib/view-options';
 import type { GroupBy, Priority } from '@/lib/planner-types';
-import type { ViewScope } from '@/lib/view-store';
+import type { BraindumpGroupBy, ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -397,7 +402,7 @@ export function DisplayMenu({
                 onToggle={() =>
                   isCanvas
                     ? view.setCanvasGroupBy(o.value as GroupBy)
-                    : view.setBraindumpGroupBy(o.value as 'none' | 'type' | 'project')
+                    : view.setBraindumpGroupBy(o.value as BraindumpGroupBy)
                 }
               />
             );
@@ -603,6 +608,8 @@ export function DisplayMenu({
           </>
         )}
 
+        <PausedScopesSection />
+
         <DropdownMenuSeparator />
         {/* Permanently mounted, disabled when nothing is set. That is what stops
             the panel jumping height, which today's conditionally-mounted "Clear
@@ -622,6 +629,69 @@ export function DisplayMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * The recovery half of "group by scope, flip the header": the scopes that are
+ * OFF right now, each one click from back on.
+ *
+ * A gate container's home when it has no visible members — a fully-paused
+ * routine, or an out-of-season program, produces no group header to switch, so
+ * without this list it would only be reachable from the Organize console. Shown
+ * on BOTH surfaces because pausing is app-wide DB state, and hidden entirely
+ * when nothing is off.
+ *
+ * "Off" means the container's OWN switch is off (`!localOn`): a routine a program
+ * is merely holding down keeps its own switch on and is not listed here — the
+ * blocking PROGRAM is, and turning it on brings the routine back. Mounted inside
+ * the menu content, so buildScopeRows only runs while the menu is open.
+ */
+function PausedScopesSection() {
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Resolved at today and used as a memo key — pausing is dateless, and a menu
+  // opened after midnight must offer the resume that is true now.
+  const todayStr = toDateStr(new Date(), tz);
+  const offRows = useMemo(
+    () => buildScopeRows(routines, programs, todayStr, tz).filter((row) => !row.localOn),
+    [routines, programs, todayStr, tz]
+  );
+
+  if (offRows.length === 0) return null;
+
+  return (
+    <>
+      <Cap>Paused scopes</Cap>
+      {offRows.map((row) => (
+        <ValueRow
+          key={`${row.kind}:${row.id}`}
+          leading={
+            <CategoryIcon
+              glyph={row.icon}
+              name={row.name}
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+          }
+          label={row.name}
+          // The rail's own line — "back Sep 8", "you turned it off", "ended Jul 31".
+          rail={row.state}
+          // An ACTION, not a value: role=menuitem so a screen reader announces
+          // "turn on <name>" rather than a check box that can never read checked
+          // (turning it on drops the row from the !localOn list). keepOpen keeps
+          // the menu up so a POINTER user can bring several back without reopening
+          // — keyboard focus still resets as each row unmounts, so it is not a
+          // keyboard "several in a row" affordance.
+          checked={false}
+          role="menuitem"
+          keepOpen
+          onToggle={() => setGateOn(row.kind, row.id, true)}
+        />
+      ))}
+    </>
   );
 }
 

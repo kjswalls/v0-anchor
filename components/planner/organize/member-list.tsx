@@ -17,7 +17,7 @@ import type { Item, Routine } from '@/lib/planner-types';
  *
  * MOVED, NOT REWRITTEN (memory/plans/organize-console.md, Phase 2). Every
  * data-testid travels verbatim, because Phase 2's acceptance criterion is that
- * `tests/e2e/programs.spec.ts` and `scope-rail.spec.ts` run UNCHANGED. The
+ * `tests/e2e/programs.spec.ts` runs UNCHANGED. The
  * geometry is re-cut to console scale (30px rows, 5px radii, a reserved control
  * rail) but no behaviour changes here.
  *

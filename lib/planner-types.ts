@@ -46,7 +46,7 @@ export type ViewMode = 'day' | 'week';
  * section heading would have to either merge them or show two ladders for one
  * axis. It survives only as a stale persisted string; see `isGroupBy`.
  */
-export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'routine';
+export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'routine' | 'program';
 
 export const GROUP_BY_VALUES: readonly GroupBy[] = [
   'none',
@@ -54,6 +54,7 @@ export const GROUP_BY_VALUES: readonly GroupBy[] = [
   'priority',
   'bucket',
   'routine',
+  'program',
 ];
 
 /**

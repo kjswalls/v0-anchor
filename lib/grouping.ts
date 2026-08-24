@@ -1,4 +1,4 @@
-import type { GroupBy, Habit, Priority, Routine, Task, TimeBucket } from './planner-types';
+import type { GroupBy, Habit, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import { BUCKET_ORDER } from './day-items';
 import { containerRefOf, fieldApplies, typeNameOf } from './filters';
@@ -54,11 +54,22 @@ export interface RowGroup<T> {
   key: string;
   label: string;
   rows: T[];
+  /**
+   * Set only on GATE sections (routine/program), and only on the REAL container
+   * ones — never the `:none` loose bucket, which names no container to switch.
+   * It carries the switch a group header renders: the id and kind are all the
+   * header needs to resolve the container's on/off state and toggle it. Absent
+   * on every classify/priority/bucket/none section, so those headers stay inert.
+   */
+  gate?: { kind: 'routine' | 'program'; id: string };
 }
 
 export interface GroupContext {
-  /** Required by `'routine'`; ignored by every other value. */
+  /** Required by `'routine'`; also read by `'program'` (a program's members
+   *  ride in through the routines it holds); ignored by every other value. */
   routines?: readonly Routine[];
+  /** Required by `'program'`; ignored by every other value. */
+  programs?: readonly Program[];
 }
 
 /** Internal: `unset` rides along so the "None" section can be forced last. */
@@ -185,11 +196,100 @@ function routineGroups<T extends GroupableRow>(rows: T[], routines: readonly Rou
   return [
     ...routines
       .filter((routine) => (groups.get(routine.id)?.length ?? 0) > 0)
-      .map((routine) => ({ key: routine.id, label: routine.name, rows: groups.get(routine.id)! })),
+      .map((routine) => ({
+        key: routine.id,
+        label: routine.name,
+        rows: groups.get(routine.id)!,
+        gate: { kind: 'routine' as const, id: routine.id },
+      })),
     // Prefixed so a routine a user actually named "No routine" cannot collide
     // with it — group KEYS are React keys, and two sections under one key
     // reconcile against a single fiber the moment the group list changes shape.
+    // No `gate`: the loose bucket names no container to switch.
     ...(loose.length ? [{ key: 'routine:none', label: 'No routine', rows: loose }] : []),
+  ];
+}
+
+/* ── program ────────────────────────────────────────────────────────────────*/
+
+/**
+ * A program's members, in claim order: its OWN items first, then the items of
+ * each routine it holds, in `routineIds` order. Deduped within the program —
+ * an item that is both a direct member and reachable through a routine appears
+ * once, at its direct position.
+ *
+ * A program gates work either directly (`program_items`) or through a routine it
+ * contains (`program_routines` → `routine_items`), so the walk unions both.
+ * Reading `itemIds` alone would miss every item a program only reaches via a
+ * routine — the school-year program that contains a Chinese routine holds that
+ * routine's habits.
+ */
+function programMemberIds(program: Program, routineById: ReadonlyMap<string, Routine>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (id: string) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  };
+  for (const id of program.itemIds) push(id);
+  for (const routineId of program.routineIds) {
+    const routine = routineById.get(routineId);
+    if (routine) for (const id of routine.itemIds) push(id);
+  }
+  return out;
+}
+
+/**
+ * ONE row, ONE group — the routine rule, applied to programs. An item can sit in
+ * several programs (directly, or via routines several programs share), so it
+ * lands in the FIRST program that claims it, in store order; a duplicate row is
+ * the same two-checkboxes-for-one-obligation failure `routineGroups` guards.
+ *
+ * Keyed by program ID, labelled by name — programs, like routines, carry
+ * `name text not null` with no UNIQUE and rename ships from day one, so keying
+ * on the name would merge two same-named seasons into one heading. Members order
+ * by `programMemberIds` (own items, then routine members); `sortRows(rows,
+ * 'default')` is identity and preserves it. There is no member REORDER on a
+ * program header — `program_items` has no sort_order (see schedule-lanes.ts).
+ */
+function programGroups<T extends GroupableRow>(
+  rows: T[],
+  programs: readonly Program[],
+  routines: readonly Routine[],
+): RowGroup<T>[] {
+  const routineById = new Map(routines.map((routine) => [routine.id, routine]));
+  const claimed = new Map<string, { id: string; rank: number }>();
+  programs.forEach((program, i) => {
+    programMemberIds(program, routineById).forEach((id, rank) => {
+      if (!claimed.has(id)) claimed.set(id, { id: program.id, rank: i * 1e6 + rank });
+    });
+  });
+
+  const groups = new Map<string, T[]>();
+  for (const program of programs) groups.set(program.id, []);
+  const loose: T[] = [];
+  for (const row of rows) {
+    const claim = claimed.get(row.item.id);
+    if (claim) groups.get(claim.id)!.push(row);
+    else loose.push(row);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => claimed.get(a.item.id)!.rank - claimed.get(b.item.id)!.rank);
+  }
+
+  return [
+    ...programs
+      .filter((program) => (groups.get(program.id)?.length ?? 0) > 0)
+      .map((program) => ({
+        key: program.id,
+        label: program.name,
+        rows: groups.get(program.id)!,
+        gate: { kind: 'program' as const, id: program.id },
+      })),
+    // Prefixed for the same React-key reason as 'routine:none'; no `gate`.
+    ...(loose.length ? [{ key: 'program:none', label: 'No program', rows: loose }] : []),
   ];
 }
 
@@ -217,6 +317,7 @@ export function groupRows<T extends GroupableRow>(
   if (rows.length === 0) return [];
   if (groupBy === 'none') return [{ key: '', label: '', rows }];
   if (groupBy === 'routine') return routineGroups(rows, ctx.routines ?? []);
+  if (groupBy === 'program') return programGroups(rows, ctx.programs ?? [], ctx.routines ?? []);
 
   if (groupBy === 'priority') {
     const byPriority = new Map<Priority | null, T[]>();

@@ -105,6 +105,7 @@ function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
 function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant }: DayBucketProps) {
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const dragging = !!activeId;
 
   // Whole-card droppable: highlight + fallback drop target (bare bucket id)
@@ -142,7 +143,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   ];
   const untimedGroups =
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
-      ? groupRows(untimedRows, canvasGroupBy, { routines })
+      ? groupRows(untimedRows, canvasGroupBy, { routines, programs })
       : defaultBucketGroups(untimedRows);
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
@@ -185,7 +186,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
             className="space-y-2"
           >
             {untimedGroups.map((g) => (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row as never} />
                 ))}
