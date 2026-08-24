@@ -29,7 +29,7 @@ export type ActiveDialog =
       section?: string;
       /** Select this object on arrival. */
       focusId?: string;
-      /** Put the cursor in the create row — the ScopeRail's `+`. */
+      /** Put the cursor in the create row — the "New routine or program" entry. */
       focusNew?: boolean;
     }
   // Settings is a route (/settings), not a dialog — see

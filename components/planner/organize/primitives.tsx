@@ -79,8 +79,8 @@ export function StatePill({ label, testId }: { label: string; testId: string }) 
  *
  * Full-bleed in the 300px list column, no card, no per-row fill at rest. A
  * stack of grey pills is the fastest way to look like a bootstrapped admin
- * panel, and this app already reserves rounded fills for NAV rows (the rail,
- * the ScopeRail).
+ * panel, and this app already reserves rounded fills for NAV rows (the sidebar
+ * rail).
  *
  * NO PER-ROW ACTIONS. No trash, no gear, no swatch, no overflow menu — every
  * verb for an object lives in its detail pane one pixel away. That buys ~30px
@@ -134,8 +134,8 @@ export function ObjectRow({
   /**
    * Keep the selected row visible.
    *
-   * The case that needs it is the deep link: the ScopeRail and the program
-   * notice open the console on a specific object, and the twelfth routine in a
+   * The case that needs it is the deep link: the program notice opens the
+   * console on a specific object, and the twelfth routine in a
    * list is below the fold, so without this the console arrives looking like
    * nothing was selected while the detail pane discusses something you cannot
    * see. `block: 'nearest'` makes it a no-op when the row is already in view, so
@@ -180,7 +180,7 @@ export function ObjectRow({
           The colour sits on the WRAPPER and the glyph takes `text-current`:
           CategoryIcon bakes `text-muted-foreground` into its own className and
           accepts no style prop, so this is the only way to tint it — and it is
-          the ScopeRail's existing idiom, not a new one. */}
+          CategoryIcon's existing idiom, not a new one. */}
       <span
         className="flex w-[18px] shrink-0 justify-center"
         style={{ color: color ?? accentColorForName(accentName ?? name) }}

@@ -77,7 +77,7 @@ export function testTitle(label: string): string {
  * playwright.config.ts documents.
  *
  * Was `collectionScope`, and containers were the only half it covered — which
- * left `programs.spec` and `scope-rail.spec` scoping their containers correctly
+ * left `programs.spec` scoping its containers correctly
  * while still calling `cleanupByTitlePrefix(TEST_TITLE_PREFIX)` on the line
  * above and deleting every other spec's ITEMS. Half a fix reads like a whole one
  * at the call site, so the scope now spans both and there is no bare-prefix

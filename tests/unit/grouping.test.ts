@@ -185,11 +185,11 @@ describe('groupRows — the contract every caller depends on', () => {
     t('t2', { priority: 'high' }),
     t('t3', { project: 'Work' }),
   ];
-  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine'];
+  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine', 'program'];
 
   it('never loses a row and never renders one twice', () => {
     for (const value of values) {
-      const out = groupRows(rows, value, { routines: [] });
+      const out = groupRows(rows, value, { routines: [], programs: [] });
       const seen = out.flatMap(ids);
       expect([...seen].sort()).toEqual(['h1', 'h2', 't1', 't2', 't3']);
     }
@@ -197,7 +197,7 @@ describe('groupRows — the contract every caller depends on', () => {
 
   it('never emits an empty section', () => {
     for (const value of values) {
-      const out = groupRows(rows, value, { routines: [] });
+      const out = groupRows(rows, value, { routines: [], programs: [] });
       expect(out.every((g) => g.rows.length > 0)).toBe(true);
     }
   });

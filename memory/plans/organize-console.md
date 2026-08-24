@@ -3,6 +3,11 @@
 **Status (2026-08-11): APPROVED FOR BUILD. All seven open questions answered by
 Kirby (below). No code written yet.**
 
+> **Note (2026-08-23):** the **ScopeRail** component (`components/sidebar/scope-rail.tsx`)
+> and its `tests/e2e/scope-rail.spec.ts` are retired — scope toggling moved onto group
+> headers and the Display menu's "Paused scopes" list (see `programs-routines.md`'s
+> 2026-08-23 addendum). This doc's line-anchored references to that component are history.
+
 Design pass run 2026-08-11: three container directions designed to their strongest
 form (modal command-center, non-modal docked panel, `/organize` route), each attacked
 by three independent reviewers — codebase fit, user journey, visual craft. Nothing

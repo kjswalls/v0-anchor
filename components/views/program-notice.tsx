@@ -38,9 +38,10 @@ import { cn } from '@/lib/utils';
  * so an h-8 line beside it is free, and it now renders in `buckets` too, where
  * it never has.
  *
- * The PERMANENT half of the same fact — "Summer is off and holds 4 items",
- * true on every date — is not here either. It lives on the Summer row in
- * components/sidebar/scope-rail.tsx, on the switch that causes it.
+ * The PERMANENT half of the same fact — "Summer is off", true on every date —
+ * is not here either. Turning a scope back on lives on the group-header switch
+ * (components/primitives/gate-switch.tsx) and the Display menu's "Paused
+ * scopes" list (components/primitives/display-menu.tsx).
  */
 export function ProgramNotice({ className }: { className?: string }) {
   const items = usePlannerStore((s) => s.items);

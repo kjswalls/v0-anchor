@@ -187,3 +187,42 @@ describe('braindump: grouping owns the outer order', () => {
 });
 
 beforeEach(() => seed('default'));
+
+describe('braindump: grouping by a gate', () => {
+  it('sections unscheduled items by their routine, with a pause switch on the header', () => {
+    // The one-line fix that makes gate grouping resolve at all: braindump.tsx
+    // passing { routines, programs } to groupRows instead of an empty ctx. With
+    // the empty ctx this routine's item fell into "No routine" and the switch
+    // never rendered.
+    const zebra = {
+      type: 'task',
+      id: 'z',
+      title: 'Zebra',
+      status: 'pending',
+      isScheduled: false,
+      order: 0,
+    } as unknown as Item;
+    usePlannerStore.setState({
+      userId: 'user-1',
+      userTimezone: 'UTC',
+      items: [zebra],
+      tasks: [zebra] as never,
+      habits: [],
+      projects: [],
+      habitGroups: [],
+      routines: [{ id: 'r', name: 'Mornings', itemIds: ['z'] }],
+      programs: [],
+    });
+    useViewStore.setState({
+      braindumpGroupBy: 'routine',
+      braindumpSortBy: 'default',
+      braindumpFilters: EMPTY_VIEW_FILTERS,
+    });
+    renderBraindump();
+
+    // The routine names the section, and its header carries the pause switch,
+    // reading ON (the routine is not paused).
+    expect(screen.getByText('Mornings')).toBeTruthy();
+    expect(screen.getByTestId('gate-switch').getAttribute('data-gate-on')).toBe('on');
+  });
+});

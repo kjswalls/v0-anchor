@@ -68,7 +68,7 @@ export interface OrganizeConsoleProps {
   section?: string;
   /** Select this object on arrival and scroll its row into view. */
   focusId?: string;
-  /** Focus the create row's name input on arrival (the ScopeRail's `+`). */
+  /** Focus the create row's name input on arrival (the "New routine or program" entry). */
   focusNew?: boolean;
 }
 

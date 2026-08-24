@@ -19,7 +19,7 @@ import {
  * This half of the app has never had an end-to-end test, and until Phase 2 it
  * had no data-testid either: it was a 400px dialog of rows with a hover trash on
  * each, and `tests/` reached none of it. The routines/programs half is covered
- * by programs.spec.ts and scope-rail.spec.ts, which must keep passing unchanged.
+ * by programs.spec.ts, which must keep passing unchanged.
  *
  * What is worth an end-to-end run rather than a unit test — everything here
  * crosses the store/DB/render boundary, which is where the unit tests stop:

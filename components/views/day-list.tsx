@@ -43,7 +43,7 @@ function defaultListGroups(rows: ListRow[]): RowGroup<ListRow>[] {
 
 export function DayList() {
   const day = useDayItems();
-  const { selectedDate, navDirection, routines } = usePlannerStore();
+  const { selectedDate, navDirection, routines, programs } = usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
 
@@ -58,7 +58,9 @@ export function DayList() {
    */
   const rows = flattenDayRows(day);
   const groups = (
-    canvasGroupBy === 'none' ? defaultListGroups(rows) : groupRows(rows, canvasGroupBy, { routines })
+    canvasGroupBy === 'none'
+      ? defaultListGroups(rows)
+      : groupRows(rows, canvasGroupBy, { routines, programs })
   ).map((g) => ({ ...g, rows: sortRows(g.rows, sortBy) }));
 
   return (
@@ -83,7 +85,7 @@ export function DayList() {
           </div>
         ) : (
           groups.map((g) => (
-            <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+            <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
               {g.rows.map((row) => (
                 <TaskRow key={row.item.id} row={row as never} />
               ))}

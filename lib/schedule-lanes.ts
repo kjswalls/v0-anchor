@@ -1,6 +1,6 @@
 import { groupRows, type GroupableRow } from './grouping';
 import { MIN_CHANNEL_PX } from './schedule-constants';
-import type { GroupBy, Routine } from './planner-types';
+import type { GroupBy, Program, Routine } from './planner-types';
 
 /**
  * How a Schedule grid answers a grouping — lanes, or focus (Phase 5b).
@@ -30,10 +30,10 @@ import type { GroupBy, Routine } from './planner-types';
  *   WEEK, always. At every derived default on every common monitor a week column
  *     is arithmetically EXACTLY ONE 140px channel. There is nothing to divide.
  *
- *   ROUTINE, always, on any variant. Routine membership is many-to-many and the
- *     grouping branch is first-claim-wins, so a lane cannot express
- *     insert-into-B versus move-to-B. It is focus-only on the schedule in every
- *     version, not just this one.
+ *   ROUTINE and PROGRAM, always, on any variant. Both are many-to-many gates and
+ *     the grouping branch is first-claim-wins, so a lane cannot express
+ *     insert-into-B versus move-to-B. They are focus-only on the schedule in
+ *     every version, not just this one.
  *
  *   PAST THE BUDGET. There is deliberately no "Other" lane: folding the trailing
  *     groups into one names groups it cannot spatially distinguish, which is a
@@ -68,6 +68,7 @@ export interface LaneOptions {
   /** Measured width of the events layer. Unknown means "cannot divide safely". */
   fieldWidth?: number | null;
   routines?: readonly Routine[];
+  programs?: readonly Program[];
 }
 
 /**
@@ -84,7 +85,7 @@ export const laneBudget = (fieldWidth: number): number =>
 export function planLanes(
   rows: GroupableRow[],
   groupBy: GroupBy,
-  { variant, fieldWidth, routines }: LaneOptions
+  { variant, fieldWidth, routines, programs }: LaneOptions
 ): LanePlan {
   if (groupBy === 'none' || rows.length === 0) return NO_LANES;
   /**
@@ -101,7 +102,7 @@ export function planLanes(
    */
   if (groupBy === 'bucket') return NO_LANES;
 
-  const groups = groupRows(rows, groupBy, { routines });
+  const groups = groupRows(rows, groupBy, { routines, programs });
   if (groups.length === 0) return NO_LANES;
 
   const laneOf = new Map<string, string>();
@@ -109,8 +110,10 @@ export function planLanes(
 
   const divisible =
     variant === 'day' &&
-    // Routine is focus-only forever — see the header.
+    // Routine and program are focus-only forever — both are many-to-many gates
+    // whose grouping is first-claim-wins; see the header.
     groupBy !== 'routine' &&
+    groupBy !== 'program' &&
     // One group is not a partition; it is a label. Focus renders that as a
     // single cap with nothing to recede, which is honest and costs no width.
     groups.length >= 2 &&

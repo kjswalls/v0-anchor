@@ -115,7 +115,7 @@ function ProgramHolders({
 
 /**
  * ROUTINES — the section that goes first, because it is the object people
- * garden most and the one the ScopeRail's `+` lands on.
+ * garden most and the one the "New routine or program" entry lands on.
  *
  * Moved from ManageCollectionsDialog with every data-testid intact
  * (memory/plans/organize-console.md, Phase 2). One thing is genuinely new and
@@ -245,7 +245,8 @@ function RoutineDetail({
   const { todayStr, tz } = useToday();
 
   /**
-   * Local AND effective, from the same helper the ScopeRail uses.
+   * Local AND effective, from the same helper (`routineStandingOn`) the scope
+   * view-model and the Display menu's Paused-scopes list use.
    *
    * This pane used to resolve `isPausedOn` alone, which is only the routine's
    * OWN switch — so a routine held off by a program showed `Active`, with its

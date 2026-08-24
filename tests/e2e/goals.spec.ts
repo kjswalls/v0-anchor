@@ -34,7 +34,7 @@ import {
  * Serial, and under its OWN prefix. Every test writes rows on the shared test
  * user, and sweeping the bare TEST_TITLE_PREFIX from two files hard-DELETEs the
  * other's fixtures mid-test under `fullyParallel` with 4 workers — the lesson
- * scope-rail.spec.ts and programs.spec.ts each had to learn once.
+ * programs.spec.ts had to learn once.
  */
 const scope = specScope('goal');
 

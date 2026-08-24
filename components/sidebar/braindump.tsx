@@ -383,9 +383,11 @@ export function Braindump() {
             { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
             { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
-        : groupRows(rows, braindumpGroupBy, {});
+        : // routines/programs feed the gate values ('routine', 'program'); they
+          // are inert for 'none'/'project', so passing them always is harmless.
+          groupRows(rows, braindumpGroupBy, { routines, programs });
     return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy]);
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs]);
 
   return (
     <section
@@ -470,7 +472,7 @@ export function Braindump() {
         <div className="px-[14px] py-2">
           {grouped.map((g) =>
             g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} className="pt-5 first:pt-1">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} className="pt-5 first:pt-1">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}
