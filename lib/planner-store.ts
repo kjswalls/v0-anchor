@@ -44,6 +44,7 @@ import {
   updateItemType as dbUpdateItemType,
   deleteItemType as dbDeleteItemType,
   createItem as dbCreateItem,
+  createItems as dbCreateItems,
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
   restoreItem as dbRestoreItem,
@@ -176,6 +177,18 @@ interface PlannerStore {
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
+  ) => void;
+  /**
+   * Bulk create — the paste-a-list path (bulk-add dialog). One set(), one
+   * history entry, one undo, then one DB write per row, per the bulk-verb
+   * contract above. `type` is 'task' or a hydrated custom slug and applies to
+   * every row; habits are excluded (their config doesn't fit one-per-line).
+   * A single-element array delegates to addTask/addItem so its history label
+   * stays the natural "Add task: …" form.
+   */
+  addTasksBulk: (
+    type: string,
+    items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
   ) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
@@ -2053,6 +2066,75 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, task, memberships, get);
+      },
+
+      addTasksBulk: (type, itemsData) => {
+        if (itemsData.length === 0) return;
+        // One row is a normal add wearing a bulk sleeve — delegate so the
+        // history label keeps its natural single-item form.
+        if (itemsData.length === 1) {
+          if (type === 'task') get().addTask(itemsData[0]);
+          else get().addItem(type, itemsData[0]);
+          return;
+        }
+        // Same slug guard as addItem, with 'task' additionally allowed:
+        // 'habit' would write corrupt rows through the task-shaped mapper,
+        // 'custom' is the envelope discriminant, unknown slugs stay unminted.
+        const isCustom = type !== 'task';
+        if (
+          isCustom &&
+          (type === 'habit' || type === 'custom' || !get().itemTypes.some((t) => t.name === type))
+        ) {
+          return;
+        }
+
+        // Always "items", never a pluralised type label — the undo toast
+        // matches on this prefix, and "7 grocerys" is what naive pluralisation
+        // buys.
+        setNextActionLabel(`Bulk add: ${itemsData.length} items`);
+
+        const baseOrder = get().tasks.length;
+        const projects = get().projects;
+        const rows: Item[] = itemsData.map((itemData, i) => {
+          const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
+          return {
+            ...itemData,
+            ...(isCustom ? { type: 'custom' as const, customType: type } : { type: 'task' as const }),
+            timeBucket,
+            id: crypto.randomUUID(),
+            status: 'pending',
+            isScheduled: !!timeBucket,
+            // Custom types aren't manually orderable (created_at sorts).
+            order: isCustom ? 0 : baseOrder + i,
+            projectId: projectIdFor(itemData.project, projects),
+          } as Item;
+        });
+
+        // ONE set() for the whole paste: one history entry, one ⌘Z.
+        set((state) => projectItems([...state.items, ...rows]));
+
+        // Tasks: one INSERT statement, not N createItem calls — all-or-nothing
+        // on the wire, and the undo-races-insert window stays as narrow as a
+        // single add's (see createItems in lib/db.ts). Their explicit `order`
+        // values carry the paste order through the shared created_at.
+        //
+        // Custom types can't ride that statement: they are order-0 by design
+        // (created_at sorts, per the registry decision), and a single INSERT
+        // stamps every row with the statement's created_at — the paste order
+        // would scramble on reload. A sequential chain gives each row its own
+        // timestamp; custom bulk adds are rare enough to pay the round trips.
+        const userId = get().userId;
+        if (userId) {
+          if (isCustom) {
+            void (async () => {
+              for (const row of rows) {
+                await dbCreateItem(userId, row).catch(console.error);
+              }
+            })();
+          } else {
+            dbCreateItems(userId, rows).catch(console.error);
+          }
+        }
       },
 
       updateTask: (id, updates) => {

@@ -10,7 +10,8 @@ import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useUIStore, openAddDialog } from '@/lib/ui-store';
+import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
+import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
 import { groupRows, type RowGroup } from '@/lib/grouping';
@@ -117,6 +118,17 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
           } else if (e.key === 'Escape') {
             setTitle('');
             inputRef.current?.blur();
+          }
+        }}
+        // A multi-line paste is a list, and a single-line input would silently
+        // fold it into one garbled title. Hand it to the bulk-add dialog, which
+        // shows the split before anything is created. The typed draft stays put
+        // in this field — the paste, not the draft, is what's being promoted.
+        onPaste={(e) => {
+          const pasted = e.clipboardData.getData('text/plain');
+          if (isBulkPaste(pasted)) {
+            e.preventDefault();
+            openBulkAdd({ text: pasted });
           }
         }}
         placeholder="Add item"

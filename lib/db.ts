@@ -829,6 +829,70 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
   recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
 }
 
+/**
+ * Batch create — one INSERT statement for the whole set (the bulk-add path).
+ *
+ * One statement rather than N createItem calls for two reasons beyond round
+ * trips: it narrows the undo-races-insert window (⌘Z right after a bulk add
+ * diffs against rows whose inserts haven't landed; dbDeleteItem's UPDATE
+ * matches nothing and the stragglers resurrect on reload) to a single flight,
+ * and it makes the batch all-or-nothing instead of leaving a random prefix on
+ * failure. The flip side is that every row gets the statement's created_at —
+ * callers must stamp explicit `order` values if display order matters, because
+ * created_at cannot tiebreak within the batch.
+ *
+ * Writes the TABLE, never the items_windowed read view.
+ */
+export async function createItems(userId: string, items: Item[], client?: DbClient): Promise<void> {
+  if (items.length === 0) return;
+  const supabase = client ?? createClient();
+  const linked = await Promise.all(items.map((item) => withResolvedContainer(supabase, userId, item)));
+  const rows = linked.map((item) => itemToRow(userId, item) as unknown as Record<string, unknown>);
+
+  // PostgREST bulk inserts need every object to carry the same keys, and
+  // itemToRow's pause/container/reminder spreads are conditional — null-fill
+  // the union so a row with a project doesn't reject the row without one.
+  const allKeys = new Set<string>();
+  for (const row of rows) for (const key of Object.keys(row)) allKeys.add(key);
+  for (const row of rows) for (const key of allKeys) if (!(key in row)) row[key] = null;
+
+  let { error } = await supabase.from('items').insert(rows);
+
+  // Same migration-032 fallback as createItem, applied batch-wide: losing the
+  // reminder halves beats losing every item in the paste.
+  if (error && isMissingColumnError(error)) {
+    let dropped = false;
+    const stable = rows.map((row) => {
+      const copy = { ...row };
+      for (const column of REMINDER_WRITE_COLUMNS) {
+        if (column in copy) {
+          delete copy[column];
+          dropped = true;
+        }
+      }
+      return copy;
+    });
+    if (dropped) {
+      console.warn(
+        `[db] items is missing a column this build writes (${error.message}). ` +
+          'Retrying the batch create without the migration-032 reminder columns — the items ' +
+          'are saved, their reminders are not. Apply supabase/migrations/032_habit_reminders.sql.',
+      );
+      ({ error } = await supabase.from('items').insert(stable));
+    }
+  }
+
+  if (error) throw error;
+  for (const item of linked) {
+    const dbType = itemDbType(item);
+    notifyItemChange(userId, dbType, {
+      action: 'create',
+      [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
+    });
+    recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
+  }
+}
+
 export async function updateItem(
   id: string,
   type: string,

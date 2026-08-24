@@ -16,7 +16,8 @@ import {
 } from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
+import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
+import { isBulkPaste } from '@/lib/bulk-add';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
@@ -811,6 +812,23 @@ export function Omnibar({
                 if (e.key === 'Enter' && isAddMode) {
                   e.preventDefault();
                   quickAdd();
+                }
+              }}
+              // A multi-line paste can't be a search and can't be typed into a
+              // single-line input without folding — treat it as a list and hand
+              // it to the bulk-add dialog. Chat mode keeps native paste (a
+              // pasted paragraph is a legitimate question for Beacon), and so
+              // does a pending command chip (its argument is a value, not a
+              // list). The typed query survives, as the braindump's draft
+              // does: the paste is what's being promoted, not the draft.
+              onPaste={(e) => {
+                if (isChatMode || activeCommand) return;
+                const pasted = e.clipboardData.getData('text/plain');
+                if (isBulkPaste(pasted)) {
+                  e.preventDefault();
+                  openBulkAdd({ text: pasted });
+                  setOpen(false);
+                  inputRef.current?.blur();
                 }
               }}
               placeholder={
