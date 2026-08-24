@@ -36,7 +36,25 @@ export type ActiveDialog =
   // app/settings/[[...pane]]/page.tsx. Removed rather than left as a dead
   // variant so nothing can dispatch to a surface no longer mounted anywhere.
   | { type: 'keyboard-shortcuts' }
-  | { type: 'bug-report' };
+  | { type: 'bug-report' }
+  /**
+   * The bulk-add dialog — paste a list (or import a file), get one item per
+   * line. `text` seeds its textarea (the raw paste, re-parsed there so the
+   * user sees and can edit the split before anything is created). The rest
+   * carries context from the surface that handed off: the item dialog's
+   * type/project/date must survive the hop or the hand-off silently drops
+   * choices the user already made.
+   */
+  | {
+      type: 'bulk-add';
+      text?: string;
+      /** 'task' or a custom slug — never 'habit'. */
+      itemType?: string;
+      project?: string;
+      /** yyyy-MM-dd */
+      date?: string;
+      bucket?: TimeBucket;
+    };
 
 export interface ConfirmRequest {
   title: string;
@@ -101,6 +119,12 @@ export const openAddDialog = (
   date?: Date,
   title?: string
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
+
+/** Open the bulk-add dialog, optionally seeded with pasted text and hand-off
+ *  context (see the ActiveDialog variant for field meanings). */
+export const openBulkAdd = (
+  seed: Omit<Extract<ActiveDialog, { type: 'bulk-add' }>, 'type'> = {}
+) => useUIStore.getState().openDialog({ type: 'bulk-add', ...seed });
 
 /**
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so

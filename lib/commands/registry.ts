@@ -17,6 +17,7 @@ import {
   Inbox,
   Keyboard,
   Layers,
+  ListPlus,
   MessageSquare,
   Moon,
   PanelLeft,
@@ -54,7 +55,7 @@ import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
-import { useUIStore, openAddDialog } from '../ui-store';
+import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
@@ -210,6 +211,16 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'new create routine streak',
     aliases: ['habit'],
     run: () => openAddDialog('habit'),
+  },
+  {
+    id: 'create.bulk',
+    label: 'Add many items…',
+    description: 'Paste a list or import a file — one item per line',
+    group: 'create',
+    icon: ListPlus,
+    keywords: 'bulk multiple paste import csv list batch many',
+    aliases: ['bulk', 'import'],
+    run: () => openBulkAdd(),
   },
   {
     id: 'create.project',

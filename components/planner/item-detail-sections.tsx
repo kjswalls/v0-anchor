@@ -15,6 +15,8 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
+import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -39,7 +41,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ── Subtasks ─────────────────────────────────────────────────────────────────
 
 function SubtasksSection({ item }: { item: Item }) {
-  const { items, addTask, deleteTask, toggleTaskStatus } = usePlannerStore();
+  const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
 
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
@@ -111,6 +113,26 @@ function SubtasksSection({ item }: { item: Item }) {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             addSubtask();
+          }}
+          // A multi-line paste commits inline — every line becomes a subtask
+          // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
+          // the dialog knows nothing of parents, and the rows land visibly in
+          // the list right below the field.
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData('text/plain');
+            if (!isBulkPaste(pasted)) return;
+            e.preventDefault();
+            const { titles, truncated } = splitBulkLinesWithMeta(pasted);
+            addTasksBulk(
+              'task',
+              titles.map((line) => ({ title: line, parentItemId: item.id }))
+            );
+            // The parser's contract: a capped tail is surfaced, never silent.
+            // This surface has no dialog to say it in, so the toast does.
+            if (truncated) {
+              toast(`Added the first ${MAX_BULK_ITEMS} subtasks — the paste had more.`);
+            }
+            setTitle('');
           }}
         />
       </div>
