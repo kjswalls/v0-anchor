@@ -172,6 +172,12 @@ export function AppShell() {
       if (!done) {
         setTourUserId(uid);
         setShowTour(true);
+        // Published for the chat surfaces too: Beacon's own first-run Q&A
+        // renders off the same answer, and on a phone its field competes with
+        // the dock's. Seeding it here — the earliest place the answer exists —
+        // means the dock is already standing down by the time the tour's
+        // step 4 switches to the Beacon tab.
+        useUIStore.getState().setChatOnboardingActive(true);
       }
     });
   }, []);
@@ -460,12 +466,16 @@ export function AppShell() {
           <div className="w-80 rounded-panel bg-sidebar" />
           <main className="flex-1 rounded-panel bg-canvas" />
         </div>
-        {/* Mobile skeleton — matches the floating-chrome silhouette (header
-            pill · content panel · bottom dock) so there's no flash of flat bars. */}
+        {/* Mobile skeleton — the redesigned silhouette: one header card, content
+            straight on the paper backdrop, one dock well. The content band is
+            deliberately bare; drawing a panel here flashes a surface the shell
+            no longer has. Geometry tracks mobile-header.tsx and
+            mobile-bottom-dock.tsx — if either card's inset or radius moves, this
+            moves with it or the first paint jumps. */}
         <div className="flex h-[100dvh] flex-col bg-surface-0 md:hidden">
-          <div className="mx-3 mt-2 h-11 flex-shrink-0 rounded-[16px] bg-surface-2" />
-          <div className="mx-2 my-2 flex-1 rounded-[24px] border border-surface-3 bg-canvas" />
-          <div className="mx-3 mb-3 h-24 flex-shrink-0 rounded-[24px] bg-surface-3" />
+          <div className="mx-[10px] mt-[10px] h-[88px] flex-shrink-0 rounded-[20px] bg-surface-2" />
+          <div className="flex-1" />
+          <div className="mx-[10px] mb-3 h-[72px] flex-shrink-0 rounded-[10px] bg-surface-3" />
         </div>
       </>
     );

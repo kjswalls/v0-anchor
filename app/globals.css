@@ -1198,9 +1198,11 @@ body {
   max-width: none;
 }
 
-/* On phones the views live inside a floating rounded panel (mobile-shell),
-   so the desktop 2rem gutter would waste ~64px of a 390px screen. Desktop is
-   md:/≥768, so this override never touches it. */
+/* On phones the views sit directly on the paper backdrop (mobile-shell), where
+   this gutter is the ONLY inset they get — the desktop 2rem would waste ~64px of
+   a 390px screen, and 14px is what the artboards draw
+   (design/mobile-redesign/Main.dc.html). Desktop is md:/≥768, so this override
+   never touches it. */
 @media (max-width: 767px) {
   .canvas-container {
     padding-inline: 0.875rem;

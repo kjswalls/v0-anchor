@@ -49,6 +49,8 @@ import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useChatStore } from '@/lib/chat-store';
+import { useUIStore } from '@/lib/ui-store';
 
 /** Where the stubbed layout puts the dock's top edge, in a 800px-tall viewport. */
 const DOCK_TOP = 724;
@@ -93,6 +95,7 @@ afterAll(() => {
 beforeEach(() => {
   useMobileNavStore.setState({ activeTab: 'today' });
   useAISettingsStore.setState({ provider: 'openclaw' });
+  useUIStore.setState({ chatOnboardingActive: false });
   document.documentElement.style.removeProperty('--toast-bottom');
 });
 afterEach(cleanup);
@@ -190,17 +193,96 @@ describe('the omnibar in the dock', () => {
     expect(await screen.findByText(/\? chat/)).toBeInTheDocument();
   });
 
-  it('stands down on the chat tab, where ChatConversation owns the composer', () => {
+  it('hands the bar to Beacon on the chat tab', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
+    // Swapped, not removed. Phase 2 gated the omnibar off this tab and left the
+    // well holding a 44px card and ~300px of nothing, which read as chrome that
+    // had failed to load; the composer that used to sit at the foot of the
+    // conversation fills the row instead.
     expect(screen.queryByTestId('omnibar-input')).toBeNull();
-    expect(card()).toBeInTheDocument();
-    // …and the well hugs the card it is left holding. Without this the dock is
-    // a full-width grey capsule with ~300px of nothing beside a 44px button,
-    // which reads as chrome that failed to load rather than as a bar standing
-    // down. Phase 3 hands Beacon this bar and both the gate and the hug go.
-    expect(document.querySelector('[data-dock-surface]')?.className).toContain('w-fit');
+    expect(screen.getByTestId('chat-dock-input')).toBeInTheDocument();
+    expect(document.querySelector('[data-dock-surface]')?.className).not.toContain('w-fit');
+  });
+
+  it('stands down for the first-run Q&A, which brings its own field', () => {
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    useUIStore.setState({ chatOnboardingActive: true });
+    render(<MobileBottomDock />);
+
+    // ChatConversation hands this state to OnboardingChat, textarea and all. A
+    // composer here would be the second field on the tab AND the one holding
+    // the caret, so the onboarding answer would land in the chat transcript and
+    // the question would never be answered.
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
+  });
+
+  it('names the field after whoever is answering', () => {
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    useAISettingsStore.setState({ provider: 'anthropic' });
+    render(<MobileBottomDock />);
+
+    expect(screen.getByTestId('chat-dock-input')).toHaveAttribute(
+      'placeholder',
+      'Message Beacon…'
+    );
+  });
+});
+
+describe('the chat composer in the dock', () => {
+  const input = () => screen.getByTestId('chat-dock-input') as HTMLTextAreaElement;
+
+  beforeEach(() => {
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    useChatStore.setState({ isLoading: false, send: vi.fn() });
+  });
+
+  it('sends on Enter and clears, and newlines on Shift+Enter', () => {
+    const send = vi.fn();
+    useChatStore.setState({ send });
+    render(<MobileBottomDock />);
+
+    fireEvent.change(input(), { target: { value: 'plan my afternoon' } });
+    fireEvent.keyDown(input(), { key: 'Enter', shiftKey: true });
+    expect(send).not.toHaveBeenCalled();
+    expect(input().value).toBe('plan my afternoon');
+
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(send).toHaveBeenCalledWith('plan my afternoon');
+    expect(input().value).toBe('');
+  });
+
+  it('lets an IME keep Enter for committing its candidate', () => {
+    const send = vi.fn();
+    useChatStore.setState({ send });
+    render(<MobileBottomDock />);
+
+    fireEvent.change(input(), { target: { value: 'こんにち' } });
+    fireEvent.keyDown(input(), { key: 'Enter', isComposing: true });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(input().value).toBe('こんにち');
+  });
+
+  it('will not send whitespace, and stands down mid-stream', () => {
+    const send = vi.fn();
+    useChatStore.setState({ send, isLoading: true });
+    render(<MobileBottomDock />);
+
+    fireEvent.change(input(), { target: { value: '   ' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(send).not.toHaveBeenCalled();
+    expect(input()).toBeDisabled();
+  });
+
+  it('shows the send button only once there is something to send', () => {
+    render(<MobileBottomDock />);
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+
+    fireEvent.change(input(), { target: { value: 'hi' } });
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 });
 

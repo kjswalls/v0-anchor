@@ -200,12 +200,12 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
 
   // The dateless tabs get NO card. Braindump already opens with the header this
   // redesign ports — its own surface-3 capsule (components/sidebar/braindump.tsx)
-  // — and Beacon gets that shape in phase 3; a dated card above either is two
+  // — and Beacon wears the same shape; a dated card above either is two
   // stacked headers, the upper one offering a calendar for a surface with no
   // date, where the chevron moved the Today cursor with no visible effect on the
-  // tab you were looking at. The user menu goes with the card until phase 3 puts
-  // the avatar inside those capsules, as the artboards show
-  // (design/mobile-redesign/BraindumpTab.dc.html). The empty wrapper stays: it
+  // tab you were looking at. The user menu goes with the card: the shell hands
+  // those two tabs their own to mount inside their capsule, as the artboards
+  // show (design/mobile-redesign/BraindumpTab.dc.html). The empty wrapper stays: it
   // carries the notch inset, plus the 10px the card's own top margin used to put
   // between the inset and whatever opens below — those surfaces need both
   // whether or not there is a card in it.

@@ -8,6 +8,7 @@ import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
+import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog } from '@/lib/ui-store';
@@ -217,10 +218,28 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
   );
 }
 
-export function Braindump() {
+interface BraindumpProps {
+  /**
+   * 'mobile' is the phone's Braindump TAB. It differs from the sidebar in one
+   * thing only — the header capsule is inset off the screen edge, so it lines
+   * up with the dated tabs' header card and with the dock. Everything below it
+   * already sits on the paper backdrop on both shells.
+   */
+  variant?: 'sidebar' | 'mobile';
+  /**
+   * Trailing content for the header row-pill. This capsule is the ONLY header
+   * the phone's Braindump tab gets, so the shell hangs the user menu here
+   * (design/mobile-redesign/BraindumpTab.dc.html); the sidebar has the canvas
+   * header for that and passes nothing.
+   */
+  headerAccessory?: React.ReactNode;
+}
+
+export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
   const { tasks, habits, items, routines, programs, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
+  const isMobile = variant === 'mobile';
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
@@ -386,50 +405,67 @@ export function Braindump() {
       data-testid="braindump"
       className="flex min-h-0 flex-1 flex-col gap-2"
     >
-      {/* Header — gray capsule (flat) framing a shadowed white row-pill.
-          Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
-          shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
-          for the Linear-style exploration. */}
-      <div className="shrink-0 rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]">
-        <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
-          <AlignLeft className="h-4 w-4 text-muted-foreground" />
-          <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
-            Braindump
-          </h2>
-          {/* Portalled, so the sidebar's 280px minimum never constrains the
-              240px panel — which is the decisive advantage over a persistent
-              chip bar. A bar would sit IN FLOW above a grid whose hour height is
-              derived from remaining column height, so adding your first filter
-              would visibly re-scale every hour row of the day. */}
+      {/* Header — the shared double-card capsule (SurfaceHeader). The phone
+          shell insets it off the screen edge; the sidebar column has no gutter
+          of its own, so it stays flush there. */}
+      <SurfaceHeader
+        title="Braindump"
+        icon={<AlignLeft className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        className={cn(isMobile && 'mx-[10px]')}
+      >
+        {/* On the phone this row is the Braindump tab's ONLY header, so these
+            controls are the whole surface's chrome and they were still wearing
+            sidebar density — a 24px menu, a 24px organize button and a 16px
+            add, which is that tab's primary action being aimed at with a thumb.
+            The mobile mount grows all three to the 28px slot the artboard draws
+            (BraindumpTab.dc.html), glyphs unchanged; the sidebar's 280px width
+            budget is untouched. Same idiom as mobile-header.tsx's wrapper
+            around this component's canvas twin.
+
+            The menu itself is portalled, so the sidebar's 280px minimum never
+            constrains the 240px panel — which is the decisive advantage over a
+            persistent chip bar. A bar would sit IN FLOW above a grid whose hour
+            height is derived from remaining column height, so adding your first
+            filter would visibly re-scale every hour row of the day. */}
+        <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu surface="braindump" trigger="icon" align="start" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={() => openDialog({ type: 'organize', section: 'projects' })}
-            aria-label="Organize projects & groups"
-          >
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-          {/* No routines button here on purpose. This row is width-critical at
-              the 280px minimum — the collapse control moved off it to buy the
-              title ~30px, and a fifth control spends exactly that back. The
-              manager is reached from the palette and from the item dialog's
-              Routine chip instead. */}
-          {/* Collapse used to sit here, as a fifth control. It moved onto the
-              resize sash (components/sidebar/sidebar.tsx) so all the chrome
-              that acts on the COLUMN — its width and whether it's there at all
-              — lives on the column's own edge, and this row is left holding
-              only things that act on the LIST. It also buys the title back
-              ~30px, which is the difference between fitting and truncating at
-              the 280px minimum width. ⌘[ is unchanged. */}
-          <AddIconButton
-            size="md"
-            onClick={() => openAddDialog('task')}
-            aria-label="Add task"
-          />
-        </div>
-      </div>
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-6 w-6 text-muted-foreground hover:text-foreground',
+            isMobile && 'size-7'
+          )}
+          onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+          aria-label="Organize projects & groups"
+        >
+          <FolderOpen className="h-4 w-4" />
+        </Button>
+        {/* No routines button here on purpose. This row is width-critical at
+            the 280px minimum — the collapse control moved off it to buy the
+            title ~30px, and a fifth control spends exactly that back. The
+            manager is reached from the palette and from the item dialog's
+            Routine chip instead. */}
+        {/* Collapse used to sit here, as a fifth control. It moved onto the
+            resize sash (components/sidebar/sidebar.tsx) so all the chrome
+            that acts on the COLUMN — its width and whether it's there at all
+            — lives on the column's own edge, and this row is left holding
+            only things that act on the LIST. It also buys the title back
+            ~30px, which is the difference between fitting and truncating at
+            the 280px minimum width. ⌘[ is unchanged. */}
+        {/* The box is the mark here, not a hit area — a 28px bordered square
+            would read as a fourth well in the row — so the phone gets the
+            reach through a pseudo-element instead: 16px drawn, 28px tappable,
+            which lands inside the 8px gap without covering its neighbour. */}
+        <AddIconButton
+          size="md"
+          onClick={() => openAddDialog('task')}
+          aria-label="Add task"
+          className={cn(isMobile && "relative before:absolute before:-inset-[6px] before:content-['']")}
+        />
+        {headerAccessory}
+      </SurfaceHeader>
 
       {/* List — sits directly on the paper backdrop, no card. A plain
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so

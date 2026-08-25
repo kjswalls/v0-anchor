@@ -38,9 +38,19 @@ export function useToastAnchor(ref: RefObject<HTMLElement | null>) {
     const ro = new ResizeObserver(update);
     ro.observe(el);
     window.addEventListener('resize', update);
+    // The soft keyboard MOVES the mobile dock without resizing it — the shell
+    // clamps to the visual viewport (mobile-shell.tsx) and the content area
+    // absorbs the whole delta — so neither the observer nor `resize` (which
+    // iOS Safari and Android Chrome do not fire for the keyboard) hears about
+    // it. Without this the toast keeps the keyboard-down offset and spends its
+    // five seconds behind the keyboard: `/complete` from the omnibar leaves the
+    // field focused, so that is the ordinary case, not the corner one.
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', update);
     return () => {
       ro.disconnect();
       window.removeEventListener('resize', update);
+      vv?.removeEventListener('resize', update);
     };
   }, [ref]);
 }

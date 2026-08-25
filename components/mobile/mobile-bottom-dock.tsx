@@ -1,19 +1,26 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ChatComposer } from '@/components/ai/chat-composer';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { DockNoticesMobile } from '@/components/sidebar/dock-notices';
 import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useUIStore } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 
 /**
  * Mobile bottom dock — the desktop sidebar-dock recipe, at phone width: one
  * surface-3 well (radius 10, `--shadow-elev-bar`, inset 10px) holding the app's
- * notice stack over a single row — the 44px mode card, then the omnibar's white
- * pill. Owns the bottom safe area. NOT overflow-hidden — the omnibar's results
- * panel opens upward out of it.
+ * notice stack over a single row — the 44px mode card, then a white pill. Owns
+ * the bottom safe area. NOT overflow-hidden — the omnibar's results panel opens
+ * upward out of it.
+ *
+ * The pill is the omnibar everywhere except Beacon, where it is the chat
+ * composer instead. One bar, one address for typing, whichever surface you are
+ * on — which is the same argument that keeps the notice stack mounted here on
+ * every tab.
  *
  * The soft radius-24 pill this replaces was the last surface still wearing the
  * old mobile chrome, and the three-tab bar under the omnibar went with it: the
@@ -28,10 +35,31 @@ import { cn } from '@/lib/utils';
 export function MobileBottomDock() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const dockRef = useRef<HTMLDivElement>(null);
+  const [chatFocusSignal, setChatFocusSignal] = useState(0);
+
+  /**
+   * Beacon's tab, EXCEPT while the first-run Q&A is up.
+   *
+   * ChatConversation hands that branch to OnboardingChat, which brings a field
+   * of its own — so a composer down here would be the second field on the tab
+   * and, thanks to the focus below, the one holding the caret: the answer to
+   * the onboarding question would be posted to the chat transcript instead,
+   * and the question would sit there unanswered. The omnibar takes the row for
+   * that stretch, the way it does on every other tab.
+   */
+  const onboarding = useUIStore((s) => s.chatOnboardingActive);
+  const chatBar = activeTab === 'chat' && !onboarding;
+
+  // Arriving on Beacon puts the caret in the composer, exactly as it did when
+  // the composer lived in the panel — the field moved down here, the behaviour
+  // did not move with it on its own.
+  useEffect(() => {
+    if (chatBar) setChatFocusSignal((n) => n + 1);
+  }, [chatBar]);
 
   // Measured, not estimated: app/globals.css pins the mobile toast at
   // `--toast-bottom`, and this dock's height moves with the notice stack, the
-  // safe-area inset and the omnibar's absence on Chat. The ref sits on the
+  // safe-area inset and the chat composer's wrapping. The ref sits on the
   // OUTERMOST box so every one of those is inside what the ResizeObserver
   // watches; the published value is `dock height + 8`, so it is correct at any
   // height rather than tuned to one.
@@ -51,41 +79,35 @@ export function MobileBottomDock() {
       className="px-[10px] pt-2 pb-[max(12px,env(safe-area-inset-bottom,0px))]"
     >
       <div
-        className={cn(
-          'rounded-[10px] bg-surface-3 p-[10px] shadow-[var(--shadow-elev-bar)]',
-          // Chat has no bar to fill the well with yet (see the gate below), and
-          // a full-width capsule holding one 44px card reads as chrome that
-          // failed to load. Hugging is fit-content, not a fixed width, so a
-          // notice row — the one other thing mounted in here — still widens the
-          // well to fit it. Goes away in Phase 3 with the gate.
-          activeTab === 'chat' && 'w-fit'
-        )}
+        className="rounded-[10px] bg-surface-3 p-[10px] shadow-[var(--shadow-elev-bar)]"
         // Focus handoff target for a self-dismissing notice — see
         // useDismissWithFocus in components/ai/morning-check.tsx.
         data-dock-surface
       >
-        {/* Outside the Chat gate that hides the omnibar, unlike everything else
-            up here. The point of the move is that the app has ONE voice with one
-            address; going quiet on the tab where the user is talking to Beacon
-            would put the two halves of the same conversation on different
-            screens. It is also the cheapest tab to afford it on — the omnibar's
-            row is already gone there. */}
+        {/* Mounted on every tab, Beacon included. The point of the move into
+            this well is that the app has ONE voice with one address; going quiet
+            on the tab where the user is talking to Beacon would put the two
+            halves of the same conversation on different screens. */}
         <DockNoticesMobile />
 
-        <div className="flex items-center gap-2">
+        {/* items-end only where the bar can grow: the chat composer wraps
+            upward and the mode card has to stay on the well's floor beside it
+            rather than drift to the middle of a three-line bar. The omnibar is a
+            fixed 48px, and there the artboards centre the 44px card in it. */}
+        <div className={cn('flex gap-2', chatBar ? 'items-end' : 'items-center')}>
           <ModeSwitcherSheet />
-          {/* Chat still brings its own composer (ChatConversation), so the bar
-              stands down there rather than stacking a second text field under
-              the first; the well hugs the card it is left holding. Phase 3 gives
-              Beacon this bar as its input and the gate goes away with it. */}
-          {activeTab !== 'chat' && (
-            <div className="min-w-0 flex-1">
-              {/* Already the desktop pill — 48px, radius 10, px-[22px], the
-                  key-rest shadow — so the dock leaves its skin alone and only
-                  says where it sits. */}
+          <div className="min-w-0 flex-1">
+            {/* Both wear the same pill — 48px, radius 10, px-[22px], the
+                key-rest shadow — so the dock leaves the skin to them and only
+                says where it sits. Which one is mounted is the ONLY thing that
+                changes between tabs; swapping the pill for an empty well was
+                the phase-2 regression this closes. */}
+            {chatBar ? (
+              <ChatComposer variant="dock" focusSignal={chatFocusSignal} />
+            ) : (
               <Omnibar onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')} />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
