@@ -199,6 +199,35 @@ client will stop connecting.)
 9. **The existing plugin chat path keeps working** until the user deliberately switches
    transports. No flag day.
 
+## Resolved product decisions (2026-08-25 — Kirby took the recommendations)
+
+Folded here from ai-vision-decisions.md, which now carries only what is still open.
+
+1. **The chat panel keeps a free-form ask.** The agent activity feed takes the top of it;
+   the transcript stays underneath. Removing free-form entirely would delete the only place
+   to say "why do I keep avoiding this?", which is a real use even though it is not the
+   main one.
+2. **Proposals stay ephemeral** until item threads are server-persisted. Then the *thread*
+   becomes the durable record and proposals stay transient. A resurrected card that
+   proposes moving things to a date that has passed is worse than no card.
+3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Today a proposal
+   may create task-shaped items and change title/date/time/bucket/priority/status (status on
+   non-recurring items only). Field-clearing is deliberately next because "put it back in the
+   Braindump" is the most-wanted verb and has real semantics beyond writing NULL.
+4. **Delegation autonomy stays tight**: propose everywhere; act autonomously only on items
+   explicitly delegated, always with a trail and undo. Trust is easier to extend than to
+   rebuild, and nothing is built yet, so this is free to loosen later.
+5. **Habits are not delegable.** Tasks and custom types are. Delegation suits one-shot work;
+   a habit is a recurring commitment the user is trying to build, and having an agent do
+   your meditation is incoherent. Expressed as a per-type registry capability, not a check.
+6. **Beacon is the name on every tier.** The assistant should not appear to change identity
+   because a settings toggle moved; the gateway is plumbing, Beacon is the character.
+7. **BYOK stays.** On a gateway-owning account it is nearly dead weight, but every Pillar 1
+   feature that works over a bare completion also works for a user who will never
+   self-host — and it is the rehearsal for the hosted tier.
+8. **Anthropic stays declared coming-soon** until there is a reason to wire it. The registry
+   now says so explicitly, so no surface offers an action it cannot perform.
+
 ## Schema note — where delegation state lives (corrected twice; read the whole note)
 
 *(2026-07-31, revision 3. Revision 1 said "adopt the unused 019 columns". Revision 2

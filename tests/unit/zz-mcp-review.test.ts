@@ -93,3 +93,32 @@ describe('mcp in-process dispatch (real agent-api)', () => {
     console.log('UNAUTH TOOLS n=', j.result?.tools?.length);
   });
 });
+
+describe('notification handling for known methods', () => {
+  it('an id-less tools/call is a notification but still executes AND answers', async () => {
+    const before = updated.length;
+    const res = await POST(
+      rpc({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'anchor_update_task', arguments: { id: '22222222-2222-4222-8222-222222222222', title: 'ghost' } } })
+    );
+    console.log('NOTIF-CALL status', res.status, 'body:', await res.text());
+    console.log('writes performed:', updated.length - before, JSON.stringify(updated.slice(before)));
+  });
+
+  it('an id-less initialize answers with id:null', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', method: 'initialize', params: {} }));
+    console.log('NOTIF-INIT status', res.status, 'body:', await res.text());
+  });
+
+  it('an id-less tools/list answers', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', method: 'tools/list' }));
+    console.log('NOTIF-LIST status', res.status, 'body len:', (await res.text()).length);
+  });
+});
+
+describe('GET probe', () => {
+  it('reports what GET does', async () => {
+    const mod = await import('@/app/api/mcp/route');
+    const res = await mod.GET();
+    console.log('GET status', res.status, 'ct', res.headers.get('content-type'), 'body', await res.text());
+  });
+});
