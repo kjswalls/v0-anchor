@@ -151,12 +151,10 @@ function AgentSection({ item }: { item: Item }) {
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
   const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
 
-  // Tasks only. A habit is a commitment the user is building, not work to hand
-  // off — and a CUSTOM type would be a dead end: the agent write API does not
-  // expose custom types, so /api/agent/tasks/:id (which filters on type='task')
-  // 404s every progress report. Offering an Assign button that leads nowhere is
-  // worse than not offering one.
-  if (item.type !== 'task') return null;
+  // No type test here on purpose: the call site gates on the registry's
+  // `agentAssignable`, which is the single answer to "may this be delegated"
+  // (habit: no, custom: no while the agent write API cannot address it). A
+  // second, hardcoded check in here is how the two drift apart.
 
   if (!live.assignee) {
     return (

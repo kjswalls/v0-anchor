@@ -1,5 +1,6 @@
 import { AiStatusSchema } from '@anchor-app/types'
 import { isItemActiveOn, isOpenLoopOn } from '../active'
+import { getItemTypeConfig } from '../item-registry'
 import type { Item, Routine, Program } from '../planner-types'
 import type { McpToolDescriptor } from './protocol'
 
@@ -233,11 +234,14 @@ export function selectAssignedWork(
   const assigned = items
     .filter((raw): raw is Record<string, unknown> => !!raw && typeof raw === 'object')
     .filter((item) => typeof item.assignee === 'string' && item.assignee !== '')
-    // Only plain tasks. A habit is never delegable, and a CUSTOM type would be
-    // a dead loop: it would appear here, and every progress report on it would
-    // 404, because /api/agent/tasks/:id filters on `.eq('type','task')` and the
-    // agent write API does not expose custom types at all.
-    .filter((item) => item.type === 'task')
+    // The registry is the single answer to "may this be delegated" — the same
+    // one the Assign button asks. Server-side, an unhydrated custom slug falls
+    // back to the default template, which says no, which is the correct answer
+    // while the agent write API cannot address custom types.
+    .filter((item) => {
+      const name = item.type === 'custom' ? String(item.customType ?? '') : String(item.type ?? '')
+      return name !== '' && getItemTypeConfig(name).agentAssignable
+    })
     .filter((item) => {
       if (opts.includeFinished) return true
       // Default to open work only: a worker waking on a schedule wants its

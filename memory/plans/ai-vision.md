@@ -222,9 +222,18 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
 4. **Delegation autonomy stays tight**: propose everywhere; act autonomously only on items
    explicitly delegated, always with a trail and undo. Trust is easier to extend than to
    rebuild, and nothing is built yet, so this is free to loosen later.
-5. **Habits are not delegable.** Tasks and custom types are. Delegation suits one-shot work;
-   a habit is a recurring commitment the user is trying to build, and having an agent do
-   your meditation is incoherent. Expressed as a per-type registry capability, not a check.
+5. **Habits are not delegable.** Delegation suits one-shot work; a habit is a recurring
+   commitment the user is trying to build, and having an agent do your meditation is
+   incoherent. Expressed as the `agentAssignable` registry capability, never a type check.
+
+   *Amended 2026-08-25:* this originally said custom types WERE delegable, and shipping it
+   proved otherwise. `/api/agent/tasks/:id` filters on `.eq('type','task')` in both its
+   ownership check and its update, and the agent write API does not expose custom types at
+   all (a locked v1 decision in [unified-items.md](unified-items.md)) — so a delegated
+   custom item appeared in the agent's queue and every progress report on it 404'd, forever,
+   with the badge stuck on `queued`. `agentAssignable` is now false on the custom template.
+   Flip it back when the agent API grows a type-agnostic item write path; that is the real
+   fix, and it is a bigger change than this decision implied.
 6. **Beacon is the name on every tier.** The assistant should not appear to change identity
    because a settings toggle moved; the gateway is plumbing, Beacon is the character.
 7. **BYOK stays.** On a gateway-owning account it is nearly dead weight, but every Pillar 1
@@ -365,9 +374,9 @@ Known gaps, none of them blocking a first run:
 - **Two overlapping runs could both claim the same item.** Claiming is read-then-write with
   nothing atomic behind it. On a personal planner with a ten-minute schedule this is
   unlikely and cheap when it happens; a conditional update is the fix if it ever bites.
-- **Only task-shaped items can be delegated.** `AgentSection` returns null for habits (right
-  — a habit is yours to build), and `anchor_report_progress` PATCHes `/api/agent/tasks/:id`,
-  which is the correct route for custom types too since they ride the task pipeline.
+- **Only plain tasks can be delegated**, gated by the `agentAssignable` registry capability.
+  Custom types are excluded until the agent API can address them — see the amendment to
+  decision 5. Habits are excluded permanently, and for a better reason.
 - **Item threads are still localStorage-only.** The agent cannot read the conversation on an
   item, only its activity trail. item-surface-growth deferred server persistence on purpose
   — "the first stored chat data deserves its own review" — and that is still the right call.
