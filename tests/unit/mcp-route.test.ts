@@ -41,7 +41,19 @@ vi.mock('@/lib/agent-api', () => ({
   makeGoalCreateHandler: () => fake('create:goal'),
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
 }));
-vi.mock('@/app/api/agent/context/route', () => ({ GET: fake('context') }));
+vi.mock('@/app/api/agent/context/route', () => ({
+  GET: async (req: Request) => {
+    calls.push({ handler: 'context', url: req.url, method: req.method, auth: req.headers.get('authorization') });
+    return Response.json({
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      userTimezone: 'Europe/London',
+      items: [
+        { id: 'a', title: 'Book dentist', type: 'task', assignee: 'openclaw', aiStatus: 'queued' },
+        { id: 'b', title: 'Mine to do', type: 'task' },
+      ],
+    });
+  },
+}));
 // The route resolves the bearer key before doing any work; the handlers still
 // authenticate independently, which their own suites cover.
 vi.mock('@/lib/supabase-service', () => ({
@@ -229,6 +241,34 @@ describe('JSON-RPC transport rules', () => {
     const body = await res.json();
     expect(body.result.tools.length).toBeGreaterThan(5);
     expect(body.result.tools.map((t: { name: string }) => t.name)).toContain('anchor_get_context');
+  });
+});
+
+describe('the delegation loop, end to end through the route', () => {
+  it('narrows the whole planner down to just the assigned work', async () => {
+    const res = await POST(call('anchor_my_work'));
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+
+    expect(payload.assigned).toHaveLength(1);
+    expect(payload.assigned[0]).toMatchObject({ id: 'a', title: 'Book dentist', aiStatus: 'queued' });
+    // The unassigned item never reaches the model — that is the whole point.
+    expect(body.result.content[0].text).not.toContain('Mine to do');
+  });
+
+  it('still reads through the ordinary context endpoint', async () => {
+    await POST(call('anchor_my_work'));
+    expect(calls[0]).toMatchObject({ handler: 'context', method: 'GET' });
+  });
+
+  it('reports progress as a PATCH on the item', async () => {
+    await POST(call('anchor_report_progress', { id: 'a', status: 'working' }));
+    expect(calls[0]).toMatchObject({
+      handler: 'patch:task',
+      method: 'PATCH',
+      id: 'a',
+      body: { aiStatus: 'working' },
+    });
   });
 });
 

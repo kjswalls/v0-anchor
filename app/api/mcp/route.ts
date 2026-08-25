@@ -105,9 +105,21 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 }
 
 /** Response body → the text a model reads back. */
-async function toToolResult(res: Response): Promise<ToolResult> {
+async function toToolResult(
+  res: Response,
+  transform?: (body: unknown) => unknown
+): Promise<ToolResult> {
   const text = await res.text()
   if (res.ok) {
+    if (transform) {
+      // A failed narrowing must not lose the answer: fall through to the raw
+      // body rather than handing the model an error for a request that worked.
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify(transform(JSON.parse(text))) }] }
+      } catch {
+        /* fall through */
+      }
+    }
     return { content: [{ type: 'text', text: text || '{"success":true}' }] }
   }
   // Failures come back as tool errors, not protocol errors: agent-api writes
@@ -203,7 +215,7 @@ export async function POST(req: NextRequest) {
         if ('error' in plan) {
           return { content: [{ type: 'text', text: plan.error }], isError: true }
         }
-        return toToolResult(await runPlan(req, plan))
+        return toToolResult(await runPlan(req, plan), plan.transform)
       },
     })
     if (response) responses.push(response)

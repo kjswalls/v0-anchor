@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MCP_TOOLS, TOOL_DESCRIPTORS, toolByName } from '@/lib/mcp/tools';
+import { MCP_TOOLS, TOOL_DESCRIPTORS, selectAssignedWork, toolByName } from '@/lib/mcp/tools';
 
 /**
  * Tool planning is pure: arguments in, "which agent endpoint" out. Executing
@@ -195,5 +195,104 @@ describe('collections', () => {
   it('requires an id to update or delete', () => {
     expect(plan('anchor_update_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
     expect(plan('anchor_delete_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
+  });
+});
+
+describe('delegation — the pull loop', () => {
+  it('reports progress against the item, with the pinned status vocabulary', () => {
+    expect(plan('anchor_report_progress', { id: 't1', status: 'working' })).toEqual({
+      method: 'PATCH',
+      path: '/api/agent/tasks/t1',
+      body: { aiStatus: 'working' },
+    });
+  });
+
+  it('carries the result text, which is what the user actually reads', () => {
+    expect(
+      plan('anchor_report_progress', { id: 't1', status: 'done', result: 'Booked for Thu 10am.' })
+    ).toMatchObject({ body: { aiStatus: 'done', aiResult: 'Booked for Thu 10am.' } });
+  });
+
+  it('refuses a status outside the vocabulary rather than inventing one', () => {
+    // aiStatus is a frozen contract the moment a real agent writes it.
+    expect(plan('anchor_report_progress', { id: 't1', status: 'in-progress' })).toMatchObject({
+      error: expect.stringContaining('status must be one of'),
+    });
+  });
+
+  it('requires an id and a status', () => {
+    expect(plan('anchor_report_progress', { status: 'done' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('anchor_report_progress', { id: 't1' })).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('teaches the blocked-means-ask-the-user rule in the tool text', () => {
+    const description = toolByName('anchor_report_progress')!.description;
+    expect(description).toMatch(/blocked/);
+    expect(description).toMatch(/question/i);
+  });
+
+  it('can write the delegation fields through the ordinary update tool too', () => {
+    expect(
+      plan('anchor_update_task', { id: 't1', assignee: 'openclaw', aiStatus: 'queued' })
+    ).toMatchObject({ body: { assignee: 'openclaw', aiStatus: 'queued' } });
+  });
+});
+
+describe('selectAssignedWork', () => {
+  const context = {
+    fetchedAt: '2026-08-25T09:00:00.000Z',
+    userTimezone: 'Europe/London',
+    items: [
+      { id: 'a', title: 'Book dentist', type: 'task', assignee: 'openclaw', aiStatus: 'queued' },
+      { id: 'b', title: 'Mine', type: 'task' },
+      { id: 'c', title: 'Finished', type: 'task', assignee: 'openclaw', aiStatus: 'done', aiResult: 'ok' },
+      { id: 'd', title: 'Stuck', type: 'task', assignee: 'openclaw', aiStatus: 'blocked' },
+      { id: 'e', title: 'No status yet', type: 'task', assignee: 'openclaw' },
+    ],
+  };
+
+  it('returns only work that was handed to an agent', () => {
+    const { assigned } = selectAssignedWork(context);
+    expect(assigned.map((i) => i.id)).not.toContain('b');
+  });
+
+  it('defaults to open work — a queue, not a history', () => {
+    const { assigned } = selectAssignedWork(context);
+    expect(assigned.map((i) => i.id).sort()).toEqual(['a', 'd', 'e']);
+  });
+
+  it('treats a missing aiStatus as queued rather than dropping it', () => {
+    // An item assigned through the UI has no status until a worker claims it.
+    expect(selectAssignedWork(context).assigned.some((i) => i.id === 'e')).toBe(true);
+  });
+
+  it('includes finished work only when asked', () => {
+    const { assigned } = selectAssignedWork(context, { includeFinished: true });
+    expect(assigned.map((i) => i.id).sort()).toEqual(['a', 'c', 'd', 'e']);
+  });
+
+  it('keeps the timezone and fetch time, which a scheduled worker needs', () => {
+    const result = selectAssignedWork(context);
+    expect(result.userTimezone).toBe('Europe/London');
+    expect(result.fetchedAt).toBe('2026-08-25T09:00:00.000Z');
+  });
+
+  it('carries the result text back so a worker can resume its own thread', () => {
+    const { assigned } = selectAssignedWork(context, { includeFinished: true });
+    expect(assigned.find((i) => i.id === 'c')?.aiResult).toBe('ok');
+  });
+
+  it('names a custom type by its slug, not the envelope', () => {
+    const { assigned } = selectAssignedWork({
+      items: [{ id: 'g', title: 'Goal work', type: 'custom', customType: 'goal', assignee: 'openclaw' }],
+    });
+    expect(assigned[0].type).toBe('goal');
+  });
+
+  it('survives a response that is missing, empty or the wrong shape', () => {
+    expect(selectAssignedWork(undefined).assigned).toEqual([]);
+    expect(selectAssignedWork({}).assigned).toEqual([]);
+    expect(selectAssignedWork({ items: 'nope' }).assigned).toEqual([]);
+    expect(selectAssignedWork({ items: [null, 3, 'x'] }).assigned).toEqual([]);
   });
 });

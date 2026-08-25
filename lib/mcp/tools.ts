@@ -23,6 +23,16 @@ export interface ToolPlan {
   /** Path under the agent API, e.g. '/api/agent/tasks/abc'. */
   path: string
   body?: Record<string, unknown>
+  /**
+   * Pure narrowing of a SUCCESSFUL response before the model sees it.
+   *
+   * The agent API has no list-with-filter endpoint — every read is the whole
+   * account. A background worker that only wants "what am I supposed to be
+   * doing" should not have to take the entire planner into its context to find
+   * two rows, so a tool may trim what it asked for. Pure, so it stays testable
+   * without a server.
+   */
+  transform?: (body: unknown) => unknown
 }
 
 export interface McpTool extends McpToolDescriptor {
@@ -69,6 +79,10 @@ const pick = (args: Record<string, unknown>, keys: string[]): Record<string, unk
 const TASK_WRITE_KEYS = [
   'title', 'status', 'startDate', 'startTime', 'timeBucket', 'priority', 'project',
   'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'completedDates',
+  // Delegation. These are how a background worker says what it is doing —
+  // without them an agent can see its assignments and has no way to report on
+  // them, which is the difference between delegation and a wish.
+  'assignee', 'aiStatus', 'aiResult',
 ]
 
 const HABIT_WRITE_KEYS = [
@@ -128,7 +142,122 @@ function planCollection(
   return { method, path: `/api/agent/${segment}/${id}`, body: pick(args, allowed) }
 }
 
+
+/** The delegation lifecycle, in the order a worker moves through it. */
+const AI_STATUSES = ['queued', 'working', 'blocked', 'done', 'failed'] as const
+
+/** Statuses that still want something to happen. */
+const OPEN_AI_STATUSES = new Set(['queued', 'working', 'blocked'])
+
+interface AssignedItem {
+  id: string
+  title: string
+  type: string
+  assignee?: string
+  aiStatus?: string
+  aiResult?: string
+  startDate?: string
+  notes?: string
+}
+
+/**
+ * Narrows a full context response to the items that have been handed to an
+ * agent. Pure; exported for tests.
+ */
+export function selectAssignedWork(
+  body: unknown,
+  opts: { includeFinished?: boolean } = {}
+): { fetchedAt?: unknown; userTimezone?: unknown; assigned: AssignedItem[] } {
+  const root = (body ?? {}) as { items?: unknown; fetchedAt?: unknown; userTimezone?: unknown }
+  const items = Array.isArray(root.items) ? root.items : []
+
+  const assigned = items
+    .filter((raw): raw is Record<string, unknown> => !!raw && typeof raw === 'object')
+    .filter((item) => typeof item.assignee === 'string' && item.assignee !== '')
+    .filter((item) => {
+      if (opts.includeFinished) return true
+      // Default to open work only: a worker waking on a schedule wants its
+      // queue, not a history of everything it has ever finished.
+      const status = typeof item.aiStatus === 'string' ? item.aiStatus : 'queued'
+      return OPEN_AI_STATUSES.has(status)
+    })
+    .map((item) => {
+      const picked: AssignedItem = {
+        id: String(item.id ?? ''),
+        title: String(item.title ?? ''),
+        type: String(item.customType ?? item.type ?? 'task'),
+      }
+      for (const key of ['assignee', 'aiStatus', 'aiResult', 'startDate', 'notes'] as const) {
+        if (typeof item[key] === 'string') picked[key] = item[key] as string
+      }
+      return picked
+    })
+
+  return { fetchedAt: root.fetchedAt, userTimezone: root.userTimezone, assigned }
+}
+
 export const MCP_TOOLS: McpTool[] = [
+  {
+    name: 'anchor_my_work',
+    description:
+      'The list of items the user has handed to you, and the ONLY thing you need to poll. ' +
+      'Returns just the assigned items rather than the whole planner. Each one carries an ' +
+      "aiStatus: 'queued' means nobody has started it, 'working' means someone has, " +
+      "'blocked' means it is waiting on an answer from the user. " +
+      'The loop is: take a queued item, mark it working so a second run does not double it, ' +
+      'do the work, then report with anchor_report_progress. If nothing comes back, there is ' +
+      'nothing to do — stop, do not go looking for work in the rest of the planner.',
+    inputSchema: obj({
+      includeFinished: {
+        type: 'boolean',
+        description: 'Also return done and failed items. Off by default — you want your queue, not your history.',
+      },
+    }),
+    plan: (args) => ({
+      method: 'GET',
+      path: '/api/agent/context',
+      transform: (body) => selectAssignedWork(body, { includeFinished: args.includeFinished === true }),
+    }),
+  },
+  {
+    name: 'anchor_report_progress',
+    description:
+      'Say where you have got to on an item assigned to you. Call it when you START ' +
+      "(status 'working'), when you FINISH (status 'done', with the outcome in result), and " +
+      "when you are STUCK (status 'blocked', with the question you need answered in result — " +
+      'the user sees that text and it is the only way to ask them something). ' +
+      'The result text is shown to a human on the item, so write it for them: what you did, ' +
+      'what you found, what you need. Not a log line.',
+    inputSchema: obj(
+      {
+        id: ID,
+        status: {
+          type: 'string',
+          enum: [...AI_STATUSES],
+          description: "Where the work stands now.",
+        },
+        result: str('What to show the user: the outcome, the finding, or the question you are stuck on.'),
+      },
+      ['id', 'status']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      const status = requireString(args, 'status')
+      if (typeof status !== 'string') return status
+      if (!(AI_STATUSES as readonly string[]).includes(status)) {
+        return { error: `status must be one of: ${AI_STATUSES.join(', ')}` }
+      }
+      return {
+        method: 'PATCH',
+        path: `/api/agent/tasks/${id}`,
+        body: {
+          aiStatus: status,
+          ...(typeof args.result === 'string' ? { aiResult: args.result } : {}),
+        },
+      }
+    },
+  },
   {
     name: 'anchor_get_context',
     description:
