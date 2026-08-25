@@ -92,7 +92,7 @@ export function SidebarDock() {
         <UserCard />
       </div>
       <div className="relative z-10 mt-5">
-        <Omnibar onFocusChange={setFocused} onPulse={pulse} />
+        <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
       </div>
     </div>
   );

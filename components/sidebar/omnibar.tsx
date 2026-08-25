@@ -49,20 +49,33 @@ import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import { useCommandContext } from '@/hooks/use-command-context';
 
 /**
- * The omnibar: search, quick-add, /commands and chat from one input at the
- * bottom of the sidebar. Prefixes: '+' add, '/' command, '?' chat. ⌘K focuses
- * it via ui-store.focusOmnibar().
+ * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
+ * '+' add, '/' command, '?' chat.
  *
- * Commands are NOT declared here — they come from lib/commands/registry.ts,
- * which also owns the keyboard bindings, so this component only knows how to
- * render and run whatever the registry exposes.
+ * ONE COMPONENT, TWO SHELLS (`variant`). The same input logic renders in two
+ * chromes: the resting `dock` bar at the bottom of the sidebar, and the
+ * summoned `launcher` modal. All four modes work in both — the shells differ
+ * only in emphasis, default state, Enter semantics, and copy. Every difference
+ * reads off `variant`; everything else is shared, which is the whole reason
+ * this is a prop and not two components.
+ *
+ * Commands AND their keyboard bindings are NOT declared here — they come from
+ * lib/commands/registry.ts, so this component only knows how to render and run
+ * whatever the registry exposes (and focuses on ui-store's focus token).
  */
 
 /** Mobile has ~320px of panel above a docked input; desktop can scroll. */
 const MOBILE_ROW_LIMIT = 8;
 const FREE_TEXT_COMMAND_LIMIT = 4;
 
+/** Which shell is hosting the shared input. See the component doc-comment. */
+export type OmnibarVariant = 'dock' | 'launcher';
+
 /**
+ * @param variant which shell is hosting this instance — 'dock' (sidebar,
+ *   default) or 'launcher' (the summoned command modal). Exposed as
+ *   `data-omnibar-variant` so tests can target one shell unambiguously when
+ *   both are mounted.
  * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
  *   grows the sidebar dock (default); mobile switches to the Chat tab.
  * @param onFocusChange reports the input's focus state to the parent (the dock
@@ -73,10 +86,12 @@ const FREE_TEXT_COMMAND_LIMIT = 4;
  *   focused input fires no focus event but should still register.
  */
 export function Omnibar({
+  variant = 'dock',
   onAskBeacon,
   onFocusChange,
   onPulse,
 }: {
+  variant?: OmnibarVariant;
   onAskBeacon?: () => void;
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
@@ -447,7 +462,7 @@ export function Omnibar({
   };
 
   return (
-    <div ref={containerRef} className="relative" data-tour="omnibar">
+    <div ref={containerRef} className="relative" data-tour="omnibar" data-omnibar-variant={variant}>
       <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
         {/* Panel above the input */}
         {open && (

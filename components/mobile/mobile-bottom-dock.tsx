@@ -48,7 +48,7 @@ export function MobileBottomDock() {
 
         {activeTab !== 'chat' && (
           <div className="pb-2">
-            <Omnibar onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')} />
+            <Omnibar variant="dock" onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')} />
           </div>
         )}
         <MobileTabBar />
