@@ -114,7 +114,10 @@ export function Omnibar({
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
 
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  // The launcher opens with its resting panel already showing (it's a summoned
+  // modal); the dock starts closed and opens on focus. Derived at init rather
+  // than set in an effect so no synchronous setState-in-effect is needed.
+  const [open, setOpen] = useState(variant === 'launcher');
   const [focused, setFocused] = useState(false);
   /** Set once a command needing an argument is picked — the "chip" state. */
   const [activeCommand, setActiveCommand] = useState<AnchorCommand | null>(null);
@@ -156,6 +159,17 @@ export function Omnibar({
       onPulseRef.current?.();
     }
   }, [focusToken]);
+
+  // The launcher is a summoned modal: it must open already focused (its resting
+  // panel is shown via the initial `open` state above). The dock instead grabs
+  // focus on demand via the focus token; here focus arrives with the mount.
+  // Radix autofocus usually lands on the first focusable, but cmdk's combobox
+  // input makes that unreliable, so claim it explicitly. `variant` is stable
+  // per instance, so this runs once, on mount.
+  useEffect(() => {
+    if (variant !== 'launcher') return;
+    inputRef.current?.focus();
+  }, [variant]);
 
   // Report focus up so the dock can light its relay off a reliable signal.
   useEffect(() => {

@@ -797,28 +797,29 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'workspace.focusOmnibar',
     label: 'Search',
-    description: 'Focus the omnibar',
+    description: 'Open the command launcher',
     group: 'workspace',
     icon: Search,
-    keywords: 'search find omnibar command palette',
+    keywords: 'search find omnibar command palette launcher',
     shortcut: { id: 'system_search', keys: ['meta', 'k'], allowInInput: true },
-    // Running it from inside the omnibar is a no-op; it exists so the binding
+    // Running it from inside the launcher is a no-op; it exists so the binding
     // is rebindable and shows up in the shortcuts modal.
     hidden: true,
-    // Reveal the omnibar BEFORE focusing it. Focusing while the sidebar is
-    // collapsed puts the caret in a zero-width clipped input: nothing appears,
-    // and because isFocusedOnInput() then suppresses every binding without
-    // allowInInput, it takes n / e / Backspace / ⌘Z down with it until you
-    // blur. Same guard openChat and Open braindump already use.
+    // Desktop: ⌘K opens the summoned launcher modal (command + search). It is
+    // independent of the sidebar, so no reveal step is needed.
+    //
+    // Mobile has no launcher (no keyboard): keep the old behaviour of focusing
+    // the docked omnibar, switching off the Chat tab first since the mobile
+    // dock unmounts the omnibar there — focusing a zero-width clipped input
+    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur.
     run: (ctx) => {
       if (ctx.isMobile) {
-        // The mobile dock unmounts the omnibar on the Chat tab.
         const nav = useMobileNavStore.getState();
         if (nav.activeTab === 'chat') nav.setActiveTab('today');
-      } else {
-        useSidebarStore.getState().setLeftSidebarOpen(true);
+        useUIStore.getState().focusOmnibar();
+        return;
       }
-      useUIStore.getState().focusOmnibar();
+      useUIStore.getState().openDialog({ type: 'launcher' });
     },
   },
   {

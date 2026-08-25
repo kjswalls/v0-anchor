@@ -18,6 +18,7 @@ import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
+import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
@@ -522,6 +523,9 @@ export function AppShell() {
         seed={activeDialog?.type === 'bulk-add' ? activeDialog : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
+
+      {/* ⌘K launcher — reads its own `launcher` slot off activeDialog. */}
+      <OmniLauncher />
 
       {showTour && tourUserId && (
         <OnboardingTour
