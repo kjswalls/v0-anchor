@@ -93,9 +93,11 @@
     </div>
   </div>
 
-  <!-- Hour grid card: 7 AM – 7 PM at 48px/hour, now line at 11:40 -->
-  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 14px; display: flex; flex-direction: column;">
-    <div style="flex: 1; background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 10px 12px; overflow: hidden;">
+  <!-- Small divider between chrome and content -->
+  <div style="height: 1px; background: var(--hairline); margin: 0 14px;"></div>
+
+  <!-- Hour grid straight on the paper: 7 AM – 7 PM at 48px/hour -->
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 12px 16px 0;">
       <div style="position: relative; height: 576px;">
         <div style="position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 8px;"><span style="width: 34px; font-size: 10px; color: var(--ink-2); text-align: right;">7 AM</span><span style="flex: 1; height: 1px; background: var(--hairline);"></span></div>
         <div style="position: absolute; left: 0; right: 0; top: 48px; display: flex; align-items: center; gap: 8px;"><span style="width: 34px; font-size: 10px; color: var(--ink-2); text-align: right;">8 AM</span><span style="flex: 1; height: 1px; background: var(--hairline);"></span></div>
@@ -110,31 +112,39 @@
         <div style="position: absolute; left: 0; right: 0; top: 480px; display: flex; align-items: center; gap: 8px;"><span style="width: 34px; font-size: 10px; color: var(--ink-2); text-align: right;">5 PM</span><span style="flex: 1; height: 1px; background: var(--hairline);"></span></div>
         <div style="position: absolute; left: 0; right: 0; top: 528px; display: flex; align-items: center; gap: 8px;"><span style="width: 34px; font-size: 10px; color: var(--ink-2); text-align: right;">6 PM</span><span style="flex: 1; height: 1px; background: var(--hairline);"></span></div>
 
-        <!-- Blocks: white cards with a time-of-day edge -->
-        <div style="position: absolute; left: 50px; right: 4px; top: 24px; height: 34px; background: var(--pill); border: 1px solid var(--well); border-left: 3px solid var(--morning); border-radius: 8px; box-shadow: var(--sh-soft-sm); padding: 3px 8px; display: flex; flex-direction: column; justify-content: center;">
+        <!-- Blocks: desktop schedule panes — lit inner edge + elev-md shadow,
+             time-of-day mark (2px bar + dot) inside the left edge -->
+        <div style="position: absolute; left: 50px; right: 4px; top: 24px; height: 34px; background: var(--pill); border-radius: 10px; box-shadow: inset -1px -1px 0 oklch(0 0 0 / 4%), 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); padding: 3px 8px 3px 18px; display: flex; flex-direction: column; justify-content: center;">
+          <span style="position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; border-radius: 1px; background: var(--morning);"></span>
+          <span style="position: absolute; left: 6px; top: 7px; width: 6px; height: 6px; border-radius: 999px; background: var(--morning); box-shadow: 0 0 0 1px var(--pill);"></span>
           <span style="font-size: 12px; font-weight: 500; line-height: 1.2;">Morning run</span>
           <span style="font-size: 10px; color: var(--ink-2);">7:30 – 8:15</span>
         </div>
-        <div style="position: absolute; left: 50px; right: 4px; top: 336px; height: 34px; background: var(--pill); border: 1px solid var(--well); border-left: 3px solid var(--afternoon); border-radius: 8px; box-shadow: var(--sh-soft-sm); padding: 3px 8px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="position: absolute; left: 50px; right: 4px; top: 336px; height: 34px; background: var(--pill); border-radius: 10px; box-shadow: inset -1px -1px 0 oklch(0 0 0 / 4%), 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); padding: 3px 8px 3px 18px; display: flex; flex-direction: column; justify-content: center;">
+          <span style="position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; border-radius: 1px; background: var(--afternoon);"></span>
+          <span style="position: absolute; left: 6px; top: 7px; width: 6px; height: 6px; border-radius: 999px; background: var(--afternoon); box-shadow: 0 0 0 1px var(--pill);"></span>
           <span style="font-size: 12px; font-weight: 500; line-height: 1.2;">Draft Q3 goals doc</span>
           <span style="font-size: 10px; color: var(--ink-2);">2:00 – 2:45</span>
         </div>
-        <div style="position: absolute; left: 50px; right: 4px; top: 432px; height: 22px; background: var(--pill); border: 1px solid var(--well); border-left: 3px solid var(--afternoon); border-radius: 8px; box-shadow: var(--sh-soft-sm); padding: 0 8px; display: flex; align-items: center; gap: 6px;">
+        <div style="position: absolute; left: 50px; right: 4px; top: 432px; height: 22px; background: var(--pill); border-radius: 10px; box-shadow: inset -1px -1px 0 oklch(0 0 0 / 4%), 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); padding: 0 8px 0 18px; display: flex; align-items: center; gap: 6px;">
+          <span style="position: absolute; left: 8px; top: 5px; bottom: 5px; width: 2px; border-radius: 1px; background: var(--afternoon);"></span>
+          <span style="position: absolute; left: 6px; top: 4px; width: 6px; height: 6px; border-radius: 999px; background: var(--afternoon); box-shadow: 0 0 0 1px var(--pill);"></span>
           <span style="font-size: 12px; font-weight: 500;">Call dentist about crown</span>
           <span style="font-size: 10px; color: var(--ink-2);">4:00</span>
         </div>
-        <div style="position: absolute; left: 50px; right: 4px; top: 552px; height: 22px; background: var(--pill); border: 1px solid var(--well); border-left: 3px solid var(--evening); border-radius: 8px; box-shadow: var(--sh-soft-sm); padding: 0 8px; display: flex; align-items: center; gap: 6px;">
+        <div style="position: absolute; left: 50px; right: 4px; top: 552px; height: 22px; background: var(--pill); border-radius: 10px; box-shadow: inset -1px -1px 0 oklch(0 0 0 / 4%), 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); padding: 0 8px 0 18px; display: flex; align-items: center; gap: 6px;">
+          <span style="position: absolute; left: 8px; top: 5px; bottom: 5px; width: 2px; border-radius: 1px; background: var(--evening);"></span>
+          <span style="position: absolute; left: 6px; top: 4px; width: 6px; height: 6px; border-radius: 999px; background: var(--evening); box-shadow: 0 0 0 1px var(--pill);"></span>
           <span style="font-size: 12px; font-weight: 500;">Read 20 pages</span>
           <span style="font-size: 10px; color: var(--ink-2);">6:30</span>
         </div>
 
-        <!-- Now marker: solid lime, never alpha -->
-        <div style="position: absolute; left: 44px; right: 0; top: 224px; display: flex; align-items: center;">
-          <span style="width: 6px; height: 6px; border-radius: 999px; background: var(--lime); flex-shrink: 0;"></span>
-          <span style="flex: 1; height: 2px; background: var(--lime);"></span>
+        <!-- Now marker: lime rule + rotated diamond, desktop-style; solid lime, never alpha -->
+        <div style="position: absolute; left: 44px; right: 0; top: 224px;">
+          <span style="position: absolute; left: 0; right: 0; top: 0; height: 1.5px; background: var(--lime);"></span>
+          <span style="position: absolute; left: 0; top: -2.75px; width: 7px; height: 7px; background: var(--lime); transform: rotate(45deg); box-shadow: 0 0 0 1px var(--paper-0);"></span>
         </div>
       </div>
-    </div>
   </div>
 
   <!-- Dock card -->
