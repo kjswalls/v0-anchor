@@ -1,3 +1,6 @@
+import { AiStatusSchema } from '@anchor-app/types'
+import { isItemActiveOn, isOpenLoopOn } from '../active'
+import type { Item, Routine, Program } from '../planner-types'
 import type { McpToolDescriptor } from './protocol'
 
 /**
@@ -143,8 +146,12 @@ function planCollection(
 }
 
 
-/** The delegation lifecycle, in the order a worker moves through it. */
-const AI_STATUSES = ['queued', 'working', 'blocked', 'done', 'failed'] as const
+/**
+ * The delegation lifecycle. Imported, never re-typed: this vocabulary is a
+ * frozen contract shared by the UI, the agent API and this tool surface, and a
+ * second hand-written copy is how three slightly different spellings appear.
+ */
+const AI_STATUSES = AiStatusSchema.options
 
 /** Statuses that still want something to happen. */
 const OPEN_AI_STATUSES = new Set(['queued', 'working', 'blocked'])
@@ -164,22 +171,77 @@ interface AssignedItem {
  * Narrows a full context response to the items that have been handed to an
  * agent. Pure; exported for tests.
  */
+
+/**
+ * Which of these items a routine or program has switched off today.
+ *
+ * Uses the routines and programs the context response already carries, so the
+ * suppression answer here is the same one the grid gives — computed, never
+ * guessed. Absent arrays mean "the server did not say", which is not the same
+ * as "you have none": with nothing to gate on, nothing is suppressed.
+ */
+function inactiveIdsFrom(
+  items: Item[],
+  dateStr: string,
+  root: { userTimezone?: unknown; routines?: unknown; programs?: unknown }
+): Set<string> {
+  const ctx = {
+    userTimezone: typeof root.userTimezone === 'string' ? root.userTimezone : 'UTC',
+    routines: Array.isArray(root.routines) ? (root.routines as Routine[]) : [],
+    programs: Array.isArray(root.programs) ? (root.programs as Program[]) : [],
+  }
+  const inactive = new Set<string>()
+  for (const item of items) {
+    try {
+      if (!isItemActiveOn(item, dateStr, ctx)) inactive.add(item.id)
+    } catch {
+      // A malformed row must not take the whole poll down.
+    }
+  }
+  return inactive
+}
+
 export function selectAssignedWork(
   body: unknown,
   opts: { includeFinished?: boolean } = {}
 ): { fetchedAt?: unknown; userTimezone?: unknown; assigned: AssignedItem[] } {
-  const root = (body ?? {}) as { items?: unknown; fetchedAt?: unknown; userTimezone?: unknown }
+  const root = (body ?? {}) as {
+    items?: unknown
+    fetchedAt?: unknown
+    userTimezone?: unknown
+    routines?: unknown
+    programs?: unknown
+  }
   const items = Array.isArray(root.items) ? root.items : []
+
+  // "Does this still want doing" has exactly one definition in this app
+  // (lib/active.ts), and re-deriving it from aiStatus alone would hand a worker
+  // things the user has since completed, cancelled, or paused for the season —
+  // the app arguing with a decision the user already made, which is the failure
+  // this rule exists to prevent.
+  const today = String(root.fetchedAt ?? '').slice(0, 10)
+  const typed = items.filter((raw): raw is Item => !!raw && typeof raw === 'object')
+  const inactive = today
+    ? inactiveIdsFrom(typed, today, root)
+    : new Set<string>()
 
   const assigned = items
     .filter((raw): raw is Record<string, unknown> => !!raw && typeof raw === 'object')
     .filter((item) => typeof item.assignee === 'string' && item.assignee !== '')
+    // Only plain tasks. A habit is never delegable, and a CUSTOM type would be
+    // a dead loop: it would appear here, and every progress report on it would
+    // 404, because /api/agent/tasks/:id filters on `.eq('type','task')` and the
+    // agent write API does not expose custom types at all.
+    .filter((item) => item.type === 'task')
     .filter((item) => {
       if (opts.includeFinished) return true
       // Default to open work only: a worker waking on a schedule wants its
       // queue, not a history of everything it has ever finished.
       const status = typeof item.aiStatus === 'string' ? item.aiStatus : 'queued'
-      return OPEN_AI_STATUSES.has(status)
+      if (!OPEN_AI_STATUSES.has(status)) return false
+      if (!today) return true
+      const asItem = item as unknown as Item
+      return isOpenLoopOn(asItem, today) && !inactive.has(String(item.id))
     })
     .map((item) => {
       const picked: AssignedItem = {

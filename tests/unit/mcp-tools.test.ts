@@ -239,15 +239,24 @@ describe('delegation — the pull loop', () => {
 });
 
 describe('selectAssignedWork', () => {
+  const task = (over: Record<string, unknown>) => ({
+    type: 'task',
+    status: 'pending',
+    isScheduled: false,
+    order: 0,
+    completedDates: [],
+    ...over,
+  });
+
   const context = {
     fetchedAt: '2026-08-25T09:00:00.000Z',
     userTimezone: 'Europe/London',
     items: [
-      { id: 'a', title: 'Book dentist', type: 'task', assignee: 'openclaw', aiStatus: 'queued' },
-      { id: 'b', title: 'Mine', type: 'task' },
-      { id: 'c', title: 'Finished', type: 'task', assignee: 'openclaw', aiStatus: 'done', aiResult: 'ok' },
-      { id: 'd', title: 'Stuck', type: 'task', assignee: 'openclaw', aiStatus: 'blocked' },
-      { id: 'e', title: 'No status yet', type: 'task', assignee: 'openclaw' },
+      task({ id: 'a', title: 'Book dentist', assignee: 'openclaw', aiStatus: 'queued' }),
+      task({ id: 'b', title: 'Mine' }),
+      task({ id: 'c', title: 'Finished', assignee: 'openclaw', aiStatus: 'done', aiResult: 'ok' }),
+      task({ id: 'd', title: 'Stuck', assignee: 'openclaw', aiStatus: 'blocked' }),
+      task({ id: 'e', title: 'No status yet', assignee: 'openclaw' }),
     ],
   };
 
@@ -282,11 +291,54 @@ describe('selectAssignedWork', () => {
     expect(assigned.find((i) => i.id === 'c')?.aiResult).toBe('ok');
   });
 
-  it('names a custom type by its slug, not the envelope', () => {
+  it('never serves a custom-type item — reporting on one would 404 forever', () => {
+    // /api/agent/tasks/:id filters on .eq('type','task'), and the agent write
+    // API does not expose custom types at all, so serving one here would be a
+    // dead loop: visible work that can never be reported on.
     const { assigned } = selectAssignedWork({
-      items: [{ id: 'g', title: 'Goal work', type: 'custom', customType: 'goal', assignee: 'openclaw' }],
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      items: [
+        { id: 'g', title: 'Goal work', type: 'custom', customType: 'goal', assignee: 'openclaw', status: 'pending' },
+      ],
     });
-    expect(assigned[0].type).toBe('goal');
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('never serves a habit either', () => {
+    const { assigned } = selectAssignedWork({
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      items: [{ id: 'h', title: 'Stretch', type: 'habit', assignee: 'openclaw', status: 'pending' }],
+    });
+    expect(assigned).toHaveLength(0);
+  });
+
+  it('drops work the user has since completed or cancelled', () => {
+    // aiStatus alone would still say "queued" — the app has ONE definition of
+    // "does this want doing" and this is not allowed to invent a second.
+    const { assigned } = selectAssignedWork({
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      items: [
+        task({ id: 'done', title: 'Already done', assignee: 'openclaw', aiStatus: 'queued', status: 'completed' }),
+        task({ id: 'gone', title: 'Cancelled', assignee: 'openclaw', aiStatus: 'queued', status: 'cancelled' }),
+        task({ id: 'live', title: 'Still open', assignee: 'openclaw', aiStatus: 'queued' }),
+      ],
+    });
+    expect(assigned.map((i) => i.id)).toEqual(['live']);
+  });
+
+  it('drops work a paused routine has switched off today', () => {
+    const { assigned } = selectAssignedWork({
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      userTimezone: 'UTC',
+      routines: [
+        { id: 'r1', name: 'Term time', itemIds: ['paused'], pausedAt: '2026-08-01T00:00:00.000Z', pausedUntil: '2026-12-01' },
+      ],
+      items: [
+        task({ id: 'paused', title: 'Out of season', assignee: 'openclaw', aiStatus: 'queued' }),
+        task({ id: 'live', title: 'Still open', assignee: 'openclaw', aiStatus: 'queued' }),
+      ],
+    });
+    expect(assigned.map((i) => i.id)).toEqual(['live']);
   });
 
   it('survives a response that is missing, empty or the wrong shape', () => {

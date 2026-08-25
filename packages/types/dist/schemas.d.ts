@@ -1724,6 +1724,16 @@ export declare const ItemTypeDefSchema: z.ZodObject<{
     icon?: string | undefined;
     config?: Record<string, unknown> | undefined;
 }>;
+/**
+ * The delegation lifecycle.
+ *
+ * A FROZEN external contract from the moment a real agent writes it: the UI
+ * renders these values, the MCP tool surface offers them, and an agent that
+ * learned one spelling cannot be asked to relearn it. Extend additively, never
+ * rename. Named here rather than inlined so the app, the agent API and the tool
+ * surface cannot drift into three slightly different vocabularies.
+ */
+export declare const AiStatusSchema: z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>;
 export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     title: z.ZodString;

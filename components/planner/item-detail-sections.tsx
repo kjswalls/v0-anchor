@@ -151,7 +151,12 @@ function AgentSection({ item }: { item: Item }) {
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
   const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
 
-  if (item.type === 'habit') return null;
+  // Tasks only. A habit is a commitment the user is building, not work to hand
+  // off — and a CUSTOM type would be a dead end: the agent write API does not
+  // expose custom types, so /api/agent/tasks/:id (which filters on type='task')
+  // 404s every progress report. Offering an Assign button that leads nowhere is
+  // worse than not offering one.
+  if (item.type !== 'task') return null;
 
   if (!live.assignee) {
     return (

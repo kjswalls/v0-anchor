@@ -55,8 +55,8 @@ vi.mock('@/app/api/agent/context/route', () => ({
       fetchedAt: '2026-08-25T09:00:00.000Z',
       userTimezone: 'Europe/London',
       items: [
-        { id: 'a', title: 'Book dentist', type: 'task', assignee: 'openclaw', aiStatus: 'queued' },
-        { id: 'b', title: 'Mine to do', type: 'task' },
+        { id: 'a', title: 'Book dentist', type: 'task', status: 'pending', isScheduled: false, order: 0, completedDates: [], assignee: 'openclaw', aiStatus: 'queued' },
+        { id: 'b', title: 'Mine to do', type: 'task', status: 'pending', isScheduled: false, order: 0, completedDates: [] },
       ],
     });
   },

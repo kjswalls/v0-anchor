@@ -122,12 +122,23 @@ async function toToolResult(
   const text = await res.text()
   if (res.ok) {
     if (transform) {
-      // A failed narrowing must not lose the answer: fall through to the raw
-      // body rather than handing the model an error for a request that worked.
       try {
-        return { content: [{ type: 'text', text: JSON.stringify(transform(JSON.parse(text))) }] }
+        const narrowed = JSON.stringify(transform(JSON.parse(text)))
+        // JSON.stringify returns undefined for a function or a bare undefined;
+        // a content block with no text is not a valid tool result.
+        if (typeof narrowed === 'string') {
+          return { content: [{ type: 'text', text: narrowed }] }
+        }
       } catch {
-        /* fall through */
+        /* fall through to the error below */
+      }
+      // Deliberately NOT falling back to the raw body. A tool that narrows does
+      // so because the raw answer is the entire planner, and quietly handing
+      // that over on failure is the precise outcome the narrowing exists to
+      // prevent — a silent, enormous, unasked-for context dump.
+      return {
+        content: [{ type: 'text', text: 'Could not summarise the response. Try anchor_get_context.' }],
+        isError: true,
       }
     }
     return { content: [{ type: 'text', text: text || '{"success":true}' }] }

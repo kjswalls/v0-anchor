@@ -458,6 +458,16 @@ const rejectResumeWithDate = (data, ctx) => {
         });
     }
 };
+/**
+ * The delegation lifecycle.
+ *
+ * A FROZEN external contract from the moment a real agent writes it: the UI
+ * renders these values, the MCP tool surface offers them, and an agent that
+ * learned one spelling cannot be asked to relearn it. Extend additively, never
+ * rename. Named here rather than inlined so the app, the agent API and the tool
+ * surface cannot drift into three slightly different vocabularies.
+ */
+export const AiStatusSchema = z.enum(['queued', 'working', 'blocked', 'done', 'failed']);
 export const TaskCreateSchema = z
     .object({
     ...taskShape,
@@ -472,7 +482,7 @@ export const TaskCreateSchema = z
     // Growth fields are strict at the create boundary too (taskShape's reads
     // stay loose) — a bad uuid or status must 400 here, not 500 at Postgres.
     parentItemId: z.string().uuid().optional(),
-    aiStatus: z.enum(['queued', 'working', 'blocked', 'done', 'failed']).optional(),
+    aiStatus: AiStatusSchema.optional(),
     // Strict here, loose in taskShape — same split as aiStatus above.
     reminderTime: TimeOfDaySchema.optional(),
 })
@@ -560,7 +570,7 @@ export const TaskUpdateSchema = z
     // independently-deployed agent does, renaming a value costs a coordinated
     // release (the plugin safeParses and throws on drift). Growing the set
     // stays cheap forever; the read side is deliberately loose.
-    aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
+    aiStatus: clearable(AiStatusSchema),
     aiResult: clearable(z.string()),
     // Clearable both: null is how a reminder is turned OFF (migration 032's
     // null-means-off contract), which a plain .optional() could not express.
