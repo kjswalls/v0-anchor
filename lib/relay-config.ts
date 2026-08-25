@@ -12,7 +12,13 @@
 export const RELAY = {
   /** Behind the sidebar dock capsule (identity + omnibar); brightens on focus. */
   dock: true,
-  /** Clipped inside the omnibar pill; energizes while the input is focused. */
+  /**
+   * The omnibar's field, in the two shapes the bar mounts it in: a halo around
+   * the pill that energizes while the input is focused (desktop), or — under
+   * `captureRelay`, which is the phone's dock — clipped INSIDE the pill and
+   * struck once each time an item files itself. One flag, because it is one
+   * field either way; only its placement and its trigger differ.
+   */
   omnibar: true,
   /** In the Beacon chat panel; wakes up while a response is streaming. */
   beacon: true,

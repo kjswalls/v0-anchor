@@ -15,10 +15,11 @@ const SPOTLIGHT_PADDING = 8;
 
 /**
  * @param revision re-measures when the selector has NOT changed but the target
- *   has moved. All three mobile steps spotlight the same mode card, and the dock
- *   under it is a different height on the chat step (no omnibar) — so without
- *   this the cutout would sit a few px off the control it is pointing at, on the
- *   one step where the card beside it does track the dock.
+ *   may have moved. All three mobile steps spotlight the same mode card while
+ *   switching the tab underneath it, and the dock the card rides is only as tall
+ *   as its notice stack — one notice arriving or clearing between steps slides
+ *   the card without the selector changing a character, and the cutout would sit
+ *   a few px off the control it is pointing at.
  */
 function useSpotlightRect(selector: string | null, revision?: string) {
   const [rect, setRect] = useState<DOMRect | null>(null);

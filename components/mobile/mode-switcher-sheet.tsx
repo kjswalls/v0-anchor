@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/drawer';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { MOBILE_TAB_ORDER, useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
+import { useUIStore } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -58,12 +59,30 @@ function aiSurfaceLabel(provider: string): string {
  * which opens the sheet first. The onboarding tour points at the card instead
  * (`data-tour="mode-card"`) — spotlighting an entry inside a closed sheet would
  * be a hole cut in the overlay around nothing.
+ *
+ * NO RELAY ON THE CARD. mobile-redesign.md § Motion names the card's tap as the
+ * second place to earn the radial field, and the tap point genuinely is a good
+ * origin for one — but the tap's own consequence is this sheet, which is fixed
+ * to the bottom of the screen over a full-bleed `backdrop-blur-[7px]` scrim and
+ * so covers the dock within a frame or two of the press. A burst plays out over
+ * the best part of a second; behind frosted glass, none of it is seen. Moving it
+ * to the sheet's CLOSE would clear the occlusion and lose the point: the origin
+ * would no longer be the thing that was touched, just a flash on a card. The
+ * capture strike in the bar beside this one is the placement that survives, and
+ * the spec ranks it first for its own reasons.
  */
 export function ModeSwitcherSheet() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
   const provider = useAISettingsStore((s) => s.provider);
+  const chatOnboarding = useUIStore((s) => s.chatOnboardingActive);
   const [open, setOpen] = useState(false);
+  /**
+   * The surface the last tap sent us to, remembered only long enough for the
+   * close-autofocus handler below to read it. Cleared on every open so a sheet
+   * dismissed by the scrim or a swipe restores focus normally.
+   */
+  const [pendingTab, setPendingTab] = useState<MobileTab | null>(null);
 
   const labels: Record<MobileTab, string> = {
     braindump: 'Braindump',
@@ -73,7 +92,23 @@ export function ModeSwitcherSheet() {
   const ActiveGlyph = GLYPHS[activeTab];
 
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setPendingTab(null);
+      }}
+      // vaul defaults autoFocus to false, which it implements by
+      // preventDefault-ing Radix's open-autofocus — so focus stayed on the mode
+      // card while DialogContentModal's hideOthers() marked the app root
+      // aria-hidden around it. A screen reader landed on a hidden node with
+      // nothing announced, and Tab went to the omnibar BEHIND the scrim
+      // (FocusScope's recovery focuses its last-focused-inside ref, which is
+      // still null when nothing inside was ever focused). This sheet is the only
+      // route between surfaces that is not a swipe, which is the gesture those
+      // users do not have.
+      autoFocus
+    >
       <DrawerTrigger asChild>
         <button
           type="button"
@@ -93,7 +128,21 @@ export function ModeSwitcherSheet() {
         </button>
       </DrawerTrigger>
 
-      <DrawerContent data-testid="mode-switcher-sheet">
+      <DrawerContent
+        data-testid="mode-switcher-sheet"
+        // Beacon focuses its own field on arrival (see the focus signal in
+        // mobile-bottom-dock.tsx), and that lands at ~100ms while this drawer is
+        // still playing its 500ms slide-out. Radix keeps the content mounted for
+        // the whole animation and then restores focus to the trigger, so the
+        // caret appeared in the composer and was yanked back to the mode card
+        // half a second later — and only with motion ON, since a reduced-motion
+        // unmount beats the composer to it. Stand down for that one destination.
+        // Not while the first-run Q&A is up: the dock keeps the omnibar there,
+        // so nothing would claim focus and it would fall to the body.
+        onCloseAutoFocus={(event) => {
+          if (pendingTab === 'chat' && !chatOnboarding) event.preventDefault();
+        }}
+      >
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-left text-base">Go to</DrawerTitle>
           <DrawerDescription className="sr-only">
@@ -113,12 +162,22 @@ export function ModeSwitcherSheet() {
                 data-testid={`mode-option-${id}`}
                 aria-current={current ? 'true' : undefined}
                 onClick={() => {
+                  setPendingTab(id);
                   setActiveTab(id);
                   setOpen(false);
                 }}
                 className={cn(
                   'flex h-12 items-center gap-3 rounded-[10px] px-3 text-left',
-                  current ? 'bg-surface-3' : 'hover-wash'
+                  // --row-selected, not bg-surface-3, and the reason is dark
+                  // mode. The sheet is --modal, which resolves to the canvas in
+                  // both themes: in light that is 0.996 against a 0.945 well, a
+                  // clear step; in dark it is 0.21 against 0.245, and the hover
+                  // wash (white 6%) lands ABOVE that — so the row you are
+                  // passing over read stronger than the row you are on. This
+                  // token exists for exactly that ordering ("a latched
+                  // selection a touch above a passing hover") and is the same
+                  // one every multi-selected row in the app carries.
+                  current ? 'bg-[var(--row-selected)]' : 'hover-wash'
                 )}
               >
                 <Glyph

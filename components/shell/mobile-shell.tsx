@@ -106,13 +106,17 @@ export function MobileShell() {
    * when it looks up "User menu" without disambiguating.
    */
   const userMenu = (
-    // Sized down to 24px for the capsule, which is 13px shorter than the Today
-    // card: the shared trigger's 32px leaves 2.5px of clearance in a 37px pill
-    // and its hover ring eats even that, where both artboards
-    // (BraindumpTab.dc.html, ChatTab.dc.html) draw 24. Done from the mount, as
-    // the header's DisplayMenu wrapper is, so the desktop trigger and the Today
-    // card's copy keep the default.
-    <span className="flex [&>button]:size-6 [&_[data-slot=avatar]]:size-6">
+    // The avatar is sized down to 24px for the capsule, which is 13px shorter
+    // than the Today card: the shared trigger's 32px leaves 2.5px of clearance
+    // in a 37px pill and its hover ring eats even that, where both artboards
+    // (BraindumpTab.dc.html, ChatTab.dc.html) draw 24. The BUTTON stays at 28,
+    // so the drawn size matches the artboard and the touch target matches its
+    // row-mates: braindump.tsx grew the display menu, the organize button and
+    // the add button to 28px for this row precisely because it is aimed at with
+    // a thumb, and this is the only route to Settings on either tab. Done from
+    // the mount, as the header's DisplayMenu wrapper is, so the desktop trigger
+    // and the Today card's copy keep the default.
+    <span className="flex [&>button]:size-7 [&_[data-slot=avatar]]:size-6">
       <UserProfileDropdown
         onOpenSettings={() => router.push('/settings')}
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
@@ -122,7 +126,12 @@ export function MobileShell() {
 
   return (
     <div
-      className="flex flex-col bg-background md:hidden"
+      // mobile-ground: the CSS half of the --canvas alias below. A token whose
+      // value was already color-mixed on <html> cannot see an inline override
+      // here, so the two --bkt-tray* tokens are re-cut against this element in
+      // app/globals.css instead. Class, not inline style, because they only
+      // move in dark mode.
+      className="mobile-ground flex flex-col bg-background md:hidden"
       style={{
         height: shellHeight ? `${shellHeight}px` : '100dvh',
         // `--canvas` means "the surface the views are painted on", and with the
@@ -135,11 +144,12 @@ export function MobileShell() {
         // around every bead and a lighter strip behind every swiped row. Scoped
         // to this shell, so the desktop canvas keeps its own value.
         //
-        // Not a complete answer for Buckets: rows there sit on a bucket CARD
-        // (`--bkt-card` = surface-2), so SwipeRow's opaque face was already the
-        // wrong colour under it and this moves it one step further. That row
-        // needs to read its ground rather than name it — phase 4, with the rest
-        // of the dark-mode pass.
+        // It is not the answer for Buckets, and no alias could be: rows there
+        // sit on a bucket CARD (`--bkt-card` = surface-2), which is a different
+        // colour again. SwipeRow stopped naming a ground for that reason — its
+        // face is transparent now and reads whatever is under it — so nothing
+        // below this line depends on --canvas being the right colour for every
+        // surface in the shell at once.
         ['--canvas' as string]: 'var(--background)',
       }}
     >

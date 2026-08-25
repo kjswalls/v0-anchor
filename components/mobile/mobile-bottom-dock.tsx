@@ -105,7 +105,17 @@ export function MobileBottomDock() {
             {chatBar ? (
               <ChatComposer variant="dock" focusSignal={chatFocusSignal} />
             ) : (
-              <Omnibar onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')} />
+              // captureRelay: the radial relay
+              // (components/primitives/relay-field.tsx) lives INSIDE this pill on
+              // the phone and is struck once, when an item files itself. The
+              // field cannot go behind the well — the mode card and the bar
+              // cover it to its 10px padding, and a ripple in a picture-frame is
+              // a ripple nobody sees — and the bar is where the verb happens
+              // anyway. See the prop's docs in components/sidebar/omnibar.tsx.
+              <Omnibar
+                captureRelay
+                onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')}
+              />
             )}
           </div>
         </div>

@@ -40,7 +40,13 @@ export function goToDate(date: Date, direction: 'left' | 'right' | null = null):
   }
 }
 
-/** Step the cursor by whole days regardless of scope (the mobile week strip). */
+/**
+ * Step the cursor by whole days regardless of scope — the unit `stepScope`
+ * below is built from, and its only caller. The mobile week strip used to be
+ * the other one; its cells call `goToDate` outright now (a tap jumps to the
+ * cell's own date, a swipe pages ±7), so a change here reaches the desktop
+ * chevrons and the palette's Next/Previous, not the phone.
+ */
 export function stepDays(delta: number): void {
   const { selectedDate } = usePlannerStore.getState();
   const next = delta >= 0 ? addDays(selectedDate, delta) : subDays(selectedDate, -delta);

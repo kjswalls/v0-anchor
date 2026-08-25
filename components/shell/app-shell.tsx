@@ -472,8 +472,14 @@ export function AppShell() {
             no longer has. Geometry tracks mobile-header.tsx and
             mobile-bottom-dock.tsx — if either card's inset or radius moves, this
             moves with it or the first paint jumps. */}
-        <div className="flex h-[100dvh] flex-col bg-surface-0 md:hidden">
-          <div className="mx-[10px] mt-[10px] h-[88px] flex-shrink-0 rounded-[20px] bg-surface-2" />
+        <div className="flex h-[100dvh] flex-col bg-surface-0 pt-safe md:hidden">
+          {/* 106px is the real card, added up: 10 top margin + 32 (the user
+              menu sets the date row's height) + 8 gap + 46.5 week strip + 8
+              bottom padding + its two 1px borders. The border is not decoration
+              either — surface-2 on surface-0 is ΔL 0.014 in light, four 8-bit
+              levels, so without it this block is invisible in one theme and the
+              skeleton shows bare paper where the card is about to appear. */}
+          <div className="mx-[10px] mt-[10px] h-[106px] flex-shrink-0 rounded-[20px] border border-surface-3 bg-surface-2" />
           <div className="flex-1" />
           <div className="mx-[10px] mb-3 h-[72px] flex-shrink-0 rounded-[10px] bg-surface-3" />
         </div>
