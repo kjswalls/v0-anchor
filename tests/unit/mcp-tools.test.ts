@@ -368,3 +368,24 @@ describe('anchor_item_activity — the reply channel', () => {
     expect(toolByName('anchor_my_work')!.description).toMatch(/anchor_item_activity/);
   });
 });
+
+describe('what the worker is given', () => {
+  it('carries the fields it needs to act without a second round-trip', () => {
+    const { assigned } = selectAssignedWork({
+      fetchedAt: '2026-08-25T09:00:00.000Z',
+      items: [
+        {
+          id: 'a', title: 'Book dentist', type: 'task', status: 'pending',
+          isScheduled: false, order: 0, completedDates: [],
+          assignee: 'openclaw', aiStatus: 'queued',
+          startDate: '2026-08-26', startTime: '09:00', timeBucket: 'morning',
+          priority: 'high', notes: 'the one on King St',
+        },
+      ],
+    });
+    expect(assigned[0]).toMatchObject({
+      status: 'pending', startDate: '2026-08-26', startTime: '09:00',
+      timeBucket: 'morning', priority: 'high', notes: 'the one on King St',
+    });
+  });
+});

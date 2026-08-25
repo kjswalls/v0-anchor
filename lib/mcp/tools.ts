@@ -163,7 +163,12 @@ interface AssignedItem {
   assignee?: string
   aiStatus?: string
   aiResult?: string
+  /** The item's own status, so the worker can see it was not just un-queued. */
+  status?: string
   startDate?: string
+  startTime?: string
+  timeBucket?: string
+  priority?: string
   notes?: string
 }
 
@@ -249,7 +254,13 @@ export function selectAssignedWork(
         title: String(item.title ?? ''),
         type: String(item.customType ?? item.type ?? 'task'),
       }
-      for (const key of ['assignee', 'aiStatus', 'aiResult', 'startDate', 'notes'] as const) {
+      // Enough for the worker to act without a second round-trip: when it is
+      // due, how urgent, and whatever the user wrote down. Deliberately NOT the
+      // whole row — the point of this tool is to be small.
+      for (const key of [
+        'assignee', 'aiStatus', 'aiResult', 'status',
+        'startDate', 'startTime', 'timeBucket', 'priority', 'notes',
+      ] as const) {
         if (typeof item[key] === 'string') picked[key] = item[key] as string
       }
       return picked
