@@ -11,8 +11,25 @@ interface EODStore {
   eodReviewEnabled: boolean;
   eodReviewTime: string; // HH:mm
   lastEodReviewDate: string | null; // yyyy-MM-dd
+  /**
+   * yyyy-MM-dd the user has waved tonight's review line away on.
+   *
+   * The one piece of state the dock's EOD notice needed that did not already
+   * exist. `lastEodReviewDate` says the review is DONE and `isOpen` says the
+   * modal is up; neither can express "I have seen the line, not tonight" — and
+   * without a third answer the line would sit on the dock every evening until
+   * midnight with no way to put it down. That is precisely the nagging the
+   * guilt-free ruling forbids.
+   *
+   * It hides the LINE, not the obligation: lib/eod.ts keeps `isEodOwed` and
+   * `shouldShowEodNotice` separate so nothing else mistakes a deferral for a
+   * completed review.
+   */
+  eodDeferredDate: string | null;
   open: () => void;
   close: () => void;
+  /** "Not tonight" — hide the dock line until the date rolls over. */
+  deferToday: (date: string) => void;
   setEodReviewEnabled: (enabled: boolean) => void;
   setEodReviewTime: (time: string) => void;
   saveLastReviewDate: (userId: string | null, date: string) => Promise<void>;
@@ -28,9 +45,11 @@ export const useEODStore = create<EODStore>()(
       eodReviewEnabled: false,
       eodReviewTime: '21:00',
       lastEodReviewDate: null,
+      eodDeferredDate: null,
 
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),
+      deferToday: (date) => set({ eodDeferredDate: date, isOpen: false }),
 
       setEodReviewEnabled: (enabled) => {
         set({ eodReviewEnabled: enabled });
@@ -68,6 +87,11 @@ export const useEODStore = create<EODStore>()(
         eodReviewEnabled: state.eodReviewEnabled,
         eodReviewTime: state.eodReviewTime,
         lastEodReviewDate: state.lastEodReviewDate,
+        // Persisted, and local-only like the morning check's dismissal: it is a
+        // record of what this device has already asked you, not an account
+        // fact, and it self-expires because it is compared against today's
+        // date. `isOpen` stays out — a modal must never survive a reload.
+        eodDeferredDate: state.eodDeferredDate,
       }),
     }
   )

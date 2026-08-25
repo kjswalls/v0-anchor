@@ -17,8 +17,12 @@ pnpm db:push        # supabase db push
 pnpm db:new <name>  # supabase migration new
 ```
 
-pnpm workspace (Node 24). `packages/types` is `@anchor-app/types`; `openclaw-plugin/`
-is a separate consumer of the agent API with its own `dist` that CI gates against `src`.
+pnpm workspace (Node 24). `packages/types` is `@anchor-app/types`, and its `dist/` is
+**committed** — CI rebuilds it and fails on any drift from `src`, so a schema edit
+without `pnpm --filter @anchor-app/types build` is a red build. `openclaw-plugin/` is a
+separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
+so CI does not gate it — a plugin `src` change reaches users only when the npm package
+is republished.
 
 ## Setting up a new machine
 
@@ -30,6 +34,37 @@ vercel env pull .env.local   # .env.local is gitignored and Vercel-generated —
 Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted OAuth
 URLs (Figma + Supabase), no secrets, so it works from any machine. E2E tests need a
 separate `.env.test` — see `.env.test.example`.
+
+## Git workflow
+
+Each chat does its changes on its own branch, never directly on `main`, and reaches
+`origin/main` only through a pull request — never a direct push to `main`. This
+composes with the standing rule that commits wait for Kirby's go-ahead.
+
+1. **Start of a chat**, before the first edit: branch off an up-to-date `main` —
+   `git checkout main && git pull`, then `git checkout -b <descriptive-name>`.
+2. **During the chat**: make changes on that branch. Leave them uncommitted unless
+   Kirby asks otherwise — committing waits for the "done" signal.
+3. **When Kirby says the work is done** (and only then): commit on the branch, push
+   it, and open a PR — `git push -u origin <branch>` then `gh pr create --base main`.
+   Never push to `main` directly.
+4. **Let the review bots run.** Wait for the automated reviewers (CodeRabbit, bug
+   bots, CI checks — whatever the PR triggers) to weigh in. Read every comment, then
+   fix or explicitly address each one and push the fixes to the same branch.
+5. **Auto-merge once everything is resolved.** When all bot comments are handled and
+   checks are green, merge to `origin/main` — prefer `gh pr merge --auto --squash` so
+   GitHub completes the merge the moment required checks pass. Because auto-merge lands
+   asynchronously, wait until the PR actually shows as merged, then sync local with
+   `git checkout main && git pull --ff-only origin main`.
+
+`main` is branch-protected: no direct pushes, PRs required, and **Unit tests (Vitest)**
+must pass before merge (native auto-merge is enabled). Docs-only PRs skip CI — the
+`Tests` workflow ignores `**.md`, so that required check never reports and `--auto`
+won't fire; for a Markdown-only PR, once the bots are clean, merge with
+`gh pr merge --admin --squash` (admin override — there's no code to gate).
+
+"Done" is Kirby's word, not your own read that the task looks finished. Until he says
+so, no commits, pushes, PRs, or merges.
 
 ## Architecture
 
@@ -53,6 +88,40 @@ discriminated-union narrowing keeps working, but the DB stores the bare slug in
 `tasks.updated`/`habits.updated`. The OpenClaw plugin `safeParse`s these and *throws* on
 drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 `pending|done|skipped` for habits) are external contracts — don't merge or translate them.
+
+**Reminders reach outward; everything else in the app waits to be opened.** A cue at the
+habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
+from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
+The one exception is Beeminder, which also posts the instant a habit is ticked
+([lib/stakes/live.ts](lib/stakes/live.ts), hooked at `setItemCompletion`) because a
+datapoint that arrives after the goal's midnight deadline arrives after the money is
+gone. Four rules are load-bearing and are not obvious from the code shape:
+
+- **Nothing re-derives "does this want doing".** `lib/reminders/due.ts` and
+  `lib/stakes/day.ts` compose `isOpenLoopOn` + `isItemActiveOn` from
+  [lib/active.ts](lib/active.ts). A nudge about a habit the grid has hidden is the app
+  arguing with a decision the user made.
+- **Claim, then act.** Cues are taken with a conditional update and only delivered if the
+  database actually changed a row; stake rows are inserted against a unique index and only
+  the newly-claimed ones reach the outside world. A cron is at-least-once, and the naive
+  order rings a phone twice or charges a pledge twice.
+- **Two writers, one row.** The live Beeminder path and the nightly settlement both claim
+  the same `stake_events` row (unique on user+date+subject+channel) and never coordinate:
+  whichever gets there first posts, the other finds it committed and does nothing. Keep
+  the settlement — it is the backstop for every completion that never passes through a
+  browser. `stake_events` is read at `/ledger` and is SELECT-only to its owner; a ledger
+  the subject can edit is not a ledger.
+- **Channels and stake adapters are declarative and isolated.** One is a manifest entry in
+  [lib/extension-registry.ts](lib/extension-registry.ts), a field list in
+  [lib/extension-settings.ts](lib/extension-settings.ts), and a `deliver()`/`plan()`+
+  `commit()`. They must return a failure, never throw it — an expired token in one must
+  not cost the others. Non-secret config lives in `user_extensions.config` (browser-
+  readable); credentials live in `user_secrets`, which is service-role only, and
+  `/api/reminders/secrets` will say which keys are set and never what they are.
+
+Read [habit-reminders.md](memory/plans/habit-reminders.md) before touching any of it — the
+copy contract, the midnight clamp and the snooze day-gate all exist because the obvious
+version was wrong.
 
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
 sidebar, eod, morning, chat, …). `planner-store.ts` is the big one: it holds `items[]`
@@ -81,6 +150,21 @@ expected to be safe to re-run.
   plain `overflow-y-auto` container when you need a real height limit.
 - **The lime accent never dims in dark mode**, and must never be faded through a parent's
   opacity — give it its own element if the container is being dimmed.
+- **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
+  fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
+  `canvas-container` on the page must flip together (header capsule, past-due bar, grid)
+  or they lose the shared left edge the utility exists to guarantee. Its `padding-inline`
+  is mirrored in JS as `CANVAS_PAD_PX` — change one, change both. Week × Schedule's pinned
+  hour gutter depends on this: a sticky box is constrained to its containing block, so
+  restoring the cap would unstick it mid-scroll.
+- **The omnibar is one component in two shells.** `components/sidebar/omnibar.tsx` takes a
+  `variant: 'dock' | 'launcher'` and renders both the resting sidebar capture bar and the
+  summoned ⌘K launcher modal (`components/shell/omni-launcher.tsx`, an `activeDialog` slot).
+  All four modes (search · `+` add · `/` command · `?` chat) work in both; only emphasis,
+  Enter semantics, panel direction, and copy differ off `variant`. Bindings: ⌘K opens the
+  launcher, `/` opens it in command mode, ⌘I focuses the dock — all in
+  `lib/commands/registry.ts`, whose shortcut ids are frozen by a test (add, never rename).
+  Tests scope by `data-omnibar-variant` since both shells share testids.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
@@ -95,3 +179,8 @@ Longer-running design docs live in [memory/plans/](memory/plans/) and are commit
 [unified-items.md](memory/plans/unified-items.md) carries the phase ledger and the locked
 design decisions for the items refactor — read it before touching item types, the
 registry, or the agent API.
+[long-term-goals.md](memory/plans/long-term-goals.md) does the same for **goals** — the
+third container role (`aspire`), where milestones and check-ins are ordinary items wearing
+a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
+anything that writes an item's `startDate` in bulk: a milestone's start date is a target
+date, and the sweep and the carry verbs are excluded from it on purpose.

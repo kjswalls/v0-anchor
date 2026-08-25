@@ -19,11 +19,53 @@ const serwist = new Serwist({
 
 serwist.addEventListeners();
 
+/**
+ * Action ids, mirrored from lib/reminders/channels/push.ts.
+ *
+ * Duplicated rather than imported because this file is bundled as a service
+ * worker and pulling in the app's module graph to share two string literals
+ * would drag Supabase and the whole registry into the worker. The values are
+ * part of an already-delivered notification's payload, so they are effectively
+ * frozen: a notification sitting on a lock screen was written by a build that
+ * may be days older than the worker handling its click.
+ */
+const ACTION_DONE = 'done';
+const ACTION_SNOOZE = 'snooze';
+
+/**
+ * `actions` is real on ServiceWorkerRegistration.showNotification but absent
+ * from the DOM lib's NotificationOptions, which is the type that resolves here
+ * (this project's tsconfig has no webworker lib — see the other errors this
+ * file already reports). Declared locally rather than left to `any`, so a typo
+ * in an action id is still caught.
+ */
+interface SwNotificationOptions extends NotificationOptions {
+  actions?: { action: string; title: string }[];
+  /**
+   * Alert again when replacing a notification that shares this one's tag.
+   *
+   * Without it, a replacement over an existing tag lands SILENTLY — per the
+   * Notifications spec, replacing suppresses the alert unless renotify is set.
+   * The cue's tag is item-scoped (`anchor-item-<id>`), so yesterday's cue
+   * sitting unread in the shade would silently swallow today's.
+   */
+  renotify?: boolean;
+}
+
+interface PushPayload {
+  title?: string;
+  body?: string;
+  url?: string;
+  tag?: string;
+  actions?: { action: string; title: string }[];
+  data?: Record<string, unknown>;
+}
+
 // Handle push events from server
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
-  let payload: { title?: string; body?: string; url?: string } = {};
+  let payload: PushPayload = {};
   try {
     payload = event.data.json();
   } catch {
@@ -31,30 +73,106 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title ?? 'Anchor';
-  const options: NotificationOptions = {
+  const options: SwNotificationOptions = {
     body: payload.body ?? '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    data: { url: payload.url ?? '/' },
+    // Collapse key: a re-delivered cue REPLACES the one already on screen
+    // instead of stacking beside it.
+    tag: payload.tag,
+    // Only meaningful with a tag, and only correct with one: renotify without a
+    // tag throws a TypeError.
+    renotify: Boolean(payload.tag),
+    actions: payload.actions,
+    data: { url: payload.url ?? '/', ...(payload.data ?? {}) },
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Open the app (or the notification URL) when a notification is clicked
+/**
+ * Tell the user when an action button did NOT do what it promised.
+ *
+ * Without this, a failed Done is indistinguishable from a successful one — the
+ * notification closes either way — and the habit silently goes unmarked. That
+ * is worse than never offering the button, because the user believes the day is
+ * handled. `requireInteraction` keeps the correction on screen.
+ */
+async function reportActionFailure(itemTitle: string | undefined): Promise<void> {
+  await self.registration.showNotification("Couldn't save that", {
+    body: itemTitle
+      ? `${itemTitle} is still open — tap to mark it in Anchor.`
+      : 'Tap to mark it in Anchor.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: 'anchor-action-failed',
+    requireInteraction: true,
+    data: { url: '/' },
+  });
+}
+
+/** Focus an existing tab on this URL if there is one, else open a new one. */
+async function openOrFocus(url: string): Promise<void> {
+  // client.url is absolute; `url` is a path off our own origin. Comparing them
+  // raw never matched, so every click opened a second tab.
+  const target = new URL(url, self.location.origin).href;
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clientList) {
+    if (client.url === target && 'focus' in client) return void client.focus();
+  }
+  // Fall back to focusing ANY open Anchor tab and steering it, rather than
+  // opening a duplicate: the PWA is usually already running.
+  for (const client of clientList) {
+    if (!('navigate' in client) || !('focus' in client)) continue;
+    try {
+      await client.focus();
+      await client.navigate(target);
+      return;
+    } catch {
+      // navigate() rejects with a TypeError on a client this worker does not
+      // control — which matchAll({includeUncontrolled: true}) deliberately
+      // returns. Uncaught, that rejection skipped openWindow entirely and the
+      // tap did nothing at all.
+      break;
+    }
+  }
+  await self.clients.openWindow(target);
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url: string = event.notification.data?.url ?? '/';
+
+  const data = (event.notification.data ?? {}) as {
+    url?: string;
+    itemId?: string;
+    dateStr?: string;
+  };
+  const url = data.url ?? '/';
+  const action = event.action;
+
+  // A plain click (no action button) opens the app, as it always did.
+  if (action !== ACTION_DONE && action !== ACTION_SNOOZE) {
+    event.waitUntil(openOrFocus(url));
+    return;
+  }
+
   event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if (client.url === url && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        return self.clients.openWindow(url);
-      })
+    (async () => {
+      if (!data.itemId) return reportActionFailure(event.notification.title);
+      try {
+        const res = await fetch('/api/reminders/act', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Same-origin, and the session cookie is what authorises the write.
+          // Without this the route sees an anonymous request and 401s.
+          credentials: 'include',
+          body: JSON.stringify({ action, itemId: data.itemId, dateStr: data.dateStr }),
+        });
+        if (!res.ok) await reportActionFailure(event.notification.title);
+      } catch {
+        // Offline, most likely. Say so rather than swallowing it.
+        await reportActionFailure(event.notification.title);
+      }
+    })(),
   );
 });

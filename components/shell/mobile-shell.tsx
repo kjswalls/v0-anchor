@@ -8,12 +8,13 @@ import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
-import { MorningCheckMobile } from '@/components/ai/morning-check';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
+import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
+import { cn } from '@/lib/utils';
 
 /**
  * Mobile layout: slim header + (Today-only) day strip, the active tab's
@@ -25,6 +26,7 @@ import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 export function MobileShell() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
+  const router = useRouter();
 
   // Close any open row swipe-actions when switching tabs.
   useEffect(() => closeAllRowSwipes(), [activeTab]);
@@ -49,23 +51,22 @@ export function MobileShell() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background md:hidden">
-      <MobileHeader onOpenSettings={() => openDialog({ type: 'settings' })} />
+      <MobileHeader
+        onOpenSettings={() => router.push('/settings')}
+        onOpenBugReport={() => openDialog({ type: 'bug-report' })}
+      />
 
       {activeTab === 'today' && <MiniWeekNav />}
 
-      {/* Past-due pill — Today only, and fixed-height like the strip above it
-          (h-8 + mb-1) so it's safe inside the min-h-0 flex-1 column below. The
-          list is a portaled bottom Drawer, so it costs this column nothing.
-
-          Today-only means this mounts and unmounts on every tab change, and the
-          tray's open flag is a single global shared with the desktop popover —
-          so the drawer would inherit an isOpen set while it wasn't even on
-          screen (from `goto.overdue` run on Braindump, or from the desktop tray
-          when the window crosses the 768px breakpoint). morning-check.tsx owns
-          both halves of the fix: the surface closes the tray when it unmounts,
-          and the drawer refuses to open in the commit it mounts in. It opens
-          only when the user asks it to, on this tab, while it is visible. */}
-      {activeTab === 'today' && <MorningCheckMobile />}
+      {/* The past-due pill used to sit here, mounted on Today only — which is
+          also what made it a per-tab surface with a single global open flag, and
+          the source of a drawer that could open on a tab it wasn't rendered on.
+          It is a line in the bottom dock now
+          (components/sidebar/dock-notices.tsx), which is mounted on every tab
+          except Chat, so Braindump and Chat gained a voice they never had and
+          Today got its 38px of content back. morning-check.tsx still owns both
+          halves of the open-flag fix, because the desktop⇄mobile shell swap can
+          still strand a tray. */}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
@@ -75,14 +76,23 @@ export function MobileShell() {
           className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
         >
         {activeTab === 'chat' ? (
-          <MobileChatPanel onOpenSettings={() => openDialog({ type: 'settings' })} />
+          <MobileChatPanel onOpenSettings={() => router.push('/settings/beacon')} />
         ) : (
           /* Content lives in a floating rounded panel on the paper backdrop —
              the mobile echo of the desktop canvas. In light mode canvas and
              backdrop are near-identical, so the border-surface-3 hairline +
              shadow-soft-lg + rounding carry the elevation. */
-          <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-surface-3 bg-canvas shadow-soft-lg">
-            {activeTab === 'braindump' && <Braindump hideCollapse />}
+          <div
+            className={cn(
+              'mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-surface-3 bg-canvas shadow-soft-lg',
+              // The deleted Scope Rail wrapper (pt-2 pb-2) used to hold the
+              // braindump's quick-add well off this panel's rounded bottom
+              // corner; restore that clearance, scoped to the braindump tab so
+              // the Today canvas layout is untouched.
+              activeTab === 'braindump' && 'pb-2'
+            )}
+          >
+            {activeTab === 'braindump' && <Braindump />}
             {activeTab === 'today' && <MobileViewRouter />}
           </div>
         )}

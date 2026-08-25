@@ -48,10 +48,12 @@ function ResponsiveModal({
 }
 
 /** `className` styles the desktop DialogContent; mobile is a bottom sheet with
- *  its own scroll + safe-area. Extra props (onKeyDown, etc.) pass to both. */
+ *  its own scroll + safe-area. Extra props (onKeyDown, etc.) pass to both.
+ *  `overlayClassName` is desktop-only — the drawer keeps the shared scrim. */
 function ResponsiveModalContent({
   className,
   children,
+  overlayClassName,
   ...props
 }: React.ComponentProps<typeof DialogContent>) {
   const isMobile = React.useContext(MobileCtx);
@@ -65,7 +67,7 @@ function ResponsiveModalContent({
     );
   }
   return (
-    <DialogContent className={className} {...props}>
+    <DialogContent className={className} overlayClassName={overlayClassName} {...props}>
       {children}
     </DialogContent>
   );

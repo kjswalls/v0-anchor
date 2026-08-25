@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ChatPanel } from '@/components/sidebar/chat-panel';
+import { DockNotices } from '@/components/sidebar/dock-notices';
 import { UserCard } from '@/components/sidebar/user-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { RelayField } from '@/components/primitives/relay-field';
+import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { cn } from '@/lib/utils';
@@ -16,6 +18,13 @@ import { cn } from '@/lib/utils';
  * top row at y21; omnibar pill 385×48 r10 at y72. Chat has no bar of its own
  * — when summoned from the omnibar (`?` / Ask Beacon / ⌘]) it mounts above the
  * user row and the capsule grows upward, shrinking the Braindump.
+ *
+ * It is also where the app SPEAKS — see components/sidebar/dock-notices.tsx.
+ * The omnibar is the user's half of that (they type, the panel answers upward
+ * out of the pill); the notice stack is the app's (it speaks, the tray answers
+ * upward out of the row). Putting both on one capsule is the whole argument for
+ * the placement: one edge of the screen where you and the app talk, instead of
+ * a bar in the canvas, a modal, and a toast.
  */
 export function SidebarDock() {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
@@ -32,33 +41,19 @@ export function SidebarDock() {
   const [burst, setBurst] = useState(0);
   const pulse = useCallback(() => setBurst((n) => n + 1), []);
 
-  // Publish the dock's top edge (distance from the viewport bottom) as
-  // --toast-bottom so the undo toast can anchor just above it — exact instead
-  // of an estimate, and it follows the dock when chat expands/collapses.
-  useEffect(() => {
-    const el = dockRef.current;
-    if (!el) return;
-    const update = () => {
-      const top = el.getBoundingClientRect().top;
-      document.documentElement.style.setProperty(
-        '--toast-bottom',
-        `${Math.max(16, Math.round(window.innerHeight - top + 8))}px`
-      );
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener('resize', update);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', update);
-    };
-  }, []);
+  // The undo toast anchors just above this capsule — exact instead of an
+  // estimate, and it follows the dock when chat expands, when a notice arrives,
+  // and when one is dismissed. Shared with the mobile dock, which never had it.
+  useToastAnchor(dockRef);
 
   return (
     <div
       ref={dockRef}
       data-tour="right-sidebar"
+      // The focus handoff target when a notice dismisses itself out from under
+      // the keyboard: the capsule outlives every row in it and closes over the
+      // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
+      data-dock-surface
       // No overflow-hidden here: the omnibar's suggestion panel grows upward
       // out of the dock, so clipping the capsule would cut it off. The relay
       // clips itself instead (its own rounded overflow-hidden, below).
@@ -85,11 +80,19 @@ export function SidebarDock() {
           <ChatPanel focusSignal={1} />
         </div>
       )}
+      {/* Above the UserCard rather than above the ChatPanel: chat takes flex-1
+          and wants the top of the capsule, and a notice line pushed up there by
+          an open conversation would read as part of it. Below chat, the stack
+          sits on the same short run of rows as the identity line — chrome with
+          chrome. It renders nothing at all when there is nothing to answer, so
+          the resting capsule is unchanged. */}
+      <DockNotices />
+
       <div className="relative z-10">
         <UserCard />
       </div>
       <div className="relative z-10 mt-5">
-        <Omnibar onFocusChange={setFocused} onPulse={pulse} />
+        <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
       </div>
     </div>
   );

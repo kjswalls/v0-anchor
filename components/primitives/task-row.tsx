@@ -1,19 +1,26 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Check, GripVertical, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
+import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon,
+  Flag,
+  Repeat,
+} from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { goalRolesByItem } from '@/lib/goals';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
+import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { SwipeRow } from '@/components/mobile/swipe-row';
-import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
+import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
   PriorityGlyph,
+  RailTooltip,
   StreakFlame,
   MetaText,
   TagDot,
@@ -21,7 +28,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import type { Task, Habit, HabitStatus } from '@/lib/planner-types';
+import type { Task, Habit, HabitStatus, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -56,6 +63,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const {
     toggleTaskStatus,
     toggleHabitStatus,
+    setItemSkipped,
     deleteTask,
     deleteHabit,
     unscheduleTask,
@@ -63,6 +71,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     getProjectColor,
     selectedDate,
     userTimezone,
+    routines,
+    programs,
+    goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
@@ -73,9 +84,61 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const inBraindump = context === 'braindump';
   const compact = density === 'compact';
 
+  // Selected == in the multi-select set. A plain click both opens the row in the
+  // editor AND selects it (see handleRowClick), so the persistent highlight this
+  // drives is also the "current / open row" indicator — it replaces the old
+  // editor-open pulse dot. Boolean selector so only the toggled row re-renders.
+  // (The pulse dot is deliberately gone for now; it will return as the signal
+  // that OpenClaw/Beacon is working an item.)
+  const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(item.id));
+
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+
+  /**
+   * The date this row's SUPPRESSION is resolved at — not always `dateStr`.
+   *
+   * A grid column asks about its own day. The braindump asks about today and
+   * nothing else: it carries no date of its own (locked decision 3 — every
+   * non-date-scoped surface resolves at today, never at the navigable
+   * selectedDate), and its own two passes already do exactly that.
+   *
+   * `date` is optional and every braindump call site omits it, so without this
+   * the row fell through to `selectedDate` and disagreed with the section it was
+   * sitting in: walk the canvas to a September the user is merely browsing and a
+   * live task in the working list greys itself and claims "Hidden with your
+   * Summer program", while a genuinely paused row under the Paused heading
+   * brightens because its resume date has passed on the day being looked at.
+   * Neither has anything to do with what the user did.
+   */
+  const suppressionDate = inBraindump ? toDateStr(new Date(), timezone) : dateStr;
+
+  /**
+   * Is this row's work set aside on the day it is rendered for?
+   *
+   * Asked per row rather than threaded down from a caller, because a week column
+   * and the braindump ask different questions and only the row knows which one
+   * it is. Cheap enough to ask per row: `isItemActiveOn` walks this item's
+   * paths, not the whole store, and there are a handful of containers.
+   *
+   * The open-loop variant is deliberately NOT used: a habit ticked before its
+   * routine was paused still renders (the history rule), and it is still set
+   * aside. Greying it says so; hiding it would rewrite the past.
+   *
+   * Greyed and NOT struck through, which is the distinction the manager's member
+   * list already draws: struck through means done, and this is not done, it is
+   * put down.
+   *
+   * `suppressionReason` rather than `isItemActiveOn`: it returns null on exactly
+   * the same condition, and the non-null answer is the tooltip.
+   */
+  const suppression = suppressionReason(item as Item, suppressionDate, {
+    userTimezone: timezone,
+    routines,
+    programs,
+  });
+  const suppressed = !!suppression;
 
   // The registry name + config for this item's type, resolved once. The
   // projected Task/Habit doesn't type its own discriminator — the store's
@@ -87,6 +150,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const typeName = projected.type === 'custom' ? projected.customType! : itemType;
   const typeConfig = getItemTypeConfig(typeName);
 
+  // The goal roles this item holds, in LIVE goals only — an achieved goal's
+  // milestone is history, and a row should not still wear a flag for work that
+  // is finished. Built per row rather than threaded down: the index is O(goals)
+  // over a handful of containers, and threading it would mean touching every
+  // one of this row's callers for a glyph.
+  const roles = useMemo(
+    () => goalRolesByItem(goals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
+    [goals, item.id],
+  );
+
   // Effective per-date status
   const taskRecurring = task ? isRecurring(task) : false;
   const taskDone = task ? (taskRecurring ? isCompletedOnDate(task, dateStr) : task.status === 'completed') : false;
@@ -96,6 +169,36 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const habitStatus: HabitStatus = habitSkipped ? 'skipped' : habitDoneOnDate ? 'done' : 'pending';
   const habitEffectiveCount = habitDoneOnDate ? habitCount || habit?.timesPerDay || 1 : habitCount;
   const completed = isTask ? taskDone : habitStatus === 'done';
+  // Recurrence, not type — a recurring TASK reaches the braindump the same
+  // way a recurring HABIT would (registry: habit.braindumpEligible is
+  // false, so habits don't reach this list today, but tasks can and do
+  // recur). `completed` above is already correctly per-date (completedDates,
+  // never scalar status — see the CLAUDE.md note on recurring items), so
+  // this isn't a data bug; it's that the braindump has no date column of its
+  // own, so a recurring item's title going gray-and-struck-through there
+  // reads as "permanently done" instead of "done today" (issue #181). The
+  // grid views (context 'bucket') render each row under an explicit date,
+  // where that same signal is unambiguous, so the suppression is scoped to
+  // the sidebar only.
+  const itemRecurring = isTask ? taskRecurring : habit ? isRecurring(habit) : false;
+  const suppressCompletedLook = inBraindump && itemRecurring;
+
+  // Skipping is a registry capability on a recurring occurrence, not a habit
+  // privilege (#194). Habits satisfy both halves by construction, so this is
+  // exactly the old `habit && skipped` test widened to recurring tasks and to
+  // recurring custom types — no new branch, one predicate.
+  const skippable = typeConfig.skippable && itemRecurring;
+  const skipped = skippable && isSkippedOnDate(item, dateStr);
+  /**
+   * The date a skip is written against is the date the ROW is drawn for, not
+   * the globally selected day. In a week column those differ, and using the
+   * selected day there wrote the skip onto a day the user was not looking at —
+   * so the row it was aimed at never minimized.
+   *
+   * Every per-date write in this row now uses `rowDate` for the same reason —
+   * see handleTaskToggle / handleHabitToggle below.
+   */
+  const setSkipped = (next: boolean) => setItemSkipped(item.id, next, rowDate);
 
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
@@ -141,15 +244,31 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     }
   }, [isDragging]);
 
+  /**
+   * Completion is written against `rowDate` — the day this row is DRAWN for —
+   * not the store's selectedDate.
+   *
+   * The two are the same thing in day views (rowDate falls back to
+   * selectedDate), but a week column passes its own `date`, and reading the
+   * per-date state from one day while writing it to another is a straight
+   * mismatch: the checkbox above already computes `taskDone` from
+   * `dateStr` (= rowDate), so ticking Thursday's row used to mark Tuesday and
+   * leave Thursday's box empty. Same rule the skip write follows (#194) and the
+   * schedule block / project block already follow.
+   *
+   * `undefined` for a NON-recurring task is deliberate and unchanged: a one-off
+   * task has no per-date dimension at all — it carries a scalar status — so the
+   * store must not be handed a date it would resolve and ignore.
+   */
   const handleTaskToggle = () =>
-    toggleTaskStatus(item.id, undefined, taskRecurring ? selectedDate : undefined);
+    toggleTaskStatus(item.id, undefined, taskRecurring ? rowDate : undefined);
 
   /** One step up; landing on the target marks the habit done. */
   const handleHabitIncrement = () => {
     if (!habit || multiTarget === 0) return;
     const next = habitEffectiveCount + 1;
-    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, selectedDate);
-    else toggleHabitStatus(habit.id, 'pending', next, selectedDate);
+    if (next >= multiTarget) toggleHabitStatus(habit.id, 'done', multiTarget, rowDate);
+    else toggleHabitStatus(habit.id, 'pending', next, rowDate);
   };
 
   /**
@@ -163,10 +282,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const handleHabitToggle = () => {
     if (!habit) return;
     if (multiTarget > 0) {
-      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, selectedDate);
+      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, rowDate);
       else handleHabitIncrement();
     } else {
-      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, selectedDate);
+      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, rowDate);
     }
   };
 
@@ -181,30 +300,69 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     });
   };
 
-  // Skipped habits render as a slim strip with undo
-  if (habit && habitStatus === 'skipped' && !inBraindump) {
+  // A plain click both SELECTS this row (replacing the selection) and opens it
+  // in the editor — the persistent highlight is the "current row" indicator.
+  // Cmd/Ctrl adds/removes a row from a multi-selection WITHOUT opening it, and
+  // Shift extends a range from the anchor (DOM order == visual order, no
+  // virtualization). The wasDragged guard keeps a drop from firing a click.
+  const handleRowClick = (e: ReactMouseEvent) => {
+    if (wasDraggedRef.current) return;
+    const selection = useSelectionStore.getState();
+    if (e.metaKey || e.ctrlKey) {
+      selection.toggle(item.id);
+      return;
+    }
+    if (e.shiftKey) {
+      selection.selectRange(rangeIds(selection.anchorId, item.id));
+      return;
+    }
+    selection.replace([item.id]);
+    openEditFor(item, itemType);
+  };
+
+  // A skipped occurrence — of ANY skippable recurring type — collapses to a
+  // slim strip with undo. This is the whole visual payload of #194/#195: the
+  // treatment is keyed off the capability, so a recurring task and a recurring
+  // custom type get it for free, on desktop and on mobile alike (the strip is
+  // returned above the SwipeRow wrapper, so its Unskip button is the touch
+  // affordance — there is no hover to hide behind).
+  if (skipped && !inBraindump) {
+
     return (
       <div
         data-testid="item-card"
-        data-item-id={habit.id}
-        data-item-kind="habit"
-        // A skipped habit is a COMPLETELY different DOM shape under the same
+        data-item-id={item.id}
+        data-item-kind={itemType}
+        data-item-type={typeName}
+        // A skipped row is a COMPLETELY different DOM shape under the same
         // testid — no complete button, no rail. Tests must be able to tell the
         // two apart, or a drill to item-complete-button times out mysteriously.
         data-row-variant="skipped"
-        onClick={() => openEditFor(item, itemType)}
-        className="group flex w-full cursor-pointer items-center gap-2 rounded-lg bg-surface-3/60 px-2 py-1.5 hover-wash"
+        // Selected == in the multi-select set; drives the persistent highlight.
+        data-selected={isMultiSelected ? 'true' : 'false'}
+        onClick={handleRowClick}
+        className={cn(
+          'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
+          // Selected keeps a latched wash, a notch above hover (its own indicator).
+          isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/60 hover-wash'
+        )}
       >
         <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
-        <span className="flex-1 truncate text-sm text-muted-foreground/70">{habit.title}</span>
+        <span className="flex-1 truncate text-sm text-muted-foreground/70">{item.title}</span>
         <Button
           variant="ghost"
           size="sm"
           data-testid="item-unskip-button"
-          className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className={cn(
+            'px-2 text-xs text-muted-foreground hover:text-foreground',
+            // The only control on the strip, and on touch it sits inside a row
+            // whose own tap opens the edit dialog — 24px is too fine a target
+            // to aim at with a thumb.
+            isMobile ? 'h-8 px-3' : 'h-6'
+          )}
           onClick={(e) => {
             e.stopPropagation();
-            toggleHabitStatus(habit.id, 'pending', undefined, selectedDate);
+            setSkipped(false);
           }}
         >
           <Undo2 className="mr-1 h-3 w-3" />
@@ -216,7 +374,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
 
   const handleHabitDecrement = () => {
     if (!habit || habitEffectiveCount <= 0) return;
-    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, selectedDate);
+    toggleHabitStatus(habit.id, 'pending', habitEffectiveCount - 1, rowDate);
   };
 
   const rowContent = (
@@ -239,9 +397,15 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       // selector policy.
       data-item-type={typeName}
       data-row-variant="default"
+      // Selected == in the multi-select set; drives the persistent highlight and
+      // marks the current / open row.
+      data-selected={isMultiSelected ? 'true' : 'false'}
       // Completion is otherwise observable only as Tailwind classes on the
       // title and the checkbox, which is exactly the coupling a restyle breaks.
       data-completed={completed ? 'true' : 'false'}
+      // Same reasoning for "set aside": the treatment is a muted title, and a
+      // spec that asserts a Tailwind class is asserting the wrong thing.
+      data-suppressed={suppressed ? 'true' : 'false'}
       // A row's resolved slot. The visible start time is `hidden md:inline`, so
       // without these a drop's inferred time is unassertable on narrow/mobile
       // viewports — and these are what distinguish an untimed bucket drop from
@@ -256,7 +420,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // the token defined for exactly this (a light gray in light mode, a
         // white 6% overlay in dark) so the highlight lifts off the card in dark
         // mode instead of darkening it, which bg-muted/60 did.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2 hover:bg-accent',
+        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2',
+        // Selected keeps a latched wash — the hover wash, one notch stronger
+        // (--row-selected) so a selection reads a touch above a passing hover. It
+        // marks the current / open row and every row in a multi-selection. A
+        // background wash (not opacity) keeps the lime rule: nothing here dims
+        // the lime completion mark through a parent's opacity.
+        isMultiSelected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
         compact ? 'py-1' : 'py-1.5',
         isDragging && 'z-50 opacity-50'
         // The completed fade is NOT applied here. Opacity on the row composites
@@ -265,21 +435,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // click landed. The fade rides the title and the rail instead (below);
         // opacity only ever goes down a tree, so a child can't opt back out.
       )}
-      onClick={() => {
-        if (wasDraggedRef.current) return;
-        openEditFor(item, itemType);
-      }}
+      onClick={handleRowClick}
       onMouseEnter={() => setHoveredItemRef(item.id, itemType)}
       onMouseLeave={() => setHoveredItemRef(null, null)}
     >
-      {/* Grip — pure visual affordance now; the whole row is the drag origin
-          (pointerdown here bubbles to the row's listeners) */}
-      <span
-        aria-hidden="true"
-        className="absolute -left-4 z-10 flex-shrink-0 cursor-grab touch-none opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
-      </span>
 
       {/* Checkbox — 16px on EVERY row of both types in every state, so the
           leading edge is one straight column and nothing downstream of it can
@@ -333,11 +492,59 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           // rows and the day view default ones, and a title that changed size
           // between the two would break the token's whole purpose.
           compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-          completed && 'text-muted-foreground line-through opacity-60'
+          suppressed && 'text-muted-foreground',
+          completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
         )}
+        title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
       >
         {item.title}
       </p>
+
+      {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
+          column.
+
+          Not inside: the title is `line-clamp`ed, which is `overflow: hidden`,
+          so any title that filled its clamp hid the glyph entirely — and the
+          week columns render compact one-line rows in narrow columns, which is
+          exactly where titles overflow and where a week of checkpoints is most
+          worth scanning. It also sat under the paragraph's `title` attribute on
+          suppressed rows, firing a native tooltip on top of the Radix one that
+          RailTooltip exists to replace.
+
+          Not a rail column: the rail's five columns each reserve width on every
+          row of both types, so a sixth would cost 20px on every row in the app
+          to say something true of a handful of them.
+
+          Muted ink, never honey — being a milestone is an identity, not a
+          warning, and this is the row of a checkpoint that may well be late. On
+          touch the tooltip never fires, so the glyphs are ones a reader can
+          place unaided and the full attribution is one tap away in the edit
+          sheet's Goal chip. The sr-only text is for the reader the tooltip
+          never reaches at all. */}
+      {roles.length > 0 && (
+        <RailTooltip
+          label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
+          detail={
+            roles.length === 1 ? roles[0].goalName : `${roles[0].goalName} +${roles.length - 1}`
+          }
+        >
+          <span
+            className="text-muted-foreground/70 -ml-0.5 flex flex-shrink-0 items-center"
+            data-testid="item-goal-role"
+            data-goal-role={roles[0].role}
+          >
+            {roles[0].role === 'milestone' ? (
+              <Flag className="size-3" aria-hidden />
+            ) : (
+              <Repeat className="size-3" aria-hidden />
+            )}
+            <span className="sr-only">
+              {roles[0].role === 'milestone' ? 'Milestone of ' : 'Check-in for '}
+              {roles[0].goalName}
+            </span>
+          </span>
+        </RailTooltip>
+      )}
 
       {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
           right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].
@@ -381,7 +588,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           between items the run ran straight into its neighbour. 12px is wide
           enough that the between-item gap clearly outranks the within-item one. */}
       <div
-        className={cn('relative z-10 flex flex-shrink-0 items-center gap-3', completed && 'opacity-60')}
+        className={cn(
+          'relative z-10 flex flex-shrink-0 items-center gap-3',
+          completed && !suppressCompletedLook && 'opacity-60'
+        )}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -421,12 +631,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                 onClick={() => unscheduleTask(item.id)}
               />
             )}
-            {habit && habitStatus === 'pending' && (
+            {skippable && !completed && (
               <RowControl
                 icon={SkipForward}
                 label="Skip today"
                 testId="item-skip-button"
-                onClick={() => toggleHabitStatus(habit.id, 'skipped', undefined, selectedDate)}
+                onClick={() => setSkipped(true)}
               />
             )}
             <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />

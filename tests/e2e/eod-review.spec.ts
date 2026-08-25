@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import { getAccessToken, createTestTask, cleanupTestData, testTitle } from './helpers/api';
 import { getTodayStr, getTomorrowStr } from './helpers/dates';
 import { reloadApp, gotoApp, runCommand, navigateToDate, itemCard } from './helpers/app';
 
@@ -43,7 +43,7 @@ test.describe('End of day (EOD) review modal', () => {
     const accessToken = await getAccessToken(page);
 
     // Create exactly one pending task for today.
-    const taskTitle = `EOD complete test ${Date.now()}`;
+    const taskTitle = testTitle('eod-complete');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -95,7 +95,7 @@ test.describe('End of day (EOD) review modal', () => {
   test('rolling over a task from EOD moves it to tomorrow', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `EOD rollover test ${Date.now()}`;
+    const taskTitle = testTitle('eod-rollover');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -142,7 +142,7 @@ test.describe('End of day (EOD) review modal', () => {
   test('dismiss task clears scheduled date', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `EOD dismiss test ${Date.now()}`;
+    const taskTitle = testTitle('eod-dismiss');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -177,7 +177,7 @@ test.describe('End of day (EOD) review modal', () => {
     const TODAY = getTodayStr();
     const TOMORROW = getTomorrowStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `EOD datepicker test ${Date.now()}`;
+    const taskTitle = testTitle('eod-datepicker');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -231,8 +231,8 @@ test.describe('End of day (EOD) review modal', () => {
   test('move all to tomorrow moves all unactioned pending tasks', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const title1 = `EOD move-all test A ${Date.now()}`;
-    const title2 = `EOD move-all test B ${Date.now()}`;
+    const title1 = testTitle('eod-move-all-a');
+    const title2 = testTitle('eod-move-all-b');
     const taskId1 = await createTestTask(page, accessToken, { title: title1, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
     const taskId2 = await createTestTask(page, accessToken, { title: title2, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
 
@@ -267,8 +267,8 @@ test.describe('End of day (EOD) review modal', () => {
   test('move all skips already actioned tasks', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const title1 = `EOD skip-actioned A ${Date.now()}`;
-    const title2 = `EOD skip-actioned B ${Date.now()}`;
+    const title1 = testTitle('eod-skip-actioned-a');
+    const title2 = testTitle('eod-skip-actioned-b');
     const taskId1 = await createTestTask(page, accessToken, { title: title1, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
     const taskId2 = await createTestTask(page, accessToken, { title: title2, startDate: TODAY, isScheduled: true, timeBucket: 'morning' });
 
@@ -305,7 +305,7 @@ test.describe('End of day (EOD) review modal', () => {
   test('undo reschedule restores task to today', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `EOD undo test ${Date.now()}`;
+    const taskTitle = testTitle('eod-undo');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -353,7 +353,7 @@ test.describe('End of day (EOD) review modal', () => {
 
       const TODAY = getTodayStr();
       const accessToken = await getAccessToken(page);
-      const taskTitle = `EOD mobile test ${Date.now()}`;
+      const taskTitle = testTitle('eod-mobile');
       const taskId = await createTestTask(page, accessToken, {
         title: taskTitle,
         startDate: TODAY,

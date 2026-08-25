@@ -1,6 +1,6 @@
 {
   "name": "@anchor-app/anchor-context",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenClaw plugin — injects your Anchor tasks, habits, and projects into every AI conversation",
   "type": "module",
   "main": "./dist/index.js",

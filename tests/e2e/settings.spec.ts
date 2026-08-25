@@ -63,12 +63,9 @@ test.describe('Settings persistence', () => {
     }
   });
 
-  // Known bug: desktop sidebar scroll is broken — issue #92
-  test.skip('settings sidebar scrolls on desktop viewport (#92 — scroll broken)', async () => {
-    // BUG #92: The settings/sidebar panel does not scroll properly on desktop.
-    // Once fixed: set viewport to 1280x800, open settings, scroll to the bottom,
-    // assert the last setting item is visible.
-  });
+  // #92 (settings did not scroll on desktop) is closed and covered — see
+  // tests/e2e/settings-page.spec.ts. The settings route scrolls the document
+  // rather than an inner box, so there is no height cap left to get wrong.
 
   test('show-completed-tasks hides completed tasks and never habits', async ({ page }) => {
     // Replaces a compact-mode test that could not pass on two counts: it measured

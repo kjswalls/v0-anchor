@@ -2,23 +2,50 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
 import { useDayItems } from '@/hooks/use-day-items';
-import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
+import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
-import { HOUR_PX } from '@/lib/schedule-constants';
+import {
+  HOUR_PX,
+  HOVER_Z,
+  LANE_PX,
+  NOW_MARKER_Z,
+  PANE_MIN_H,
+  PANE_OFFSET,
+  PANE_TALL_H,
+  PANE_TRIM,
+  PANE_WRAP_PX,
+} from '@/lib/schedule-constants';
+import {
+  bandOnly,
+  layoutOverlaps,
+  type BlockLayout,
+  type OverlapEntry,
+  type OverlapLayout,
+} from '@/lib/schedule-overlap';
+import { planLanes, isReceded } from '@/lib/schedule-lanes';
+import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
+import { LaneCapRow } from '@/components/primitives/lane-cap';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
+import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
+import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
-import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
+import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
+import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, Habit, TimeBucket } from '@/lib/planner-types';
+import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -45,22 +72,15 @@ import { cn } from '@/lib/utils';
  * raises its z-index, so a flush neighbour can't paint over them.
  */
 
-export { HOUR_PX };
-
-/** Width of the lane the rail, bead and now-marker live in. The pane starts
- *  here, and so do the hour hairlines, so the lane reads as one unbroken
- *  channel down the grid instead of a series of gaps. */
-export const LANE_PX = 12;
-
-/** The pane is nudged down from its true start and shortened by twice that, so
- *  back-to-back blocks show a seam instead of touching. The rail span and bead
- *  ignore the nudge — they sit on the real time. */
-const PANE_OFFSET = 3;
-const PANE_TRIM = 4;
-/** Floor for a pane's height: one line of text (17px) plus its 12px padding. */
-const PANE_MIN_H = 34;
-/** Above this the block splits its metadata onto a second row. */
-const PANE_TALL_H = 56;
+/**
+ * The pane geometry moved to lib/schedule-constants.ts when the overlap pass
+ * (lib/schedule-overlap.ts) needed it: that file is pure and has to agree with
+ * this renderer down to the pixel, and importing a 'use client' component into
+ * lib/ would be a cycle. Re-exported here because week-schedule imports LANE_PX
+ * from this module, and because the numbers still belong to this component's
+ * story even when they no longer live in its file.
+ */
+export { HOUR_PX, LANE_PX };
 
 /**
  * Day view: the gutter's width, which is also the events layer's left offset —
@@ -114,11 +134,32 @@ export function formatClock(totalMin: number, timeFormatStr: string, meridiem = 
  * both themes). So the marker lives in the lane, where nothing is layered over
  * it, and the hour gutter carries the reading of the clock.
  */
-export function NowMarker({ top }: { top: number }) {
+export function NowMarker({ top, lanes }: { top: number; lanes?: number[] }) {
+  // ONE diamond, a stub per lane. Not one marker per lane: the clock is a single
+  // fact about the day, and giving lane 0 alone a stub would read as "now" being
+  // a property of that group. The diamond stays on the first lane's rail, where
+  // the hour gutter's reading of the time already points.
+  const stubs = lanes?.length ? lanes : [0];
   return (
-    <div className="pointer-events-none absolute left-0 right-0 z-[5]" style={{ top }} aria-hidden>
-      <span className="absolute left-[2px] top-[-3.5px] h-[7px] w-[7px] rotate-45 bg-primary shadow-[0_0_0_1px_var(--canvas)]" />
-      <span className="absolute left-3 top-0 w-6 border-t border-primary" />
+    <div
+      className="pointer-events-none absolute left-0 right-0 z-[var(--now-z)]"
+      style={{ top, '--now-z': NOW_MARKER_Z } as React.CSSProperties}
+      aria-hidden
+    >
+      <span
+        className="absolute top-[-3.5px] h-[7px] w-[7px] rotate-45 bg-primary shadow-[0_0_0_1px_var(--canvas)]"
+        style={{ left: `calc(${stubs[0]}% + 2px)` }}
+      />
+      {stubs.map((leftPct, i) => (
+        // Still a 24px STUB in each lane's own channel, never a rule across the
+        // lane: a lime hairline under 80%-opacity glass composites to a dimmed
+        // olive, and lime is the one accent that is never allowed to dim.
+        <span
+          key={i}
+          className="absolute top-0 w-6 border-t border-primary"
+          style={{ left: `calc(${leftPct}% + 12px)` }}
+        />
+      ))}
     </div>
   );
 }
@@ -192,6 +233,26 @@ export function deriveTimedEntries(day: DayItems): TimedEntry[] {
           .map((t) => ({ itemType: 'task' as const, item: t, startMin: toMin(p.startTime!), duration: p.duration ?? 60 }))
       ),
   ].sort((a, b) => a.startMin - b.startMin);
+}
+
+/**
+ * TimedEntry[] → the overlap pass's input.
+ *
+ * The `projectBlock` key is the load-bearing part. Every task inside a recurring
+ * project block takes the PROJECT's startTime and duration (see the third branch
+ * of deriveTimedEntries), so a block holding four tasks emits four entries with
+ * byte-identical extents. Without grouping them, three of the four are painted
+ * over exactly — not clipped, not half-covered, but invisible — which is a worse
+ * instance of the overlap bug than anything a user can produce by hand. Grouped,
+ * they become one conflict unit and tile the band.
+ */
+export function toOverlapEntries(entries: TimedEntry[]): OverlapEntry[] {
+  return entries.map((e) => ({
+    id: e.item.id,
+    startMin: e.startMin,
+    duration: e.duration,
+    projectBlock: (e.item as Task).inProjectBlock ? ((e.item as Task).project ?? null) : null,
+  }));
 }
 
 /** Untimed items (no startTime, not in a project block) for one day. */
@@ -320,12 +381,160 @@ function HourSlot({
   );
 }
 
+/**
+ * The four corner marks a schedule block shows, in the user's chosen style
+ * (Settings → Appearance → Schedule handles). Aria-hidden, anchored off the
+ * pane's real inset so a tiled conflict member's marks track its own edges.
+ *
+ * Two states share one set of marks:
+ *   • HOVER reveals them in neutral --ink-1 (transient).
+ *   • SELECTED latches them on and turns them lime — the colour rides
+ *     --blk-mk (set on the block wrapper), so a selected block's marks stay lit
+ *     even while it's hovered. That's the signal a shared pane-brightness can't
+ *     give: hover and selection now report on different channels.
+ *
+ *   nodes  — 6px hollow square on each vertex (a CAD bounding box)
+ *   target — 9px open registration crosshair off each corner
+ *   trim   — 5px trim-mark lozenge (rotated square) off each corner
+ *
+ * The LEFT-column marks seat at the pane's own left edge rather than off it: the
+ * 12px lane (start bead + accent rail) lives just outside that edge, and a mark
+ * pushed further left would collide with it.
+ */
+function BlockCorners({
+  style,
+  paneLeftCss,
+  paneRightCss,
+  selected,
+}: {
+  style: ScheduleMarkStyle;
+  paneLeftCss: string;
+  paneRightCss: string;
+  selected: boolean;
+}) {
+  const reveal = selected
+    ? 'pointer-events-none absolute opacity-100'
+    : 'pointer-events-none absolute opacity-0 transition-opacity group-hover/blk:opacity-100';
+
+  if (style === 'target') {
+    const left = paneLeftCss;
+    const right = `calc(${paneRightCss} - 8.5px)`;
+    const corners: Array<{ pos: React.CSSProperties; y: string }> = [
+      { pos: { left }, y: '-top-[8.5px]' },
+      { pos: { right }, y: '-top-[8.5px]' },
+      { pos: { left }, y: '-bottom-[8.5px]' },
+      { pos: { right }, y: '-bottom-[8.5px]' },
+    ];
+    return (
+      <>
+        {corners.map((c, i) => (
+          <span key={i} aria-hidden className={cn(reveal, 'h-[9px] w-[9px]', c.y)} style={c.pos}>
+            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
+            <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--blk-mk)]" />
+            {/* the reticle's empty eye — a canvas dot punches the centre gap */}
+            <span className="absolute left-1/2 top-1/2 h-[3px] w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--canvas)]" />
+          </span>
+        ))}
+      </>
+    );
+  }
+
+  if (style === 'trim') {
+    const left = paneLeftCss;
+    const right = `calc(${paneRightCss} - 6.5px)`;
+    const loz = 'h-[5px] w-[5px] rotate-45 border border-[var(--blk-mk)]';
+    return (
+      <>
+        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ left }} />
+        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ right }} />
+        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ left }} />
+        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ right }} />
+      </>
+    );
+  }
+
+  // 'nodes' (default) — 6px hollow square seated just inside each pane corner.
+  // Both columns hug their own edge (not straddling the vertex) so the frame is
+  // symmetric AND the left pair clears the lane's rail + bead.
+  const left = paneLeftCss;
+  const right = paneRightCss;
+  const node = 'h-1.5 w-1.5 rounded-[1px] border border-[var(--blk-mk)] bg-[var(--canvas)]';
+  return (
+    <>
+      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ left }} />
+      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ right }} />
+      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ left }} />
+      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ right }} />
+    </>
+  );
+}
+
+/**
+ * The visible grip inside a resize hit-zone, in the user's chosen style. Seated
+ * on the edge centre — the hit-zone straddles the edge, its line 9px in from the
+ * zone's outer side. Colour rides --blk-mk (neutral on hover, lime when the
+ * block is selected). A SECOND lime glyph — the reticle eye / centre patch —
+ * lights only while THIS edge is being dragged: colour spent on one small active
+ * glyph, and lime never dims. 'nodes' stays neutral apart from the select tint.
+ */
+function HandleGrip({
+  style,
+  edge,
+  active,
+  selected,
+}: {
+  style: ScheduleMarkStyle;
+  edge: 'top' | 'bottom';
+  active: boolean;
+  selected: boolean;
+}) {
+  const reveal = selected
+    ? 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-100'
+    : 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-0 transition-opacity group-hover/blk:opacity-100';
+  const seat = edge === 'top' ? 'top-[9px] -translate-y-1/2' : 'bottom-[9px] translate-y-1/2';
+
+  if (style === 'target') {
+    return (
+      <span aria-hidden className={cn(reveal, seat, 'h-3 w-3 rounded-full border border-[var(--blk-mk)]')}>
+        <span className="absolute -top-1 -bottom-1 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
+        <span
+          className={cn(
+            'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full',
+            active ? 'h-[3px] w-[3px] bg-[var(--primary)]' : 'h-[2px] w-[2px] bg-[var(--blk-mk)]'
+          )}
+        />
+      </span>
+    );
+  }
+
+  if (style === 'trim') {
+    return (
+      <span aria-hidden className={cn(reveal, seat, 'flex h-[3px] w-[14px] gap-px')}>
+        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
+        <span className={cn('h-full w-1 rounded-[0.5px]', active ? 'bg-[var(--primary)]' : 'bg-[var(--blk-mk)]')} />
+        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
+      </span>
+    );
+  }
+
+  // 'nodes' (default) — a solid square grip matching the corner nodes.
+  return (
+    <span
+      aria-hidden
+      className={cn(reveal, seat, 'h-1.5 w-1.5 rounded-[1px] bg-[var(--blk-mk)] shadow-[0_0_0_1px_var(--canvas)]')}
+    />
+  );
+}
+
 export function ScheduleBlock({
   entry,
   gridStartMin,
   date,
   hourPx = HOUR_PX,
   variant = 'day',
+  layout,
+  fieldWidth,
+  receded = false,
 }: {
   entry: TimedEntry;
   gridStartMin: number;
@@ -335,17 +544,50 @@ export function ScheduleBlock({
    *  metadata rail and spend the width on a WRAPPING title instead — see the
    *  content block below. */
   variant?: 'day' | 'week';
+  /** Measured width of the events layer. With `layout.widthFraction` this gives
+   *  the pane's real px width, which is what decides the content treatment — see
+   *  `narrow` below. Unknown (or absent) means "wide", i.e. today's behaviour. */
+  fieldWidth?: number | null;
+  /**
+   * Where this block sits when it overlaps something (lib/schedule-overlap.ts).
+   * ABSENT is the common case and the important one: an entry with nothing
+   * overlapping it gets no layout, and every branch below then falls back to the
+   * literal values this component always used — `left-0 right-1`, `marginLeft:
+   * LANE_PX`, a rail at x=5, a bead at x=3, content centred in the whole pane.
+   * An uncrowded day renders exactly the markup it rendered before the pass
+   * existed.
+   */
+  layout?: BlockLayout;
+  /**
+   * Off-group while another grouping lane is focused (Phase 5b).
+   *
+   * SUBTRACTIVE, never a wrapper `opacity`. Three lime things live inside a
+   * block — the done checkbox, the multi-select mark, and the entire accent of a
+   * project-less task — and lime is the one colour in this app that never fades;
+   * `day-schedule.tsx` already refused a wrapper opacity once for exactly that.
+   * So recession is spent on the plate, the edge and the rail ink, and every lime
+   * mark inside stays at full strength.
+   */
+  receded?: boolean;
 }) {
   const {
     getProjectColor,
     getHabitGroupColor,
     selectedDate,
     userTimezone,
+    routines,
+    programs,
     toggleTaskStatus,
+    setItemSkipped,
     updateTask,
     updateHabit,
   } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
+  // Multi-select membership for this block. Modifier-click selects; a plain
+  // click still opens the editor. The grid has no hover checkbox (the list
+  // surfaces do) — its dense pane leaves no safe slot — so selection here is a
+  // ring + modifier-click, discoverable once a selection exists elsewhere.
+  const isMultiSelected = useSelectionStore((s) => s.selectedIds.has(entry.item.id));
   const isWeek = variant === 'week';
   const { item, itemType } = entry;
   const isTask = itemType === 'task';
@@ -355,6 +597,17 @@ export function ScheduleBlock({
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+  // Asked at THIS block's date, same as TaskRow and for the same reason: a week
+  // column and the day view are different questions, and only the block knows
+  // which one it is. Non-null only when the item is set aside, so it doubles as
+  // the flag. Reaches the screen only with showPausedOnGrid on, since otherwise
+  // deriveDayItems has already excluded it.
+  const suppression = suppressionReason(item as Item, dateStr, {
+    userTimezone: timezone,
+    routines,
+    programs,
+  });
+  const suppressed = !!suppression;
   const done = isTask
     ? isRecurring(task!)
       ? isCompletedOnDate(task!, dateStr)
@@ -379,11 +632,18 @@ export function ScheduleBlock({
   // delete-confirm resolves it. Project blocks are still excluded outright: they
   // take their extent from the project, not from the item.
   const projected = item as { type?: string; customType?: string };
-  const typeConfig = getItemTypeConfig(
-    projected.type === 'custom' ? projected.customType! : itemType
-  );
+  const typeName = projected.type === 'custom' ? projected.customType! : itemType;
+  const typeConfig = getItemTypeConfig(typeName);
   const canResize = typeConfig.schedule.resizable && !!item.startTime && !task?.inProjectBlock;
+  // Same capability + recurrence gate the row uses (lib/item-registry
+  // isSkippable), resolved against the projection's runtime discriminator.
+  const skipped =
+    typeConfig.skippable && isRecurring(item) && isSkippedOnDate(item, dateStr);
   const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
+  // Which edge is under an active resize — drives the one lime glyph the target/
+  // trim mark styles light on the handle being dragged (see HandleGrip). A ref
+  // alone won't do: the grip has to re-render to recolour.
+  const [activeEdge, setActiveEdge] = useState<'top' | 'bottom' | null>(null);
   const effStartMin = preview?.startMin ?? entry.startMin;
   const effDuration = preview?.duration ?? entry.duration;
 
@@ -469,6 +729,7 @@ export function ScheduleBlock({
     };
     pointerYRef.current = e.clientY;
     setPreview({ startMin: entry.startMin, duration: entry.duration });
+    setActiveEdge(edge);
     setResizing(true);
     rafRef.current = requestAnimationFrame(autoScrollTick);
   };
@@ -486,6 +747,7 @@ export function ScheduleBlock({
     const p = preview;
     resizeRef.current = null;
     setPreview(null);
+    setActiveEdge(null);
     setResizing(false);
     if (!r || !p) return;
     // The write has to go through the action for the item's OWN type: the store
@@ -516,12 +778,66 @@ export function ScheduleBlock({
   const spanH = (effDuration / 60) * hourPx;
   const top = startY + PANE_OFFSET;
   const height = Math.max(spanH - PANE_TRIM, PANE_MIN_H);
-  const tall = height >= PANE_TALL_H;
+
+  /*
+   * The overlap layout is computed from the STORE's extents, so the moment a
+   * resize starts it is stale — `preview` is local state, `entry` never changes,
+   * and the pass would keep describing a block that is no longer that shape for
+   * the whole gesture. Dropping it mid-resize means you drag against honest
+   * geometry and the pockets/columns re-form on release, which is the same
+   * reasoning that already suppresses `canExpand` below.
+   *
+   * But only the TIME-DERIVED half is stale. `preview` moves a block's start and
+   * duration; it cannot move it into another lane. Dropping the whole layout used
+   * to mean dropping the band with it, and since lanes landed every block carries
+   * one — so pressing a resize handle threw the block to the field's left edge,
+   * spanning every lane, until pointer-up. `bandOnly` keeps the x half and clears
+   * everything the new extents invalidate.
+   */
+  const L = preview ? bandOnly(layout) : layout;
+
+  // Content sits in its free band when something covers this pane, and in the
+  // whole pane otherwise. Everything downstream measures the BAND, not the pane:
+  // a 7h container whose title lives in a 208px band above its child is still a
+  // two-row block, and a 40px band inside a tall pane is not.
+  const contentH = L?.contentHeight ?? height;
+  const tall = contentH >= PANE_TALL_H;
 
   // How many lines of the title actually fit — the week column's answer to long
   // titles. text-content is 12/17, and the pane pays 6px of padding top and
   // bottom, so this is the honest count rather than a guess.
-  const titleLines = Math.max(1, Math.floor((height - 12) / 17));
+  const titleLines = Math.max(1, Math.floor((contentH - 12) / 17));
+
+  /*
+   * The pane's own edges, as CSS lengths, for everything that has to register
+   * against them from outside: the corner registration and both resize handles.
+   * When a conflict member's pane starts at `calc(50% + 6px)`, marks pinned to
+   * the literal LANE_PX would annotate empty grid, so they anchor off these.
+   */
+  const paneLeftCss = L?.paneLeft ?? `${LANE_PX}px`;
+  const paneRightCss = L?.paneRight ?? '0px';
+  const handleLeft = paneLeftCss;
+  const handleRight = paneRightCss;
+  // Which corner + handle treatment to draw (Settings → Appearance → Schedule
+  // handles). The forms are defined in BlockCorners / HandleGrip below.
+  const scheduleMarkStyle = useViewStore((s) => s.scheduleMarkStyle);
+
+  /*
+   * NARROW is a width, not a view.
+   *
+   * Week columns have always wrapped the title and dropped the metadata rail
+   * because 140px cannot hold "title · duration" on one line. But nothing about
+   * that is week-specific — it is what any pane that narrow needs, and once the
+   * day grid can split into channels it produces panes exactly that size. So the
+   * gate is the pane's real width: a 140px day channel and a 140px week column
+   * now render identically, which is the point.
+   *
+   * Wide day panes are untouched: with no overlap the fraction is 1 and an ~880px
+   * pane is nowhere near the threshold, so the common case keeps its single
+   * truncated line and its metadata rail exactly as before.
+   */
+  const paneWidthPx = fieldWidth != null ? fieldWidth * (L?.widthFraction ?? 1) : null;
+  const narrow = isWeek || (paneWidthPx != null && paneWidthPx < PANE_WRAP_PX);
 
   // …and where even that isn't enough (a 30-minute block at the minimum hour
   // height is 34px — one line — and no amount of reclaimed width fixes that),
@@ -529,10 +845,18 @@ export function ScheduleBlock({
   // only in-place answer: the block's height is its DURATION, so the alternative
   // is a popover, and this keeps the text where you were already looking.
   // Suppressed mid-resize, where the height is the thing being edited.
-  const canExpand = isWeek && !preview;
+  // Follows `narrow` for the same reason the content treatment does — a squeezed
+  // day channel needs the escape hatch just as much as a week column.
+  const canExpand = narrow && !preview;
 
   // Done de-colours the rail with its bead: they are one glyph, not two states.
-  const railColor = done ? 'color-mix(in oklab, var(--muted-foreground) 45%, transparent)' : accent;
+  // Off-group does the same, one step lighter — the rail is where the block's
+  // identity lives, so it is the right thing to spend a recession on.
+  const railColor = done
+    ? 'color-mix(in oklab, var(--muted-foreground) 45%, transparent)'
+    : receded
+      ? 'var(--grp-off-ink)'
+      : accent;
 
   // Blocks are drag sources — drop on another hour to reschedule, or on the
   // Anytime section to un-time. The source stays in place (dimmed) while the
@@ -554,6 +878,81 @@ export function ScheduleBlock({
     }
   }, [isDragging]);
 
+  // A skipped occurrence collapses on the timeline the same way it collapses in
+  // a list row (#194/#195): the bead still pins WHEN it was meant to happen, but
+  // the block stops claiming its duration. Blocks are absolutely positioned, so
+  // shrinking one reflows nothing — the hour it vacates simply reads as free.
+  // Gated on the registry capability, so recurring tasks and recurring custom
+  // types collapse here exactly as habits do.
+  if (skipped) {
+    return (
+      <div
+        data-testid="schedule-block"
+        data-item-id={item.id}
+        data-item-kind={itemType}
+        data-item-type={typeName}
+        data-row-variant="skipped"
+        data-completed="false"
+        data-start-min={entry.startMin}
+        data-duration={entry.duration}
+        // Same pointer contract as a live block: the wrapper (and so the 12px
+        // lane) stays click-through to the hour slot underneath; only the strip
+        // itself opts back in.
+        //
+        // A skipped block still takes its channel from the overlap pass. It
+        // collapses in HEIGHT only — it keeps its horizontal band, so a skipped
+        // occupant of a cluster doesn't stretch back across its neighbours'
+        // channels the way an unpositioned block would.
+        className={cn(
+          'pointer-events-none absolute h-[24px]',
+          !L && 'left-0 right-1',
+          'z-[var(--blk-z)]'
+        )}
+        style={
+          {
+            top,
+            '--blk-z': L?.z ?? 2,
+            ...(L ? { left: L.left, right: L.right } : null),
+          } as React.CSSProperties
+        }
+      >
+        <span
+          aria-hidden
+          className="absolute w-[2px] rounded-[1px] bg-muted-foreground/35"
+          style={{ left: L?.railX ?? 5, top: -PANE_OFFSET, height: 24 }}
+        />
+        <span
+          aria-hidden
+          className="absolute left-[3px] h-[6px] w-[6px] rounded-full bg-muted-foreground/45 shadow-[0_0_0_1px_var(--canvas)]"
+          style={{ top: -PANE_OFFSET - 3 }}
+        />
+        <div
+          onClick={() => openEditFor(item, itemType)}
+          style={{ marginLeft: LANE_PX }}
+          className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
+        >
+          <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
+          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+            {item.title}
+          </span>
+          <button
+            type="button"
+            title="Unskip"
+            aria-label="Unskip"
+            data-testid="item-unskip-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setItemSkipped(item.id, false, rowDate);
+            }}
+            className="-mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-muted-foreground hover-wash hover:text-foreground"
+          >
+            <Undo2 className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const checkbox = isTask ? (
     <button
       onClick={(e) => {
@@ -573,6 +972,13 @@ export function ScheduleBlock({
 
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
+    // Set aside (showPausedOnGrid). Muted, never struck through and never a
+    // wash over the whole block: the accent bar is `var(--primary)` on an
+    // unprojected task, and fading the pane would take the lime down with it.
+    suppressed && 'text-muted-foreground',
+    // Same treatment as set-aside, and for the same reason: the title carries
+    // the recession so the plate does not have to fade the marks inside it.
+    receded && !done && 'text-muted-foreground',
     done && 'text-muted-foreground line-through opacity-60'
   );
 
@@ -586,14 +992,26 @@ export function ScheduleBlock({
       data-testid="schedule-block"
       data-item-id={item.id}
       data-item-kind={itemType}
+      data-item-type={typeName}
+      // A skipped block is a different DOM shape under the same testid (no
+      // checkbox, no resize handles) — same disambiguation TaskRow carries.
+      data-row-variant="default"
       data-completed={done ? 'true' : 'false'}
+      data-suppressed={suppressed ? 'true' : 'false'}
+      data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both
       // are otherwise encoded only in inline pixel styles. These make the
       // hour-drop and resize outcomes assertable.
       data-start-min={effStartMin}
       data-duration={effDuration}
       className={cn(
-        'group/blk pointer-events-none absolute left-0 right-1 z-[2] h-[var(--blk-h)] hover:z-[7]',
+        'group/blk pointer-events-none absolute h-[var(--blk-h)]',
+        // No layout → the literal classes this block has always carried.
+        !L && 'left-0 right-1',
+        // z travels through a custom property rather than an interpolated class:
+        // Tailwind's JIT only keeps class names it can see as literals, which
+        // this file already documents at LINE_CLAMP.
+        'z-[var(--blk-z)] hover:z-[var(--blk-zh)]',
         // The hover-expand. Everything that annotates the block — corners,
         // caliper marks — hangs off this wrapper, so they travel with it and the
         // grown block stays a coherent object rather than a pane escaping its
@@ -601,33 +1019,93 @@ export function ScheduleBlock({
         canExpand && 'hover:h-auto hover:min-h-[var(--blk-h)]',
         isDragging && 'opacity-50'
       )}
-      style={{ top, '--blk-h': `${height}px` } as React.CSSProperties}
+      style={
+        {
+          top,
+          '--blk-h': `${height}px`,
+          // The registration marks' ink: neutral --ink-1 normally, lime when the
+          // block is selected. This is how selection reads THROUGH a hover — the
+          // pane brightness is shared, but the mark colour is not (see BlockCorners).
+          '--blk-mk': isMultiSelected && !done ? 'var(--primary)' : 'var(--ink-1)',
+          '--blk-z': L?.z ?? 2,
+          // A container lifts by ONE on hover, never to the leaf lift: raising it
+          // to the top would put it above its own child, and since the pointer
+          // has to cross the parent to reach the child, the parent would latch
+          // :hover and the child could never be hovered or clicked at all.
+          '--blk-zh': L?.zHover ?? HOVER_Z,
+          ...(L ? { left: L.left, right: L.right } : null),
+        } as React.CSSProperties
+      }
     >
       {/* The rail's accent span: the lane's 1px hairline swells to 2px for the
           duration of the event, so the accent has real extent on the grid rather
           than being a stripe glued to the card. Offset back up by PANE_OFFSET to
           undo the pane's nudge — this sits on the true start and end. */}
+      {/* A double-booking pitches each member's swell 2px along the ONE shared
+          lane, so n adjacent stripes read as a single fat rail — that plus the
+          compound bead is the entire conflict signal. */}
       <span
         aria-hidden
-        className="absolute left-[5px] w-[2px] rounded-[1px]"
-        style={{ top: -PANE_OFFSET, height: spanH, background: railColor }}
+        className="absolute w-[2px] rounded-[1px]"
+        style={{ left: L?.railX ?? 5, top: -PANE_OFFSET, height: spanH, background: railColor }}
       />
       {/* The start bead, punched out of the canvas so two beads 15 minutes apart
-          still read as two at the minimum hour height. */}
+          still read as two at the minimum hour height. A NESTED bead is punched
+          out of its parent's plate instead — it is mounted on the field, not on
+          the grid — and two beads in one lane cut a crescent out of each other,
+          which is how a double-booking reads as two pins in one hole. */}
       <span
         aria-hidden
-        className="absolute left-[3px] h-[6px] w-[6px] rounded-full shadow-[0_0_0_1px_var(--canvas)]"
-        style={{ top: -PANE_OFFSET - 3, background: railColor }}
+        className="absolute h-[6px] w-[6px] rounded-full"
+        style={{
+          left: L?.beadX ?? 3,
+          top: -PANE_OFFSET - 3,
+          background: railColor,
+          boxShadow: `0 0 0 1px ${L?.beadOnPocket ? 'var(--surface-2)' : 'var(--canvas)'}`,
+        }}
       />
+
+      {/* The channel forks ONCE per child, in the container's own lane, at the
+          child's true start. A full-height inner rule would run a second
+          near-parallel line down every column, which week-schedule.tsx already
+          rejects in as many words. */}
+      {L?.branchTicks.map((y, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className="pointer-events-none absolute left-[6px] w-[6px] border-t border-[var(--sched-rail)]"
+          style={{ top: y }}
+        />
+      ))}
 
       {/* The pane. overflow-hidden for the wash and the title, which is exactly
           why the registration marks below are siblings, not children. */}
       <div
         ref={setNodeRef}
+        // The wrapper is the block's BAND, and a double-booking's members all
+        // share one band — only their panes tile inside it. So the pane is the
+        // only honest handle on "this item's pixels", for a test or anything else.
+        data-slot="pane"
         {...attributes}
         {...listeners}
-        onClick={() => {
+        // The pane is the block's only stable handle: the wrapper is
+        // pointer-events-none and the title is inside a content box that changes
+        // shape with the pane's width. `receded` rides it because that is the
+        // element the recession is spent on.
+        data-block-id={item.id}
+        data-receded={receded ? 'true' : 'false'}
+        onClick={(e) => {
           if (wasDraggedRef.current) return;
+          const selection = useSelectionStore.getState();
+          if (e.metaKey || e.ctrlKey) {
+            selection.toggle(item.id);
+            return;
+          }
+          if (e.shiftKey) {
+            selection.selectRange(rangeIds(selection.anchorId, item.id));
+            return;
+          }
+          selection.replace([item.id]);
           openEditFor(item, itemType);
         }}
         className={cn(
@@ -644,27 +1122,73 @@ export function ScheduleBlock({
           // fits a no-op, and only a genuinely clipped title grows past it.
           canExpand && 'min-h-[var(--blk-h)]',
           'bg-[var(--sched-pane)] shadow-[var(--sched-shadow)] transition-[background-color,box-shadow] duration-150',
+          // A NESTED plate is not glass. There is nothing informative behind it —
+          // it sits in a pocket in its parent, not on the hour grid — and on
+          // white, 94%-opaque over 80%-opaque is 0.00003 L apart, so translucency
+          // cannot express this step at all in light mode. Solid surface-2 over
+          // the pocket's ~0.975 is a real value step in both themes.
+          L?.solid && !done && 'bg-[var(--surface-2)]',
           // Done recedes by thinning the plate and switching the lit edge off,
           // never by fading the whole block — opacity here composites the lime
           // checkbox down to olive. The text carries the rest of the fade.
           done
             ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
-            : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]'
+            : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
+          // Off-group: the plate thins and trades its modelling for a hairline.
+          // It KEEPS its hover lamp — a receded block is still a live target you
+          // can read, click and drag; recession says "not what you asked about",
+          // not "unavailable". Ordered after `done` so a finished off-group block
+          // stays finished-looking, which is the more specific fact.
+          // shadow-[var(--sched-shadow-off)], never the literal ring: see the
+          // token's own note in globals.css. A raw `shadow-[0_0_0_1px_…]` lands
+          // in a different tailwind-merge group from the base shadow, so both
+          // survive cn() and Tailwind's alphabetical utility order hands it to
+          // the base — the hairline never paints, in either theme.
+          receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
+          // Selected brightens the pane — lit brighter than hover, its own
+          // latched state (the list rows latch a wash; a grid block latches the
+          // lamp). Kept off `done` blocks, whose lamp is deliberately out.
+          isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-hover)]'
         )}
-        style={{ marginLeft: LANE_PX }}
+        style={{ marginLeft: L?.paneLeft ?? LANE_PX, marginRight: L?.paneRight ?? 0 }}
       >
+        {/* The pockets — one sunk well per child, above the wash and below the
+            content. This is what makes containment read in light mode, and the
+            reason this direction beat the ones that expressed depth with alpha. */}
+        {L?.pockets.map((p, i) => (
+          <span
+            key={i}
+            aria-hidden
+            className="pointer-events-none absolute left-[2px] right-0 z-[1] bg-[var(--sched-pocket)] shadow-[var(--sched-pocket-lip)]"
+            style={{ top: p.top, height: p.height }}
+          />
+        ))}
         {/* The emission wash — the accent bleeding off the rail-facing edge into
             the plate. Three stops, not two: a bright edge, a fast falloff by
             40px, then a long tail out to the reach. A straight two-stop ramp
             reads as a stripe with a soft right edge; this reads as light falling
             across the card and dissolving into it.
 
-            Day only. Across a 140px week column an 84px gradient is more than
-            half the pane, which is a coloured container by area. */}
-        {!done && !isWeek && (
+            Wide panes only. Across a 140px column an 84px gradient is more than
+            half the pane, which is a coloured container by area — and that was
+            always an argument about WIDTH, not about which view you are in, so it
+            keys off the same threshold the content treatment does. */}
+        {/* The wash is the block's lamp, and an off-group block is not lit. It
+            goes rather than dimming: the gradient is built from the item's own
+            accent, so fading it would be exactly the "lime through an opacity"
+            move the recession rule forbids. */}
+        {!done && !narrow && !receded && (
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-0 z-0 opacity-[var(--sched-wash)] transition-opacity duration-150 group-hover/blk:opacity-[var(--sched-wash-hover)]"
+            className={cn(
+              'pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
+              // A container stops being a lamp and becomes the FIELD its contents
+              // are lit against, so its own wash goes ambient. Without this the
+              // child's wash reads as a second light source inside the first.
+              L?.wash === 'field'
+                ? 'opacity-[var(--sched-wash-field)]'
+                : 'opacity-[var(--sched-wash)] group-hover/blk:opacity-[var(--sched-wash-hover)]'
+            )}
             style={{
               background:
                 `linear-gradient(90deg,` +
@@ -675,14 +1199,33 @@ export function ScheduleBlock({
           />
         )}
 
+        {/*
+          The content, re-anchored into its free band when something covers this
+          pane. This is the move that actually fixes the reported bug: a 7-hour
+          container used to centre its title over its WHOLE pane, so with a 3-hour
+          task covering the bottom the title landed under it. Now it centres in the
+          band above.
+
+          The height goes through a custom property, never an inline `height`: an
+          inline height on this div pins the indefinite-height chain that week's
+          `canExpand` rides, which would kill hover-expand for every block in the
+          grid. As a var it can be released on hover instead.
+        */}
         <div
           className={cn(
-            'relative z-[1] flex h-full min-w-0 flex-col gap-px',
-            isWeek ? 'justify-start py-1.5 pl-1.5 pr-1' : 'justify-center pl-2.5 pr-2'
+            'relative z-[2] flex min-w-0 flex-col gap-px',
+            L?.contentHeight != null ? 'h-[var(--clr-h)]' : 'h-full',
+            canExpand && 'group-hover/blk:h-auto',
+            narrow ? 'justify-start py-1.5 pl-1.5 pr-1' : 'justify-center pl-2.5 pr-2'
           )}
+          style={
+            L?.contentHeight != null
+              ? ({ marginTop: L.contentTop ?? 0, '--clr-h': `${L.contentHeight}px` } as React.CSSProperties)
+              : undefined
+          }
         >
-          {isWeek ? (
-            /* Week columns: the title WRAPS to every line the block's height can
+          {narrow ? (
+            /* Narrow panes: the title WRAPS to every line the block's height can
                actually hold, and nothing competes with it for the width. The
                start time is gone — the bead already pins it on the rail and the
                shared gutter reads it off — and so are the duration and the
@@ -714,6 +1257,7 @@ export function ScheduleBlock({
                   <RollingMetaText
                     value={effDuration}
                     format={formatDuration}
+                    active={!!preview}
                     className={cn('flex-shrink-0', done && 'opacity-60')}
                   />
                 )}
@@ -732,41 +1276,40 @@ export function ScheduleBlock({
               <span className={cn(titleClass, 'truncate')}>{item.title}</span>
               <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
                 {task?.priority && <PriorityGlyph priority={task.priority} />}
-                {effDuration > 0 && <RollingMetaText value={effDuration} format={formatDuration} />}
+                {effDuration > 0 && (
+                  <RollingMetaText value={effDuration} format={formatDuration} active={!!preview} />
+                )}
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Registration corners — crop marks sitting 4px OFF the pane, annotating
-          the block rather than drawing a second, misaligned border inside it. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -top-1 h-1.5 w-1.5 border-l border-t border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ left: LANE_PX - 4 }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 border-r border-t border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-1 h-1.5 w-1.5 border-b border-l border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-        style={{ left: LANE_PX - 4 }}
-      />
-      <span
-        aria-hidden
-        className="pointer-events-none absolute -bottom-1 -right-1 h-1.5 w-1.5 border-b border-r border-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
+      {/* Registration corners — the block's hover/select chrome, in whichever
+          style the user picked (Settings → Appearance → Schedule handles). Each
+          anchors off the PANE's own inset, not the literal LANE_PX: a tiled
+          conflict member's pane starts at 50%, and marks left behind at x=8 would
+          register a pane that is not there. Aria-hidden; revealed on hover. */}
+      <BlockCorners
+        style={scheduleMarkStyle}
+        paneLeftCss={paneLeftCss}
+        paneRightCss={paneRightCss}
+        selected={isMultiSelected}
       />
 
-      {/* Resize handles — drag the top or bottom edge to set start/duration.
-          The mark lives OUTSIDE the pane on the corners' own -4px line: a caliper
-          datum centred on the edge with its stem pointing into the block, in the
-          same 1px hairline as the corners. Hover therefore reads as ONE set of
-          marks laid over the pane rather than as a grabber bar sitting inside it.
-          The hit zone still straddles the edge (9px out, 3px in) so the target
-          stays reachable without hunting for the hairline. */}
+      {/* Resize handles — drag the top or bottom edge to set start/duration. The
+          hit zone straddles the edge (9px out, 3px in) so the target stays
+          reachable; the visible grip inside it (HandleGrip) follows the chosen
+          mark style and lights one lime glyph on the edge being dragged.
+
+          A FLUSH shared edge — a container and its child both ending 17:00 — would
+
+          A FLUSH shared edge — a container and its child both ending 17:00 — would
+          otherwise put two full-width strips 0px apart and make the parent's edge
+          unreachable. The parent's handle retreats into its own LANE instead: a
+          20px grabber at left:0 where a nested child never reaches. The
+          alternative was trimming the child 7px, which at hourPx 40 is a lie about
+          ten and a half minutes. */}
       {canResize && (
         <>
           <div
@@ -774,32 +1317,30 @@ export function ScheduleBlock({
             onPointerMove={onResizeMove}
             onPointerUp={onResizeUp}
             onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto absolute -top-[9px] right-0 z-[3] h-3 cursor-ns-resize"
-            style={{ left: LANE_PX }}
+            className="pointer-events-auto absolute -top-[9px] z-[3] h-3 cursor-ns-resize"
+            style={
+              L?.handleTopLane
+                ? { left: 0, width: LANE_PX + 8 }
+                : { left: handleLeft, right: handleRight }
+            }
             aria-label="Resize start"
           >
-            <span
-              aria-hidden
-              className="absolute left-1/2 top-[5px] h-px w-4 -translate-x-1/2 bg-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-            >
-              <span className="absolute left-1/2 top-px h-1 w-px bg-[var(--ink-1)]" />
-            </span>
+            <HandleGrip style={scheduleMarkStyle} edge="top" active={activeEdge === 'top'} selected={isMultiSelected} />
           </div>
           <div
             onPointerDown={(e) => onResizeDown('bottom', e)}
             onPointerMove={onResizeMove}
             onPointerUp={onResizeUp}
             onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto absolute -bottom-[9px] right-0 z-[3] h-3 cursor-ns-resize"
-            style={{ left: LANE_PX }}
+            className="pointer-events-auto absolute -bottom-[9px] z-[3] h-3 cursor-ns-resize"
+            style={
+              L?.handleBottomLane
+                ? { left: 0, width: LANE_PX + 8 }
+                : { left: handleLeft, right: handleRight }
+            }
             aria-label="Resize duration"
           >
-            <span
-              aria-hidden
-              className="absolute bottom-[5px] left-1/2 h-px w-4 -translate-x-1/2 bg-[var(--ink-1)] opacity-0 transition-opacity group-hover/blk:opacity-100"
-            >
-              <span className="absolute bottom-px left-1/2 h-1 w-px bg-[var(--ink-1)]" />
-            </span>
+            <HandleGrip style={scheduleMarkStyle} edge="bottom" active={activeEdge === 'bottom'} selected={isMultiSelected} />
           </div>
         </>
       )}
@@ -821,6 +1362,22 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
 
   const untimed = useMemo(() => deriveUntimedRows(day), [day]);
   const timed = useMemo(() => deriveTimedEntries(day), [day]);
+  const overlapEntries = useMemo(() => toOverlapEntries(timed), [timed]);
+
+  // The Anytime strip sections like any other row list. `'none'` comes back as a
+  // single unlabelled group, which renders as today's flat strip.
+  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
+  const untimedGroups = useMemo(
+    () =>
+      groupBySupport('day', 'schedule', canvasGroupBy).honoured
+        ? groupRows(untimed, canvasGroupBy, { routines, programs })
+        : [{ key: '', label: '', rows: untimed }],
+    [untimed, canvasGroupBy, routines, programs]
+  );
+  /** True when the strip renders real sections rather than one flat list. */
+  const grouped = untimedGroups.some((g) => g.label);
 
   // The marker only exists on today, and only if the setting allows it —
   // Settings → "Show current time indicator" sat there for a long time with
@@ -837,6 +1394,18 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // the hour happened to fall outside what's scheduled — at 7am on a day that
   // starts at 9, which is exactly when you most want to see where "now" is.
   const resizing = useScheduleResizeStore((s) => s.resizing);
+  // Width of the events layer, which is what the overlap pass turns into "as many
+  // channels as actually fit at MIN_CHANNEL_PX". This is the whole mobile answer:
+  // the same component in a ~294px field gets two channels instead of six without
+  // either shell having to say so.
+  //
+  // FROZEN during a drag or a resize. The lane budget is derived from this
+  // width, so an unfrozen measurement lets a lane count change mid-gesture —
+  // and the blocks would then jump sideways under the cursor that is dragging
+  // one of them. Nothing else reads it in a way a stale value can hurt: the
+  // channel count and the wrap threshold both degrade gracefully for the length
+  // of one gesture.
+  const { fieldWidth, fieldRef } = useFieldWidth(dragging || resizing);
   const contentRange = useMemo(() => deriveGridRange(timed, markerMin), [timed, markerMin]);
   const { gridStartHour, gridEndHour } = dragging || resizing ? FULL_DAY_RANGE : contentRange;
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
@@ -853,6 +1422,52 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       ? Math.floor(nowMinShown / 60)
       : null;
 
+  /**
+   * The grouping's answer on x: lanes, or focus (lib/schedule-lanes.ts).
+   *
+   * Built from the TIMED rows only. The Anytime strip above sections by the same
+   * grouping but with headings, and a group that exists only up there has no lane
+   * to name — a cap over an empty band would be a channel with nothing in it.
+   */
+  const lanePlan = useMemo(
+    () =>
+      planLanes(
+        timed.map((e) => ({ itemType: e.itemType, item: e.item })),
+        canvasGroupBy,
+        { variant: 'day', fieldWidth, routines, programs }
+      ),
+    [timed, canvasGroupBy, fieldWidth, routines, programs]
+  );
+  const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
+
+  /**
+   * Where overlapping blocks go. Keyed on hourPx because a pane floored at
+   * PANE_MIN_H covers grid it does not own, so the PAINTED extents the pass packs
+   * on move with the scale — the TOPOLOGY does not, by construction.
+   *
+   * ONE PASS PER LANE. That is not an optimisation, it is the semantics: two
+   * blocks in different lanes may share a time but never a column, so they are
+   * not a conflict and must not cluster, column-pack or occlude each other. The
+   * lane's band goes in as the pass's root, and every rule inside it — packing,
+   * containment, the inset cascade, the content band — then runs against the
+   * lane's width instead of the field's.
+   */
+  const overlap = useMemo(() => {
+    const base = { hourPx, gridStartMin: gridStartHour * 60, variant: 'day' as const, fieldWidth };
+    if (lanePlan.mode !== 'lanes') return layoutOverlaps(overlapEntries, base);
+
+    const merged: OverlapLayout = new Map();
+    for (const lane of lanePlan.lanes) {
+      const inLane = overlapEntries.filter((e) => lanePlan.laneOf.get(e.id) === lane.key);
+      const sub = layoutOverlaps(inLane, {
+        ...base,
+        root: { leftPct: lane.leftPct, rightPct: lane.rightPct },
+      });
+      for (const [id, L] of sub) merged.set(id, L);
+    }
+    return merged;
+  }, [overlapEntries, hourPx, gridStartHour, fieldWidth, lanePlan]);
+
   return (
     <ScrollArea className="h-full flex-1">
       <div
@@ -862,6 +1477,11 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Above everything, because it qualifies everything below it: this day
+            is missing work, and here is what is holding it. Renders on no other
+            day — see ProgramNotice. */}
+        <ProgramNotice className="px-1" />
+
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (
           <div
@@ -870,18 +1490,43 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
             className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
-            <GroupSection label="Anytime" variant="canvas">
-              {untimed.map((row) => (
-                <TaskRow key={row.item.id} row={row} />
-              ))}
-              {untimed.length === 0 && dragging && (
-                <div className="py-2 text-center text-xs text-muted-foreground/50">
-                  Drop here to keep it time-free
-                </div>
-              )}
-            </GroupSection>
+            {/* The grid below cannot take headings — a row's y position IS its
+                time, so a section either breaks the axis or floats free of it.
+                This strip is an ordinary row list and can; the grid gets the
+                same partition expressed on x, as lanes.
+
+                The strip's own "Anytime" heading gives way to the group headings
+                rather than sitting above them. Nesting them read as a stutter at
+                best and as a literal "Anytime › Anytime" when grouping by time
+                bucket, and the strip is already identified by its position and
+                its drop target. */}
+            {grouped ? (
+              untimedGroups.map((g) => (
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row} />
+                  ))}
+                </GroupSection>
+              ))
+            ) : (
+              <GroupSection label="Anytime" variant="canvas">
+                {untimed.map((row) => (
+                  <TaskRow key={row.item.id} row={row} />
+                ))}
+                {untimed.length === 0 && dragging && (
+                  <div className="py-2 text-center text-xs text-muted-foreground/50">
+                    Drop here to keep it time-free
+                  </div>
+                )}
+              </GroupSection>
+            )}
           </div>
         )}
+
+        {/* The partition's only caption. Above the grid rather than inside it,
+            because it names the x axis — and sticky, so it survives a scroll
+            down a long day. */}
+        <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
 
         {/* Hour grid with absolutely positioned blocks */}
         <div ref={anchorRef} className="relative">
@@ -921,15 +1566,37 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               is flush with the grid — the old 4px nudge now lives inside the
               block (PANE_OFFSET) so the rail and bead can still sit on the true
               hour line while the pane clears its neighbour. */}
-          <div className="absolute bottom-0 right-0 top-0" style={{ left: DAY_FIELD_LEFT }}>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-0 left-[5px] top-0 w-px bg-[var(--sched-rail)]"
-            />
-            {timed.map((entry) => (
-              <ScheduleBlock key={entry.item.id} entry={entry} gridStartMin={gridStartHour * 60} hourPx={hourPx} />
+          <div ref={fieldRef} className="absolute bottom-0 right-0 top-0" style={{ left: DAY_FIELD_LEFT }}>
+            {/* One rail per lane. The hour rules deliberately do NOT break at a
+                lane boundary — the grammar is "y is shared, x is categorical",
+                and ruling each lane separately would draw a table, which claims
+                the cells are independent of each other. The rail is what says
+                where a lane begins. */}
+            {(lanePlan.mode === 'lanes' ? lanePlan.lanes : [{ key: 'field', leftPct: 0 }]).map((lane) => (
+              <span
+                key={lane.key}
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 top-0 w-px bg-[var(--sched-rail)]"
+                style={{ left: `calc(${lane.leftPct}% + 5px)` }}
+              />
             ))}
-            {nowY !== null && <NowMarker top={nowY} />}
+            {timed.map((entry) => (
+              <ScheduleBlock
+                key={entry.item.id}
+                entry={entry}
+                gridStartMin={gridStartHour * 60}
+                hourPx={hourPx}
+                layout={overlap.get(entry.item.id)}
+                fieldWidth={fieldWidth}
+                receded={isReceded(lanePlan, focusedKey, entry.item.id)}
+              />
+            ))}
+            {nowY !== null && (
+              <NowMarker
+                top={nowY}
+                lanes={lanePlan.mode === 'lanes' ? lanePlan.lanes.map((l) => l.leftPct) : undefined}
+              />
+            )}
           </div>
         </div>
       </div>

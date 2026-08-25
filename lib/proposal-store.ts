@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
 import { usePlannerStore } from './planner-store';
+import { inactiveItemIdsOn } from './active';
 import { useAISettingsStore } from './ai-settings-store';
 import { resolveAICapabilities } from './ai-registry';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
@@ -39,8 +40,20 @@ interface ProposalStore {
 const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 
 function plannerContext() {
-  const { items, itemTypes } = usePlannerStore.getState();
-  return { items, customTypeNames: itemTypes.map((t) => t.name), todayStr: todayStr() };
+  const state = usePlannerStore.getState();
+  const today = todayStr();
+  return {
+    items: state.items,
+    customTypeNames: state.itemTypes.map((t) => t.name),
+    todayStr: today,
+    // Work a routine or program has paused today is not "waiting on you" — the
+    // same rule the auto-age sweep and the past-due bar obey.
+    inactiveIds: inactiveItemIdsOn(state.items, today, {
+      userTimezone: state.userTimezone,
+      routines: state.routines,
+      programs: state.programs,
+    }),
+  };
 }
 
 function stamp(draft: { summary: string; rationale?: string; operations: Proposal['operations'] }): Proposal {

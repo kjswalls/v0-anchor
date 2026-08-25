@@ -59,6 +59,46 @@ export async function waitForAppReady(page: Page): Promise<void> {
     page.getByRole('button', { name: 'User menu' }),
     'app rendered but no signed-in user — the injected session did not take'
   ).toBeVisible({ timeout: 20_000 });
+
+  /**
+   * …and the planner store's INITIAL FETCH has landed.
+   *
+   * Hydration is not enough, and the difference is destructive rather than
+   * merely slow. `initializeStore` replaces `projects`, `habitGroups` and
+   * `items` wholesale when it resolves, so anything written in the window
+   * between mount and that resolve is silently discarded. A test that acted on
+   * "the page is interactive" could create a project, watch the row and its
+   * detail pane appear, and then find the list back at "No projects yet." — the
+   * failure reads as a broken create, not as a race, and it lands on whichever
+   * spec happens to interact soonest after a reload.
+   *
+   * That is exactly how organize.spec.ts failed on its first ever run: the one
+   * test in the file that did not do a second reload first.
+   */
+  await expect(
+    page.getByTestId('view-root').first(),
+    'planner data never arrived — the store never finished its initial fetch'
+  ).toHaveAttribute('data-loaded', 'true', { timeout: 20_000 });
+
+  /**
+   * …and no full-screen scrim is still eating clicks.
+   *
+   * components/onboarding/onboarding-tour.tsx renders a `fixed inset-0 z-[100]`
+   * overlay, and lib/user-profile.ts reads `data?.onboarding_completed ?? false`
+   * — so between first paint and the profile arriving, the app believes nobody
+   * has onboarded and puts the tour up. global-setup.ts marks the test user
+   * onboarded, so it always comes back down; the window is just wide enough
+   * under parallel load for the first click to land on the backdrop instead of
+   * the control.
+   *
+   * That surfaces as "<div class=…backdrop-blur-sm> intercepts pointer events"
+   * inside whatever helper clicked first, which reads as a bug in the feature
+   * under test rather than a readiness problem. Hence: here, once.
+   */
+  await expect(
+    page.locator('div.fixed.inset-0.z-\\[100\\]'),
+    'the onboarding tour scrim never went away — is the test user onboarded?'
+  ).toHaveCount(0, { timeout: 20_000 });
 }
 
 /* ── items ─────────────────────────────────────────────────────────────── */
@@ -179,16 +219,29 @@ export async function navigateToDate(page: Page, targetDateStr: string): Promise
 
 /* ── omnibar / commands ────────────────────────────────────────────────── */
 
+// The dock and the ⌘K launcher render the SAME <Omnibar>, so they share every
+// testid. Scope by data-omnibar-variant so a locator is unambiguous even when
+// the launcher is open over the dock.
+//
+// NOT getByLabel('Omnibar'): cmdk gives this input role="combobox" and
+// Playwright's label engine does not resolve aria-label on it — verified 0
+// matches while [aria-label="Omnibar"] matched 1. That single locator was the
+// whole of the omnibar spec's 60s timeouts.
 export function omnibar(page: Page): Locator {
-  // NOT getByLabel('Omnibar'): cmdk gives this input role="combobox" and
-  // Playwright's label engine does not resolve aria-label on it — verified 0
-  // matches while [aria-label="Omnibar"] matched 1. That single locator was the
-  // whole of the omnibar spec's 60s timeouts.
-  return page.getByTestId('omnibar-input');
+  return page.locator('[data-omnibar-variant="dock"] [data-testid="omnibar-input"]');
 }
 
 export function omnibarPanel(page: Page): Locator {
-  return page.getByTestId('omnibar-panel');
+  return page.locator('[data-omnibar-variant="dock"] [data-testid="omnibar-panel"]');
+}
+
+/** The summoned ⌘K launcher's input and its command/results panel. */
+export function launcherInput(page: Page): Locator {
+  return page.locator('[data-omnibar-variant="launcher"] [data-testid="omnibar-input"]');
+}
+
+export function launcherPanel(page: Page): Locator {
+  return page.locator('[data-omnibar-variant="launcher"] [data-testid="omnibar-panel"]');
 }
 
 /**
@@ -222,4 +275,55 @@ export async function runCommand(
       `with query "${options.query ?? '/'}"`
   ).toBeVisible({ timeout: 5_000 });
   await row.click();
+}
+
+/**
+ * Run a palette command that takes an ENTITY argument, e.g. items.pause.
+ *
+ * Two interactions, not one — which is why runCommand's `arg` option cannot do
+ * it. `arg` addresses a row that already exists in the main list, and that only
+ * happens for FLATTENED ENUM options (lib/commands/match.ts). An entity command
+ * has exactly one row until it is clicked; clicking it CHIPS the command, and
+ * only then does the picker render its item rows.
+ *
+ * `pick` is REQUIRED, and it is the whole reason this helper is careful: the
+ * chip clears the query, and the picker then slices the eligible set down to
+ * PICKER_LIMIT ordered by proximity to today (lib/commands/entities.ts). On the
+ * shared e2e user — which accumulates rows from every other spec — a fixture is
+ * very unlikely to survive that slice. Typing narrows the candidate set the way
+ * a real user would, and makes the assertion about THIS item rather than about
+ * how many items happen to exist.
+ */
+export async function runEntityCommand(
+  page: Page,
+  commandId: string,
+  entityId: string,
+  pick: string,
+  options: { query?: string } = {}
+): Promise<void> {
+  const input = omnibar(page);
+  await input.click();
+  await input.fill(options.query ?? '/');
+
+  const commandRow = omnibarPanel(page).locator(`[data-command-id="${commandId}"]`).first();
+  await expect(
+    commandRow,
+    `no palette row for command "${commandId}" with query "${options.query ?? '/'}"`
+  ).toBeVisible({ timeout: 5_000 });
+  await commandRow.click();
+
+  // Chipping clears the query (omnibar's runCommand), so this types into an
+  // empty picker rather than appending to the command alias.
+  await input.fill(pick);
+
+  const entityRow = omnibarPanel(page)
+    .locator(`[data-command-id="${commandId}"][data-arg="${entityId}"]`)
+    .first();
+  await expect(
+    entityRow,
+    `command "${commandId}" was chipped and its picker filtered by "${pick}", but no row for ` +
+      `entity "${entityId}" — either the item is not eligible for this command, or the filter ` +
+      `does not match its title`
+  ).toBeVisible({ timeout: 5_000 });
+  await entityRow.click();
 }

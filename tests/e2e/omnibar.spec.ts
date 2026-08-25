@@ -8,17 +8,22 @@ import {
   testTitle,
   apiKey,
 } from './helpers/api';
-import { reloadApp, omnibar, omnibarPanel } from './helpers/app';
+import { reloadApp, omnibar, omnibarPanel, launcherInput, launcherPanel } from './helpers/app';
 import { getTodayStr } from './helpers/dates';
+import { BASE_URL } from './helpers/env';
 
 /**
- * Omnibar — the app's ONLY command surface (there is no ⌘K modal), and the only
- * route to ~15 commands including "Add habit", the EOD review, and group-by.
+ * Omnibar — the shared command surface, rendered in two shells: the docked
+ * sidebar capture bar (this block) and the summoned ⌘K launcher (below). It is
+ * the only route to ~15 commands including "Add habit", the EOD review, and
+ * group-by. All four modes (search · +add · /command · ?chat) work in both
+ * shells; only the emphasis differs.
  *
  * Every locator here is a testid or a `data-command-id` / `data-item-id`, never
  * row copy. Command labels collide with their own group headings — `Settings` is
  * simultaneously a command and a group — so a text match resolves by scoring
  * accident and turns into a strict-mode violation the moment keywords change.
+ * Helpers scope by `data-omnibar-variant` so the two shells never clash.
  */
 test.describe('Omnibar', () => {
   test.beforeEach(async ({ page }) => {
@@ -111,7 +116,7 @@ test.describe('Omnibar', () => {
       await expect
         .poll(
           async () => {
-            const res = await page.request.get('http://localhost:3000/api/agent/context', {
+            const res = await page.request.get(`${BASE_URL}/api/agent/context`, {
               headers: { Authorization: `Bearer ${apiKey()}` },
             });
             const body = await res.json();
@@ -146,7 +151,11 @@ test.describe('Omnibar', () => {
     await expect(omnibarPanel(page).locator('[data-command-id="app.feedback"]')).toHaveCount(0);
 
     await settings.click();
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+    // Settings is a route now, not a dialog — so this asserts the URL and the
+    // page root rather than role="dialog". The test is still about "running a
+    // command opens its surface"; only the surface changed.
+    await expect(page).toHaveURL(/\/settings(\/|$)/, { timeout: 5_000 });
+    await expect(page.getByTestId('settings-page')).toBeVisible({ timeout: 10_000 });
   });
 
   test('the palette exposes an add-habit command (the only habit entry point)', async ({ page }) => {
@@ -171,6 +180,73 @@ test.describe('Omnibar', () => {
     await input.press('Escape');
     await expect(input).toHaveValue('');
     await expect(omnibarPanel(page)).toHaveCount(0);
+  });
+});
+
+test.describe('Omnibar launcher (⌘K)', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await reloadApp(page);
+  });
+
+  test('⌘K summons the launcher, focused', async ({ page }) => {
+    await page.keyboard.press('ControlOrMeta+k');
+
+    const input = launcherInput(page);
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await expect(input).toBeFocused();
+    await expect(page.getByTestId('omni-launcher')).toBeVisible();
+  });
+
+  test('"/" summons the launcher already in command mode', async ({ page }) => {
+    // Pressed with no field focused, '/' is the global command entry.
+    await page.keyboard.press('/');
+
+    const input = launcherInput(page);
+    await expect(input).toBeVisible({ timeout: 5_000 });
+    await expect(input).toHaveValue('/');
+    await expect(
+      launcherPanel(page).locator('[data-command-id="app.settings"]')
+    ).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('running a command from the launcher closes it and opens the surface', async ({ page }) => {
+    await page.keyboard.press('ControlOrMeta+k');
+    await launcherInput(page).fill('/settings');
+
+    const settings = launcherPanel(page).locator('[data-command-id="app.settings"]');
+    await expect(settings).toBeVisible({ timeout: 5_000 });
+    await settings.click();
+
+    await expect(page).toHaveURL(/\/settings(\/|$)/, { timeout: 5_000 });
+    await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
+  });
+
+  test('Escape dismisses the launcher when empty', async ({ page }) => {
+    await page.keyboard.press('ControlOrMeta+k');
+    await expect(launcherInput(page)).toBeVisible({ timeout: 5_000 });
+
+    await launcherInput(page).press('Escape');
+    await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
+  });
+
+  test('Escape clears a typed query first, then closes (two-step)', async ({ page }) => {
+    // Radix would dismiss on the first Escape (its handler runs in the document
+    // capture phase); the launcher host preventDefaults that so the omnibar owns
+    // the staged clear-then-close. This guards that wiring.
+    await page.keyboard.press('ControlOrMeta+k');
+    const input = launcherInput(page);
+    await expect(input).toBeVisible({ timeout: 5_000 });
+
+    await input.fill('foo');
+    await input.press('Escape');
+    // First Escape clears the query but leaves the launcher open.
+    await expect(input).toHaveValue('');
+    await expect(page.getByTestId('omni-launcher')).toBeVisible();
+
+    // Second Escape (now empty) closes it.
+    await input.press('Escape');
+    await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
   });
 });
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
@@ -17,10 +17,12 @@ import {
 import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
+import { BulkActionBar } from '@/components/shell/bulk-action-bar';
+import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
-import { ManageCategoriesDialog } from '@/components/planner/manage-categories-dialog';
-import { SettingsDialog } from '@/components/planner/settings-dialog';
+import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
+import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
@@ -28,6 +30,7 @@ import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
@@ -37,15 +40,17 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
+import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { isOnboardingComplete, resetOnboardingComplete } from '@/lib/user-profile';
+import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
@@ -57,9 +62,16 @@ function KbdHint() {
   return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
 }
 
-function DraggableTaskOverlay({ title }: { title: string }) {
+function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
-    <div className="flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
+    <div className="relative flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
+      {/* Group drag: a count badge over the primary row, so you see what you
+          grabbed AND how many travel with it. */}
+      {count > 1 && (
+        <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground shadow-soft-sm">
+          {count}
+        </span>
+      )}
       <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
       <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
       <div className="min-w-0 flex-1">
@@ -72,18 +84,26 @@ function DraggableTaskOverlay({ title }: { title: string }) {
 /** Own subscriber so mounting the ghost never waits on an AppShell render. */
 function DragGhost() {
   const activeId = useDragStore((s) => s.activeId);
+  // Count travels only when the dragged row is itself part of a multi-selection.
+  const groupCount = useSelectionStore((s) =>
+    activeId && s.selectedIds.has(activeId) && s.selectedIds.size >= 2 ? s.selectedIds.size : 0
+  );
   const title = usePlannerStore((s) =>
     activeId
       ? (s.tasks.find((t) => t.id === activeId) ?? s.habits.find((h) => h.id === activeId))?.title ??
         null
       : null
   );
-  return <DragOverlay>{title !== null && <DraggableTaskOverlay title={title} />}</DragOverlay>;
+  return (
+    <DragOverlay>
+      {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
+    </DragOverlay>
+  );
 }
 
 /**
- * App shell: owns the DndContext, global keyboard shortcuts, auto-triggers
- * (EOD/morning), the dialog mount point, and the desktop/mobile split.
+ * App shell: owns the DndContext, global keyboard shortcuts, the EOD deep
+ * link, the dialog mount point, and the desktop/mobile split.
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
@@ -98,6 +118,7 @@ export function AppShell() {
     deleteHabit,
     moveTaskToProjectBlock,
     selectedDate,
+    userTimezone,
   } = usePlannerStore();
   const { setChatExpanded } = useSidebarStore();
   const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
@@ -112,6 +133,7 @@ export function AppShell() {
   // unschedule it fires is picked up by the already-mounted toast subscriber.
   useOverdueSweep();
 
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
@@ -191,35 +213,13 @@ export function AppShell() {
     }
   }, []);
 
-  // EOD auto-trigger: open the EOD review modal when the review time has passed today
-  const eodStore = useEODStore();
-  useEffect(() => {
-    if (!eodStore.eodReviewEnabled) return;
-
-    const userTz =
-      usePlannerStore.getState().userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const now = new Date();
-
-    const todayStr = new Intl.DateTimeFormat('en-CA', {
-      timeZone: userTz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(now);
-
-    if (eodStore.lastEodReviewDate === todayStr) return;
-
-    const currentTime = new Intl.DateTimeFormat('en-GB', {
-      timeZone: userTz,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(now);
-
-    if (currentTime >= eodStore.eodReviewTime) {
-      eodStore.open();
-    }
-  }, [eodStore.eodReviewEnabled, eodStore.eodReviewTime]);
+  // There is deliberately NO in-app EOD auto-trigger here. There used to be
+  // one (open the review on load once the review time had passed), and it made
+  // every refresh after that time re-open the modal until "Done for today" was
+  // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
+  // instead: the rituals.eod palette command, or the nightly push notification
+  // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
+  // settings) whose tap lands on the ?eod=1 deep link above.
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -253,17 +253,105 @@ export function AppShell() {
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
 
+    // One timezone-correct day string, shared by resolveDrop and the group
+    // branch below — the user's saved tz, matching how days are derived.
+    const userTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     const command = resolveDrop(itemId, over.id as string, {
       itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
       draggedTaskProject: draggedTask?.project,
-      selectedDateStr: format(selectedDate, 'yyyy-MM-dd'),
+      selectedDate,
+      userTimezone: userTz,
       getRefTime: (refType, refId) =>
         refType === 'task'
           ? tasks.find((t) => t.id === refId)?.startTime
           : habits.find((h) => h.id === refId)?.startTime,
       inferDropTime,
     });
+
+    // Group drag: when the dragged row is part of a multi-selection (>=2), the
+    // whole selection moves. Routed by drop target; each verb is one undo.
+    // Timed drops degrade to the target's bucket (untimed) — N items can't share
+    // one clock time. Only task-likes are date-addressable/braindump-eligible,
+    // so the bulk verbs quietly skip habits where that applies.
+    const selection = useSelectionStore.getState();
+    if (selection.selectedIds.has(itemId) && selection.selectedIds.size >= 2) {
+      const overId = over.id as string;
+      const groupIds = [...selection.selectedIds];
+      // Task-likes are the only date-addressable / braindump-eligible members;
+      // unschedule and date-move no-op on habits, so gate `acted` on this so a
+      // fully-ineligible group falls through instead of silently clearing.
+      const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
+      const planner = usePlannerStore.getState();
+      const milestoneIds = milestoneItemIds(planner.goals);
+      // What the primary drop resolved to: a bucket always, and — for a TIMED
+      // slot (an hour cell) — a clock time. A timed target schedules the whole
+      // group AT that time so they land as visible blocks; an untimed target
+      // (bare bucket / Anytime / week column) assigns the bucket untimed.
+      const targetBucket = command && 'bucket' in command ? command.bucket : undefined;
+      const targetTime = command && 'time' in command ? command.time : undefined;
+      const selectedDayStr = toDateStr(selectedDate, userTz);
+      let acted = false;
+      if (overId === 'sidebar') {
+        // `acted` gates the selection clear and the drop animation, so it has
+        // to mean "something was written". unscheduleTasks refuses milestones
+        // (their startDate is a goal's target date), so an all-milestone
+        // selection dragged here would have cleared the selection and animated
+        // a success over zero writes.
+        const writable = taskLikeIds.filter((id) => !milestoneIds.has(id));
+        if (writable.length) {
+          planner.unscheduleTasks(groupIds);
+          acted = true;
+        }
+      } else if (overId.startsWith('projectblock:')) {
+        const proj = overId.slice('projectblock:'.length);
+        const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
+        if (ids.length) {
+          planner.moveTasksToProjectBlock(ids);
+          acted = true;
+        }
+      } else if (overId.startsWith('week:') || overId.startsWith('weekhour:')) {
+        const dateStr = overId.split(':')[1];
+        if (dateStr && targetBucket && targetTime) {
+          // Timed week cell (weekhour): schedule the group AT that time on that
+          // day so they show as blocks.
+          planner.scheduleItemsAt(groupIds, targetBucket, targetTime, dateStr);
+          acted = true;
+        } else if (dateStr && targetBucket && taskLikeIds.length) {
+          // Untimed week column: carry to the date + bucket (habits excluded).
+          planner.moveTasksToDate(groupIds, dateStr, targetBucket);
+          acted = true;
+        }
+      } else if (targetBucket && targetTime) {
+        // Day-grid hour slot: schedule AT that time on the viewed day, so a
+        // multi-drop shows up where it was dropped (not untimed in Anytime).
+        planner.scheduleItemsAt(groupIds, targetBucket, targetTime, selectedDayStr);
+        acted = true;
+      } else if (targetBucket) {
+        planner.assignItemsToBucket(groupIds, targetBucket);
+        acted = true;
+      }
+      if (acted) {
+        // Same reason as the single-item path below: a group that lands in a
+        // shut bucket has to be visible where it landed. This branch returns
+        // early, so it needs its own call.
+        if (targetBucket) useViewStore.getState().expandBucket(targetBucket);
+        selection.clear();
+        return;
+      }
+      // Target wasn't actionable for a group — fall through to single-item.
+    }
+
     if (!command) return;
+
+    // A shut bucket still takes drops (see bucket-card's collapse note), so it
+    // has to open to show what just landed — otherwise the count ticks up
+    // behind a closed sliver and the drag reads as having failed. Placed before
+    // the switch so it covers every bucket-bearing verb, and it no-ops (same
+    // array back) when the bucket was already open.
+    if ('bucket' in command) {
+      useViewStore.getState().expandBucket(command.bucket);
+    }
 
     switch (command.kind) {
       case 'schedule-task':
@@ -301,6 +389,27 @@ export function AppShell() {
   }, [tasks, habits]);
 
   const handleShortcutDelete = useCallback(() => {
+    // A genuine multi-selection (>=2) wins over the hovered item: Backspace
+    // deletes the whole selection (one confirm, one undo). A single selected row
+    // is just the "current / open row" (every plain click selects one), so at
+    // size 1 we fall through to the hovered-item path as before.
+    const selection = useSelectionStore.getState();
+    if (selection.selectedIds.size >= 2) {
+      const ids = [...selection.selectedIds];
+      const n = ids.length;
+      confirm({
+        title: `Delete ${n} ${n === 1 ? 'item' : 'items'}?`,
+        description:
+          'This will permanently delete the selected items (and any subtasks). This action cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: () => {
+          usePlannerStore.getState().deleteItems(ids);
+          selection.clear();
+        },
+      });
+      return;
+    }
     const { id, type } = hoveredItem;
     if (!id || !type) return;
     const item =
@@ -335,6 +444,7 @@ export function AppShell() {
         type: activeDialog.tab,
         bucket: activeDialog.bucket,
         date: activeDialog.date,
+        title: activeDialog.title,
       };
     }
     if (activeDialog?.type === 'edit-item') {
@@ -383,31 +493,24 @@ export function AppShell() {
 
       <DragGhost />
 
+      {/* Add is always the modal. Desktop EDIT is the docked panel, which
+          DesktopShell mounts as a layout sibling of the canvas; mobile edit
+          stays the bottom sheet, where there is no room to dock anything. */}
       <ItemDialog
-        state={itemDialogState}
+        state={itemDialogState?.mode === 'add' || isMobile ? itemDialogState : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
 
-      <ManageCategoriesDialog
-        open={activeDialog?.type === 'manage-categories'}
-        defaultTab={activeDialog?.type === 'manage-categories' ? activeDialog.tab : undefined}
+      {/* Two unconditional mounts became one. The console is a component rather
+          than a route so it keeps the shell's services — the DndContext, the
+          undo toast, and ⌘Z, which every delete confirm's copy now explicitly
+          promises. */}
+      <OrganizeConsole
+        open={activeDialog?.type === 'organize'}
+        section={activeDialog?.type === 'organize' ? activeDialog.section : undefined}
+        focusId={activeDialog?.type === 'organize' ? activeDialog.focusId : undefined}
+        focusNew={activeDialog?.type === 'organize' ? activeDialog.focusNew : undefined}
         onOpenChange={(open) => !open && closeDialog()}
-      />
-
-      <SettingsDialog
-        open={activeDialog?.type === 'settings'}
-        onOpenChange={(open) => !open && closeDialog()}
-        onOpenKeyboardShortcuts={() => openDialog({ type: 'keyboard-shortcuts' })}
-        onReportBug={() => openDialog({ type: 'bug-report' })}
-        onReplayTour={async () => {
-          const supabase = createClient();
-          const { data } = await supabase.auth.getUser();
-          const uid = data.user?.id;
-          if (!uid) return;
-          await resetOnboardingComplete(uid);
-          setTourUserId(uid);
-          setShowTour(true);
-        }}
       />
 
       <KeyboardShortcutsModal
@@ -415,11 +518,22 @@ export function AppShell() {
         onOpenChange={(open) => !open && closeDialog()}
       />
 
+      <BulkAddDialog
+        open={activeDialog?.type === 'bulk-add'}
+        seed={activeDialog?.type === 'bulk-add' ? activeDialog : null}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      {/* ⌘K launcher — reads its own `launcher` slot off activeDialog. */}
+      <OmniLauncher />
+
       {showTour && tourUserId && (
         <OnboardingTour
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
-          onOpenSettings={() => openDialog({ type: 'settings' })}
+          // The tour calls handleComplete() before this fires, so navigating
+          // away doesn't abandon it. Beacon is the pane the step is about.
+          onOpenSettings={() => router.push('/settings/beacon')}
           onExpandChat={() => setChatExpanded(true)}
           onCollapseChat={() => setChatExpanded(false)}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
@@ -434,6 +548,8 @@ export function AppShell() {
       />
 
       <ConfirmDialog />
+
+      <BulkActionBar />
 
       {/* Persistent keyboard shortcuts hint — desktop only */}
       <div className="fixed bottom-4 right-4 z-30 hidden md:flex">

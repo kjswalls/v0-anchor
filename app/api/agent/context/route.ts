@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { HabitItem, TaskItem } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchItems, fetchProjects, fetchHabitGroups, toLegacyTask, toLegacyHabit } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchHabitGroups, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
+import { isOpenLoopSuppressedOn } from '@/lib/active'
+import { toDateStr } from '@/lib/recurrence'
 
 /**
  * GET /api/agent/context
@@ -26,31 +28,75 @@ export async function GET(req: NextRequest) {
   const dbClient = isBearer ? createServiceClient() : undefined
 
   const serviceClient = createServiceClient()
-  const [items, projects, habitGroups, settingsResult] = await Promise.all([
-    fetchItems(userId, undefined, dbClient),
-    fetchProjects(userId, dbClient),
-    fetchHabitGroups(userId, dbClient),
-    serviceClient
-      .from('user_settings')
-      .select('timezone')
-      .eq('user_id', userId)
-      .single(),
-  ])
+  const [
+    items,
+    projects,
+    habitGroups,
+    routinesResult,
+    programsResult,
+    goalsResult,
+    settingsResult,
+  ] =
+    await Promise.all([
+      fetchItems(userId, undefined, dbClient),
+      fetchProjects(userId, dbClient),
+      fetchHabitGroups(userId, dbClient),
+      // Both are needed for the filter below to see container-caused
+      // suppression. Without them the server answers "pending" for work the app
+      // itself hides, and the plugin nags about it.
+      fetchRoutines(userId, dbClient),
+      fetchPrograms(userId, dbClient),
+      fetchGoals(userId, dbClient),
+      serviceClient
+        .from('user_settings')
+        .select('timezone')
+        .eq('user_id', userId)
+        .single(),
+    ])
+  // null means the tables are unreachable — degrade to item-level pause rather
+  // than 500ing a read the plugin depends on.
+  //
+  // The nullable results stay in scope: the FILTER wants `[]` (resolve what we
+  // can), but the RESPONSE must not, because emitting an empty array asserts
+  // "you have no programs" to a consumer that could act on it. Those are
+  // different answers to different questions off one fetch.
+  const routines = routinesResult ?? []
+  const programs = programsResult ?? []
+
+  // Timezone priority: stored user setting → X-Timezone header fallback → UTC
+  // The client syncs the browser timezone to user_settings on every app load,
+  // so the stored value stays current even when users travel.
+  //
+  // Resolved BEFORE the projections below, which read it: this is a dateless
+  // surface, so "today" is the user's day per plan decision 3.
+  const userTimezone =
+    settingsResult.data?.timezone ??
+    req.headers.get('x-timezone') ??
+    'UTC'
+  const todayStr = toDateStr(new Date(), userTimezone)
 
   // The pinned tasks[]/habits[] arrays are projections of the same items
   // fetch — filtering preserves the per-type relative order the old
   // fetchTasks/fetchHabits queries produced. Future custom types appear in
   // items[] only.
-  const tasks = items.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
-  const habits = items.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
-
-  // Timezone priority: stored user setting → X-Timezone header fallback → UTC
-  // The client syncs the browser timezone to user_settings on every app load,
-  // so the stored value stays current even when users travel.
-  const userTimezone =
-    settingsResult.data?.timezone ??
-    req.headers.get('x-timezone') ??
-    'UTC'
+  //
+  // Suppressed OPEN LOOPS are dropped: a deployed plugin would otherwise
+  // narrate paused work as pending and nag about it, since the plugin has no
+  // concept of pausing and cannot get one without an npm republish. Arrays may
+  // shrink freely — that is schema-safe for every build ever published, whereas
+  // a new field or status value is not.
+  //
+  // Dropping whole rows takes their history with them, which is the ONE
+  // recorded waiver of the history rule (plan decision 6). It is acceptable
+  // only because items[] below stays unfiltered and carries the same rows
+  // complete, pause metadata included, for future plugin builds. A paused item
+  // that was already marked today is NOT an open loop, so it stays in these
+  // arrays and the plugin's narration keeps matching the EOD review.
+  const visible = items.filter(
+    (i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone, routines, programs })
+  )
+  const tasks = visible.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
+  const habits = visible.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
 
   return NextResponse.json({
     userId,
@@ -64,7 +110,20 @@ export async function GET(req: NextRequest) {
     // are projections of the unified items table (migration 019); version 3 =
     // unified items[] included alongside the legacy projections.
     items,
-    schemaVersion: 3,
+    // The suppression CAUSES, so a consumer can explain an absence instead of
+    // guessing at it. Without these, an item that leaves tasks[] because its
+    // program went out of season is indistinguishable from one that was
+    // deleted — and the sensible-looking repair (recreate it) is the wrong
+    // move on every count.
+    //
+    // Spread, not `routines: routinesResult ?? []`: see the note above the
+    // coalesce. An unreachable table omits the key rather than claiming zero.
+    ...(routinesResult ? { routines: routinesResult } : {}),
+    ...(programsResult ? { programs: programsResult } : {}),
+    // Same spread-or-omit rule, and the same reason: `[]` asserts "you have no
+    // goals" to a consumer whose natural repair is to offer to make one.
+    ...(goalsResult ? { goals: goalsResult } : {}),
+    schemaVersion: 5,
   })
 }
 

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 
-import { Moon, CheckCircle2, Circle, ArrowRight, Check, X } from 'lucide-react';
+import { Moon, CheckCircle2, Circle, ArrowRight, Check, X, SkipForward } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,10 +15,20 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
-import { ITEM_TYPES } from '@/lib/item-registry';
-import type { TimeBucket } from '@/lib/planner-types';
+import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
+import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
+import { isOpenLoopSuppressedOn } from '@/lib/active';
+import type { Item, Task, TimeBucket } from '@/lib/planner-types';
+
+/**
+ * The store's `tasks` projection is a filter, not a map, so every row still
+ * carries its runtime discriminator (`type`, and `customType` for custom
+ * types) — the same cast lib/search.ts and lib/commands/entities.ts make.
+ * Needed because the registry predicates take an `Item`.
+ */
+const asItem = (task: Task): Item => task as unknown as Item;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +60,13 @@ function formatDateInTz(date: Date, tz?: string | null): string {
 function actionLabel(action: TaskAction, userTimezone: string | null | undefined): string {
   if (!action) return '';
   if (action.type === 'dismissed') return 'Moved to sidebar';
+  // Nothing happened to the item, and the receipt says so without dressing it up
+  // as an achievement or a failure: it stayed where it was and it comes back on
+  // its own schedule. See the `left` branch of handleDismiss.
+  if (action.type === 'left') return 'Left for next time';
+  // The same neutral word the palette's `items.skip` command and the habit
+  // section below already use: a skipped day is a decision, not a failure.
+  if (action.type === 'skipped') return 'Skipped today';
   if (action.type === 'moved') {
     const tomorrow = tomorrowStr(userTimezone);
     if (action.to === tomorrow) return 'Moved to tomorrow';
@@ -64,15 +81,38 @@ function actionLabel(action: TaskAction, userTimezone: string | null | undefined
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type TaskAction = { type: 'moved'; to: string } | { type: 'dismissed' } | null;
+/**
+ * What the user did to a row this session.
+ *
+ * `dismissed` and `left` are the SAME gesture (the ✕) on two different kinds of
+ * item, and they are separate variants because they are separate outcomes:
+ * `dismissed` unscheduled a one-off task, `left` wrote nothing at all. Merging
+ * them would make the receipt lie about one of the two — and would lose the flag
+ * handleUndo reads to know there is nothing to restore.
+ *
+ * `skipped` is the recurring row's own verb (see handleSkipToday). Like `left`
+ * it has no undo-stack entry: the reversal is another intent-based store call
+ * (`setItemSkipped(id, false)`), not a restore of saved fields.
+ */
+type TaskAction =
+  | { type: 'moved'; to: string }
+  | { type: 'dismissed' }
+  | { type: 'left' }
+  | { type: 'skipped' }
+  | null;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function EODReview() {
-  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus } = usePlannerStore();
+  const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus, setItemSkipped } =
+    usePlannerStore();
   const { isOpen, close, saveLastReviewDate } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
 
   const today = todayStr(userTimezone);
 
@@ -85,8 +125,19 @@ export function EODReview() {
     const resolvedTz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const todayTasks = tasks.filter((t) => {
       if (t.status === 'cancelled') return false;
+      // Paused work is set aside, not owed — the review must not ask about it.
+      // This guard sits here rather than on the two partitions below because
+      // `isOpenLoopSuppressedOn` is already false for anything carrying a mark
+      // or a terminal status, so `completedTasks` passes through untouched:
+      // an item paused after being ticked today still shows under Done today
+      // (the history rule).
+      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, programs }))
+        return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
+      // A recurring task skipped for today was already decided on — the review
+      // shouldn't ask about it again, same as skipped habits (#194).
+      if (isSkippedOnDate(t, today)) return false;
       // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
       return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
     });
@@ -95,7 +146,7 @@ export function EODReview() {
       completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, today, userTimezone]);
+  }, [tasks, routines, programs, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());
@@ -165,6 +216,16 @@ export function EODReview() {
   }, [isOpen]);
 
   const handleMarkDone = (id: string) => {
+    // Done supersedes skipped, and the two are mutually exclusive per date
+    // (setItemSkipped clears a completion the same way in the other
+    // direction). Without this, ticking a row you had just skipped this
+    // session would leave the day BOTH skipped and completed, and every
+    // surface renders the skipped strip first — so the completion would be
+    // written and then be invisible.
+    if (taskActions.get(id)?.type === 'skipped') {
+      setItemSkipped(id, false, new Date());
+      setTaskActions((prev) => { const next = new Map(prev); next.delete(id); return next; });
+    }
     toggleTaskStatus(id, 'completed', new Date());
     setJustCompletedIds((prev) => new Set(prev).add(id));
     setJustUncompletedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -183,8 +244,22 @@ export function EODReview() {
     toggleHabitStatus(id, targetStatus, undefined, new Date());
   };
 
+  /**
+   * "Tomorrow" / the date picker. ONE-OFF tasks only — the controls are not
+   * rendered for a recurring row, and this is the belt to that suspenders.
+   *
+   * A recurring item's `startDate` is its recurrence ANCHOR, so writing a new
+   * one here does not move tonight's occurrence to Friday; it rewrites every
+   * future occurrence of the series (a Tuesday task anchored forward to Friday
+   * repeats on Fridays). There is no per-occurrence date override in the data
+   * model, so "move this one occurrence" is not expressible at all — the
+   * recurring row is offered "Skip today" instead. Same shape as the ✕ fix for
+   * issue #187 above: branch on isRecurring(), which is a runtime property of
+   * the item, not on its registry type.
+   */
   const handleMoveTo = (id: string, date: string) => {
     const task = pendingTasks.find((t) => t.id === id);
+    if (task && isRecurring(task)) return;
     setUndoStack((prev) => {
       const next = new Map(prev);
       if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, startTime: task?.startTime ?? null });
@@ -194,8 +269,54 @@ export function EODReview() {
     updateTask(id, { startDate: date });
   };
 
+  /**
+   * What a recurring row gets instead of the date controls: today's occurrence
+   * is marked "not this one" and the series is untouched.
+   *
+   * The write goes through setItemSkipped (#194), which is the only thing that
+   * may touch `skippedDates` — it is intent-based, gated on isSkippable()
+   * (capability AND recurrence), and for types whose vocabulary carries a skip
+   * value it routes through the status toggle so streaks stay server-owned.
+   * Writing the date array here by hand, or setting a scalar status, would
+   * both break that and (for tasks) push a value the OpenClaw plugin throws on.
+   *
+   * `new Date()` — not the store's selectedDate — because this review is about
+   * TODAY, the same day every other handler in this component acts on.
+   */
+  const handleSkipToday = (id: string) => {
+    const task = pendingTasks.find((t) => t.id === id);
+    if (!task || !isSkippable(asItem(task))) return;
+    setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'skipped' }); return next; });
+    setItemSkipped(id, true, new Date());
+  };
+
+  /**
+   * The ✕. One-off tasks go back to the Braindump; recurring ones are LEFT ALONE.
+   *
+   * A recurring item's startDate is its recurrence anchor, not the date of the
+   * occurrence you are looking at — so unscheduleTask (which clears startDate,
+   * timeBucket, startTime and isScheduled) doesn't dismiss tonight's instance,
+   * it deletes the whole series off the calendar and drops it in the sidebar.
+   * Issue #187: a task that repeats every Tuesday and gets dismissed on Tuesday
+   * night must still be there next Tuesday.
+   *
+   * So the recurring branch writes NOTHING. Not the scalar status either —
+   * recurring completion is per-date (`completedDates`), and a scalar
+   * 'completed'/'cancelled' here would both lie about the occurrence and
+   * silently retire every future one. The item stays incomplete on its date,
+   * exactly as the issue asks, and the receipt is purely session UI so the row
+   * stops asking to be triaged again in this sitting.
+   *
+   * Branching on isRecurring(), not on the item's TYPE: a recurring task and a
+   * one-off task are the same registry type, so this is a runtime property of
+   * the item and there is no capability question to ask instead.
+   */
   const handleDismiss = (id: string) => {
     const task = pendingTasks.find((t) => t.id === id);
+    if (task && isRecurring(task)) {
+      setTaskActions((prev) => { const next = new Map(prev); next.set(id, { type: 'left' }); return next; });
+      return;
+    }
     setUndoStack((prev) => {
       const next = new Map(prev);
       if (!next.has(id)) next.set(id, { startDate: task?.startDate ?? null, isScheduled: task?.isScheduled, timeBucket: task?.timeBucket, startTime: task?.startTime ?? null });
@@ -206,6 +327,22 @@ export function EODReview() {
   };
 
   const handleUndo = (id: string) => {
+    // A `left` receipt has no undo stack entry because it had nothing to stack:
+    // the dismissal wrote no fields. Clearing the receipt IS the whole reversal,
+    // and routing it through updateTask instead would push a history entry (and
+    // a db write) for a change that never happened.
+    if (taskActions.get(id)?.type === 'left') {
+      setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
+      return;
+    }
+    // A skip is reversed by the same intent-based verb that made it, not by
+    // replaying saved fields: setItemSkipped owns skippedDates (and, for
+    // habits, the status/streak interaction that goes with it).
+    if (taskActions.get(id)?.type === 'skipped') {
+      setItemSkipped(id, false, new Date());
+      setTaskActions((s) => { const next = new Map(s); next.delete(id); return next; });
+      return;
+    }
     const prev = undoStack.get(id);
     if (!prev) return;
     if (prev.isScheduled !== undefined) {
@@ -217,21 +354,52 @@ export function EODReview() {
     setUndoStack((s) => { const next = new Map(s); next.delete(id); return next; });
   };
 
+  /**
+   * The bulk carry. Recurring rows are excluded outright — not moved, and NOT
+   * given a receipt either.
+   *
+   * planner-store's own bulk verb says it in as many words ("Callers are
+   * responsible for excluding recurring items"), and this component is a
+   * caller. A recurring row left alone here keeps its Skip today / ✕ controls
+   * and stays in the unactioned count, which is the honest outcome: pretending
+   * it was "Moved to tomorrow" would be a receipt for a write that must never
+   * happen, and marking it actioned any other way would quietly retire a
+   * decision the user never made.
+   */
+  /**
+   * May this row be swept up by "Move all to tomorrow"?
+   *
+   * Recurring rows are excluded because moving one rewrites the whole series'
+   * anchor. MILESTONES are excluded for a different reason and the same
+   * consequence: a milestone's `startDate` is not a scheduling intention, it is
+   * the goal's target date — the record of when the checkpoint was meant to
+   * happen — so one habitual evening tap would walk a three-year goal's
+   * deadline forward a day, every night, invisibly. Moving one deliberately is
+   * still offered on the row itself; it is only the sweeping verb that refuses.
+   *
+   * Shared with `movableCount` rather than restated, so the footer button can
+   * never offer a verb that is about to be a no-op.
+   */
+  const isCarryable = (t: Task) =>
+    !justCompletedIds.has(t.id) &&
+    !taskActions.has(t.id) &&
+    !isRecurring(t) &&
+    !milestoneIds.has(t.id);
+
   const handleMoveAllToTomorrow = () => {
     const tomorrow = tomorrowStr(userTimezone);
-    pendingTasks
-      .filter((t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id))
-      .forEach((t) => handleMoveTo(t.id, tomorrow));
+    pendingTasks.filter(isCarryable).forEach((t) => handleMoveTo(t.id, tomorrow));
   };
 
   const handleDone = async () => {
     await saveLastReviewDate(userId, today);
   };
 
-  // Count unactioned pending tasks (not completed in session, not in taskActions)
-  const unactionedCount = pendingTasks.filter(
-    (t) => !justCompletedIds.has(t.id) && !taskActions.has(t.id)
-  ).length;
+  // How many rows the bulk verb would actually carry — the same predicate
+  // handleMoveAllToTomorrow uses, recurring exclusion included. It gates the
+  // footer button, so counting rows the verb refuses to touch would offer
+  // "Move all to tomorrow" on an evening where it is a no-op.
+  const movableCount = pendingTasks.filter(isCarryable).length;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
@@ -315,6 +483,12 @@ export function EODReview() {
                   const isDone = justCompletedIds.has(task.id);
                   const action = taskActions.get(task.id);
                   const hasAction = action !== undefined;
+                  // A recurring row is offered a different verb, because the
+                  // date controls have nothing to write on it: startDate is the
+                  // series anchor, and there is no per-occurrence override to
+                  // move instead. See handleMoveTo / handleSkipToday.
+                  const recurring = isRecurring(task);
+                  const canSkip = recurring && isSkippable(asItem(task));
 
                   return (
                     <li
@@ -358,64 +532,84 @@ export function EODReview() {
                         ) : (
                           /* Unactioned: show pill buttons */
                           <div className="flex items-center gap-1 shrink-0">
-                            {/* Tomorrow → */}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs gap-1 px-2"
-                              data-testid={`eod-tomorrow-btn-${task.id}`}
-                              onClick={() => handleMoveTo(task.id, tomorrowStr(userTimezone))}
-                            >
-                              Tomorrow
-                              <ArrowRight className="h-3 w-3" />
-                            </Button>
+                            {recurring ? (
+                              /* Skip today — the recurring row's stand-in for the
+                                 date controls. Rendered only when the type can
+                                 actually take a skip, so a hypothetical
+                                 non-skippable recurring type keeps the ✕ alone
+                                 rather than a button that would no-op. */
+                              canSkip && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1 px-2"
+                                  data-testid={`eod-skip-btn-${task.id}`}
+                                  onClick={() => handleSkipToday(task.id)}
+                                >
+                                  <SkipForward className="h-3 w-3" />
+                                  Skip today
+                                </Button>
+                              )
+                            ) : (
+                              <>
+                                {/* Tomorrow → */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1 px-2"
+                                  data-testid={`eod-tomorrow-btn-${task.id}`}
+                                  onClick={() => handleMoveTo(task.id, tomorrowStr(userTimezone))}
+                                >
+                                  Tomorrow
+                                  <ArrowRight className="h-3 w-3" />
+                                </Button>
 
-                            {/* 📅 Date picker — native input on mobile, Popover on desktop */}
-                            <>
-                              {/* Desktop: shadcn Popover + Calendar */}
-                              <Popover
-                                open={datePickerOpenId === task.id}
-                                onOpenChange={(open) => setDatePickerOpenId(open ? task.id : null)}
-                              >
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="hidden sm:inline-flex h-7 text-xs px-2"
-                                    data-testid={`eod-datepicker-btn-${task.id}`}
-                                  >
-                                    📅
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0" align="end">
-                                  <Calendar
-                                    mode="single"
-                                    fromDate={dateFromYmd(tomorrowStr(userTimezone))}
-                                    onSelect={(date) => {
-                                      if (date) {
-                                        handleMoveTo(task.id, formatDateInTz(date, userTimezone));
-                                        setDatePickerOpenId(null);
-                                      }
-                                    }}
+                                {/* 📅 Date picker — native input on mobile, Popover on desktop */}
+                                {/* Desktop: shadcn Popover + Calendar */}
+                                <Popover
+                                  open={datePickerOpenId === task.id}
+                                  onOpenChange={(open) => setDatePickerOpenId(open ? task.id : null)}
+                                >
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="hidden sm:inline-flex h-7 text-xs px-2"
+                                      data-testid={`eod-datepicker-btn-${task.id}`}
+                                    >
+                                      📅
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="end">
+                                    <Calendar
+                                      mode="single"
+                                      fromDate={dateFromYmd(tomorrowStr(userTimezone))}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          handleMoveTo(task.id, formatDateInTz(date, userTimezone));
+                                          setDatePickerOpenId(null);
+                                        }
+                                      }}
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                                {/* Mobile: label wrapping sr-only input — avoids onChange firing on scroll */}
+                                <label
+                                  htmlFor={`date-input-${task.id}`}
+                                  className="sm:hidden inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background cursor-pointer text-sm"
+                                >
+                                  📅
+                                  <input
+                                    id={`date-input-${task.id}`}
+                                    type="date"
+                                    min={tomorrowStr(userTimezone)}
+                                    className="sr-only"
+                                    onBlur={(e) => { if (e.target.value) handleMoveTo(task.id, e.target.value); }}
+                                    aria-label="Move task to date"
                                   />
-                                </PopoverContent>
-                              </Popover>
-                              {/* Mobile: label wrapping sr-only input — avoids onChange firing on scroll */}
-                              <label
-                                htmlFor={`date-input-${task.id}`}
-                                className="sm:hidden inline-flex items-center justify-center h-7 w-7 rounded-md border border-input bg-background cursor-pointer text-sm"
-                              >
-                                📅
-                                <input
-                                  id={`date-input-${task.id}`}
-                                  type="date"
-                                  min={tomorrowStr(userTimezone)}
-                                  className="sr-only"
-                                  onBlur={(e) => { if (e.target.value) handleMoveTo(task.id, e.target.value); }}
-                                  aria-label="Move task to date"
-                                />
-                              </label>
-                            </>
+                                </label>
+                              </>
+                            )}
 
                             {/* ✕ Dismiss */}
                             <Button
@@ -479,8 +673,8 @@ export function EODReview() {
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-4 mt-2 border-t border-border shrink-0">
-          {/* Move all to tomorrow — visible whenever ≥1 unactioned pending task */}
-          {unactionedCount > 0 ? (
+          {/* Move all to tomorrow — visible whenever ≥1 row it would move */}
+          {movableCount > 0 ? (
             <Button
               variant="outline"
               size="sm"

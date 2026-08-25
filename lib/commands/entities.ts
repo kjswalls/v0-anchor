@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { usePlannerStore } from '../planner-store';
 import { parseSearchQuery, searchItems } from '../search';
 import { isCompletedOnDate, isRecurring, toDateStr } from '../recurrence';
+import { isPausedOn } from '../active';
 import { getItemTypeConfig, itemTypeName } from '../item-registry';
 import { resolveCategoryIcon } from '../category-icons';
 import { scoreText } from './score';
@@ -81,8 +82,29 @@ export function isDoneOn(item: Item, dateStr: string): boolean {
   return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
 }
 
+/**
+ * Skipping is per-DATE for every type that supports it (`skippedDates`), so
+ * this reads the same array on a habit, a recurring task and a recurring
+ * custom type. Whether the item may be skipped at all is `isSkippable`.
+ */
 export function isSkippedOn(item: Item, dateStr: string): boolean {
-  return item.type === 'habit' && (item.skippedDates ?? []).includes(dateStr);
+  return (item.skippedDates ?? []).includes(dateStr);
+}
+
+/**
+ * Is this item paused RIGHT NOW?
+ *
+ * Deliberately takes no dateStr, unlike its skip sibling above. Every other
+ * item predicate here answers about the SELECTED day, which is right for
+ * per-occurrence state — but a pause is a stretch of time, not an occurrence,
+ * and the palette is a dateless surface (plan decision 3). Keyed on the
+ * selected day instead, Pause and Resume would swap places as the user walked
+ * the week across a resume boundary.
+ */
+export function isPausedNow(item: Item): boolean {
+  const { userTimezone } = usePlannerStore.getState();
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isPausedOn(item, toDateStr(new Date(), tz), tz);
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */
@@ -103,7 +125,7 @@ function allItems(): Item[] {
 
 /**
  * Candidates for a typed query, via the omnibar's own search — so the keyword
- * grammar comes along for free: "complete project:Work", "delete type:goal".
+ * grammar comes along for free: "complete project:Work", "delete type:errand".
  * searchItems returns nothing for an empty query (by design, for the search
  * surface), which is why the empty case reads the projections directly.
  */
@@ -166,7 +188,7 @@ export function itemContainer(item: Item): { name: string; glyph: string } | und
 
 /**
  * Row glyph. Custom types get the icon picked when the type was created, which
- * is the only thing distinguishing a "goal" row from a task row at a glance.
+ * is the only thing distinguishing an "errand" row from a task row at a glance.
  */
 export function itemIcon(item: Item): LucideIcon {
   const name = itemTypeName(item);
@@ -184,17 +206,35 @@ export function itemIcon(item: Item): LucideIcon {
  * the store's items array (rebuilt on every mutation) plus the selected date,
  * so a palette-wide pass over N item commands costs one scan each per edit
  * rather than one per keypress.
+ *
+ * The key also carries WALL-CLOCK today. Every other predicate here (isDoneOn,
+ * isSkippedOn) is a pure function of (items, dateStr), which is why that pair
+ * was the whole key; isPausedNow is the first that reads `new Date()` itself,
+ * because pausing is dateless (plan decision 3). Without today in the key, an
+ * app left open overnight keeps answering with yesterday's verdict — offering
+ * "Resume" for a pause that expired at midnight, then an empty picker.
  */
-let eligibilityCache: { items: readonly Item[]; dateStr: string; results: Map<string, boolean> } = {
+let eligibilityCache: {
+  items: readonly Item[];
+  dateStr: string;
+  today: string;
+  results: Map<string, boolean>;
+} = {
   items: [],
   dateStr: '',
+  today: '',
   results: new Map(),
 };
 
 function anyEligible(id: string, eligible: Eligible, dateStr: string): boolean {
-  const { items } = usePlannerStore.getState();
-  if (eligibilityCache.items !== items || eligibilityCache.dateStr !== dateStr) {
-    eligibilityCache = { items, dateStr, results: new Map() };
+  const { items, userTimezone } = usePlannerStore.getState();
+  const today = toDateStr(new Date(), userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (
+    eligibilityCache.items !== items ||
+    eligibilityCache.dateStr !== dateStr ||
+    eligibilityCache.today !== today
+  ) {
+    eligibilityCache = { items, dateStr, today, results: new Map() };
   }
   const cached = eligibilityCache.results.get(id);
   if (cached !== undefined) return cached;

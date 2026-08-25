@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GroupBy, Priority } from './planner-types';
+import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
+import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { isSortBy, type SortBy } from './sort-rows';
+// week-columns imports ViewLayout back from here, but type-only — erased at
+// compile time, so there is no runtime cycle.
+import {
+  clampWeekDays,
+  isScalableLayout,
+  stepWeekDaysFromLastCanvas,
+} from './week-columns';
 
 /**
  * View preferences for the redesigned canvas: what slice of time you're
@@ -16,33 +25,74 @@ import { usePlannerStore } from './planner-store';
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program';
+
+const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
+  'none',
+  'type',
+  'project',
+  'routine',
+  'program',
+];
+
+/**
+ * Coerce a persisted `braindumpGroupBy`.
+ *
+ * Same hazard `isGroupBy` guards on the canvas side: an unrecognised string
+ * reaches `groupRows`, whose container branch is the fallthrough, so a stale or
+ * devtools-edited value would silently group the braindump by project. This
+ * union is user-persisted in `anchor-view` and was widened after ship, so a blob
+ * written when it was 'none' | 'type' | 'project' is fine, but a garbage value is
+ * not — and unlike the canvas keys, this one was never coerced in `merge` before.
+ */
+export const isBraindumpGroupBy = (v: unknown): v is BraindumpGroupBy =>
+  typeof v === 'string' && (BRAINDUMP_GROUP_BY_VALUES as readonly string[]).includes(v);
 /** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
 export type TypeMode = 'sans' | 'serif';
+/**
+ * Chrome drawn on a schedule block when it's hovered/selected — the corner
+ * registration plus the resize grips. All three are 1px --ink-1 hairline and
+ * reveal on hover; they differ only in FORM (see components/views/day-schedule).
+ *   nodes  — CAD bounding-box handles: hollow squares on the vertices (default)
+ *   target — prepress registration crosshairs floating off each corner
+ *   trim   — trim-mark lozenges + a three-patch ink strip for the grip
+ */
+export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
+/**
+ * How a bucket is drawn in day/week × buckets. Both variants share everything
+ * that made the redesign worth doing — the header band is vacated in each, an
+ * empty bucket collapses to its caption, a drag opens a recess, and both are
+ * collapsible — so this only picks where the bucket's glyph lives and what the
+ * body is at rest.
+ *   spine — "threaded seam". One hairline runs the height of the day; the glyph
+ *           is a bead pinned to it, and the body is a floating card the rail
+ *           passes OVER, biting its top-left shoulder. "Now" is a lime segment
+ *           of the rail with the bucket's own extent.
+ *   tray  — no rail; the glyph sits inline in the caption and the rows live in a
+ *           bordered, recessed tray. "Now" is a solid lime disc plus a lime rule
+ *           down the tray's left wall.
+ * See components/primitives/bucket-card.tsx.
+ */
+export type BucketStyle = 'spine' | 'tray';
 
-export interface BraindumpFilters {
-  projects: string[];
-  priorities: string[];
-  hideCompleted: boolean;
-}
+/**
+ * The filter shape lives in lib/filters.ts, which is store-free so the pure
+ * derivation modules can import it too.
+ *
+ * There used to be FOUR declarations of one concept — `BraindumpFilters`,
+ * `CanvasFilters`, `DayItemFilters` and `FilterPopoverValue` — and two of them
+ * disagreed: `priorities` was `string[]` on one and `Priority[]` on the other,
+ * for a value that only ever came from a `Priority[]` const.
+ *
+ * The braindump and the canvas still hold SEPARATE VALUES; only the shape is
+ * shared.
+ */
+export type { ViewFilters };
+export { EMPTY_VIEW_FILTERS };
 
-const EMPTY_BRAINDUMP_FILTERS: BraindumpFilters = {
-  projects: [],
-  priorities: [],
-  hideCompleted: false,
-};
-
-export interface CanvasFilters {
-  projects: string[];
-  priorities: Priority[];
-  hideCompleted: boolean;
-}
-
-const EMPTY_CANVAS_FILTERS: CanvasFilters = {
-  projects: [],
-  priorities: [],
-  hideCompleted: false,
-};
+/** @deprecated Aliases so the rename lands in one commit. Prefer `ViewFilters`. */
+export type BraindumpFilters = ViewFilters;
+export type CanvasFilters = ViewFilters;
 
 interface ViewStore {
   scope: ViewScope;
@@ -50,9 +100,38 @@ interface ViewStore {
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
-  braindumpFilters: BraindumpFilters;
-  canvasFilters: CanvasFilters;
+  /** Ordering, per surface. List surfaces only — see lib/sort-rows.ts. */
+  canvasSortBy: SortBy;
+  braindumpSortBy: SortBy;
+  braindumpFilters: ViewFilters;
+  canvasFilters: ViewFilters;
   typeMode: TypeMode;
+  scheduleMarkStyle: ScheduleMarkStyle;
+  /**
+   * How many day columns the week views try to fit across the canvas — the
+   * value behind the week scale control. Stored as a day COUNT, not a pixel
+   * width, so it keeps meaning the same thing when the canvas resizes under it
+   * (item panel, sidebar, window). lib/week-columns.ts turns it into pixels.
+   *
+   * `null` means the user has never adjusted it, and is NOT the same as landing
+   * on the default by choice: while it is null the view picks whichever stop
+   * comes nearest TARGET_COL_PX on the canvas it actually has, and keeps
+   * re-picking as that canvas changes. The first adjustment writes a number and
+   * that is what persists from then on.
+   */
+  weekDaysVisible: number | null;
+  bucketStyle: BucketStyle;
+  /**
+   * Buckets the user has shut, in BOTH day and week — the state is the bucket,
+   * not the bucket-on-a-date, so collapsing Morning shuts it in all seven week
+   * columns at once ("I'm not thinking about mornings"). Per-date collapse would
+   * make the week view's columns disagree about their own rhythm, and there is
+   * no surface that would show you which dates you had shut.
+   *
+   * An array rather than a Set or a Record so it round-trips through the persist
+   * middleware's JSON without a serializer.
+   */
+  collapsedBuckets: TimeBucket[];
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -61,9 +140,39 @@ interface ViewStore {
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
-  setBraindumpFilters: (filters: BraindumpFilters) => void;
-  setCanvasFilters: (filters: CanvasFilters) => void;
+  setCanvasSortBy: (sortBy: SortBy) => void;
+  setBraindumpSortBy: (sortBy: SortBy) => void;
+  setBraindumpFilters: (filters: ViewFilters) => void;
+  setCanvasFilters: (filters: ViewFilters) => void;
+  /**
+   * Follow a container rename through the persisted filter refs.
+   *
+   * `containers` holds `project:Work` / `group:Wellness` — NAMES, in
+   * localStorage, from before containers had stable ids. Renaming was parked
+   * until migration 027, so these could never go stale; now they can, and a
+   * stale ref does not degrade gracefully: `passesContainerFilter` matches
+   * nothing, so the canvas or the braindump empties completely and the only
+   * clue is a filter chip naming a project that no longer exists.
+   *
+   * Called from the rename site rather than from planner-store's action,
+   * because this store already imports planner-store and the reverse would
+   * close a cycle.
+   */
+  renameContainerRef: (kind: 'project' | 'group', from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
+  setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
+  /** `null` hands the choice back to the width-derived default. */
+  setWeekDaysVisible: (days: number | null) => void;
+  /** Move along the ladder by `delta` stops; +1 is one step wider. */
+  stepWeekDaysVisible: (delta: number) => void;
+  setBucketStyle: (style: BucketStyle) => void;
+  toggleBucketCollapsed: (bucket: TimeBucket) => void;
+  /**
+   * Force a bucket open. Called when a drop lands in one (see app-shell's
+   * handleDragEnd): dropping into a shut bucket would otherwise swallow the
+   * item — the count ticks up but nothing appears, which reads as a failed drop.
+   */
+  expandBucket: (bucket: TimeBucket) => void;
 }
 
 export const useViewStore = create<ViewStore>()(
@@ -74,9 +183,15 @@ export const useViewStore = create<ViewStore>()(
       typeFilter: 'all',
       canvasGroupBy: 'none',
       braindumpGroupBy: 'none',
-      braindumpFilters: EMPTY_BRAINDUMP_FILTERS,
-      canvasFilters: EMPTY_CANVAS_FILTERS,
+      canvasSortBy: 'default',
+      braindumpSortBy: 'default',
+      braindumpFilters: EMPTY_VIEW_FILTERS,
+      canvasFilters: EMPTY_VIEW_FILTERS,
       typeMode: 'sans',
+      scheduleMarkStyle: 'nodes',
+      weekDaysVisible: null,
+      bucketStyle: 'spine',
+      collapsedBuckets: [],
       adoptedLegacy: false,
 
       setScope: (scope) => {
@@ -94,16 +209,136 @@ export const useViewStore = create<ViewStore>()(
         usePlannerStore.getState().setGroupBy(canvasGroupBy);
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
+      setCanvasSortBy: (canvasSortBy) => set({ canvasSortBy }),
+      setBraindumpSortBy: (braindumpSortBy) => set({ braindumpSortBy }),
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
+
+      renameContainerRef: (kind, from, to) => {
+        const oldRef = `${kind}:${from}`;
+        const newRef = `${kind}:${to}`;
+        const swap = (filters: ViewFilters): ViewFilters => {
+          if (!filters.containers.includes(oldRef)) return filters;
+          // Through a Set: renaming Work → Home while BOTH were selected would
+          // otherwise leave two identical refs, and the chip row would render
+          // "Home" twice.
+          return {
+            ...filters,
+            containers: [...new Set(filters.containers.map((c) => (c === oldRef ? newRef : c)))],
+          };
+        };
+        set((s) => ({
+          canvasFilters: swap(s.canvasFilters),
+          braindumpFilters: swap(s.braindumpFilters),
+        }));
+      },
       setTypeMode: (typeMode) => set({ typeMode }),
+      setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
+      // Clamped on the way IN, so nothing downstream has to defend against a
+      // hand-edited localStorage value or a stale ladder. `null` passes through
+      // untouched — it is the "never adjusted" state, not a bad number.
+      setWeekDaysVisible: (days) =>
+        set({ weekDaysVisible: days === null ? null : clampWeekDays(days) }),
+      // Stepping is always an adjustment, so it resolves the current effective
+      // value first — from the last measured canvas when nothing is stored yet —
+      // and writes a concrete number. Stepping from null must not jump.
+      //
+      // One step is one visible change of COLUMN WIDTH, not one day: stops that
+      // resolve to the same width are one rung (see weekRungs), so a shortcut can
+      // move the stored count by more than one and never by nothing.
+      stepWeekDaysVisible: (delta) =>
+        set((s) => ({ weekDaysVisible: stepWeekDaysFromLastCanvas(s.weekDaysVisible, delta) })),
+      setBucketStyle: (bucketStyle) => set({ bucketStyle }),
+      toggleBucketCollapsed: (bucket) =>
+        set((s) => ({
+          collapsedBuckets: s.collapsedBuckets.includes(bucket)
+            ? s.collapsedBuckets.filter((b) => b !== bucket)
+            : [...s.collapsedBuckets, bucket],
+        })),
+      // Returns the SAME array when the bucket is already open. Every bucket
+      // card subscribes to this slice, and a drop fires on every drag — handing
+      // back a fresh array each time would re-render all 28 week cards for a
+      // state change that didn't happen.
+      expandBucket: (bucket) =>
+        set((s) =>
+          s.collapsedBuckets.includes(bucket)
+            ? { collapsedBuckets: s.collapsedBuckets.filter((b) => b !== bucket) }
+            : s
+        ),
     }),
     {
+      // NOT bumped for weekDaysVisible. zustand's default merge keeps the
+      // initial value for any key the persisted payload lacks, so an existing
+      // 'anchor-view' blob rehydrates with the default and no migration. A bump
+      // would invalidate every stored payload — including the literal version:1
+      // one tests/e2e/helpers/session.ts seeds, which would reset adoptedLegacy
+      // and re-run the legacy adoption on a fixture.
       name: 'anchor-view',
       version: 1,
+      /**
+       * Deep-merge the two filter objects; shallow-merge everything else.
+       *
+       * The sentence above — "keeps the initial value for any key the persisted
+       * payload lacks" — is true of TOP-LEVEL keys only. zustand's default merge
+       * is `{...current, ...persisted}`, so a NESTED object is replaced
+       * wholesale: a stored `canvasFilters` that predates `containers` wins
+       * entirely, `filters.containers` reads `undefined`, and `.length` throws
+       * on the first render. That is a white screen, not a degraded filter.
+       *
+       * And the e2e suite cannot catch it. tests/e2e/helpers/session.ts seeds a
+       * blob that OMITS both filter objects, so every spec rehydrates fresh
+       * defaults and stays green while a real browser breaks. The unit test in
+       * tests/unit/view-store-merge.test.ts exists for exactly that gap — do not
+       * delete it because "e2e covers this".
+       *
+       * A `merge` is independent of `version`, so this needs no bump (see above
+       * for why a bump is not available anyway).
+       */
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ViewStore> & Record<string, unknown>;
+        return {
+          ...current,
+          ...p,
+          braindumpFilters: normalizeFilters(p.braindumpFilters),
+          canvasFilters: normalizeFilters(p.canvasFilters),
+          // Scalars, so the shallow spread already supplies the default for a
+          // blob that predates them. Coerced anyway because the value reaches a
+          // COMPARATOR: an unrecognised string falls through sortRows' branches
+          // to the priority arm and silently reorders the list, and a persisted
+          // payload is user-editable in devtools.
+          canvasSortBy: isSortBy(p.canvasSortBy) ? p.canvasSortBy : 'default',
+          braindumpSortBy: isSortBy(p.braindumpSortBy) ? p.braindumpSortBy : 'default',
+          // Same reason, one release later: 'status' WAS a legal GroupBy and is
+          // sitting in real payloads. It falls through groupRows' branches to the
+          // container arm, so a stale blob would silently group by project — and
+          // the Grouping row would render "None" over it, because no option
+          // matches, while the trigger counted it as one active clause.
+          canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
+          // The braindump's own axis, uncoerced before this — it predates the
+          // routine/program values, so a blob written earlier holds a value that
+          // is still legal, but a garbage one would fall through groupRows to the
+          // container arm exactly as a stale canvasGroupBy would.
+          braindumpGroupBy: isBraindumpGroupBy(p.braindumpGroupBy) ? p.braindumpGroupBy : 'none',
+        };
+      },
     }
   )
 );
+
+/**
+ * True when the canvas should run edge-to-edge instead of the 1100px column.
+ *
+ * The week COLUMN views only. `canvas-container`'s cap exists so a day's rows
+ * don't stretch into unreadable 2000px lines, and that argument holds just as
+ * well for Week × List — but a grid of seven day columns is the one thing on
+ * this canvas that can actually use the width, and capping it at 1100px is why
+ * seven columns never fit on any monitor. The header capsule and the past-due
+ * bar read this too, so all three keep the shared left edge that
+ * `@utility canvas-container` exists to guarantee.
+ */
+export function useCanvasWide(): boolean {
+  return useViewStore((s) => s.scope === 'week' && isScalableLayout(s.layout));
+}
 
 /**
  * Adopt the user's existing planner-store view prefs the first time the new
@@ -117,7 +352,57 @@ export function adoptLegacyViewPrefs() {
   useViewStore.setState({
     scope: legacy.viewMode,
     typeFilter: legacy.timelineItemFilter,
-    canvasGroupBy: legacy.groupBy,
+    // The second door 'status' can come through: planner-storage partializes
+    // `groupBy`, so a blob written before Phase 5a deleted the member rehydrates
+    // planner-store with it and this copies it across on first mount. The
+    // declared type says that cannot happen; the stored JSON disagrees.
+    canvasGroupBy: isGroupBy(legacy.groupBy) ? legacy.groupBy : 'none',
     adoptedLegacy: true,
   });
 }
+
+/**
+ * Keep the persisted filter refs following their containers' names.
+ *
+ * DRIVEN BY THE STORE, not by the rename call site, and that difference is the
+ * whole point. Called optimistically from the Organize console, the remap had no
+ * inverse: undo restored the container's old name and the localStorage ref kept
+ * the new one, so a single ⌘Z after a rename emptied the canvas — a NEW way to
+ * cause exactly the harm the remap was added to prevent, and a worse one,
+ * because localStorage survives the reload that would have fixed it.
+ *
+ * Comparing the id's name against its PREVIOUS name makes rename, undo and redo
+ * one case instead of three: whatever moves a container's name, the refs follow.
+ *
+ * Known gap, and it is narrow: if the container UPDATE is rejected by the DB the
+ * store stays optimistic, so refs and store agree until a reload re-reads the
+ * old name — and the ref is then stale. Nothing here can see that rejection.
+ * Carrying ids in the refs instead of names is the real fix and is a persisted-
+ * format change; `takenBy` already refuses the collision that causes almost
+ * every such rejection.
+ */
+const remapRefs = (
+  kind: 'project' | 'group',
+  before: { id: string; name: string }[],
+  after: { id: string; name: string }[],
+) => {
+  for (const now of after) {
+    const was = before.find((b) => b.id === now.id);
+    if (was && was.name !== now.name) {
+      useViewStore.getState().renameContainerRef(kind, was.name, now.name);
+    }
+  }
+};
+
+// Optional-called because this runs at IMPORT time, and a unit test that mocks
+// `@/lib/planner-store` with only the members it needs has no `subscribe` — the
+// module-level call then throws while the mocked module is being evaluated, and
+// the failure surfaces as an unrelated suite collecting zero tests. Real zustand
+// always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
+// drives the actual store.
+usePlannerStore.subscribe?.((state, prev) => {
+  if (state.projects !== prev.projects) remapRefs('project', prev.projects, state.projects);
+  if (state.habitGroups !== prev.habitGroups) {
+    remapRefs('group', prev.habitGroups, state.habitGroups);
+  }
+});

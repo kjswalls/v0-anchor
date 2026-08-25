@@ -8,7 +8,11 @@ import {
   toDateOnly,
 } from '@/lib/overdue';
 import { buildCustomTypeConfig } from '@/lib/item-registry';
+import { inactiveItemIdsOn } from '@/lib/active';
 import type { Item } from '@/lib/planner-types';
+
+/** No suppression — the state of the world before anything is paused. */
+const NONE: ReadonlySet<string> = new Set();
 
 /**
  * lib/overdue.ts is the single definition of "past due" — the morning surface,
@@ -82,8 +86,8 @@ const ids = (items: { id: string }[]) => items.map((i) => i.id);
 
 describe('selectOverdue', () => {
   it('returns nothing for an empty store', () => {
-    expect(selectOverdue([], TODAY)).toEqual([]);
-    const summary = summarizeOverdue([], TODAY);
+    expect(selectOverdue([], TODAY, NONE)).toEqual([]);
+    const summary = summarizeOverdue([], TODAY, NONE);
     expect(summary.count).toBe(0);
     expect(summary.recent).toEqual([]);
     expect(summary.long).toEqual([]);
@@ -95,7 +99,7 @@ describe('selectOverdue', () => {
     const future = task({ id: 'future', startDate: D.tomorrow });
     const undated = task({ id: 'undated' });
 
-    expect(ids(selectOverdue([yesterday, dueToday, future, undated], TODAY))).toEqual([
+    expect(ids(selectOverdue([yesterday, dueToday, future, undated], TODAY, NONE))).toEqual([
       'yesterday',
     ]);
   });
@@ -119,7 +123,8 @@ describe('selectOverdue', () => {
 
     const out = selectOverdue(
       [daily, weekdays, custom5, monthly, explicitNone, oneShot],
-      TODAY
+      TODAY,
+      NONE
     );
     expect(ids(out).sort()).toEqual(['none', 'oneShot']);
   });
@@ -128,13 +133,13 @@ describe('selectOverdue', () => {
     const legacy = task({ id: 'legacy', startDate: '2026-07-14T00:00:00.000Z' });
     const legacyToday = task({ id: 'legacyToday', startDate: '2026-07-15T09:30:00.000Z' });
 
-    expect(ids(selectOverdue([legacy, legacyToday], TODAY))).toEqual(['legacy']);
+    expect(ids(selectOverdue([legacy, legacyToday], TODAY, NONE))).toEqual(['legacy']);
     // ...and a legacy todayStr resolves the same way.
-    expect(ids(selectOverdue([legacy, legacyToday], '2026-07-15T00:00:00.000Z'))).toEqual([
+    expect(ids(selectOverdue([legacy, legacyToday], '2026-07-15T00:00:00.000Z', NONE))).toEqual([
       'legacy',
     ]);
     expect(daysOverdue(legacy as { startDate?: string }, TODAY)).toBe(1);
-    expect(toDateOnly(selectOverdue([legacy], TODAY)[0].startDate!)).toBe('2026-07-14');
+    expect(toDateOnly(selectOverdue([legacy], TODAY, NONE)[0].startDate!)).toBe('2026-07-14');
   });
 
   it('excludes completed and cancelled items', () => {
@@ -145,7 +150,7 @@ describe('selectOverdue', () => {
     const completed = task({ id: 'completed', startDate: D.d1, status: 'completed' });
     const cancelled = task({ id: 'cancelled', startDate: D.d1, status: 'cancelled' });
 
-    expect(ids(selectOverdue([pending, completed, cancelled], TODAY))).toEqual(['pending']);
+    expect(ids(selectOverdue([pending, completed, cancelled], TODAY, NONE))).toEqual(['pending']);
   });
 
   it('excludes habits — they are date-blind and never carry forward', () => {
@@ -153,7 +158,7 @@ describe('selectOverdue', () => {
     const oneOffHabit = habit({ startDate: D.d30, repeatFrequency: 'none' } as Partial<Item>);
     const t = task({ id: 'task', startDate: D.d1 });
 
-    expect(ids(selectOverdue([overdueHabit, oneOffHabit, t], TODAY))).toEqual(['task']);
+    expect(ids(selectOverdue([overdueHabit, oneOffHabit, t], TODAY, NONE))).toEqual(['task']);
   });
 
   it('INCLUDES custom item types — they are task-shaped and carry-forward eligible', () => {
@@ -168,7 +173,7 @@ describe('selectOverdue', () => {
 
     // Unhydrated custom types fall back to the same v1 template, so this holds
     // whether or not the item_types row is loaded.
-    expect(ids(selectOverdue([goal, recurringGoal, t], TODAY))).toEqual(['task', 'goal']);
+    expect(ids(selectOverdue([goal, recurringGoal, t], TODAY, NONE))).toEqual(['task', 'goal']);
   });
 });
 
@@ -200,7 +205,7 @@ describe('age cohorts', () => {
     const seven = task({ id: 'seven', startDate: D.d7 });
     const eight = task({ id: 'eight', startDate: D.d8 });
 
-    const { recent, long } = summarizeOverdue([seven, eight], TODAY);
+    const { recent, long } = summarizeOverdue([seven, eight], TODAY, NONE);
     expect(ids(recent)).toEqual(['seven']);
     expect(ids(long)).toEqual(['eight']);
   });
@@ -215,7 +220,7 @@ describe('age cohorts', () => {
       task({ id: 'd5', startDate: D.d5 }),
     ];
 
-    expect(ids(selectOverdue(items, TODAY))).toEqual([
+    expect(ids(selectOverdue(items, TODAY, NONE))).toEqual([
       // recent cohort (<= 7d), newest first
       'd1',
       'd3',
@@ -234,7 +239,7 @@ describe('age cohorts', () => {
       task({ id: 'd100', startDate: D.d100 }),
       task({ id: 'd1', startDate: D.d1 }),
     ];
-    const overdue = selectOverdue(items, TODAY);
+    const overdue = selectOverdue(items, TODAY, NONE);
     const { recent, long } = splitOverdueCohorts(overdue, TODAY);
 
     expect(ids(recent)).toEqual(['d1', 'd5']);
@@ -248,7 +253,7 @@ describe('age cohorts', () => {
       task({ id: 'b', startDate: D.d3 }),
       task({ id: 'c', startDate: D.d3 }),
     ];
-    expect(ids(selectOverdue(items, TODAY))).toEqual(['a', 'b', 'c']);
+    expect(ids(selectOverdue(items, TODAY, NONE))).toEqual(['a', 'b', 'c']);
   });
 });
 
@@ -265,7 +270,8 @@ describe('the summary is deliberately count-only', () => {
   it('exposes nothing about the pile beyond its size and its order', () => {
     const summary = summarizeOverdue(
       [task({ startDate: D.d1 }), task({ startDate: D.d100 })],
-      TODAY
+      TODAY,
+      NONE
     );
     expect(Object.keys(summary).sort()).toEqual(['count', 'items', 'long', 'recent']);
     expect(summary.count).toBe(2);
@@ -276,5 +282,44 @@ describe('toDateOnly', () => {
   it('passes yyyy-MM-dd through and truncates full ISO', () => {
     expect(toDateOnly('2026-07-15')).toBe('2026-07-15');
     expect(toDateOnly('2026-07-15T00:00:00.000Z')).toBe('2026-07-15');
+  });
+});
+
+/**
+ * Suppression exclusion. This lives here rather than in active.test.ts because
+ * the coupling is the point: selectOverdue feeds the past-due bar AND the
+ * auto-age sweep, the app's only unattended writer, so "paused work is not past
+ * due" has to hold at this exact seam.
+ */
+describe('selectOverdue + suppression', () => {
+  const TZ = 'America/New_York';
+  const paused = task({
+    id: 'paused',
+    startDate: D.d1,
+    pausedAt: '2026-07-01T12:00:00Z',
+    pausedUntil: '2026-09-01',
+  });
+  const live = task({ id: 'live', startDate: D.d1 });
+
+  it('drops suppressed items from the selection', () => {
+    const inactive = inactiveItemIdsOn([paused, live], TODAY, { userTimezone: TZ });
+    expect(ids(selectOverdue([paused, live], TODAY, inactive))).toEqual(['live']);
+  });
+
+  it('brings them back once the pause resumes', () => {
+    // Resumed on the 10th; TODAY is the 15th, so the interval is behind us.
+    const resumed = { ...paused, pausedUntil: '2026-07-10' } as Item;
+    const inactive = inactiveItemIdsOn([resumed, live], TODAY, { userTimezone: TZ });
+    expect(inactive.size).toBe(0);
+    expect(ids(selectOverdue([resumed, live], TODAY, inactive)).sort()).toEqual(['live', 'paused']);
+  });
+
+  it('does not count suppressed items in the bar summary', () => {
+    const inactive = inactiveItemIdsOn([paused, live], TODAY, { userTimezone: TZ });
+    expect(summarizeOverdue([paused, live], TODAY, inactive).count).toBe(1);
+  });
+
+  it('an empty set changes nothing (the pre-filtered-caller path)', () => {
+    expect(ids(selectOverdue([paused, live], TODAY, NONE)).sort()).toEqual(['live', 'paused']);
   });
 });

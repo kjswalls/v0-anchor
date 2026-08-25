@@ -5,6 +5,7 @@ import { DayList } from '@/components/views/day-list';
 import { DaySchedule } from '@/components/views/day-schedule';
 import { useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
+import { usePlannerStore } from '@/lib/planner-store';
 
 /**
  * The Today tab's view. Mobile ships a clamped subset of the desktop matrix —
@@ -14,10 +15,15 @@ import { useDragStore } from '@/lib/drag-store';
  */
 export function MobileViewRouter() {
   const layout = useViewStore((s) => s.layout);
+  const isLoading = usePlannerStore((s) => s.isLoading);
+  const userId = usePlannerStore((s) => s.userId);
   const activeId = useDragStore((s) => s.activeId);
 
   const view = (() => {
     if (layout === 'list') return <DayList />;
+    // No overlap-column prop here on purpose: DaySchedule measures its own field
+    // and derives how many channels fit at MIN_CHANNEL_PX, so this shell's ~294px
+    // gets two where the desktop's ~900px gets six. Neither shell has to know.
     if (layout === 'schedule') return <DaySchedule activeId={activeId} />;
     return <DayBuckets activeId={activeId} />;
   })();
@@ -31,6 +37,8 @@ export function MobileViewRouter() {
       data-view-scope="day"
       data-view-layout={layout}
       data-shell="mobile"
+      // See the desktop ViewRouter — one readiness contract for both shells.
+      data-loaded={userId && !isLoading ? 'true' : 'false'}
       style={{ display: 'contents' }}
     >
       {view}

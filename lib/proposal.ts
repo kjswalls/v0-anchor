@@ -22,6 +22,14 @@ export interface ProposalContext {
   items: Item[]
   /** Hydrated custom type slugs (planner-store's itemTypes). */
   customTypeNames: string[]
+  /**
+   * Ids suppressed today (lib/active.ts `inactiveItemIdsOn`) — work paused by a
+   * routine or a program window. Optional here because most proposal work does
+   * not need it, but `buildCatchUpProposal` REQUIRES it: offering to drag
+   * deliberately-paused work back into today is the app arguing with a decision
+   * the user already made.
+   */
+  inactiveIds?: ReadonlySet<string>
 }
 
 export interface RejectedOperation {
@@ -140,9 +148,9 @@ export const MAX_CATCH_UP_OPERATIONS = 5
  * alone on purpose — it is not hidden, it is simply not today's problem.
  */
 export function buildCatchUpProposal(
-  ctx: ProposalContext & { todayStr: string }
+  ctx: ProposalContext & { todayStr: string; inactiveIds: ReadonlySet<string> }
 ): ProposalDraft | null {
-  const overdue = selectOverdue(ctx.items, ctx.todayStr)
+  const overdue = selectOverdue(ctx.items, ctx.todayStr, ctx.inactiveIds)
   const { recent } = splitOverdueCohorts(overdue, ctx.todayStr)
   const picked = recent.slice(0, MAX_CATCH_UP_OPERATIONS)
   if (picked.length === 0) return null

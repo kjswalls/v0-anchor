@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.test', override: false, quiet: true });
 
 // eslint-disable-next-line import/first -- must follow dotenv.config()
-import { TEST_TZ, STORAGE_STATE } from './tests/e2e/helpers/env';
+import { TEST_TZ, STORAGE_STATE, BASE_URL, E2E_PORT } from './tests/e2e/helpers/env';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -20,7 +20,24 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Locally, `undefined` means Playwright's default of cores/2 — 10 on a 20-core
+  // box. All ten then queue against ONE `next dev --webpack` server that compiles
+  // routes on first hit, and the contention does not degrade gracefully: tests
+  // time out at 60s with their fixture POST still in flight ("Target page,
+  // context or browser has been closed"), which reads exactly like a broken
+  // selector and is why this suite looked far redder than it was. Full suite,
+  // same tree: 10 workers → 20 passed / 58 failed; 4 → 79 passed / 13 failed in
+  // 6.7m. CI stays at 1 for a different reason — it runs a prod build and
+  // serializes for stability.
+  //
+  // 4 is the floor, not a dial to keep turning: 2 workers scores the same
+  // (79 passed / 12 failed) and takes 8.4m, and it fails a DIFFERENT dozen. That
+  // residue is not CPU — every one of them passes in isolation. It is the shared
+  // test user. One account backs the whole suite, so under fullyParallel one
+  // spec's global write (settings.spec's afterEach reset, view-matrix leaving
+  // default_view on 'week') lands mid-test in another. Fixing it means a user
+  // per worker, or serialising the specs that write user_settings.
+  workers: process.env.CI ? 1 : 4,
   // The github reporter is inert outside Actions, and `html` alone auto-opens a
   // blocking server on failure while printing nothing — so a local run needs `list`.
   reporter: process.env.CI ? [['html'], ['github']] : [['list'], ['html', { open: 'never' }]],
@@ -33,7 +50,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     // retries is 0 locally, so `on-first-retry` would never capture a local
     // trace — precisely the runs where selector drift needs diagnosing.
     trace: process.env.CI ? 'on-first-retry' : 'retain-on-failure',
@@ -52,8 +69,9 @@ export default defineConfig({
         // unlinked places.
         timezoneId: TEST_TZ,
       },
-      // Mobile-tagged tests run in the mobile project below (touch + phone metrics).
-      grepInvert: /@mobile/,
+      // Mobile-tagged tests run in the mobile project below (touch + phone
+      // metrics); the two board-exclusive files run in the projects after it.
+      grepInvert: /@mobile|@exclusive-/,
     },
     {
       // iPhone-14 metrics + touch, kept on Chromium so CI needs no WebKit install.
@@ -64,6 +82,67 @@ export default defineConfig({
         timezoneId: TEST_TZ,
       },
       grep: /@mobile/,
+    },
+
+    /**
+     * THE BOARD-EXCLUSIVE TAIL.
+     *
+     * dnd.spec and habits.spec resolve drop targets by comparing rect CENTRES,
+     * so they need an EMPTY board — not merely their own fixtures cleaned up.
+     * Every other spec now sweeps a prefix it owns (`specScope` in
+     * helpers/api.ts); these two cannot, because the problem is not whose rows
+     * get deleted but whose rows EXIST while they measure. Another spec's
+     * fixture moves their geometry without either file touching the other.
+     *
+     * So they are separated in TIME instead of by prefix. `dependencies` runs a
+     * project only after its dependencies have fully finished, which is the one
+     * ordering primitive that crosses file boundaries — `mode: 'serial'` is
+     * file-scoped and `workers` is config-global, so neither can express "these
+     * two files, never at the same time as anything else".
+     *
+     * The chain is total: chromium+mobile → dnd → habits. dnd depends on BOTH
+     * front projects because mobile-tagged tests create fixtures too (pause,
+     * eod-review, recurring), and habits depends on dnd because both
+     * sweep the bare prefix and would otherwise delete each other — the exact
+     * failure this whole arrangement exists to prevent, one level down.
+     *
+     * COST, AND THE ESCAPE HATCH. `dependencies` means "after that project
+     * SUCCEEDS", not "after it finishes", so a single red test anywhere in
+     * chromium skips this whole tail. Measured, not predicted: the first full
+     * run under this config reported `23 did not run` — these 15 plus 8 serial
+     * siblings — while 13 unrelated chromium tests were failing. A suite that
+     * silently stops running its drag coverage whenever anything else is red is
+     * worse than one that runs it noisily, so the tail is also reachable on its
+     * own:
+     *
+     *     pnpm e2e:board
+     *
+     * which selects both projects with `--no-deps --workers=1`. Every word of
+     * that is load-bearing. `--no-deps` is what makes the tail reachable while
+     * chromium is red — it is the entire point. But it ALSO drops habits'
+     * dependency on dnd, so the two would run in parallel and sweep the bare
+     * prefix out from under each other; `--workers=1` is what puts them back in
+     * sequence. Chaining two invocations with `&&` instead looks equivalent and
+     * is not: a failure in dnd short-circuits habits, which is the same
+     * "dependency failed, so it never ran" hole this script exists to escape,
+     * one level down. (Observed, not reasoned about — the `&&` version was
+     * written first and skipped habits on its first run.)
+     *
+     * The other cost is wall clock: the tail is serial, so a full run is longer
+     * than a fully parallel one by roughly these two files' runtime. That is the
+     * price of measuring an empty board at all.
+     */
+    {
+      name: 'dnd',
+      use: { ...devices['Desktop Chrome'], timezoneId: TEST_TZ },
+      grep: /@exclusive-dnd/,
+      dependencies: ['chromium', 'mobile'],
+    },
+    {
+      name: 'habits',
+      use: { ...devices['Desktop Chrome'], timezoneId: TEST_TZ },
+      grep: /@exclusive-habits/,
+      dependencies: ['dnd'],
     },
   ],
 
@@ -76,8 +155,14 @@ export default defineConfig({
     // what real users hit). Locally, keep the dev server for fast iteration.
     // pnpm, not npm: this is a pnpm workspace and `@anchor-app/types` is a
     // `workspace:*` dependency that npm cannot resolve.
-    command: process.env.CI ? 'pnpm build && pnpm start' : 'pnpm dev',
-    url: 'http://localhost:3000',
+    // The port comes from BASE_URL so the server started and the server tested
+    // cannot drift — see tests/e2e/helpers/env.ts on why that matters in a
+    // multi-worktree checkout, where `reuseExistingServer` will otherwise adopt
+    // whichever branch's dev server owns the port.
+    command: process.env.CI
+      ? `pnpm build && pnpm start --port ${E2E_PORT}`
+      : `pnpm dev --port ${E2E_PORT}`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: (process.env.CI ? 300 : 120) * 1000,
     // Env vars (NEXT_PUBLIC_SUPABASE_URL, TEST_USER_EMAIL, etc.) come from

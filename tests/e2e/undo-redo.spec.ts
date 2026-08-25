@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { getAccessToken, createTestTask, cleanupTestData } from './helpers/api';
+import { getAccessToken, createTestTask, cleanupTestData, testTitle } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
 import { reloadApp,   expectCompleted } from './helpers/app';
 
@@ -25,7 +25,7 @@ test.describe('Undo / redo actions', () => {
     // Seed a task via API so it appears in today's timeline.
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Undo test ${Date.now()}`;
+    const taskTitle = testTitle('undo');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,
@@ -66,7 +66,7 @@ test.describe('Undo / redo actions', () => {
   test('Cmd/Ctrl+Shift+Z redoes the undone action', async ({ page }) => {
     const TODAY = getTodayStr();
     const accessToken = await getAccessToken(page);
-    const taskTitle = `Redo test ${Date.now()}`;
+    const taskTitle = testTitle('redo');
     const taskId = await createTestTask(page, accessToken, {
       title: taskTitle,
       startDate: TODAY,

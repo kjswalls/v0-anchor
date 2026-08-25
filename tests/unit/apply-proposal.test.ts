@@ -21,10 +21,28 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
+  // The rename fan-out (migration 027) — updateProject/updateHabitGroup call it
+  // whenever the name actually changes.
+  renameContainerMembers: vi.fn(async () => {}),
   createHabitGroup: vi.fn(async () => {}),
   updateHabitGroup: vi.fn(async () => {}),
   deleteHabitGroup: vi.fn(async () => {}),
   restoreHabitGroup: vi.fn(async () => {}),
+  fetchRoutines: vi.fn(async () => []),
+  createRoutine: vi.fn(async () => {}),
+  updateRoutine: vi.fn(async () => {}),
+  deleteRoutine: vi.fn(async () => {}),
+  restoreRoutine: vi.fn(async () => {}),
+  fetchPrograms: vi.fn(async () => []),
+  createProgram: vi.fn(async () => {}),
+  updateProgram: vi.fn(async () => {}),
+  deleteProgram: vi.fn(async () => {}),
+  restoreProgram: vi.fn(async () => {}),
+  fetchGoals: vi.fn(async () => []),
+  createGoal: vi.fn(async () => {}),
+  updateGoal: vi.fn(async () => {}),
+  deleteGoal: vi.fn(async () => {}),
+  restoreGoal: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 

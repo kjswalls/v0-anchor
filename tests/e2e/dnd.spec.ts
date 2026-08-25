@@ -28,7 +28,7 @@ import { reloadApp, itemCard, bucket } from './helpers/app';
  * to confirm the drop target instead of sleeping. See helpers/dnd.ts, which also
  * records why geometry aiming alone cannot be made reliable here.
  */
-test.describe('Drag and drop flows', () => {
+test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
   // Serial, on a CLEARED board.
   //
   // These are the geometry-sensitive tests. closestCenter resolves drops by
@@ -37,8 +37,15 @@ test.describe('Drag and drop flows', () => {
   // the height of unscheduled:{bucket} depends on how many untimed rows sit in it.
   // So leftovers from other specs silently move every centre on the board and a
   // drop lands one zone off. Sweeping the suite-prefixed fixtures first makes the
-  // geometry a function of this test alone. Safe because the fixtures all carry
-  // TEST_TITLE_PREFIX and the account is a dedicated test user.
+  // geometry a function of this test alone.
+  //
+  // THE SWEEP IS BARE ON PURPOSE, and it is the one place in the suite where that
+  // is correct: this file needs an EMPTY board, not merely its own rows gone, so
+  // a per-spec prefix would not buy it anything. What made it destructive was
+  // running CONCURRENTLY with specs whose fixtures it was deleting. It no longer
+  // does — the `@exclusive-dnd` tag puts this file in its own project, which
+  // `dependencies` sequences after every other project has finished (see
+  // playwright.config.ts). Nothing else is running when this sweep fires.
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
@@ -125,6 +132,13 @@ test.describe('Drag and drop flows', () => {
         page.getByTestId('braindump').locator(`[data-item-id="${taskId}"]`)
       ).toHaveCount(1);
 
+      // Same race as the scheduling drag below — poll the row before reloading,
+      // or the reload can abort the unscheduling PATCH and re-read a task that
+      // is still scheduled.
+      await expect
+        .poll(async () => (await fetchTestTask(page, taskId))?.isScheduled)
+        .toBe(false);
+
       await reloadApp(page);
       const persisted = await fetchTestTask(page, taskId);
       expect(persisted?.isScheduled).toBe(false);
@@ -151,6 +165,16 @@ test.describe('Drag and drop flows', () => {
       await expect(
         page.getByTestId('braindump').locator(`[data-item-id="${taskId}"]`)
       ).toHaveCount(0);
+
+      // The two assertions above prove the OPTIMISTIC render — dnd-kit's drop
+      // handler calls updateItem, which sets the store and fires its PATCH
+      // fire-and-forget (`.catch(console.error)`). Reloading straight after can
+      // abort that request in flight, and the reload then re-reads the row the
+      // drag never changed. Poll the stored value first, so the reload below is
+      // proving durability rather than racing the write that creates it.
+      await expect
+        .poll(async () => (await fetchTestTask(page, taskId))?.isScheduled)
+        .toBe(true);
 
       await reloadApp(page);
       const persisted = await fetchTestTask(page, taskId);

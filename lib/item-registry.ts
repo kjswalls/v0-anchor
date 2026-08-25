@@ -12,7 +12,16 @@
 
 import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
+import { accentColorForName } from './accent-colors'
 import { selectOverdue, toDateOnly } from './overdue'
+
+/**
+ * Shared empty set for renderers whose input is pre-filtered. Named rather than
+ * inlined so `selectOverdue(…, new Set())` never reads like someone shrugging
+ * past the required parameter.
+ */
+const EMPTY_INACTIVE: ReadonlySet<string> = new Set()
+import { isRecurring } from './recurrence'
 import type {
   HabitItem,
   Item,
@@ -28,6 +37,27 @@ export interface ItemTypeConfig {
   type: ItemType
   label: string
   labelPlural: string
+  /**
+   * CSS color string (a var() token) for the type's identity swatch — the
+   * colored square on the dialog's type chip and inside the type picker.
+   * Custom types use their stored color when set, else the same name-hash
+   * accent ramp projects draw from.
+   */
+  accent: string
+  /**
+   * Icon token (`icon:PascalName`) for the type's glyph, wherever an ITEM has
+   * to say what kind of thing it is rather than what it is called.
+   *
+   * On the registry rather than in a `type === 'habit' ? … : …` at the one call
+   * site, because the call sites multiply: the Organize console's member rows
+   * and its add-search both need it today, and every one of them would
+   * otherwise be a branch to update when a type is added.
+   *
+   * Optional, and safe to leave unset: {@link CategoryIcon} falls back to a
+   * name-hashed glyph, so a custom type with no icon still gets a stable one
+   * rather than nothing.
+   */
+  glyph?: string
   /** Valid values for the item's scalar `status` field. */
   allowedStatuses: readonly string[]
   /** The status meaning "finished" for one-shot (non-recurring) items. */
@@ -45,6 +75,57 @@ export interface ItemTypeConfig {
   dateAnchored: boolean
   /** Whether drag-and-drop may target a specific date (week-view column drops). */
   dateAddressable: boolean
+  /**
+   * May a single recurring occurrence be marked "not this one" — skipped —
+   * without counting as done? Skips are per-DATE (`skippedDates`), exactly like
+   * completions, so this capability only bites on a recurring item; a one-shot
+   * item is completed, cancelled or deleted, never skipped. Ask
+   * `isSkippable(item)` rather than reading this flag directly.
+   */
+  skippable: boolean
+  /**
+   * Scalar `status` value this type denormalizes a skip into, or null for
+   * "skippedDates only".
+   *
+   * Habits keep a last-toggle snapshot in `status` and their vocabulary has a
+   * 'skipped' member. Tasks must NOT: `pending|completed|cancelled` is an
+   * external contract the OpenClaw plugin safeParses and throws on, so a
+   * skipped task is a task with a date in `skippedDates` and nothing else.
+   */
+  skipStatus: string | null
+  /**
+   * May this type be paused — suppressed for a stretch of time without being
+   * completed, skipped or deleted?
+   *
+   * Where a skip answers ONE occurrence, a pause answers an open-ended range,
+   * so unlike `skippable` this does not require recurrence: a one-shot task
+   * inside a paused stretch of life is exactly as suppressible as a habit.
+   * Ask `isPausable(item)` rather than reading the flag, so the subtask rule
+   * below is applied everywhere.
+   */
+  pausable: boolean
+  /**
+   * May this type be collected into routines, programs and goals? Membership is
+   * what lets a whole slice of life switch off at once — and, for goals, what
+   * lets a slice of life have a reason.
+   */
+  collectible: boolean
+  /**
+   * May an item of this type be a goal's MILESTONE — an achievement checkpoint
+   * whose completion moves the goal's progress?
+   *
+   * False for habits, and not as a slight: a milestone needs a single "done"
+   * event to hang an achievement on, and a habit's whole design is that it has
+   * none (per-date completion, an opaque streak, no terminal state). A habit
+   * serves a goal as a plain `member`, which is the honest role for it.
+   *
+   * Ask `isMilestoneEligible(item)` rather than reading the flag: the capability
+   * is only half the question, because the role also requires the item to be
+   * one-shot. A recurring item's scalar status never moves (migration 016
+   * semantics), so a recurring milestone would be permanently un-achievable and
+   * progress would lie forever.
+   */
+  milestoneEligible: boolean
   /** Participates in manual ordering (the "order" column + reorder actions). */
   orderable: boolean
   /** Which container table names this type resolves against. */
@@ -56,11 +137,31 @@ export interface ItemTypeConfig {
     streak: boolean
     dailyCounts: boolean
   }
+  /** May carry child items (items.parent_item_id) — the panel's Subtasks section. */
+  subtasks: boolean
+  /** May be handed to OpenClaw/Beacon (assignee / ai_status / ai_result). */
+  agentAssignable: boolean
   schedule: {
+    /**
+     * Whether the schedule grid offers drag-to-resize handles on this type's
+     * blocks. Requires `duration` in `fields` — there is nowhere to write the
+     * result otherwise.
+     */
     resizable: boolean
     /** Minutes a block occupies on the schedule grid when no duration is set. */
     defaultBlockMinutes: number
   }
+  /**
+   * May this type carry a daily cue (items.reminder_time, migration 032)?
+   *
+   * Capability, NOT intent: an item of a remindable type with no reminder_time
+   * is the overwhelming majority and costs nothing — the reminder scan's index
+   * is partial on `reminder_time is not null`. What the flag decides is whether
+   * the ItemDialog offers the control at all.
+   *
+   * Ask {@link isRemindable}, which adds the subtask rule.
+   */
+  remindable: boolean
   /** May live in / return to the braindump (sidebar unschedule drop). */
   braindumpEligible: boolean
   /** Unfinished items roll forward in EOD review / morning check. */
@@ -111,18 +212,33 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     type: 'task',
     label: 'Task',
     labelPlural: 'Tasks',
+    accent: 'var(--primary)',
+    glyph: 'icon:CircleCheck',
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',
     allowedFrequencies: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: true,
     dateAddressable: true,
+    skippable: true,
+    skipStatus: null,
+    pausable: true,
+    collectible: true,
+    milestoneEligible: true,
     orderable: true,
     containerKind: 'projects',
     containerRequired: false,
     orphanContainerFallback: null,
     counters: { streak: false, dailyCounts: false },
-    schedule: { resizable: true, defaultBlockMinutes: 60 },
+    subtasks: true,
+    agentAssignable: true,
+    // 30, not the 60 this said before it was consumed anywhere: the ItemDialog
+    // seeds a new item's duration at '30' and the grid has always rendered a
+    // duration-less block as 30 minutes. The 60 was aspirational config that
+    // nothing read, so wiring it up would have silently doubled every such
+    // block — the value follows the behavior, not the reverse.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: true,
     carryForwardEligible: true,
     defaultTimeBucket: null,
@@ -141,7 +257,13 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
-        const tasks = items.filter((i): i is TaskItem => i.type === 'task')
+        // Subtasks stay out of Beacon's narration — no view shows them as
+        // free-floating tasks, so Beacon must not either. (The focused-item
+        // section in ai-context.ts is where they speak.) Pre-subtask fixtures
+        // carry no parentItemId, so the pinned byte-output is unchanged.
+        const tasks = items.filter(
+          (i): i is TaskItem => i.type === 'task' && !i.parentItemId
+        )
         const lines: string[] = []
         lines.push("### Today's Tasks")
 
@@ -155,7 +277,12 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         // is `status: 'pending'` forever by design. Passing the already-narrowed
         // `tasks` keeps this section's task-only shape; ordering is now the
         // selector's (recent newest-first, then the long-overdue tail).
-        const overdueTasks = selectOverdue(tasks, todayStr)
+        // Empty inactive set, deliberately and not by omission: `tasks` reaches
+        // this renderer ALREADY filtered of suppressed items (buildAnchorContext
+        // applies isOpenLoopSuppressedOn before dispatching to the per-type
+        // renderers), so re-filtering here would be a no-op — and this
+        // function's output is byte-pinned by tests/unit/ai-context.test.ts.
+        const overdueTasks = selectOverdue(tasks, todayStr, EMPTY_INACTIVE)
 
         const pendingTasks = todayTasks.filter((t) => t.status === 'pending')
         const completedTasks = todayTasks.filter((t) => t.status === 'completed')
@@ -221,18 +348,38 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     type: 'habit',
     label: 'Habit',
     labelPlural: 'Habits',
+    // Honey is already the habit hue everywhere it has one (streak strip,
+    // flame) via the warning alias — reuse it rather than minting a token.
+    accent: 'var(--warning)',
+    glyph: 'icon:Repeat',
     allowedStatuses: ['pending', 'done', 'skipped'],
     doneStatus: 'done',
     defaultFrequency: 'daily',
     allowedFrequencies: ['daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: false,
     dateAddressable: false,
+    skippable: true,
+    skipStatus: 'skipped',
+    pausable: true,
+    collectible: true,
+    // A habit has no single completion to be a checkpoint — it has a per-date
+    // history and a streak. It serves a goal as a member, or as a `checkin`
+    // when the goal wants a recurring review.
+    milestoneEligible: false,
     orderable: false,
     containerKind: 'habitGroups',
     containerRequired: true,
     orphanContainerFallback: 'Personal',
     counters: { streak: true, dailyCounts: true },
-    schedule: { resizable: false, defaultBlockMinutes: 30 },
+    // Habits recur; a habit "subtask" or agent handoff has no defined meaning.
+    subtasks: false,
+    agentAssignable: false,
+    // Habits carry a real length now (`duration` joined habitShape), so their
+    // blocks resize like any other — "30 minutes of reading a day" is the habit
+    // itself. This was false only because there was no field to store the drag
+    // into; it was never a statement that habits are momentary.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: false,
     carryForwardEligible: false,
     defaultTimeBucket: null,
@@ -293,7 +440,7 @@ export const ALL_ITEM_TYPES = Object.keys(ITEM_TYPES) as KnownItemType[]
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 
 export function buildCustomTypeConfig(
-  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural'>
+  def: Pick<ItemTypeDef, 'name' | 'label' | 'labelPlural' | 'color' | 'icon'>
 ): ItemTypeConfig {
   const label = def.label || capitalize(def.name)
   const labelPlural = def.labelPlural || `${label}s`
@@ -301,20 +448,48 @@ export function buildCustomTypeConfig(
     type: 'custom',
     label,
     labelPlural,
+    accent: def.color?.trim() || accentColorForName(def.name),
+    // The user's own pick, which the type row already stores. Left undefined
+    // when unset so CategoryIcon hashes the SLUG — the same value the accent
+    // ramp hashes, so a type's glyph and its colour are derived from one string.
+    glyph: def.icon?.trim() || undefined,
     allowedStatuses: ['pending', 'completed', 'cancelled'],
     doneStatus: 'completed',
     defaultFrequency: 'none',
     allowedFrequencies: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
     dateAnchored: true,
     dateAddressable: true,
+    // Task-shaped in every respect, skips included: a recurring custom item
+    // gets the same per-date skip + minimized row a habit does, with no code
+    // path of its own.
+    skippable: true,
+    skipStatus: null,
+    // Custom types are task-shaped, so they pause and collect exactly like
+    // tasks — a new type needs no work to join a routine or a program.
+    pausable: true,
+    collectible: true,
+    // Task-shaped here too: a one-shot custom item completes exactly like a
+    // task, which is all a milestone needs.
+    milestoneEligible: true,
     // Manual ordering is per-type ("order" sequences would collide); custom
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
-    containerKind: null,
+    // Project-shaped, because the rest of this config already is: `fields` is
+    // TASK_FIELDS (which carries `project`), containerLabel is 'Project', and
+    // itemFromRow/itemToRow read and write row.project for custom items
+    // unconditionally. Left null, a custom item carried a real project value
+    // that no container question could see — the dialog never rendered the
+    // picker, and buildListGroups filed every custom item under "No project".
+    containerKind: 'projects',
     containerRequired: false,
     orphanContainerFallback: null,
     counters: { streak: false, dailyCounts: false },
-    schedule: { resizable: true, defaultBlockMinutes: 60 },
+    // Custom types are task-shaped (v1 template) — they grow the same way.
+    subtasks: true,
+    agentAssignable: true,
+    // 30 to match the built-in types — see the note on task.schedule.
+    schedule: { resizable: true, defaultBlockMinutes: 30 },
+    remindable: true,
     braindumpEligible: true,
     // The store's task actions operate on any task-like item (Phase 6b), so
     // dated custom items roll forward in morning check / EOD like tasks do.
@@ -389,4 +564,104 @@ export function getItemTypeConfig(name: string): ItemTypeConfig {
     customTypeConfigs[name] ??
     buildCustomTypeConfig({ name, label: capitalize(name), labelPlural: `${capitalize(name)}s` })
   )
+}
+
+/**
+ * Can this item's occurrences be skipped? Capability AND recurrence: a skip is
+ * a date in `skippedDates`, which is only meaningful when the item has more
+ * than one occurrence to skip. Habits pass on both counts by construction
+ * (their allowed frequencies exclude 'none'), so this is the same predicate
+ * the habit row has always applied — now stated once, for every type.
+ */
+export function isSkippable(item: Item): boolean {
+  return getItemTypeConfig(itemTypeName(item)).skippable && isRecurring(item)
+}
+
+/**
+ * May this item be paused?
+ *
+ * Capability AND not-a-subtask. A subtask has no independent presence — it
+ * surfaces only inside its parent's detail panel, so pausing one would hide
+ * nothing and produce an item the user cannot find to un-pause. Subtasks follow
+ * their parent's state, the same reasoning that keeps them out of selectOverdue.
+ *
+ * Deliberately NOT AND-ed with recurrence, unlike isSkippable: a skip answers
+ * one occurrence and needs another to exist, whereas a pause answers a stretch
+ * of time and applies just as well to a single dated task.
+ */
+export function isPausable(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).pausable
+}
+
+/**
+ * May this item carry a daily cue?
+ *
+ * Capability AND not-a-subtask, the isPausable rule and for the same reason: a
+ * subtask surfaces only inside its parent's detail panel, so a notification
+ * naming one would point at a row the user cannot navigate to.
+ *
+ * Deliberately NOT AND-ed with recurrence. A reminder answers "today, at this
+ * hour", which a one-shot dated task wants exactly as much as a habit does —
+ * the recurrence question is asked later, by the scan's due-today filter, and
+ * asking it here would silently drop the reminder a user set on a real task.
+ */
+export function isRemindable(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).remindable
+}
+
+/** May this item join routines, programs and goals? Same subtask rule as isPausable. */
+export function isCollectible(item: Item): boolean {
+  if ('parentItemId' in item && item.parentItemId) return false
+  return getItemTypeConfig(itemTypeName(item)).collectible
+}
+
+/**
+ * May this item be a goal's MILESTONE?
+ *
+ * Three conditions, and the last one is the one that bites: it must be
+ * collectible at all (which excludes subtasks, for the reason isPausable gives
+ * — a subtask has no independent presence), its type must have a terminal
+ * completion (`milestoneEligible`), and it must be ONE-SHOT.
+ *
+ * The recurrence clause is the inverse of isSkippable's: a skip needs another
+ * occurrence to exist, and a milestone needs there to be no other occurrence.
+ * A recurring item never moves its scalar `status` (migration 016 — per-date
+ * completion is the truth), so a recurring milestone can never be counted
+ * achieved and the goal reads permanently behind, with no way for the user to
+ * see why.
+ *
+ * This is asked at role-GRANT time. It cannot police a later edit — the item
+ * dialog and the agent PATCH route can make an existing milestone recurring
+ * long afterwards — so the store answers that by DEMOTING the role to 'member'
+ * with a receipt, never by refusing the edit. See memory/plans/long-term-goals.md
+ * locked decision 3.
+ */
+export function isMilestoneEligible(item: Item): boolean {
+  if (!isCollectible(item)) return false
+  if (!getItemTypeConfig(itemTypeName(item)).milestoneEligible) return false
+  return !isRecurring(item)
+}
+
+/**
+ * May this item be a goal's CHECK-IN — a recurring review of how the goal is
+ * going?
+ *
+ * The mirror image of the rule above: any collectible type that CAN recur may
+ * serve, habits included ("Weekly Chinese review" is a perfectly good habit).
+ * What it cannot be is one-shot — a check-in that happens once is just a task.
+ *
+ * There is no `checkinEligible` flag because the registry already answers the
+ * type half of the question: `allowedFrequencies` says whether the type can
+ * recur at all, so a future type declaring `['none']` is refused here without
+ * anyone remembering to add a capability for it. Asking the ITEM alone would
+ * miss that, and would also trust a stale `repeatFrequency` on an item whose
+ * type has since stopped allowing recurrence.
+ */
+export function isCheckinEligible(item: Item): boolean {
+  if (!isCollectible(item)) return false
+  const config = getItemTypeConfig(itemTypeName(item))
+  if (!config.allowedFrequencies.some((f) => f !== 'none')) return false
+  return isRecurring(item)
 }

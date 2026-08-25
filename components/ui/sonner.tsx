@@ -21,12 +21,22 @@ const Toaster = ({ ...props }: ToasterProps) => {
           '--normal-bg': 'var(--popover)',
           '--normal-text': 'var(--popover-foreground)',
           '--normal-border': 'var(--border)',
+          // Sonner's own LTR/RTL corner switch (styles.css) drives the close
+          // button's position off these three vars — flipping them to their
+          // RTL values is the supported way to move it, vs. fighting the
+          // library's `left`/`transform` with !important overrides.
+          '--toast-close-button-start': 'unset',
+          '--toast-close-button-end': '0',
+          '--toast-close-button-transform': 'translate(35%, -35%)',
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
+          // Extra top padding (vs. the 14px `py-3.5` the bottom keeps) clears
+          // the now-top-right close button from the action button — see
+          // use-undo-toast.ts — which sits flush against that same corner.
           toast:
-            'group !gap-3 !rounded-[12px] !border !border-border !bg-popover !px-4 !py-3.5 !shadow-[var(--shadow-soft-lg)]',
+            'group !gap-3 !rounded-[12px] !border !border-border !bg-popover !px-4 !pt-5 !pb-3.5 !shadow-[var(--shadow-soft-lg)]',
           title: '!text-sm !font-medium !text-foreground',
           description: '!text-xs !text-muted-foreground',
           actionButton:

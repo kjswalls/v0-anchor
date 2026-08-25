@@ -108,13 +108,32 @@ export function daysOverdue(item: { startDate?: string }, todayStr: string): num
  *               readonly array so the registry's context renderers can pass
  *               their `readonly Item[]` slice straight through.
  * @param todayStr yyyy-MM-dd for "today", already timezone-resolved by the caller
+ * @param inactiveIds ids suppressed today, from lib/active.ts
+ *   `inactiveItemIdsOn`. REQUIRED, with no default, on purpose: this predicate
+ *   feeds the auto-age sweep, the app's only unattended writer, and a defaulted
+ *   parameter would let a future caller silently fail open — nagging about
+ *   paused work in the bar, and eventually unscheduling it. Callers whose items
+ *   are already filtered (the byte-pinned Beacon renderers) pass an empty set,
+ *   which is a deliberate statement rather than an omission.
  */
-export function selectOverdue(items: readonly Item[], todayStr: string): TaskItem[] {
+export function selectOverdue(
+  items: readonly Item[],
+  todayStr: string,
+  inactiveIds: ReadonlySet<string>,
+): TaskItem[] {
   const today = toDateOnly(todayStr);
 
   const overdue = items.filter((t): t is TaskItem => {
     const config = getItemTypeConfig(itemTypeName(t));
     if (!config.carryForwardEligible || !config.dateAnchored) return false;
+    // Suppressed work is not "past due" — it is deliberately set aside. Leaving
+    // it in would put paused items in the bar's count and, worse, expose them
+    // to the auto-age sweep.
+    if (inactiveIds.has(t.id)) return false;
+    // Subtasks are invisible outside their parent's detail surface — they must
+    // not surface in the morning check or be mutated by the auto-age sweep
+    // ("move to today" on an item no view shows is a dead-end loop).
+    if ('parentItemId' in t && t.parentItemId) return false;
     // THE fix: recurring items never carry forward as a whole.
     if (isRecurring(t)) return false;
     if (t.status !== 'pending') return false;
@@ -181,8 +200,12 @@ export interface OverdueSummary extends OverdueCohorts {
  * One call for everything the past-due surfaces render: the ordered list, the
  * two cohorts and the count. Runs the predicate exactly once.
  */
-export function summarizeOverdue(items: readonly Item[], todayStr: string): OverdueSummary {
-  const overdue = selectOverdue(items, todayStr);
+export function summarizeOverdue(
+  items: readonly Item[],
+  todayStr: string,
+  inactiveIds: ReadonlySet<string>,
+): OverdueSummary {
+  const overdue = selectOverdue(items, todayStr, inactiveIds);
   return {
     items: overdue,
     ...splitOverdueCohorts(overdue, todayStr),

@@ -3,10 +3,14 @@
 import { useMemo } from 'react';
 import { format, startOfWeek, addDays, isToday, isSameDay } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
-import { BUCKET_ORDER } from '@/lib/day-items';
+import { flattenDayRows } from '@/lib/day-items';
+import { groupRows } from '@/lib/grouping';
+import { sortRows } from '@/lib/sort-rows';
+import { useViewStore } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,14 +19,26 @@ import { cn } from '@/lib/utils';
  */
 
 function DaySection({ date }: { date: Date }) {
-  const { tasksByBucket, habitsByBucket, totalCount } = useDayItems(date);
-  const { selectedDate, setSelectedDate } = usePlannerStore();
+  const day = useDayItems(date);
+  const { selectedDate, setSelectedDate, routines, programs } = usePlannerStore();
+  const groupBy = useViewStore((s) => s.canvasGroupBy);
+  const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
 
-  const rows = [
-    ...BUCKET_ORDER.flatMap((b) => habitsByBucket[b]).map((h) => ({ itemType: 'habit' as const, item: h })),
-    ...BUCKET_ORDER.flatMap((b) => tasksByBucket[b]).map((t) => ({ itemType: 'task' as const, item: t })),
-  ];
+  /**
+   * Grouped, then sorted within each group — both post-derivation, never inside
+   * deriveDayItems (see lib/sort-rows.ts).
+   *
+   * A week here is SEVEN independent lists, one per date heading, so both axes
+   * apply per day: grouping by Project sections each day's own rows rather than
+   * pulling the week into one partition. That is also why Week × List honours
+   * ordering when Week × Schedule cannot — a day section has no time axis of its
+   * own to contradict.
+   */
+  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
+    ...g,
+    rows: sortRows(g.rows, sortBy),
+  }));
 
   return (
     <section>
@@ -41,13 +57,27 @@ function DaySection({ date }: { date: Date }) {
         )}
       </button>
 
-      {totalCount === 0 ? (
+      {day.totalCount === 0 ? (
         <p className="px-2 pb-2 font-serif text-sm italic text-muted-foreground/50">Nothing planned.</p>
       ) : (
         <div className="space-y-0 pl-2">
-          {rows.map((row) => (
-            <TaskRow key={row.item.id} row={row as never} date={date} />
-          ))}
+          {groups.map((g) =>
+            // 'none' comes back as one section with an empty label, which is
+            // this view's own default look: a flat list under the date heading.
+            g.label ? (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} date={date} />
+                ))}
+              </GroupSection>
+            ) : (
+              <div key={g.key || 'all'} className="space-y-0">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} date={date} />
+                ))}
+              </div>
+            )
+          )}
         </div>
       )}
     </section>

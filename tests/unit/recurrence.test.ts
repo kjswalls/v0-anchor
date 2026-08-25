@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { shouldShowOnDate, toDateStr, isCompletedOnDate, isRecurring } from '@/lib/recurrence';
+import { shouldShowOnDate, toDateStr, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -80,6 +80,24 @@ describe('habit / task recurrence logic', () => {
   it('isCompletedOnDate returns false when completedDates is undefined', () => {
     expect(isCompletedOnDate({}, '2025-01-13')).toBe(false);
     expect(isCompletedOnDate({ completedDates: undefined }, '2025-01-13')).toBe(false);
+  });
+
+  // The skip twin of the three above: same per-date shape, same tolerance of a
+  // missing array (tasks only grew the column when skipping generalized).
+  it('isSkippedOnDate reads skippedDates per date', () => {
+    expect(isSkippedOnDate({ skippedDates: ['2025-01-13'] }, '2025-01-13')).toBe(true);
+    expect(isSkippedOnDate({ skippedDates: ['2025-01-13'] }, '2025-01-14')).toBe(false);
+    expect(isSkippedOnDate({ skippedDates: [] }, '2025-01-13')).toBe(false);
+    expect(isSkippedOnDate({}, '2025-01-13')).toBe(false);
+    expect(isSkippedOnDate({ skippedDates: undefined }, '2025-01-13')).toBe(false);
+  });
+
+  it('a date can be completed or skipped, and they are read independently', () => {
+    const item = { completedDates: ['2025-01-13'], skippedDates: ['2025-01-14'] };
+    expect(isCompletedOnDate(item, '2025-01-13')).toBe(true);
+    expect(isSkippedOnDate(item, '2025-01-13')).toBe(false);
+    expect(isCompletedOnDate(item, '2025-01-14')).toBe(false);
+    expect(isSkippedOnDate(item, '2025-01-14')).toBe(true);
   });
 
   it('isRecurring returns true for daily/weekdays/weekends/monthly/custom frequencies', () => {

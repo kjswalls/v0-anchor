@@ -47,6 +47,14 @@ export default definePluginEntry({
       const gatewayPublicUrl = cfg.publicUrl?.replace(/\/$/, '')
 
       if (gatewayPublicUrl) {
+        // Issue #141: without a secret the webhook route accepts any caller who
+        // can reach the gateway — the HMAC check below is skipped entirely.
+        if (!cfg.webhookSecret) {
+          api.logger.warn(
+            'anchor-context: webhookSecret not set — the webhook endpoint is UNAUTHENTICATED and will ' +
+            'accept unsigned requests. Set webhookSecret in your anchor-context plugin config in openclaw.json.'
+          )
+        }
         await registerWithAnchor(cfg, `${gatewayPublicUrl}/plugins/anchor/webhook`, api.logger)
         const agentId = cfg.agentId?.trim() || cfg.id?.trim() || 'main'
         await registerChatUrl(
@@ -80,7 +88,7 @@ export default definePluginEntry({
       path: '/plugins/anchor/webhook',
       auth: 'plugin',
       async handler(req: IncomingMessage, res: ServerResponse) {
-        const { body, eventName } = await parseWebhookBody(req, cfg)
+        const { body, eventName } = await parseWebhookBody(req)
 
         if (cfg.webhookSecret) {
           const sig = (req.headers['x-anchor-signature'] as string) ?? ''
@@ -103,7 +111,7 @@ export default definePluginEntry({
       },
     })
 
-    // ── Chat endpoint: browser → plugin (SSE) ────────────────────────────────
+    // ── Chat endpoint: browser → plugin (blocking JSON) ──────────────────────
     api.registerHttpRoute({
       path: '/plugins/anchor/chat',
       auth: 'plugin',

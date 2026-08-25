@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { APIRequestContext, Page } from '@playwright/test';
-import { SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
-
-const BASE_URL = 'http://localhost:3000';
+import { BASE_URL, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
 
 /**
  * Fixtures created through the agent API.
@@ -64,6 +62,103 @@ export function testTitle(label: string): string {
   return `${TEST_TITLE_PREFIX}${label}_${Date.now().toString(36)}${Math.random()
     .toString(36)
     .slice(2, 7)}`;
+}
+
+/**
+ * A title prefix owned by ONE spec file, covering everything it creates —
+ * items, containers and labels alike.
+ *
+ * `cleanupTestCollections` and `cleanupByTitlePrefix` are both hard DELETEs
+ * across the shared test user, so two spec files that sweep `TEST_TITLE_PREFIX`
+ * delete each other's rows — and with `fullyParallel` + 4 local workers they run
+ * at the same time. `test.describe.configure({mode:'serial'})` is file-scoped
+ * and does nothing about it. Both files pass alone and fail
+ * non-deterministically in a full run, which is the residue class
+ * playwright.config.ts documents.
+ *
+ * Was `collectionScope`, and containers were the only half it covered — which
+ * left `programs.spec` scoping its containers correctly
+ * while still calling `cleanupByTitlePrefix(TEST_TITLE_PREFIX)` on the line
+ * above and deleting every other spec's ITEMS. Half a fix reads like a whole one
+ * at the call site, so the scope now spans both and there is no bare-prefix
+ * sweep left to pair it with.
+ *
+ * Every prefix still starts with TEST_TITLE_PREFIX, so globalSetup's litter
+ * sweep keeps catching all of them.
+ *
+ * The two specs that genuinely need an EMPTY BOARD rather than merely their own
+ * rows — dnd and habits, whose drop targets resolve by comparing rect centres —
+ * cannot use this: another spec's fixtures move their geometry even when nothing
+ * is deleted. They are isolated by execution order instead; see the `dnd` and
+ * `habits` projects in playwright.config.ts.
+ *
+ * @example
+ *   const scope = specScope('rail');
+ *   await cleanupTestCollections(scope.prefix);
+ *   await createContainer(page, 'program', scope.title('Summer'));
+ */
+export function specScope(spec: string): { prefix: string; title: (label: string) => string } {
+  const prefix = `${TEST_TITLE_PREFIX}${spec}_`;
+  return { prefix, title: (label: string) => testTitle(`${spec}_${label}`) };
+}
+
+/**
+ * The containers as STORED, straight from the database.
+ *
+ * Every container write in the app is fire-and-forget
+ * (`dbUpdateProgram(...).catch(console.error)`), so a DOM assertion right after
+ * a click proves only that the optimistic `set()` ran. Reload on the strength of
+ * that and `page.reload()` can abort the PATCH still in flight — the test then
+ * carries on against a program that never changed, and the failure surfaces
+ * several steps later as something else entirely.
+ *
+ * Poll this before any reload that is meant to prove persistence.
+ */
+export async function fetchTestCollections(
+  table: 'routines' | 'programs',
+  prefix: string
+): Promise<{ id: string; name: string; state?: string; paused_at?: string | null }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(
+    `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name,${table === 'programs' ? 'state' : 'paused_at'}`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestCollections] ${table}: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { id: string; name: string }[]).filter((row) =>
+    row.name?.startsWith(prefix)
+  );
+}
+
+/**
+ * One item type as STORED, or null while it does not yet hold `expect`.
+ *
+ * The sibling of fetchTestCollections, for the same reason and against the same
+ * hazard: `updateItemType` sets the store and then fires
+ * `dbUpdateItemType(id, updates).catch(console.error)` without awaiting it
+ * (planner-store.ts). Typing into the Plural field and pressing Enter therefore
+ * proves only that the keystroke reached the store — the PATCH is still in
+ * flight, and `page.reload()` aborts it.
+ *
+ * That is not hypothetical. organize.spec's plural test did exactly this and
+ * passed 10/10 in isolation for a whole phase, then failed on the first full
+ * parallel run: the row came back holding `${name}s`, the value createLabel
+ * writes at creation, because the update never landed. The app was correct at
+ * every layer — store, allowlist, UPDATE — and the test was asserting a
+ * keystroke while reading like it asserted persistence.
+ *
+ * Returns null rather than throwing on a mismatch so callers can drive it from
+ * `expect.poll`, which supplies the waiting and the eventual failure message.
+ */
+export async function fetchTestItemTypePlural(id: string): Promise<string | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(`${url}/rest/v1/item_types?id=eq.${id}&select=label_plural`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!res.ok) throw new Error(`[fetchTestItemTypePlural] ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as { label_plural?: string }[];
+  return rows[0]?.label_plural ?? null;
 }
 
 function authHeaders() {
@@ -158,6 +253,24 @@ export async function fetchTestHabit(
 }
 
 /**
+ * Read any item back through the agent API, INCLUDING suppressed ones.
+ *
+ * fetchTestTask/fetchTestHabit read the legacy projections, which drop
+ * suppressed open loops — so asserting "the streak survived the pause" through
+ * them returns null, indistinguishable from "the habit was deleted". items[] is
+ * unfiltered and carries pausedAt/pausedUntil.
+ */
+export async function fetchTestItem(
+  page: Page | APIRequestContext,
+  id: string
+): Promise<Record<string, unknown> | null> {
+  const res = await ctx(page).get(`${BASE_URL}/api/agent/context`, { headers: authHeaders() });
+  if (!res.ok()) throw new Error(`fetchTestItem failed (${res.status()}): ${await res.text()}`);
+  const body = await res.json();
+  return (body.items ?? []).find((i: { id: string }) => i.id === id) ?? null;
+}
+
+/**
  * Delete fixtures. Never throws — a cleanup failure must not mask the assertion
  * failure that a test is actually reporting.
  */
@@ -189,6 +302,148 @@ export async function cleanupTestData(
       }
     }),
   ]);
+}
+
+/**
+ * Delete every routine and program whose name starts with `prefix`.
+ *
+ * Direct service-key REST, following the resetUserSettings precedent, because
+ * there is no agent route for containers — v1 has no agent write surface for
+ * them at all (plan decision 6). A HARD delete, not the app's soft one: a
+ * soft-deleted row still occupies its name and still counts in the manager's
+ * list until the 30-day purge cron gets to it, so a spec that ran twice would
+ * accumulate identically-named rows on the shared test user forever.
+ *
+ * Join rows follow by CASCADE, so member items are released but never touched —
+ * they are cleaned up by title prefix like every other fixture.
+ *
+ * Never throws: a cleanup failure must not mask the assertion a test is
+ * actually reporting.
+ */
+export async function cleanupTestCollections(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['programs', 'routines'], prefix);
+}
+
+/**
+ * The same sweep for `goals`.
+ *
+ * Its own function rather than a third table in cleanupTestCollections, for the
+ * reason cleanupTestLabels gives: an existing spec's afterEach must not start
+ * hard-DELETEing rows it never created. `goal_items` needs no line — the
+ * composite FKs cascade.
+ */
+export async function cleanupTestGoals(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['goals'], prefix);
+}
+
+/**
+ * One goal as STORED, or null while it does not yet exist.
+ *
+ * Every goal write in the app is fire-and-forget, so a DOM assertion right
+ * after a click proves only that the optimistic set() ran — and `page.reload()`
+ * on the strength of it can abort the PATCH still in flight. Poll this before
+ * any reload meant to prove persistence. (fetchTestCollections' lesson, which
+ * that helper's own docblock records paying for once.)
+ */
+export async function fetchTestGoal(
+  prefix: string
+): Promise<{
+  id: string;
+  name: string;
+  state: string;
+  why: string | null;
+  target_on: string | null;
+} | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  // `deleted_at=is.null` and `order=created_at.desc`, both load-bearing.
+  //
+  // WITHOUT the filter this helper can never observe a delete: removeGoal is a
+  // SOFT delete (the 30-day trash, so goal_items survive a restore), so a poll
+  // for null would spin until the expect timeout on a row that is still there.
+  // WITHOUT the order it returns whichever row the heap hands back, which is
+  // fine only while a spec creates exactly one goal per prefix — the moment one
+  // creates two, "the test goal" becomes arbitrary.
+  const res = await fetch(
+    `${url}/rest/v1/goals?user_id=eq.${testUserId()}&deleted_at=is.null` +
+      `&order=created_at.desc&select=id,name,state,why,target_on`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestGoal] ${res.status} ${await res.text()}`);
+  const rows = (await res.json()) as {
+    id: string;
+    name: string;
+    state: string;
+    why: string | null;
+    target_on: string | null;
+  }[];
+  return rows.find((row) => row.name?.startsWith(prefix)) ?? null;
+}
+
+/** The roles a goal's members hold, as stored — the join table, not the arrays. */
+export async function fetchTestGoalMembers(
+  goalId: string
+): Promise<{ item_id: string; role: string }[]> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const res = await fetch(
+    `${url}/rest/v1/goal_items?goal_id=eq.${goalId}&select=item_id,role`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  );
+  if (!res.ok) throw new Error(`[fetchTestGoalMembers] ${res.status} ${await res.text()}`);
+  return (await res.json()) as { item_id: string; role: string }[];
+}
+
+/**
+ * The same sweep for the LABEL tables, which the Organize console can now create
+ * and which nothing swept before — projects, habit groups and custom item types.
+ *
+ * Separate from cleanupTestCollections rather than folded into it so an existing
+ * spec's `afterEach` cannot start hard-DELETEing rows it never made.
+ *
+ * `item_types.name` is a SLUG, so the prefix is lowercased for that table: the
+ * console derives `e2e_org_goal_x1` from a typed `e2e_org_Goal_x1`, and a
+ * case-sensitive startsWith would leave every custom type behind.
+ */
+export async function cleanupTestLabels(prefix: string): Promise<void> {
+  await sweepByNamePrefix(['projects', 'habit_groups'], prefix);
+  await sweepByNamePrefix(['item_types'], prefix.toLowerCase());
+}
+
+async function sweepByNamePrefix(tables: string[], prefix: string): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.SUPABASE_SECRET_KEY!;
+  const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  for (const table of tables) {
+    try {
+      // Read then delete by id, rather than pushing the prefix into a LIKE.
+      // `_` is a single-character WILDCARD in SQL LIKE and TEST_TITLE_PREFIX is
+      // `e2e_`, so `name=like.e2e_%` would also match `e2eX…`, `e2e-…` and
+      // anything else with a fourth character — a hard DELETE matching more
+      // than this function's own doc promises. A JS startsWith has no such
+      // second reading.
+      const res = await fetch(
+        `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name`,
+        { headers }
+      );
+      if (!res.ok) {
+        console.warn(`[cleanup] ${table}: ${res.status} ${await res.text()}`);
+        continue;
+      }
+      const litter = ((await res.json()) as { id: string; name: string }[]).filter((row) =>
+        row.name?.startsWith(prefix)
+      );
+      if (litter.length === 0) continue;
+      const ids = litter.map((row) => row.id).join(',');
+      const del = await fetch(`${url}/rest/v1/${table}?id=in.(${ids})`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!del.ok) console.warn(`[cleanup] ${table}: ${del.status} ${await del.text()}`);
+    } catch (err) {
+      console.warn(`[cleanup] ${table}:`, err);
+    }
+  }
 }
 
 /**
@@ -277,8 +532,15 @@ export async function cleanupByTitlePrefix(
   }
   const body = await res.json();
 
-  const tasks = (body.tasks ?? []).filter((t: { title?: string }) => t.title?.startsWith(prefix));
-  const habits = (body.habits ?? []).filter((h: { title?: string }) => h.title?.startsWith(prefix));
+  // items[], NOT tasks[]/habits[]. Those projections drop suppressed open loops
+  // (the agent-context filter), so a fixture a spec paused — or one left paused
+  // by a spec that failed mid-flight — is invisible to them, and this helper
+  // never throws, so the leak is silent and permanent on a shared test user.
+  // items[] is unfiltered by design and has carried both kinds since
+  // schemaVersion 3.
+  const litter = (body.items ?? []).filter((i: { title?: string }) => i.title?.startsWith(prefix));
+  const tasks = litter.filter((i: { type?: string }) => i.type !== 'habit');
+  const habits = litter.filter((i: { type?: string }) => i.type === 'habit');
 
   await cleanupTestData(
     page,

@@ -3,8 +3,12 @@ import {
   CalendarDays,
   CalendarMinus,
   CalendarPlus,
+  CalendarRange,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeftRight,
+  ChevronsRightLeft,
+  Columns3,
   Contrast,
   Filter,
   FilterX,
@@ -13,6 +17,7 @@ import {
   Inbox,
   Keyboard,
   Layers,
+  ListPlus,
   MessageSquare,
   Moon,
   PanelLeft,
@@ -22,6 +27,7 @@ import {
   Rows3,
   Search,
   Settings,
+  SlashSquare,
   Sparkles,
   Sun,
   Sunrise,
@@ -39,13 +45,20 @@ import {
   Unlink,
   Wand2,
   Zap,
+  Repeat as RepeatIcon,
+  Pause as PauseIcon,
+  Play as PlayIcon,
+  Target,
 } from 'lucide-react';
 import { addDays, subDays } from 'date-fns';
 
 import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
-import { useUIStore, openAddDialog } from '../ui-store';
+import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
+import { containerRef, namesOfKind } from '../container-registry';
+import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
 import { useSidebarStore } from '../sidebar-store';
+import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
@@ -53,21 +66,20 @@ import { useChatStore } from '../chat-store';
 import { useProposalStore } from '../proposal-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig, itemTypeName } from '../item-registry';
+import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
 import { selectOverdue } from '../overdue';
+import { inactiveItemIdsOn, isPausedOn, isProgramActiveOn } from '../active';
+import { programStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
-import {
-  CANVAS_GROUP_BY_OPTIONS,
-  LAYOUT_OPTIONS,
-  TYPE_OPTIONS,
-  type CanvasGroupBy,
-} from '../view-options';
+import { isScalableLayout } from '../week-columns';
+import { CANVAS_GROUP_BY_OPTIONS, LAYOUT_OPTIONS, TYPE_OPTIONS } from '../view-options';
 import {
   assignBucket,
   isCancelled,
   isDoneOn,
   isHabit,
+  isPausedNow,
   isSkippedOn,
   isTaskLike,
   itemCommand,
@@ -75,7 +87,7 @@ import {
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { Priority, TimeBucket } from '../planner-types';
+import type { GroupBy, Priority, TimeBucket, Routine, Program, Goal } from '../planner-types';
 
 /**
  * The command registry.
@@ -203,6 +215,16 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => openAddDialog('habit'),
   },
   {
+    id: 'create.bulk',
+    label: 'Add many items…',
+    description: 'Paste a list or import a file — one item per line',
+    group: 'create',
+    icon: ListPlus,
+    keywords: 'bulk multiple paste import csv list batch many',
+    aliases: ['bulk', 'import'],
+    run: () => openBulkAdd(),
+  },
+  {
     id: 'create.project',
     label: 'Add project',
     description: 'Create a project you can file tasks under',
@@ -288,16 +310,21 @@ export const STATIC_COMMANDS: Command[] = [
   }),
   itemCommand({
     id: 'items.skip',
-    label: 'Skip habit today',
-    description: 'Marks the day skipped without breaking the streak',
+    label: 'Skip today',
+    description: "Marks the day skipped — for a habit, without breaking the streak",
     icon: SkipForward,
-    keywords: 'skip habit rest day pass miss',
+    keywords: 'skip habit rest day pass miss recurring',
     aliases: ['skip'],
-    placeholder: 'Which habit?',
-    emptyLabel: 'No habit left to skip today',
+    placeholder: 'Which item?',
+    emptyLabel: 'Nothing left to skip today',
+    // Registry capability, not "is it a habit": any recurring occurrence of a
+    // skippable type can be skipped (#194). One-shot items are excluded by
+    // isSkippable — they get completed or cancelled, never skipped.
     eligible: (item, dateStr) =>
-      isHabit(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
-    run: (item) => planner().toggleHabitStatus(item.id, 'skipped'),
+      isSkippable(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
+    // No date argument, exactly as before: the store resolves the selected day,
+    // which is the same day `dateStr` was derived from.
+    run: (item) => planner().setItemSkipped(item.id, true),
   }),
   itemCommand({
     id: 'items.resetStreak',
@@ -321,10 +348,42 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['unblock'],
     placeholder: 'Which task?',
     emptyLabel: 'No task is in a project block',
-    // moveTaskOutOfProjectBlock resolves against type 'task' specifically, so
-    // custom types are out even though they are otherwise task-shaped.
-    eligible: (item) => item.type === 'task' && !!item.inProjectBlock,
+    // Task-like, matching the verb: moveTaskOutOfProjectBlock resolves against
+    // findTaskLike now, so a custom item that got into a block can get out of
+    // one. It used to resolve 'task' exactly, which is why this was narrower.
+    eligible: (item) => item.type !== 'habit' && !!item.inProjectBlock,
     run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
+  }),
+  // Pause / Resume deliberately ignore the dateStr these predicates are handed:
+  // that is the SELECTED day, and pausing is dateless (plan decision 3). Keying
+  // on it would make the two commands trade places as the user walks the week
+  // past a resume boundary, and the picker's contents change with them.
+  //
+  // "Pause until…" is absent on purpose — itemCommand supports exactly one
+  // argument and it is the entity, so a date belongs to the dialog's overflow
+  // menu and the mobile sheet, which can host a picker.
+  itemCommand({
+    id: 'items.pause',
+    label: 'Pause',
+    description: 'Sets it aside — hidden until you resume, streak untouched',
+    icon: PauseIcon,
+    keywords: 'pause hold suspend set aside break vacation hide later',
+    aliases: ['pause'],
+    emptyLabel: 'Nothing to pause',
+    eligible: (item) => isPausable(item) && !isPausedNow(item),
+    run: (item) => planner().setItemPaused(item.id, true),
+  }),
+  itemCommand({
+    id: 'items.resume',
+    label: 'Resume',
+    description: 'Brings it back where you left it',
+    icon: PlayIcon,
+    keywords: 'resume unpause restart continue bring back restore',
+    aliases: ['resume'],
+    placeholder: 'Which paused item?',
+    emptyLabel: 'Nothing is paused',
+    eligible: (item) => isPausedNow(item),
+    run: (item) => planner().setItemPaused(item.id, false),
   }),
   ...priorityCommands(),
   ...bucketCommands(),
@@ -438,21 +497,25 @@ export const STATIC_COMMANDS: Command[] = [
       // the sweep in hooks/use-overdue-sweep.ts. Bare `format(new Date(), …)`
       // would read the machine tz and could grey this row out on a day the bar
       // is visibly showing overdue items.
-      const { items, userTimezone } = planner();
-      const todayStr = toDateStr(
-        new Date(),
-        userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-      );
-      return selectOverdue(items, todayStr).length > 0;
+      const { items, routines, programs, userTimezone } = planner();
+      const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const todayStr = toDateStr(new Date(), tz);
+      // Dateless surface: resolve suppression at TODAY, never at the store's
+      // navigable selectedDate (plan decision 3).
+      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs });
+      return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard openChat,
-    // Open braindump and focusOmnibar already use. The past-due pill is
-    // Today-only on mobile (components/shell/mobile-shell.tsx:60) while the
-    // omnibar is mounted on Braindump too, so without the tab switch this
-    // command flips isOpen on a tab that renders nothing: it looks broken, and
-    // the drawer would then ambush the user the moment they swiped to Today.
+    // Open braindump and focusOmnibar already use. The rule outlived the
+    // reason: this used to switch mobile to Today, because the past-due pill
+    // was mounted on that tab alone. The surface is a line in the dock now
+    // (components/sidebar/dock-notices.tsx), which mobile mounts on every tab,
+    // so the tab switch became a navigation the user did not ask for — and
+    // desktop inherited the exact bug it was written to prevent, because the
+    // dock's rows do not render while the sidebar column is collapsed. Flipping
+    // isOpen there looks broken in precisely the same way.
     run: (ctx) => {
-      if (ctx.isMobile) useMobileNavStore.getState().setActiveTab('today');
+      if (!ctx.isMobile) useSidebarStore.getState().setLeftSidebarOpen(true);
       const store = useMorningStore.getState();
       store.resetDismissal();
       store.open();
@@ -494,7 +557,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.groupBy',
     label: 'Group by',
-    description: 'Priority and Time bucket reshape the List layout; Buckets honours Project',
+    description: 'Sections every layout — Buckets groups its untimed rows, Schedule its Anytime strip',
     group: 'view',
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
@@ -503,14 +566,14 @@ export const STATIC_COMMANDS: Command[] = [
       kind: 'enum',
       placeholder: 'Group by',
       flatten: true,
-      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy as CanvasGroupBy),
+      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy),
     },
-    run: (_ctx, arg) => view().setCanvasGroupBy(arg as CanvasGroupBy),
+    run: (_ctx, arg) => view().setCanvasGroupBy(arg as GroupBy),
   },
   {
     id: 'view.filterProject',
     label: 'Filter by project',
-    description: 'Filtering by project hides habits from the canvas',
+    description: 'Narrow the canvas to one project — habits stay, filed by their group',
     group: 'view',
     icon: Filter,
     keywords: 'filter project only narrow',
@@ -522,7 +585,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Never flattened: names are free text, so flattening lets a project
       // called "Today" or "List" outrank the built-in command of that name.
       options: () => {
-        const active = view().canvasFilters.projects;
+        const active = namesOfKind(view().canvasFilters.containers, 'project');
         return planner().projects.map((p) => ({
           value: p.name,
           label: p.name,
@@ -535,11 +598,12 @@ export const STATIC_COMMANDS: Command[] = [
       if (!arg) return;
       const store = view();
       const current = store.canvasFilters;
+      const ref = containerRef('project', arg);
       store.setCanvasFilters({
         ...current,
-        projects: current.projects.includes(arg)
-          ? current.projects.filter((p) => p !== arg)
-          : [...current.projects, arg],
+        containers: current.containers.includes(ref)
+          ? current.containers.filter((c) => c !== ref)
+          : [...current.containers, ref],
       });
     },
   },
@@ -552,9 +616,9 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['clear'],
     availableWhen: () => {
       const f = view().canvasFilters;
-      return f.projects.length > 0 || f.priorities.length > 0 || f.hideCompleted;
+      return !isEmptyFilters(f);
     },
-    run: () => view().setCanvasFilters({ projects: [], priorities: [], hideCompleted: false }),
+    run: () => view().setCanvasFilters(EMPTY_VIEW_FILTERS),
   },
   {
     id: 'view.scopeDay',
@@ -580,6 +644,69 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['week'],
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope('week'),
+  },
+  {
+    id: 'view.toggleScope',
+    label: 'Toggle Day/Week view',
+    dynamicLabel: () => (view().scope === 'week' ? 'Switch to Day view' : 'Switch to Week view'),
+    description: 'Flips between the two, same as picking one directly',
+    group: 'view',
+    icon: CalendarRange,
+    keywords: 'day week scope toggle switch flip view',
+    aliases: ['toggle'],
+    shortcut: { id: 'toggle_view_scope', keys: ['v'] },
+    // Same reason as the two commands above: mobile is day-only by
+    // construction, so this would silently write default_view with no
+    // visible effect.
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
+  },
+  /*
+   * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys, and the
+   * dispatcher only preventDefaults a command it is actually going to RUN — so
+   * `availableWhen` is what hands them back to the browser everywhere except the
+   * two week views that have day columns to scale. Repeatable, because holding
+   * the key to sweep the ladder is the whole gesture.
+   */
+  {
+    id: 'view.weekColumnsWider',
+    label: 'Widen day columns',
+    description: 'Fewer, wider day columns in the week views',
+    group: 'view',
+    icon: ChevronsLeftRight,
+    keywords: 'week column width wider zoom in bigger scale days',
+    shortcut: { id: 'week_columns_wider', keys: ['meta', '='], repeatable: true },
+    availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().stepWeekDaysVisible(1),
+  },
+  {
+    id: 'view.weekColumnsNarrower',
+    label: 'Narrow day columns',
+    description: 'More, narrower day columns in the week views',
+    group: 'view',
+    icon: ChevronsRightLeft,
+    keywords: 'week column width narrower zoom out smaller scale days',
+    shortcut: { id: 'week_columns_narrower', keys: ['meta', '-'], repeatable: true },
+    availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().stepWeekDaysVisible(-1),
+  },
+  {
+    id: 'view.weekColumnsReset',
+    label: 'Reset day column width',
+    description: 'Back to whatever fits the canvas best',
+    group: 'view',
+    icon: Columns3,
+    keywords: 'week column width reset default automatic fit canvas',
+    shortcut: { id: 'week_columns_reset', keys: ['meta', '0'] },
+    // Clears the choice rather than writing a fixed count, so the view goes back
+    // to picking the stop nearest TARGET_COL_PX — and keeps re-picking it as the
+    // canvas changes, exactly as it did before the control was ever touched.
+    availableWhen: () =>
+      view().scope === 'week' && isScalableLayout(view().layout) && view().weekDaysVisible !== null,
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().setWeekDaysVisible(null),
   },
 
   /* ── Rituals & Beacon ───────────────────────────────────────────────── */
@@ -671,24 +798,86 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => useSidebarStore.getState().toggleLeftSidebar(),
   },
   {
+    id: 'workspace.focusItemPanel',
+    label: 'Focus item panel',
+    description: 'Move focus into the open item panel',
+    group: 'workspace',
+    icon: PanelLeft,
+    keywords: 'item panel inspector focus edit details',
+    shortcut: { id: 'focus_item_panel', keys: ['meta', '\\'], allowInInput: true },
+    // Hidden for the same reason toggleSidebar is: with no panel open the row
+    // would be a trapdoor that appears to do nothing. The binding is the point,
+    // and it still shows up in the shortcuts modal.
+    hidden: true,
+    run: () => useUIStore.getState().focusItemPanel(),
+  },
+  {
     id: 'workspace.focusOmnibar',
     label: 'Search',
-    description: 'Focus the omnibar',
+    description: 'Open the command launcher',
     group: 'workspace',
     icon: Search,
-    keywords: 'search find omnibar command palette',
+    keywords: 'search find omnibar command palette launcher',
     shortcut: { id: 'system_search', keys: ['meta', 'k'], allowInInput: true },
-    // Running it from inside the omnibar is a no-op; it exists so the binding
+    // Running it from inside the launcher is a no-op; it exists so the binding
     // is rebindable and shows up in the shortcuts modal.
     hidden: true,
-    // Reveal the omnibar BEFORE focusing it. Focusing while the sidebar is
-    // collapsed puts the caret in a zero-width clipped input: nothing appears,
-    // and because isFocusedOnInput() then suppresses every binding without
-    // allowInInput, it takes n / e / Backspace / ⌘Z down with it until you
-    // blur. Same guard openChat and Open braindump already use.
+    // Desktop: ⌘K opens the summoned launcher modal (command + search). It is
+    // independent of the sidebar, so no reveal step is needed.
+    //
+    // Mobile has no launcher (no keyboard): keep the old behaviour of focusing
+    // the docked omnibar, switching off the Chat tab first since the mobile
+    // dock unmounts the omnibar there — focusing a zero-width clipped input
+    // otherwise takes n / e / Backspace / ⌘Z down with it until you blur.
     run: (ctx) => {
       if (ctx.isMobile) {
-        // The mobile dock unmounts the omnibar on the Chat tab.
+        const nav = useMobileNavStore.getState();
+        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        useUIStore.getState().focusOmnibar();
+        return;
+      }
+      useUIStore.getState().openDialog({ type: 'launcher' });
+    },
+  },
+  {
+    id: 'workspace.openCommandLauncher',
+    label: 'Commands',
+    description: 'Open the command launcher in command mode',
+    group: 'workspace',
+    icon: SlashSquare,
+    keywords: 'command palette slash run launcher',
+    // Bare '/', suppressed while typing (allowInInput omitted) so the key stays
+    // typeable in every text field; it only fires from a non-input surface.
+    shortcut: { id: 'system_command', keys: ['/'] },
+    hidden: true,
+    // Desktop: '/' opens the launcher already in command mode (the '/' seeds the
+    // input). Mobile has no launcher — focus the docked omnibar, where typing
+    // '/' reaches the same palette.
+    run: (ctx) => {
+      if (ctx.isMobile) {
+        const nav = useMobileNavStore.getState();
+        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        useUIStore.getState().focusOmnibar();
+        return;
+      }
+      useUIStore.getState().openDialog({ type: 'launcher', query: '/' });
+    },
+  },
+  {
+    id: 'workspace.focusCapture',
+    label: 'Quick add',
+    description: 'Focus the sidebar capture bar',
+    group: 'workspace',
+    icon: Plus,
+    keywords: 'quick add capture omnibar sidebar new task',
+    shortcut: { id: 'system_capture', keys: ['meta', 'i'], allowInInput: true },
+    hidden: true,
+    // The reveal+focus path ⌘K used before the launcher took ⌘K over. Reveal the
+    // sidebar BEFORE focusing: focusing a clipped zero-width input in a collapsed
+    // sidebar swallows every binding without allowInInput (n / e / Backspace / ⌘Z)
+    // until you blur. Mobile switches off the Chat tab, which unmounts the omnibar.
+    run: (ctx) => {
+      if (ctx.isMobile) {
         const nav = useMobileNavStore.getState();
         if (nav.activeTab === 'chat') nav.setActiveTab('today');
       } else {
@@ -696,6 +885,21 @@ export const STATIC_COMMANDS: Command[] = [
       }
       useUIStore.getState().focusOmnibar();
     },
+  },
+  {
+    id: 'workspace.selectAll',
+    label: 'Select all items',
+    description: 'Select every item currently on screen',
+    group: 'workspace',
+    icon: Rows3,
+    keywords: 'select all everything highlight multi',
+    // No palette row: "select all" from a palette that then closes reads as a
+    // no-op, and the binding is the point. It still lists in the shortcuts modal.
+    // No allowInInput, so ⌘A inside a text field stays the browser's select-all.
+    shortcut: { id: 'select_all', keys: ['meta', 'a'] },
+    hidden: true,
+    // DOM order == visual order (no virtualization); dedupes ids across surfaces.
+    run: () => useSelectionStore.getState().replace(selectableIdsInDom()),
   },
 
   /* ── Settings ───────────────────────────────────────────────────────── */
@@ -741,6 +945,27 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'completed done hide show finished',
     aliases: ['completed'],
     run: () => planner().setShowCompletedTasks(!planner().showCompletedTasks),
+  },
+  {
+    id: 'settings.showPaused',
+    label: 'Toggle paused items on the grid',
+    dynamicLabel: () =>
+      planner().showPausedOnGrid ? 'Hide paused items on the grid' : 'Show paused items on the grid',
+    description: 'Greyed, in place, where they would have been',
+    group: 'settings',
+    icon: Moon,
+    keywords: 'paused hidden set aside routine program show grid ghost',
+    aliases: ['paused'],
+    // Ungated, deliberately. It first carried `routines.length > 0 ||
+    // programs.length > 0` on the theory that the preference is unobservable
+    // without a container — which is false: `inactiveItemIdsOn`'s own
+    // `!isPausedOn(item, …)` arm needs no container at all, so Phase 1's
+    // item-level pause is governed by this flag from a standing start. Worse,
+    // the flag is persisted, so gating it made the control unreachable in a
+    // state it could itself produce: turn it on, then delete your last
+    // container, and every self-paused item renders greyed forever behind a
+    // palette row that is greyed out and refuses to run.
+    run: () => planner().setShowPausedOnGrid(!planner().showPausedOnGrid),
   },
   {
     id: 'settings.timeFormat',
@@ -835,17 +1060,51 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'app',
     icon: Settings,
     keywords: 'settings preferences options account api key',
+    // The shortcut id stays 'system_settings' byte-for-byte even though the
+    // command now opens a route: keyboard-shortcuts-store persists user
+    // rebindings BY ID, and commands.test.ts asserts the id list exhaustively.
     shortcut: { id: 'system_settings', keys: ['meta', ','], allowInInput: true },
-    run: () => useUIStore.getState().openDialog({ type: 'settings' }),
+    run: (ctx) => {
+      // navigate is optional on CommandContext (see types.ts), so this falls
+      // back to a full load rather than doing nothing when it's absent.
+      if (ctx.navigate) ctx.navigate('/settings');
+      else if (typeof window !== 'undefined') window.location.assign('/settings');
+    },
   },
   {
+    // The id and the aliases are FROZEN even though the surface was renamed:
+    // ids are the stable handle the e2e suite and command-usage ranking key on,
+    // and an alias is muscle memory. Only the label follows the rename.
     id: 'app.categories',
-    label: 'Manage projects & groups',
+    label: 'Organize projects & groups',
     group: 'app',
     icon: FolderOpen,
-    keywords: 'projects groups categories manage folders edit',
+    keywords: 'projects groups categories manage organize folders edit labels',
     aliases: ['projects', 'groups'],
-    run: () => useUIStore.getState().openDialog({ type: 'manage-categories' }),
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'projects' }),
+  },
+  {
+    id: 'app.collections',
+    label: 'Organize routines & programs',
+    group: 'app',
+    icon: RepeatIcon,
+    keywords: 'routines programs collections manage organize group pause',
+    aliases: ['routines'],
+    // Not gated on collectionsAvailable: the console explains the situation
+    // better than a missing row does, and a row that silently disappears reads
+    // as a broken palette rather than an unavailable feature.
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'routines' }),
+  },
+  {
+    id: 'app.goals',
+    label: 'Organize goals',
+    group: 'app',
+    icon: Target,
+    keywords: 'goals milestones check-ins ambitions long term targets progress',
+    aliases: ['goals'],
+    // Ungated, like app.collections and for the same reason: the console
+    // explains an unavailable feature better than a vanished palette row does.
+    run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'goals' }),
   },
   {
     id: 'app.shortcuts',
@@ -942,7 +1201,188 @@ const customTypeCommands: CommandProvider = () => {
  * ties — provider output is appended after the static list, so a generated row
  * never outranks a hand-authored one at the same score.
  */
-const PROVIDERS: CommandProvider[] = [customTypeCommands];
+let cachedRoutines: readonly Routine[] | null = null;
+let cachedRoutineCommands: Command[] = [];
+
+/**
+ * "Pause Morning" / "Resume Exercise", one pair per routine.
+ *
+ * The customTypeCommands pattern: memoized on the routine array's identity
+ * (rebuilt on every mutation), so a palette-wide pass costs nothing per
+ * keystroke. Deliberately different from it in two ways, both because these
+ * are STATE commands rather than create commands:
+ *
+ * - No aliases. A routine is user-named, and an alias is a promise that typing
+ *   it lands in exactly one place; a routine called "settings" must not steal
+ *   /settings. customTypeCommands can afford a collision check because a type
+ *   name is a slug — routine names are free text and far likelier to collide.
+ * - Only ONE of the pair renders, chosen by the routine's state resolved at
+ *   TODAY. Offering both would make the palette lie about which is a no-op,
+ *   and resolving at the selected date would make them trade places as the
+ *   user walks the week past a resume boundary (the bug items.pause/resume
+ *   had to be written around in Phase 1).
+ */
+const routineCommands: CommandProvider = () => {
+  const { routines, collectionsAvailable } = planner();
+  if (!collectionsAvailable) return [];
+  if (routines === cachedRoutines) return cachedRoutineCommands;
+
+  cachedRoutines = routines;
+  cachedRoutineCommands = routines.map((routine) => {
+    // Resolved per BUILD rather than per render, which is safe precisely
+    // because the memo key is the routine array — and a pause writes to it.
+    const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const paused = isPausedOn(routine, toDateStr(new Date(), tz), tz);
+    return {
+      id: `routine.${paused ? 'resume' : 'pause'}.${routine.id}`,
+      label: `${paused ? 'Resume' : 'Pause'} ${routine.name}`,
+      group: 'items',
+      icon: paused ? PlayIcon : PauseIcon,
+      keywords: `routine ${routine.name} ${paused ? 'resume unpause start' : 'pause hide stop'}`,
+      run: () => planner().setRoutinePaused(routine.id, !paused),
+    } satisfies Command;
+  });
+  return cachedRoutineCommands;
+};
+
+let cachedPrograms: readonly Program[] | null = null;
+let cachedProgramDay: string | null = null;
+let cachedProgramCommands: Command[] = [];
+
+/**
+ * Two commands per program, and both can render at once — unlike the routine
+ * pair, where exactly one is a no-op.
+ *
+ * - "Turn on/off X" is the direct flip, and only the one that would CHANGE
+ *   something appears, same reasoning as routines.
+ * - "Switch to X" is the swap: it turns X on and everything else off. It only
+ *   appears when there is something to turn off, because with nothing else on
+ *   it would be the first command wearing a second name.
+ *
+ * No aliases, for the reason spelled out above routineCommands: program names
+ * are free text and a program called "settings" must not steal /settings.
+ */
+const programCommands: CommandProvider = () => {
+  const { programs, collectionsAvailable } = planner();
+  if (!collectionsAvailable) return [];
+  const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const todayStr = toDateStr(new Date(), tz);
+  // The day is part of the key, not just the array. An `auto` program flips
+  // liveness at midnight with NO store write, so array identity alone cannot
+  // express the passage of time — a tab left open overnight would keep serving
+  // yesterday's "Turn on Summer" for a program the calendar already turned on.
+  // Same reasoning as the entity-eligibility memo, which had to learn this too.
+  if (programs === cachedPrograms && todayStr === cachedProgramDay) return cachedProgramCommands;
+
+  cachedPrograms = programs;
+  cachedProgramDay = todayStr;
+  const liveCount = programs.filter((p) => isProgramActiveOn(p, todayStr)).length;
+
+  cachedProgramCommands = programs.flatMap((program) => {
+    const live = isProgramActiveOn(program, todayStr);
+    const commands: Command[] = [
+      {
+        id: `program.${live ? 'pause' : 'activate'}.${program.id}`,
+        label: `Turn ${live ? 'off' : 'on'} ${program.name}`,
+        group: 'items',
+        icon: live ? PauseIcon : PlayIcon,
+        keywords: `program ${program.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
+        // Re-resolved at RUN time, and belt-and-braces even with the day in the
+        // key above. The label promises an OUTCOME ("on"), not a transition, so
+        // if the world already reached it there is nothing to do.
+        //
+        // The state itself comes from `programStateForSwitch`, the same rule the
+        // scope rail uses. Writing 'active'/'paused' straight was only ever half
+        // right: the FIRST flip of an `auto` program agrees either way, but the
+        // return flip does not, and this control could never hand a program back
+        // to `auto`. Turn Summer off here and on again and its Aug 31 end is
+        // gone — the exact loss two controls for one switch must not disagree
+        // about.
+        run: () => {
+          const desiredOn = !live;
+          const current = planner().programs.find((p) => p.id === program.id);
+          if (!current) return;
+          const today = toDateStr(new Date(), tz);
+          if (isProgramActiveOn(current, today) === desiredOn) return;
+          planner().setProgramState(program.id, programStateForSwitch(current, desiredOn, today));
+        },
+      },
+    ];
+    if (!live && liveCount > 0) {
+      commands.push({
+        id: `program.swap.${program.id}`,
+        label: `Switch to ${program.name}`,
+        group: 'items',
+        icon: CalendarRange,
+        keywords: `program ${program.name} switch swap change season only`,
+        run: () => planner().swapToProgram(program.id),
+      });
+    }
+    return commands;
+  });
+  return cachedProgramCommands;
+};
+
+let cachedGoals: readonly Goal[] | null = null;
+let cachedGoalCommands: Command[] = [];
+
+/**
+ * "Open Learn Chinese", one per ACTIVE goal.
+ *
+ * One command rather than a pair, because unlike a routine or a program a goal
+ * has no daily switch — its states are a lifecycle decision (achieved, set
+ * aside) that belongs where the milestone list is visible, not on a row you
+ * hit by typing three letters. So the palette's job here is navigation: it is
+ * the fastest route to the goal page, which is the surface a long goal is
+ * actually visited on.
+ *
+ * Memoized on the goal array's identity, and ONLY the array — a goal's
+ * liveness never changes with the calendar the way an `auto` program's does,
+ * so there is no day to key on.
+ *
+ * Ended goals are omitted. They are a record rather than live work, and a
+ * palette that offers three finished goals ahead of the one you are running
+ * has stopped being a shortcut. They stay reachable through the console.
+ *
+ * No aliases, for the reason spelled out above routineCommands: goal names are
+ * free text and a goal called "settings" must not steal /settings.
+ */
+const goalCommands: CommandProvider = () => {
+  const { goals, goalsAvailable } = planner();
+  if (!goalsAvailable) return [];
+  if (goals === cachedGoals) return cachedGoalCommands;
+
+  cachedGoals = goals;
+  cachedGoalCommands = goals
+    .filter((goal) => goal.state === 'active')
+    .map(
+      (goal) =>
+        ({
+          id: `goal.open.${goal.id}`,
+          label: `Open ${goal.name}`,
+          group: 'items',
+          icon: Target,
+          keywords: `goal ${goal.name} milestone progress open`,
+          // Client navigation, with the same fallback app.settings uses. A
+          // hard load would tear down the hydrated store and re-run every
+          // fetch, discarding the undo stack and any in-flight write — for a
+          // move between two sibling client routes.
+          run: (ctx) => {
+            const href = `/goal/${goal.id}`;
+            if (ctx.navigate) ctx.navigate(href);
+            else if (typeof window !== 'undefined') window.location.assign(href);
+          },
+        }) satisfies Command,
+    );
+  return cachedGoalCommands;
+};
+
+const PROVIDERS: CommandProvider[] = [
+  customTypeCommands,
+  routineCommands,
+  programCommands,
+  goalCommands,
+];
 
 /**
  * The registry as every palette surface sees it. Call this rather than reading

@@ -215,15 +215,26 @@ export function MetaText({
  * Takes the value and its formatter, not formatted text, for two reasons: the
  * direction has to be derived by comparing numbers, and "1h" appearing for both
  * 60 and 60-after-59 must be told apart from "1h" that hasn't changed.
+ *
+ * `active` is what makes the turn worth watching, and it is not decoration. A
+ * resize expands the grid to the full day at a frozen scale, which drops the hour
+ * height to ~29px and pins every block under ~78 minutes at PANE_MIN_H — so the
+ * block barely changes size and this figure is the ENTIRE readout for the gesture.
+ * At the rail's resting 10px muted grey it is missable, so for the duration of the
+ * drag it steps up to 11px ink: the one datum on the block that is currently an
+ * instrument rather than a report.
  */
 export function RollingMetaText({
   value,
   format,
+  active,
   className,
   testId,
 }: {
   value: number;
   format: (value: number) => string;
+  /** The value is being edited right now — promote it out of the quiet rail. */
+  active?: boolean;
   className?: string;
   testId?: string;
 }) {
@@ -251,8 +262,14 @@ export function RollingMetaText({
     // depend on its parent to work.)
     <span
       data-testid={testId}
+      data-rolling={active ? 'true' : undefined}
       className={cn(
-        'relative inline-block overflow-hidden font-num text-2xs text-muted-foreground',
+        'relative inline-block overflow-hidden font-num',
+        // Size and colour are the promotion; the transition is only on colour,
+        // because the size step has to be instant — the slot's height IS the
+        // roll's travel distance, and easing it would ease the travel with it.
+        active ? 'text-xs text-foreground' : 'text-2xs text-muted-foreground',
+        'transition-colors duration-150',
         className
       )}
       style={{ '--roll-dir': String(roll.dir) } as React.CSSProperties}
@@ -548,25 +565,46 @@ export function formatDurationLong(minutes: number): string {
   return m ? `${plural(h, 'hour')} ${plural(m, 'minute')}` : plural(h, 'hour');
 }
 
-/** Item count beside a bucket name. The only metadata that keeps a container —
- *  it's a chip in the header band, not a row datum. 20×20 minimum with 6px side
- *  padding, so a single digit reads as a square and a three-digit count grows
- *  sideways only. */
+/**
+ * A count beside a label — the one piece of metadata in the app that keeps a
+ * container.
+ *
+ * It went bare when the bucket card's 45px header band was deleted, on the
+ * argument that a chip out-weighs the label it belongs to. That was right about
+ * the old 20px chip and wrong about the chip as such: with the bucket caption
+ * muted down to sit under the rows in the reading order, a bare numeral beside a
+ * faint label stops reading as a count at all — it reads as part of the word.
+ * The container is what separates them, so it comes back, sized to the caption
+ * rather than to the band it used to live in.
+ *
+ * `--surface-3` deliberately, not a border: it is the app's well value, so the
+ * chip is recessed in light and raised in dark. That polarity flip is the same
+ * one every other surface-3 chip in the app already has (see DayKeycaps), and it
+ * keeps the count reading as a slot the number sits in rather than as a control.
+ *
+ * `size` tracks the caption it sits in: 18px in the day view's 22px row, 16px in
+ * week's 16px one, where a 20px chip could not fit at all. Both are min-widths —
+ * a three-digit count grows sideways only, so the caption never reflows
+ * vertically.
+ */
 export function CountBadge({
   count,
   className,
   testId,
+  size = 'md',
 }: {
   count: number;
   className?: string;
   testId?: string;
+  size?: 'sm' | 'md';
 }) {
   if (count <= 0) return null;
   return (
     <span
       data-testid={testId}
       className={cn(
-        'inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-surface-3 px-1.5 font-num text-2xs font-medium text-muted-foreground',
+        'inline-flex flex-none items-center justify-center rounded-[5px] bg-surface-3 font-num text-2xs text-muted-foreground tabular-nums',
+        size === 'md' ? 'h-[18px] min-w-[18px] px-1.5' : 'h-4 min-w-4 px-1',
         className
       )}
     >

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateHabitGroup, deleteHabitGroup } from '@/lib/db'
+import { updateHabitGroup, deleteHabitGroup, renameContainerMembers } from '@/lib/db'
 import type { HabitGroupType } from '@/lib/planner-types'
 
 /**
@@ -43,8 +43,26 @@ export async function PATCH(
   try {
     const updates: Partial<HabitGroupType> = await req.json()
     await updateHabitGroup(userId, id, updates, serviceClient)
+    // Chained, for the reason spelled out in the projects route: the container
+    // write and the member fan-out do not fail together, and the half-applied
+    // outcome is undetectable downstream.
+    if (typeof updates.name === 'string' && updates.name) {
+      await renameContainerMembers(userId, 'group_id', id, updates.name, serviceClient)
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
+    // See the projects route: 23505 here means the name is held by another
+    // group, possibly one in the trash that no endpoint can show the caller.
+    const code = (err as { code?: string } | null)?.code
+    if (code === '23505' || (err instanceof Error && err.message.includes('duplicate key value'))) {
+      return NextResponse.json(
+        {
+          error:
+            'That name is already taken by another habit group — possibly one in the trash, which keeps its name for 30 days.',
+        },
+        { status: 409 }
+      )
+    }
     const msg = err instanceof Error ? err.message : 'Internal server error'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,13 +16,52 @@ import { useUIStore } from '@/lib/ui-store';
 /**
  * The one confirm prompt for the whole app, driven by ui-store.confirm().
  * Mounted once in AppShell; replaces the per-feature AlertDialog copies.
+ *
+ * BEING SHARED IS WHY FOCUS NEEDS HANDLING HERE. Radix restores focus on close
+ * by running `event.preventDefault(); trigger?.focus()` — correct for the
+ * `<AlertDialogTrigger>` it was designed around, and a no-op for this dialog,
+ * which has no trigger at all: the opener is any button anywhere that happens to
+ * call `confirm()`. The preventDefault still lands, cancelling FocusScope's own
+ * restore, so dismissing a confirm dropped the cursor on `<body>` and ended the
+ * keyboard session — Tab resumed from the top of the document. It affected every
+ * confirm in the app, and reading a delete prompt and deciding NOT to is the
+ * ordinary case.
  */
 export function ConfirmDialog() {
   const { confirmRequest, resolveConfirm } = useUIStore();
+  const returnTo = useRef<HTMLElement | null>(null);
 
   return (
     <AlertDialog open={!!confirmRequest} onOpenChange={(open) => !open && resolveConfirm(false)}>
-      <AlertDialogContent data-testid="confirm-dialog">
+      <AlertDialogContent
+        data-testid="confirm-dialog"
+        // Captured HERE rather than in an effect or during render: FocusScope
+        // dispatches this before it moves focus, so `activeElement` is still the
+        // control the user pressed. An effect runs after that move and would
+        // capture the Cancel button — this dialog's own.
+        //
+        // Not prevented, so AlertDialog's own handler still runs and Cancel
+        // takes focus, which is the destructive-prompt default worth keeping.
+        onOpenAutoFocus={() => {
+          returnTo.current = document.activeElement as HTMLElement | null;
+        }}
+        onCloseAutoFocus={(event) => {
+          const target = returnTo.current;
+          // Released either way, so a confirmed delete cannot pin the detail
+          // pane's removed subtree in memory behind this ref.
+          returnTo.current = null;
+          // `isConnected` costs one property read and is skipped rather than
+          // "guarded against": confirming a delete unmounts the control that
+          // opened it, and both branches then land focus in the same place —
+          // preventing the default and focusing a detached node is a no-op, and
+          // so is Radix's own `trigger?.focus()` on a dialog with no trigger.
+          // Verified by measuring `document.activeElement` both ways. It is here
+          // to keep this handler's contract readable, not for an effect.
+          if (!target?.isConnected) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{confirmRequest?.title}</AlertDialogTitle>
           <AlertDialogDescription>{confirmRequest?.description}</AlertDialogDescription>
@@ -32,7 +72,7 @@ export function ConfirmDialog() {
             // The confirm LABEL is caller-supplied ('Delete', 'Reset Streak',
             // 'Confirm'), and 'Delete' collides with three other buttons in the
             // app. This id says which dialog, not which verb.
-            data-testid="confirm-dialog-confirm"
+            data-testid={confirmRequest?.testId ?? 'confirm-dialog-confirm'}
             className={
               confirmRequest?.destructive
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'

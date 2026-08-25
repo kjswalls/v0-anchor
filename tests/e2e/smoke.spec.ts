@@ -9,6 +9,7 @@ import {
   apiKey,
 } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
+import { BASE_URL } from './helpers/env';
 import {
   reloadApp,
   itemCard,
@@ -58,7 +59,7 @@ test.describe('Smoke: core daily loop', () => {
       await expect
         .poll(
           async () => {
-            const res = await page.request.get('http://localhost:3000/api/agent/context', {
+            const res = await page.request.get(`${BASE_URL}/api/agent/context`, {
               headers: { Authorization: `Bearer ${apiKey()}` },
             });
             const body = await res.json();
@@ -110,7 +111,7 @@ test.describe('Smoke: core daily loop', () => {
 
   test('scheduled task appears in its bucket', async ({ page }) => {
     const accessToken = await getAccessToken(page);
-    const title = `Smoke bucket task ${Date.now()}`;
+    const title = testTitle('smoke-bucket');
     const taskId = await createTestTask(page, accessToken, {
       title,
       startDate: getTodayStr(),

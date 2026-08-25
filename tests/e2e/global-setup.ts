@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './helpers/env';
+import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX, BASE_URL } from './helpers/env';
 import { passwordGrant, sessionCookies, seededViewState } from './helpers/session';
 
 /**
@@ -92,15 +92,50 @@ export default async function globalSetup() {
   // unrecoverable, so the default is to refuse.
   const looksLikeTestAccount = /e2e|test|playwright/i.test(env.email);
   if (looksLikeTestAccount || process.env.E2E_ALLOW_DB_SWEEP === '1') {
-    const swept = await rest(
-      `items?user_id=eq.${userId}&title=like.${TEST_TITLE_PREFIX}*`,
-      { method: 'DELETE', headers: { Prefer: 'return=representation' } }
-    );
-    if (swept.ok) {
-      const rows = (await swept.json()) as unknown[];
-      if (rows.length) console.log(`[globalSetup] swept ${rows.length} leftover test item(s)`);
+    // Read then delete by id, rather than pushing the prefix into a LIKE.
+    // `_` is a single-character WILDCARD in SQL LIKE and TEST_TITLE_PREFIX is
+    // `e2e_`, so `title=like.e2e_*` also matched `e2eX…` and anything else whose
+    // fourth character happens to differ — a hard DELETE reaching past this
+    // sweep's own stated scope, on the one path (E2E_ALLOW_DB_SWEEP=1) where the
+    // account is NOT known to be disposable. A JS startsWith has no second
+    // reading.
+    const found = await rest(`items?user_id=eq.${userId}&select=id,title`);
+    if (!found.ok) {
+      console.warn(`[globalSetup] sweep skipped (${found.status}): ${await found.text()}`);
     } else {
-      console.warn(`[globalSetup] sweep skipped (${swept.status}): ${await swept.text()}`);
+      const litter = ((await found.json()) as { id: string; title: string | null }[]).filter((row) =>
+        row.title?.startsWith(TEST_TITLE_PREFIX)
+      );
+      if (litter.length) {
+        const ids = litter.map((row) => row.id).join(',');
+        const swept = await rest(`items?id=in.(${ids})`, { method: 'DELETE' });
+        if (swept.ok) console.log(`[globalSetup] swept ${litter.length} leftover test item(s)`);
+        else console.warn(`[globalSetup] sweep failed (${swept.status}): ${await swept.text()}`);
+      }
+    }
+
+    // Goals, by the same read-then-delete-by-id rule and for the same reason:
+    // an aborted spec's afterEach never runs, and a leftover goal is not merely
+    // clutter — it renders in the console list, in the omnibar's capped goal
+    // channel, and as a dynamic palette command, so it degrades the very
+    // locators later specs depend on. `goal_items` needs no line; the composite
+    // FKs cascade.
+    const foundGoals = await rest(`goals?user_id=eq.${userId}&select=id,name`);
+    if (!foundGoals.ok) {
+      console.warn(
+        `[globalSetup] goal sweep skipped (${foundGoals.status}): ${await foundGoals.text()}`
+      );
+    } else {
+      const litter = ((await foundGoals.json()) as { id: string; name: string | null }[]).filter(
+        (row) => row.name?.startsWith(TEST_TITLE_PREFIX)
+      );
+      if (litter.length) {
+        const ids = litter.map((row) => row.id).join(',');
+        const swept = await rest(`goals?id=in.(${ids})`, { method: 'DELETE' });
+        if (swept.ok) console.log(`[globalSetup] swept ${litter.length} leftover test goal(s)`);
+        else
+          console.warn(`[globalSetup] goal sweep failed (${swept.status}): ${await swept.text()}`);
+      }
     }
   } else {
     console.warn(
@@ -116,7 +151,11 @@ export default async function globalSetup() {
     cookies: sessionCookies(env.supabaseUrl, session),
     origins: [
       {
-        origin: 'http://localhost:3000',
+        // MUST match use.baseURL. A storageState origin that does not match is
+        // not an error — the localStorage seed is simply never applied, so every
+        // test starts on default view prefs instead of the seeded ones and the
+        // failures read as view bugs.
+        origin: BASE_URL,
         localStorage: [seededViewState()],
       },
     ],

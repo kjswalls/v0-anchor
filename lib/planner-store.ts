@@ -2,7 +2,11 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { format } from 'date-fns';
+// The store's one UI import, and it earns it: a swallowed write failure is the
+// exact bug undoFailedCreate exists to fix, so the net has to be able to speak.
+// planner-store is 'use client' and no server route imports it, and <Toaster>
+// is mounted in the root layout.
+import { toast } from 'sonner';
 import type {
   Task,
   Habit,
@@ -19,10 +23,20 @@ import type {
   Project,
   HabitGroupType,
   ItemTypeDef,
+  Routine,
+  Program,
+  Goal,
+  GoalRole,
   Proposal,
 } from './planner-types';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import { validateProposalOperations } from './proposal';
+import {
+  goalProgress,
+  milestoneItemIds,
+  resolveGoalStateWrite,
+  roleStillValid,
+} from './goals';
 import {
   fetchItems,
   fetchProjects,
@@ -32,10 +46,12 @@ import {
   updateItemType as dbUpdateItemType,
   deleteItemType as dbDeleteItemType,
   createItem as dbCreateItem,
+  createItems as dbCreateItems,
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
   restoreItem as dbRestoreItem,
   setItemCompletion as dbSetItemCompletion,
+  setItemSkip as dbSetItemSkip,
   createProject as dbCreateProject,
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
@@ -44,12 +60,51 @@ import {
   updateHabitGroup as dbUpdateHabitGroup,
   deleteHabitGroup as dbDeleteHabitGroup,
   restoreHabitGroup as dbRestoreHabitGroup,
+  renameContainerMembers as dbRenameContainerMembers,
+  fetchRoutines,
+  createRoutine as dbCreateRoutine,
+  updateRoutine as dbUpdateRoutine,
+  deleteRoutine as dbDeleteRoutine,
+  restoreRoutine as dbRestoreRoutine,
+  fetchPrograms,
+  fetchGoals,
+  createGoal as dbCreateGoal,
+  updateGoal as dbUpdateGoal,
+  deleteGoal as dbDeleteGoal,
+  recordCheckin as dbRecordCheckin,
+  restoreGoal as dbRestoreGoal,
+  createProgram as dbCreateProgram,
+  updateProgram as dbUpdateProgram,
+  deleteProgram as dbDeleteProgram,
+  restoreProgram as dbRestoreProgram,
+  itemDbType,
+  adoptContainerMembers,
+  type TrashEntry,
 } from './db';
-import { ITEM_TYPES, getItemTypeConfig, itemTypeName, hydrateCustomTypes } from './item-registry';
-import { PROJECT_FIELDS, HABIT_GROUP_FIELDS } from '@anchor-app/types';
+import { celebrateCompletion } from './completion-confetti';
+import type { CommitResult, SeedPlan } from './seed-containers';
+import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
+import {
+  isPausedOn,
+  isProgramActiveOn,
+  inactiveItemIdsOn,
+  resolvePauseWrite,
+  suppressionReason,
+  suppressionLabel,
+} from './active';
+import { programStateForSwitch } from './scope-rail';
+import { recordReleased } from './sweep-grace';
+import {
+  PROJECT_FIELDS,
+  HABIT_GROUP_FIELDS,
+  ROUTINE_FIELDS,
+  PROGRAM_FIELDS,
+  GOAL_FIELDS,
+} from '@anchor-app/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
+import { foldContainerName, sameContainerName } from './container-registry';
 
 interface PlannerStore {
   /**
@@ -77,6 +132,16 @@ interface PlannerStore {
   setShowCurrentTimeIndicator: (show: boolean) => void;
   showCompletedTasks: boolean;
   setShowCompletedTasks: (show: boolean) => void;
+  /**
+   * Render suppressed work in place, greyed, instead of hiding it (Phase 5).
+   *
+   * Deliberately grid-only. The braindump already has a better answer — the
+   * Paused section groups by CAUSE, which a greyed row inline cannot — and the
+   * question this setting answers is a canvas question: "what would today look
+   * like with Summer back on?"
+   */
+  showPausedOnGrid: boolean;
+  setShowPausedOnGrid: (show: boolean) => void;
   defaultView: 'day' | 'week';
   setDefaultView: (view: 'day' | 'week') => void;
   defaultTimeBucket: TimeBucket;
@@ -106,8 +171,27 @@ interface PlannerStore {
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
   /** Create an item of a user-defined type (task-shaped). */
-  addItem: (customType: string, item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
-  addTask: (task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>) => void;
+  addItem: (
+    customType: string,
+    item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
+    memberships?: Memberships,
+  ) => void;
+  addTask: (
+    task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
+    memberships?: Memberships,
+  ) => void;
+  /**
+   * Bulk create — the paste-a-list path (bulk-add dialog). One set(), one
+   * history entry, one undo, then one DB write per row, per the bulk-verb
+   * contract above. `type` is 'task' or a hydrated custom slug and applies to
+   * every row; habits are excluded (their config doesn't fit one-per-line).
+   * A single-element array delegates to addTask/addItem so its history label
+   * stays the natural "Add task: …" form.
+   */
+  addTasksBulk: (
+    type: string,
+    items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
+  ) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
@@ -123,10 +207,42 @@ interface PlannerStore {
   /**
    * Bulk carry: one set(), one history entry, one undo. Same visibility
    * guarantee as moveTaskToDate, but deliberately drops startTime/isScheduled.
+   * `bucket` overrides each item's own bucket (a week-grid group drop targets a
+   * specific bucket); omitted, each item keeps its current bucket.
    */
-  moveTasksToDate: (ids: string[], dateStr: string) => void;
-  /** Batched unscheduleTask — one set(), one history entry, one undo. */
-  unscheduleTasks: (ids: string[]) => void;
+  moveTasksToDate: (ids: string[], dateStr: string, bucket?: TimeBucket) => void;
+  /**
+   * Batched unscheduleTask — one set(), one history entry, one undo.
+   *
+   * `opts.label` overrides the history entry's text, which is also what decides
+   * whether the undo toast fires (hooks/use-undo-toast.ts matches on prefix).
+   * Only the auto-age sweep passes it, and only to stand the toast down; see
+   * the note at the implementation.
+   */
+  unscheduleTasks: (ids: string[], opts?: { label?: string }) => void;
+  /**
+   * Put scheduling fields back on specific rows — the forward-facing inverse of
+   * `unscheduleTasks`, addressed at ids rather than at the top of the history
+   * stack.
+   *
+   * This exists because "undo" and "put those back" stop being the same thing
+   * within seconds. An undo toast can pop the stack safely because it lives for
+   * five seconds and nothing else has happened yet. A receipt that persists —
+   * the dock's line for the overnight sweep — cannot: by the time it is read,
+   * the sweep is buried under everything the user has done since, and a pop
+   * would reverse the wrong action entirely. Restoring recorded field values is
+   * the same outcome, still one set() and so still itself undoable, but correct
+   * no matter how long the offer sat there.
+   */
+  restoreScheduling: (
+    entries: readonly {
+      id: string;
+      isScheduled: boolean;
+      startDate?: string;
+      timeBucket?: string;
+      startTime?: string;
+    }[]
+  ) => void;
   reorderTasks: (taskIds: string[]) => void;
   /**
    * Apply an accepted AI proposal. Operations are re-validated against the type
@@ -135,8 +251,49 @@ interface PlannerStore {
    */
   applyProposal: (proposal: Proposal) => number;
 
+  // Multi-select bulk actions (any kind). Each does exactly ONE set() so the
+  // whole gesture is a single undo, then fans out one DB write per item with
+  // that item's own slug — see moveTasksToDate for the pattern.
+  /** Bulk delete a mixed selection, cascading task-like subtasks. */
+  deleteItems: (ids: string[]) => void;
+  /**
+   * Bulk completion for `date`, routed per kind: per-date completedDates for
+   * habits and recurring task-likes, scalar status for one-off task-likes.
+   * Items already in the target state are skipped (no double-counted streaks).
+   */
+  setItemsCompleted: (ids: string[], completed: boolean, date?: Date) => void;
+  /** Bulk assign a mixed selection to a time bucket, untimed (group drag). */
+  assignItemsToBucket: (ids: string[], bucket: TimeBucket) => void;
+  /**
+   * Add or remove a whole selection's membership of one routine or program, in
+   * one set() ⇒ one undo. The registry gates eligibility (subtasks are not
+   * collectible), so a mixed selection collects its eligible subset rather than
+   * refusing wholesale — same posture as the other bulk verbs.
+   */
+  setItemsCollected: (
+    ids: string[],
+    kind: 'routine' | 'program',
+    containerId: string,
+    member: boolean,
+  ) => void;
+  /**
+   * Bulk schedule a mixed selection AT a clock time (group drag onto a timed
+   * grid slot) so they land as visible blocks, not untimed rows. Task-likes take
+   * the date; habits are date-blind and just take the bucket + time. One undo.
+   */
+  scheduleItemsAt: (ids: string[], bucket: TimeBucket, time: string, dateStr?: string) => void;
+  /**
+   * Declare whether ONE recurring occurrence is skipped (intent-based, so a
+   * repeat is a no-op). Type-agnostic: the registry decides whether the type
+   * can be skipped at all and whether a skip is also denormalized into scalar
+   * `status` — it is for habits, never for tasks (see ItemTypeConfig.skipStatus).
+   */
+  setItemSkipped: (id: string, skipped: boolean, date?: Date) => void;
+  /** Pause/resume an item. `until` is an exclusive resume date (yyyy-MM-dd). */
+  setItemPaused: (id: string, paused: boolean, until?: string) => void;
+
   // Habit actions
-  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>) => void;
+  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus, count?: number, date?: Date) => void;
@@ -154,6 +311,8 @@ interface PlannerStore {
 
   // Project actions
   addProject: (name: string, emoji: string) => void;
+  /** First-run starter containers. See seedStarterContainers for the guards. */
+  seedStarterContainers: (plan: SeedPlan, forUserId: string) => CommitResult;
   updateProject: (id: string, updates: Partial<Project>) => void;
   removeProject: (id: string) => void;
   getProjectEmoji: (name: string) => string;
@@ -173,10 +332,88 @@ interface PlannerStore {
   updateItemType: (id: string, updates: Partial<Omit<ItemTypeDef, 'id' | 'name'>>) => void;
   removeItemType: (id: string) => void;
 
+  // Routines (migration 024). A routine scopes its members: while it is paused,
+  // its items are suppressed even though nothing on the items changed. Part of
+  // undo/redo history, unlike itemTypes — membership is user data.
+  routines: Routine[];
+  /** False when migration 024's tables are unreachable. Every routine UI gates
+   *  on this, or writes look like they landed and vanish on reload. */
+  collectionsAvailable: boolean;
+  addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }) => string;
+  updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
+  removeRoutine: (id: string) => void;
+  /**
+   * Pause/resume a routine. Same today-resolved, dateless semantics as items.
+   *
+   * `until` distinguishes three things and the difference is load-bearing:
+   * `undefined` is "not specified" (what the bare toggles pass, and what keeps
+   * them idempotent), `null` is "clear the resume date", and a string is "come
+   * back on this day". Resolved through active.ts's resolvePauseWrite.
+   */
+  setRoutinePaused: (id: string, paused: boolean, until?: string | null) => void;
+
+  // Programs (migration 024). A period of life — summer, a school year — holding
+  // items and/or whole routines. Same undo/redo treatment as routines, and
+  // gated by the same `collectionsAvailable` flag.
+  programs: Program[];
+  addProgram: (program: Omit<Program, 'id'> & { id?: string }) => string;
+  updateProgram: (id: string, updates: Partial<Omit<Program, 'id'>>) => void;
+  removeProgram: (id: string) => void;
+  /**
+   * Set a program's tri-state. Separate from `updateProgram` for the same reason
+   * `setRoutinePaused` is: it stamps its own action-log label, and the history
+   * subscriber fires synchronously inside set().
+   */
+  setProgramState: (id: string, state: Program['state']) => void;
+  /**
+   * Activate one program and pause every other one that is currently on, in a
+   * SINGLE set() — decision 3's "swap programs is just pause A + activate B",
+   * made one gesture so it is also one ⌘Z.
+   */
+  swapToProgram: (id: string) => void;
+
+  // Goals (migration 036). The third container role: a goal says WHY work
+  // matters and suppresses nothing, so unlike routines and programs it never
+  // reaches lib/active.ts. Its members carry a ROLE — plain member, milestone
+  // (a one-shot checkpoint whose startDate is its target date) or check-in (a
+  // recurring review) — and the role belongs to the membership, not the item.
+  goals: Goal[];
+  /** False when migration 036's tables are unreachable. Same contract as
+   *  `collectionsAvailable`: every goal surface gates on it, or a write looks
+   *  like it landed and vanishes on reload. */
+  goalsAvailable: boolean;
+  addGoal: (goal: Omit<Goal, 'id'> & { id?: string }) => string;
+  updateGoal: (id: string, updates: Partial<Omit<Goal, 'id'>>) => void;
+  removeGoal: (id: string) => void;
+  /**
+   * Move a goal between active / achieved / abandoned.
+   *
+   * Separate from `updateGoal` for the reason `setProgramState` is — it stamps
+   * its own action-log label — and because the `achievedAt` rule belongs in one
+   * place: resolveGoalStateWrite (lib/goals.ts) decides what a state change
+   * actually writes, so a same-state write never restamps an achievement date
+   * and a return to 'active' clears it.
+   */
+  setGoalState: (id: string, state: Goal['state']) => void;
+
   // Habit group actions
   addHabitGroup: (name: string, emoji: string, color?: string) => void;
   updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
   removeHabitGroup: (id: string) => void;
+
+  /**
+   * Put one row of the Trash back (Organize console, Phase 4).
+   *
+   * One action for all five kinds rather than five, because the hard parts are
+   * identical and are all about HISTORY: decision 3 says a restore is a normal
+   * entry and ⌘Z re-deletes it, and that only holds if the label is armed
+   * before the single set() that carries every slice being touched. See the
+   * implementation for the two traps.
+   *
+   * Takes the whole TrashEntry, not an id: the bin lives in a local hook and
+   * never enters the store, so this is the only way the entity reaches it.
+   */
+  restoreFromTrash: (entry: TrashEntry) => void;
   getHabitGroupEmoji: (name: string) => string;
   getHabitGroupColor: (name: string) => string;
 
@@ -206,21 +443,258 @@ interface PlannerStore {
 // type/customType keys (projections filter, never map).
 const projectItems = (items: Item[]) => ({
   items,
-  tasks: items.filter((i): i is TaskItem => i.type !== 'habit') as Task[],
+  // Subtasks (parentItemId set) live inside their parent's detail surface and
+  // are deliberately EXCLUDED from the tasks projection — braindump, buckets,
+  // schedule, EOD/morning all read this projection, so one filter keeps a
+  // subtask from showing up as a free-floating task everywhere at once.
+  // items[] still carries them (the panel and the agent context read items).
+  tasks: items.filter(
+    (i): i is TaskItem => i.type !== 'habit' && !i.parentItemId
+  ) as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
 });
 
+/**
+ * A container NAME write implies an ID write (migration 027).
+ *
+ * Every surface that files an item still speaks in names — the item dialog's
+ * chips, the agent API, the braindump — and converting those ~15 call sites is
+ * explicitly out of scope. So the resolution happens once, here, at the moment
+ * a name is written: the name stays authoritative for display, and the id it
+ * resolves to is what survives the container being renamed.
+ *
+ * Returning `undefined` for an unmatched name is correct, not a fallback. Some
+ * items name a container that has no row at all — 12 of them on the live
+ * database name a project called "Housework" — and inventing a link for those
+ * would file them under whatever container is created with that name next.
+ */
+const projectIdFor = (name: string | undefined, projects: Project[]) =>
+  name ? projects.find((p) => p.name === name)?.id : undefined;
+
+/**
+ * The habit-group twin, with the case-insensitive fallback the group surfaces
+ * already use — getHabitGroupEmoji and getHabitGroupColor both normalise, and
+ * addHabitGroup de-dupes case-insensitively, so an exact-only match here would
+ * strand a habit that says "personal" against a group row named "Personal".
+ */
+const groupIdFor = (name: string | undefined, groups: HabitGroupType[]) =>
+  name
+    ? (
+        groups.find((g) => g.name === name) ??
+        groups.find((g) => g.name.toLowerCase() === name.toLowerCase())
+      )?.id
+    : undefined;
+
 // History management for undo/redo
+/**
+ * Container membership handed to an add action, so the item row and its join
+ * rows land in ONE set() and therefore one history entry.
+ *
+ * The add actions mint ids internally and return void, so "create, then apply
+ * membership" has no id to apply to — and would cost a second undo step, which
+ * makes one user gesture take two ⌘Z to reverse.
+ */
+export interface Memberships {
+  routineIds?: string[];
+  programIds?: string[];
+  goalIds?: string[];
+  /**
+   * The role the new item takes in every goal named by `goalIds`.
+   *
+   * ONE role for the whole payload, not a per-goal map, because there are
+   * exactly two flows that create a pre-linked item — the Goal chip in the add
+   * dialog (plain member) and the console's "new milestone" — and neither
+   * creates one item as a milestone here and a check-in there. Deliberately NOT
+   * generalised into `{id, role}[]`: routineIds/programIds are flat arrays and
+   * `withMembership` is generic over a single `itemIds`, so widening the shape
+   * would ripple through both other chips for a case nothing asks for.
+   */
+  goalRole?: GoalRole;
+}
+
+/**
+ * Create the item row, THEN its join rows.
+ *
+ * The order is load-bearing and cannot be parallelised: routine_items and
+ * program_items each carry a composite FK (item_id, user_id) -> items(id,
+ * user_id), so a join insert that lands before the item does fails with 23503
+ * and the membership is silently lost — the store would show it, and a reload
+ * would not. Chaining off the create is the whole point of this helper existing
+ * rather than two call sites firing side by side.
+ */
+function persistNewItem(
+  userId: string,
+  row: Item,
+  memberships: Memberships | undefined,
+  get: () => PlannerStore,
+) {
+  const created = dbCreateItem(userId, row);
+  created.catch(console.error);
+
+  const routineIds = memberships?.routineIds ?? [];
+  const programIds = memberships?.programIds ?? [];
+  const goalIds = memberships?.goalIds ?? [];
+  if (routineIds.length === 0 && programIds.length === 0 && goalIds.length === 0) return;
+
+  created
+    .then(() =>
+      Promise.all([
+        // Re-read in both loops: the optimistic set() already appended, and
+        // these are the arrays the reconciler diffs against.
+        ...routineIds.map((rid) => {
+          const routine = get().routines.find((r) => r.id === rid);
+          return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
+        }),
+        ...programIds.map((pid) => {
+          const program = get().programs.find((p) => p.id === pid);
+          return program ? dbUpdateProgram(userId, pid, { itemIds: program.itemIds }) : undefined;
+        }),
+        // All three role arrays, even though only one of them changed: the
+        // reconcile diffs whichever roles it is given, so sending the whole
+        // membership is the cheapest way to be certain the new item lands in
+        // the role the payload asked for without the other two drifting.
+        ...goalIds.map((gid) => {
+          const goal = get().goals.find((g) => g.id === gid);
+          return goal
+            ? dbUpdateGoal(userId, gid, {
+                memberIds: goal.memberIds,
+                milestoneIds: goal.milestoneIds,
+                checkinIds: goal.checkinIds,
+              })
+            : undefined;
+        }),
+      ]),
+    )
+    .catch(console.error);
+}
+
+/**
+ * Add `itemId` to each named container. Returns the SAME array reference when
+ * there is nothing to do, so the common no-membership add doesn't churn
+ * identity and re-render every consumer of the list.
+ */
+function withMembership<T extends { id: string; itemIds: string[] }>(
+  containers: T[],
+  itemId: string,
+  containerIds: string[] | undefined,
+): T[] {
+  if (!containerIds?.length) return containers;
+  const want = new Set(containerIds);
+  return containers.map((c) =>
+    want.has(c.id) && !c.itemIds.includes(itemId) ? { ...c, itemIds: [...c.itemIds, itemId] } : c,
+  );
+}
+
+/**
+ * The goal-side counterpart to `withMembership`.
+ *
+ * Its own function rather than a generalisation, because a goal's membership is
+ * three arrays and a role, not one `itemIds`. Widening the generic to carry a
+ * role would touch the routine and program chips — which have no roles — for a
+ * case only goals have.
+ */
+function withGoalMembership(
+  goals: Goal[],
+  itemId: string,
+  goalIds: string[] | undefined,
+  role: GoalRole = 'member',
+): Goal[] {
+  if (!goalIds?.length) return goals;
+  const key = role === 'milestone' ? 'milestoneIds' : role === 'checkin' ? 'checkinIds' : 'memberIds';
+  const want = new Set(goalIds);
+  return goals.map((g) =>
+    want.has(g.id) && !g[key].includes(itemId) ? { ...g, [key]: [...g[key], itemId] } : g,
+  );
+}
+
+/**
+ * Decision 11's receipt: did the thing the user just moved land somewhere it
+ * will not be seen?
+ *
+ * The move verbs are all ALLOWED to drop work into a suppressed window —
+ * blocking them would fight the boundary week, which deliberately renders live
+ * and hidden columns side by side so you can plan across the handoff. What is
+ * not allowed is doing it silently. A drag that ends with the block simply gone
+ * is indistinguishable from a bug.
+ *
+ * Resolved at the TARGET date, not today: dropping a task on a column after a
+ * program ends is exactly the case this exists for, and today would answer
+ * about the wrong day. Suppression that is dateless (a paused item, a paused
+ * routine) answers the same on every date, so it is covered by the same call.
+ *
+ * Lives here rather than in each caller because there are five of them — DnD,
+ * EOD's move-all, two date pickers and the mobile sheet — and they all funnel
+ * through these actions. One definition, per lib/overdue.ts's founding lesson.
+ */
+function landingReceipt(
+  state: { items: Item[]; routines: Routine[]; programs: Program[]; userTimezone: string | null },
+  ids: readonly string[],
+  dateStr?: string,
+): string | undefined {
+  const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const target = dateStr ?? toDateStr(new Date(), tz);
+  const ctx = { userTimezone: tz, routines: state.routines, programs: state.programs };
+  const labels = ids
+    .map((id) => state.items.find((i) => i.id === id))
+    .filter((item): item is Item => !!item)
+    .map((item) => suppressionReason(item, target, ctx))
+    .filter((reason) => !!reason)
+    .map((reason) => suppressionLabel(reason, { long: true }));
+
+  if (labels.length === 0) return undefined;
+  // One cause, however many items: say it. Mixed causes across a bulk move
+  // can't be summarised without inventing a shared reason, so it counts instead.
+  const unique = new Set(labels);
+  if (unique.size === 1) return labels[0];
+  return `${labels.length} of these are hidden where they landed`;
+}
+
+/**
+ * Suppressed open loops right now, for the release-grace diff below.
+ *
+ * `inactiveItemIdsOn` and not `isItemActiveOn`, deliberately: only open loops
+ * can ever be swept, so anything else appearing in the diff would grant grace
+ * to work that was never at risk.
+ */
+function suppressedNow(
+  state: { items: Item[]; routines: Routine[]; programs: Program[] },
+  todayStr: string,
+  tz: string,
+): Set<string> {
+  return inactiveItemIdsOn(state.items, todayStr, {
+    userTimezone: tz,
+    routines: state.routines,
+    programs: state.programs,
+  });
+}
+
 interface HistoryState {
   items: Item[];
   projects: Project[];
   habitGroups: HabitGroupType[];
+  // Explicit, because the subscriber snapshots only what it is told. Omitting
+  // either container would make every membership edit and every pause/state
+  // change un-undoable AND would let an unrelated undo silently revert them,
+  // since applyHistoryState writes the whole snapshot back.
+  routines: Routine[];
+  programs: Program[];
+  // Goals join for the same reason, with one extra: their membership carries a
+  // ROLE, so an undo that restored bare ids would flatten every milestone and
+  // check-in back to a plain member — changing a goal's progress denominator
+  // with no visible cause.
+  goals: Goal[];
 }
 
 export type ActionLogEntry = {
   id: string;
   label: string;
   timestamp: number;
+  /**
+   * A second line for the undo toast, set when the action's result is not
+   * visible where the user just put it (plan decision 11). Optional and
+   * ignored everywhere else — the action log itself renders labels only.
+   */
+  receipt?: string;
 };
 
 const MAX_HISTORY_SIZE = 50;
@@ -229,10 +703,28 @@ let historyIndex = -1;
 let isUndoRedoAction = false;
 let actionLog: ActionLogEntry[] = [];
 let pendingActionLabel: string | null = null;
+let pendingActionReceipt: string | undefined;
+
+/**
+ * What a restored row is CALLED in its history entry.
+ *
+ * The bin is the one list in the app that mixes kinds, so "Restore: Morning" is
+ * ambiguous in a way no other label is — and this string is what the user reads
+ * in the history popover when deciding what ⌘Z is about to take back.
+ */
+const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
+  item: 'item',
+  project: 'project',
+  group: 'habit group',
+  routine: 'routine',
+  program: 'program',
+  goal: 'goal',
+};
 
 // Set the label for the next action that will be saved to history
-export const setNextActionLabel = (label: string) => {
+export const setNextActionLabel = (label: string, receipt?: string) => {
   pendingActionLabel = label;
+  pendingActionReceipt = receipt;
 };
 
 // Get the current action log
@@ -256,11 +748,20 @@ const saveToHistory = (state: HistoryState) => {
     actionLog = actionLog.slice(0, historyIndex + 1);
   }
 
-  // Deep clone the state to avoid reference issues
+  // Deep clone the state to avoid reference issues.
+  //
+  // Every key of HistoryState must appear here. Omitting one does not fail
+  // loudly: applyHistoryState restores the missing slice as [], and
+  // syncContainers reads "present in current, absent in restored" as a DELETE —
+  // so one Cmd+Z silently soft-deletes every row of that container in Supabase.
+  // That is exactly what shipped for `routines` and the review caught it.
   const snapshot: HistoryState = {
     items: JSON.parse(JSON.stringify(state.items)),
     projects: JSON.parse(JSON.stringify(state.projects)),
     habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
+    routines: JSON.parse(JSON.stringify(state.routines)),
+    programs: JSON.parse(JSON.stringify(state.programs)),
+    goals: JSON.parse(JSON.stringify(state.goals)),
   };
 
   historyStack.push(snapshot);
@@ -270,8 +771,10 @@ const saveToHistory = (state: HistoryState) => {
     id: crypto.randomUUID(),
     label: pendingActionLabel || 'Unknown action',
     timestamp: Date.now(),
+    receipt: pendingActionReceipt,
   });
   pendingActionLabel = null;
+  pendingActionReceipt = undefined;
 
   // Limit history size
   if (historyStack.length > MAX_HISTORY_SIZE) {
@@ -280,6 +783,279 @@ const saveToHistory = (state: HistoryState) => {
   } else {
     historyIndex++;
   }
+};
+
+/** The entry `saveToHistory` just wrote, so a failed write can take it back. */
+const lastHistoryEntryId = (): string | null =>
+  actionLog.length > 0 ? actionLog[actionLog.length - 1].id : null;
+
+/**
+ * Take an optimistic container back out when the database refused it.
+ *
+ * WHY THIS EXISTS AT ALL. `projects_user_id_name_key` and
+ * `habit_groups_user_id_name_key` are PLAIN unique indexes over
+ * `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a soft-deleted
+ * container reserves its name for the full 30 days while being invisible to
+ * this store, whose arrays come from `deleted_at`-filtered fetches. The
+ * `alreadyExists` guards above therefore cannot see the row that is about to
+ * reject the insert, and the insert used to fail into a bare
+ * `.catch(console.error)` AFTER the optimistic `set()` had landed.
+ *
+ * What that left behind is worse than a missing container. Every later edit to
+ * it is an `.eq('id', …)` matching zero rows, so it accepts a glyph, a colour
+ * and a whole time block and keeps none of them — and because
+ * `items_project_id_fkey` is a COMPOSITE foreign key, any item filed into it
+ * has its own INSERT rejected with 23503 in full. The item dialog's inline
+ * "new project" is the sharp end: type the name of a project you deleted last
+ * week, save, and you lose the project AND the task you were writing, with the
+ * only evidence a console line nobody will read.
+ *
+ * Healing it HERE rather than at the call sites is the point. The console's
+ * create rows consult the bin and refuse with a sentence (see
+ * use-trashed-names.ts) — that is the good path, and this is the net under it,
+ * covering the item dialog, the command palette, and anything added later,
+ * without the async lookup a synchronous action cannot await.
+ *
+ * The rollback leaves no trace in history: it is not a user action, so it
+ * pushes no entry of its own (a bare `set()` here would be a labelless mutation
+ * landing as "Unknown action"), and the failed create's own entry is stripped
+ * of the phantom and relabelled — see forgetFailedContainer.
+ *
+ * WHAT IT CANNOT DO. If the user's Save wins the race — the item's INSERT goes
+ * out before the container's rejection comes back — that item is already lost
+ * to 23503 and nothing here retrieves it. Clearing the reference stops the NEXT
+ * save carrying it; the one already in flight is why the proactive refusals in
+ * the console and the item dialog matter, and why this is the net rather than
+ * the plan.
+ */
+/**
+ * Container ids that were seated optimistically and then refused.
+ *
+ * Published because the rollback is INDISTINGUISHABLE from a delete to anything
+ * watching this store: both are "a container that was in `projects` and now is
+ * not". `useTrashedNames` watches exactly that, to catch the name of a container
+ * binned mid-visit — and so it caught the phantom too, and spent the rest of the
+ * session refusing a name that nothing anywhere holds. The user's one useful
+ * response to "Nothing was saved" is to try again; that was the response it
+ * locked out.
+ *
+ * A uuid per failed create, never cleared. Both are deliberate: ids are uuids so
+ * a stale entry cannot collide with a real container even across an account
+ * switch, and a session with enough refused creates for the set to matter has a
+ * much larger problem than its memory.
+ */
+const neverCreated = new Set<string>();
+
+/** True for a container this store seated and the database then rejected. */
+export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
+
+/**
+ * Take a refused container back out of the store and out of history.
+ *
+ * Extracted so first-run seeding gets the SAME rollback a hand-made create gets.
+ * Its inserts can be refused for a reason no fault is needed to reach: two tabs
+ * opening a first run both read the seeding latch as false, both plan the same
+ * names, and the second one's insert meets `projects_user_id_name_key`. Left
+ * behind, that tab holds six containers that do not exist — and because
+ * `items_project_id_fkey` is composite, the first item filed into one has its
+ * own INSERT rejected in full.
+ *
+ * Everything careful here was paid for twice (see the fix-commit table in
+ * memory/plans/organize-console.md); duplicating it for the seed path would have
+ * been the third time.
+ */
+const removeRefusedContainer = (
+  kind: 'project' | 'group',
+  id: string,
+  entryId: string | null,
+  label: string,
+) => {
+  // BEFORE the setState below, not after. The history subscriber and
+  // useTrashedNames' both run synchronously inside set(), so a watcher that
+  // asks "was this real?" while reacting to the removal has to be able to get
+  // the right answer already.
+  neverCreated.add(id);
+
+  // SAVED AND RESTORED, never a hard `false`. `isUpdatingUndoRedo` is a plain
+  // boolean rather than a counter, and `initializeStore` holds it true across
+  // its ENTIRE fetch while `userId` is already stamped — so a create rejecting
+  // inside the load window used to hand the flag back unblocked. The republish
+  // below then woke the subscriber's lazy-baseline branch mid-load, seeding a
+  // second 'Session start' and leaving `historyIndex` naming a snapshot the
+  // store did not hold. One ⌘Z after that soft-deleted every row the load had
+  // just brought in — verified by an A/B probe whose only variable was whether
+  // the create resolved.
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((state) => {
+      if (kind === 'project') {
+        return {
+          projects: state.projects.filter((p) => p.id !== id),
+          // Items filed into it in the meantime lose the reference too, or the
+          // next save re-sends an id no row will ever match.
+          ...projectItems(
+            state.items.map((item) =>
+              item.type !== 'habit' && item.projectId === id
+                ? { ...item, project: undefined, projectId: undefined }
+                : item
+            )
+          ),
+        };
+      }
+      return {
+        habitGroups: state.habitGroups.filter((g) => g.id !== id),
+        ...projectItems(
+          state.items.map((item) =>
+            item.type === 'habit' && item.groupId === id
+              ? { ...item, group: '', groupId: undefined }
+              : item
+          )
+        ),
+      };
+    });
+    forgetFailedContainer(kind, id, entryId, label);
+    // The baseline has to follow the rollback, or the next real change is
+    // diffed against a snapshot that still holds the phantom.
+    const s = usePlannerStore.getState();
+    updatePrevStateBaseline({
+      items: s.items,
+      projects: s.projects,
+      habitGroups: s.habitGroups,
+      routines: s.routines,
+      programs: s.programs,
+      goals: s.goals,
+    });
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+
+  // Republish the action log so the relabelled entry reaches the popover. Only
+  // when nothing else is mid-write: inside initializeStore's window this would
+  // publish half-loaded history over the top of the load.
+  //
+  // BOTH THIS GUARD AND THE SAVE/RESTORE ABOVE ARE KEPT, and each alone is
+  // enough to stop the load-window corruption — verified by probing them
+  // separately. Neither is dead code: this one keeps the rollback from
+  // publishing over a load in progress, the other keeps the suppression flag
+  // honest for every other reader of it. The consequence of getting it wrong is
+  // one ⌘Z soft-deleting everything the load brought in, which is worth two
+  // cheap defences rather than one clever one.
+  if (!wasSuppressed) {
+    const info = getHistoryInfo();
+    usePlannerStore.setState({
+      canUndo: historyIndex > 0,
+      canRedo: historyIndex < historyStack.length - 1,
+      actionLog: info.actionLog,
+      historyIndex: info.currentIndex,
+    });
+  }
+};
+
+/**
+ * A seed container the database refused.
+ *
+ * Same rollback, and deliberately SILENT. `undoFailedCreate` says it out loud
+ * because a hand-made create is something the user just did and is watching for;
+ * this one is a starter set they never asked for, and "Couldn't create Work"
+ * would be the first thing a brand-new account ever said to its owner. Nothing
+ * is lost by the silence: the row simply is not there, which is the state the
+ * account was in a second earlier.
+ *
+ * `null` for the entry id because the seed pushes no history entry at all —
+ * there is nothing to relabel, and `forgetFailedContainer` still strips the id
+ * from every snapshot, which is the half that matters.
+ */
+const rollbackSeedContainer = (
+  error: unknown,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  console.error(`seed ${kind} failed`, name, error);
+  removeRefusedContainer(kind, id, null, '');
+};
+
+const undoFailedCreate = (
+  error: unknown,
+  entryId: string | null,
+  kind: 'project' | 'group',
+  id: string,
+  name: string,
+) => {
+  const noun = kind === 'project' ? 'project' : 'habit group';
+  console.error(`create ${noun} failed`, error);
+
+  removeRefusedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
+
+  // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
+  // survived: the container looks created for the rest of the session. 23505 is
+  // the only error this insert can realistically raise, and the trash is the
+  // only place the name can be hiding, so the sentence can be specific.
+  toast.error(
+    isUniqueViolation(error)
+      ? `Couldn't create “${name}” — a deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
+      : `Couldn't create “${name}”. Nothing was saved.`
+  );
+};
+
+const isUniqueViolation = (error: unknown): boolean => {
+  const code = (error as { code?: string } | null)?.code;
+  return code === '23505' || (error instanceof Error && error.message.includes('duplicate key value'));
+};
+
+/**
+ * Erase a container the database never accepted from the whole undo history.
+ *
+ * REWRITES THE SNAPSHOTS; TOUCHES NO INDEX. The first version of this popped
+ * the failed create's entry off the stack and decremented `historyIndex`, which
+ * is only safe when that entry is still the top AND the user has not moved —
+ * and the guards it needed for that handed every other case straight back to
+ * the bug. Review reproduced both halves: with the user having acted during the
+ * round trip (which the item dialog's own Save flow guarantees), the store lost
+ * the phantom while every snapshot kept it, so ONE ⌘Z put it back and fired
+ * `dbRestoreProject` against a row that never existed.
+ *
+ * Stripping the id from every snapshot instead has no such precondition. The
+ * stack length, the log length and `historyIndex` are all untouched, so the
+ * invariant that `historyIndex` names the state the store holds cannot be
+ * broken by this function at all — whatever the user did meanwhile, whether two
+ * creates are in flight at once, and regardless of MAX_HISTORY_SIZE having
+ * shifted entries off the front.
+ *
+ * Members go with it. An item filed into the phantom before the rejection
+ * landed still names it in older snapshots, and undoing into one of those would
+ * re-file the item against a container that does not exist.
+ */
+const forgetFailedContainer = (
+  kind: 'project' | 'group',
+  id: string,
+  entryId: string | null,
+  label: string,
+) => {
+  for (const snapshot of historyStack) {
+    if (kind === 'project') {
+      snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type !== 'habit' && item.projectId === id
+          ? { ...item, project: undefined, projectId: undefined }
+          : item
+      );
+    } else {
+      snapshot.habitGroups = snapshot.habitGroups.filter((g) => g.id !== id);
+      snapshot.items = snapshot.items.map((item) =>
+        item.type === 'habit' && item.groupId === id
+          ? { ...item, group: '', groupId: undefined }
+          : item
+      );
+    }
+  }
+
+  // The entry STAYS — removing it is what forced the index arithmetic — but it
+  // stops claiming something happened. Its snapshot now matches its
+  // predecessor, so undoing across it is a no-op rather than a resurrection.
+  const entry = entryId ? actionLog.find((a) => a.id === entryId) : undefined;
+  if (entry) entry.label = label;
 };
 
 // Get appropriate bucket for a given time
@@ -332,6 +1108,41 @@ export const usePlannerStore = create<PlannerStore>()(
       const findTaskLike = (id: string): Item | undefined =>
         get().items.find((i) => i.id === id && i.type !== 'habit');
 
+      /**
+       * findTaskLike's runtime filter guarantees non-habit but its declared
+       * return type is the full union, so `startDate` needs the narrowing
+       * spelled out. Habits genuinely have no startDate — they are date-blind
+       * by design — so undefined here is the right answer, not a fallback.
+       */
+      const startDateOf = (item: Item | undefined): string | undefined =>
+        item && item.type !== 'habit' ? item.startDate : undefined;
+
+      /**
+       * Run a container write, and record any item whose suppression it ENDED.
+       *
+       * The auto-age sweep reads recorded resume dates to grace work that has
+       * just come back (decision 9). Deleting a container, or pulling a member
+       * out of one, releases items with no such record anywhere — the container
+       * or the join row it would have been read from is precisely what was
+       * removed. Without this, tidying up a paused routine hands every one of
+       * its dated members to the next morning's sweep, already weeks overdue.
+       *
+       * Diffed rather than inferred from the patch: "was hidden, is now
+       * visible" is the only question that matters, and the path algebra makes
+       * it genuinely hard to answer any other way (an item with a second live
+       * path was never hidden; one held by two paused programs still is).
+       */
+      const withReleaseGrace = (mutate: () => void) => {
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+        const before = suppressedNow(get(), todayStr, tz);
+        mutate();
+        if (before.size === 0) return;
+        const after = suppressedNow(get(), todayStr, tz);
+        const released = [...before].filter((id) => !after.has(id));
+        if (released.length > 0) recordReleased(released, todayStr);
+      };
+
       /** DB slug for an item ('task' | 'habit' | custom slug). */
       const dbTypeOf = (item: Item): string =>
         item.type === 'custom' ? item.customType : item.type;
@@ -344,12 +1155,296 @@ export const usePlannerStore = create<PlannerStore>()(
        * suppresses the DB write (old code issued it blindly, which could touch
        * soft-deleted trash rows).
        */
+      /**
+       * Locked decision 3: an item edit that invalidates a goal role DEMOTES
+       * the role, and never blocks the edit.
+       *
+       * The registry predicates guard the role at GRANT time, but they cannot
+       * see a later edit — the item dialog and the agent PATCH route both flip
+       * `repeatFrequency` freely, long after the role was given. And the
+       * consequence is silent: a recurring item's scalar status is frozen by
+       * design (per-date completion is the truth), so a milestone made
+       * recurring can never be counted achieved and its goal reads permanently
+       * behind, with nothing to click and no explanation.
+       *
+       * Blocking the edit was the other option and is worse: it would let a
+       * goal constrain its members, which is the one thing goals must never do.
+       * So the membership yields instead — one join-row write, a normal undo
+       * entry, and a receipt naming the goal so the user learns what changed
+       * rather than discovering it in a progress count weeks later.
+       *
+       * Runs on the item that is ALREADY updated, not on the patch, so it asks
+       * the same question the reader will: is this role still true of this item?
+       */
+      const planGoalRoleDemotion = (item: Item): { goals: Goal[]; receipt: string } | null => {
+        const goals = get().goals;
+        if (goals.length === 0) return null;
+        const demoted: { goal: Goal; from: GoalRole }[] = [];
+        const next = goals.map((goal) => {
+          for (const role of ['milestone', 'checkin'] as const) {
+            const key = role === 'milestone' ? 'milestoneIds' : 'checkinIds';
+            if (!goal[key].includes(item.id)) continue;
+            if (roleStillValid(role, item)) continue;
+            demoted.push({ goal, from: role });
+            return {
+              ...goal,
+              [key]: goal[key].filter((mid) => mid !== item.id),
+              memberIds: goal.memberIds.includes(item.id)
+                ? goal.memberIds
+                : [...goal.memberIds, item.id],
+            };
+          }
+          return goal;
+        });
+        if (demoted.length === 0) return null;
+
+        const { goal, from } = demoted[0];
+        const noun = from === 'milestone' ? 'milestone' : 'check-in';
+        const why =
+          from === 'milestone'
+            ? 'it repeats now, and a repeating item never finishes'
+            : 'it no longer repeats, and a check-in is a rhythm';
+
+        const userId = get().userId;
+        if (userId) {
+          for (const { goal: g } of demoted) {
+            const live = next.find((n) => n.id === g.id)!;
+            dbUpdateGoal(userId, g.id, {
+              memberIds: live.memberIds,
+              milestoneIds: live.milestoneIds,
+              checkinIds: live.checkinIds,
+            }).catch(console.error);
+          }
+        }
+
+        return {
+          goals: next,
+          receipt:
+            demoted.length === 1
+              ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
+              : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
+        };
+      };
+
+      /**
+       * A goal whose last open milestone just closed.
+       *
+       * Offers, never acts (decision 6 / Kirby's answer to open question 6):
+       * achieving is a deliberate statement about a stretch of your life, and
+       * an app that made it for you would be claiming to know when the thing
+       * you set out to do is done.
+       *
+       * A TOAST rather than a dialog, and that is a constraint rather than a
+       * taste: `activeDialog` is a single slot, so a dialog fired from a
+       * completion inside the EOD review would destructively replace the review
+       * the user is in the middle of.
+       *
+       * Called only from the user-facing completion verbs — never from
+       * applyHistoryState (which writes through dbUpdateItem) and never from the
+       * agent routes (which do not touch the store), so a redo can't re-fire it
+       * and a background write can't fire it at a screen nobody is looking at.
+       */
+      const offerAchievementFor = (itemId: string) => {
+        const state = get();
+        // ONE zone for the whole function. The `far` comparison below already
+        // asked this question of the user's setting; formatGoalDay was asking
+        // it of the runtime, so a goal could be described in one zone and
+        // judged near/far in another.
+        const tz =
+          state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        // `Aug 21`, not `2026-08-21`. Local to the store rather than imported
+        // from lib/collections, which is a hooks module — a store importing
+        // React hooks is a cycle waiting to happen.
+        //
+        // Built at UTC noon and rendered in UTC, so the day shown is the day
+        // STORED, in every zone. targetOn is a calendar date — no time, no
+        // zone — so converting it to one is wrong by construction, and the
+        // conversion is not hypothetical: UTC noon rendered at UTC+12 or +14
+        // (Auckland, Kiritimati) lands on the following day, so a goal due
+        // `2026-08-21` would read "Aug 22" to those users. `tz` below is a
+        // different question and still needs the user's zone — it asks what
+        // TODAY is, which is genuinely zone-dependent. Note also why noon and
+        // not midnight: `new Date('yyyy-mm-dd')` is UTC midnight and formats
+        // as the previous day anywhere west of Greenwich.
+        const formatGoalDay = (dateStr: string) => {
+          const [y, m, d] = dateStr.split('-').map(Number);
+          if (!y || !m || !d) return dateStr;
+          return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString(undefined, {
+            timeZone: 'UTC',
+            month: 'short',
+            day: 'numeric',
+          });
+        };
+        const itemsById = new Map(state.items.map((i) => [i.id, i]));
+        for (const goal of state.goals) {
+          if (goal.state !== 'active') continue;
+          if (!goal.milestoneIds.includes(itemId)) continue;
+          const { achieved, total } = goalProgress(goal, itemsById);
+          if (total === 0) continue;
+          // Decision 5's word is DATED: no un-achieved *dated* milestone
+          // remains. Requiring every milestone instead made the offer
+          // unreachable for anyone who uses the feature as designed — inline
+          // creation deliberately produces UNDATED checkpoints, so two jotted
+          // ideas would permanently silence the offer for every dated
+          // milestone finished afterwards. An undated checkpoint is a thought,
+          // not a commitment; it should not hold the goal open.
+          const openDated = goal.milestoneIds.some((mid) => {
+            const m = itemsById.get(mid);
+            if (!m || m.status === 'cancelled') return false;
+            if (!('startDate' in m) || !m.startDate) return false;
+            return m.status !== getItemTypeConfig(itemTypeName(m)).doneStatus;
+          });
+          if (openDated) continue;
+
+          // The copy respects a distant target. "All 3 milestones so far" is the
+          // honest reading of a three-year goal that has defined two near-term
+          // checkpoints — telling that user they have finished would be the
+          // progress bar's own lie, in words.
+          const far = !!goal.targetOn && goal.targetOn > toDateStr(new Date(), tz);
+          toast(
+            far
+              ? `All ${total} milestone${total === 1 ? '' : 's'} so far on ${goal.name}`
+              : `Every milestone on ${goal.name} is done`,
+            {
+              description: far
+                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look — or call it achieved.`
+                : 'Ready to call it achieved?',
+              action: {
+                label: 'Mark achieved',
+                // Re-checked at CLICK time, not trusted from eight seconds ago.
+                // ⌘Z during the toast's life reopens the milestone, and acting
+                // on the stale snapshot would mark a goal achieved with an open
+                // checkpoint under it.
+                onClick: () => {
+                  const now = get();
+                  const live = now.goals.find((g) => g.id === goal.id);
+                  if (!live || live.state !== 'active') return;
+                  const byId = new Map(now.items.map((i) => [i.id, i]));
+                  const p = goalProgress(live, byId);
+                  if (p.total === 0 || p.achieved !== p.total) return;
+                  now.setGoalState(goal.id, 'achieved');
+                },
+              },
+              duration: 8000,
+            },
+          );
+          // One goal per completion. An item can be a milestone of several, but
+          // a stack of toasts for one checkbox is noise, and the first is the
+          // one whose list the user was most likely looking at.
+          return;
+        }
+      };
+
+      /**
+       * The check-in bridge.
+       *
+       * A check-in is completed where every recurring item is completed — a row
+       * on the grid, a line in the EOD review — and NOT on the goal page. So
+       * the note, the history and the trip back to the goal have to come to the
+       * completion rather than wait at a surface the user has no reason to
+       * visit. Without this, Phase 3's differentiating features were reachable
+       * only by someone who happened to open the goal first, at which point the
+       * check-in item added nothing over just visiting the page.
+       *
+       * A toast with two actions, for the same single-slot reason the
+       * achievement offer is one: a dialog fired from a completion inside the
+       * EOD review would replace the review the user is in the middle of.
+       *
+       * The note is written against the OCCURRENCE date, not the moment of
+       * typing — see recordCheckin.
+       */
+      const offerCheckinNote = (item: Item, dateStr: string) => {
+        // EVERY active goal this item checks in for, not the first one found.
+        // Locked decision 2 lets an item hold a role in several goals, and
+        // `heldElsewhere` only stops two roles within ONE goal — so picking the
+        // first meant a shared check-in always named the same goal and wrote
+        // its notes there, leaving the other goal's history permanently empty
+        // no matter how many were written. The note is one reflection on one
+        // sitting; the goals it serves all get it.
+        const goals = get().goals.filter(
+          (g) => g.state === 'active' && g.checkinIds.includes(item.id),
+        );
+        if (goals.length === 0) return;
+        const label =
+          goals.length === 1 ? goals[0].name : `${goals[0].name} +${goals.length - 1}`;
+        toast(`Checked in on ${label}`, {
+          description: 'Anything worth remembering about this one?',
+          action: {
+            label: 'Add a note',
+            onClick: () => {
+              // A native prompt, and the honest reason is that there is nowhere
+              // else to put it yet. ui-store DOES carry a second modal slot
+              // (`confirmRequest`, rendered beside ActiveDialog), so a modal
+              // raised while EOD is open is a solved problem here — but that
+              // slot confirms, it does not capture text. Building the surface
+              // that does is the guided check-in flow, which is a recorded
+              // deferral. Consequence to know: a browser that has suppressed
+              // dialogs returns null silently and the note is simply not saved.
+              const note = window.prompt(
+                goals.length === 1 ? `How is ${goals[0].name} going?` : 'How is it going?',
+              );
+              if (!note?.trim()) return;
+              // Re-read at CLICK time, like the achievement offer beside it —
+              // eight seconds is long enough to undo the completion, delete the
+              // goal, or demote the item out of the role.
+              const live = get().goals.filter(
+                (g) => g.state === 'active' && g.checkinIds.includes(item.id),
+              );
+              for (const goal of live) {
+                dbRecordCheckin(item.id, dbTypeOf(item), goal.id, dateStr, note.trim());
+              }
+            },
+          },
+          // The second half of the bridge, which the plan pins by name
+          // ("· Add a note · View goal"): the trip BACK to the goal is the part
+          // a completion cannot otherwise offer, and the whole argument for the
+          // bridge is that it comes to the completion rather than waiting. It
+          // uses sonner's cancel slot as a second button — never a library
+          // limit, just an omission.
+          cancel: {
+            label: 'View goal',
+            onClick: () => {
+              if (typeof window !== 'undefined') window.location.assign(`/goal/${goals[0].id}`);
+            },
+          },
+          duration: 8000,
+        });
+      };
+
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
-        set((state) => projectItems(
-          state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
-        ));
+        // Only recurrence can invalidate a role, so only a patch that touches it
+        // pays for the scan. `in` rather than a truthiness test: clearing the
+        // field (`repeatFrequency: undefined`) is exactly the edit that turns a
+        // check-in back into a one-shot task.
+        const demotion = 'repeatFrequency' in updates
+          ? planGoalRoleDemotion({ ...found, ...updates } as Item)
+          : null;
+
+        // ONE set() for the item AND the roles it just invalidated. Two set()s
+        // push two history entries, and the intermediate one is the state the
+        // whole rule exists to make unreachable: a single ⌘Z would restore the
+        // milestone role while the item is still recurring, and syncContainers
+        // would then WRITE that recurring milestone back — a row whose scalar
+        // status is frozen by design, so the goal reads permanently behind with
+        // nothing to click. The file's own doctrine, twenty lines from the trash
+        // restore: one set() => one history entry => one undo.
+        if (demotion) {
+          // Its own prefix, registered in use-undo-toast's SIGNIFICANT_ACTIONS.
+          // The receipt has exactly one consumer and it only fires for a known
+          // prefix, so an `Edit …` label would have written the explanation
+          // into an object nothing renders — and borrowing another verb's
+          // prefix would have lied in the history popover, which shows the
+          // label verbatim.
+          setNextActionLabel(`Role changed: ${found.title}`, demotion.receipt);
+        }
+        set((state) => ({
+          ...projectItems(
+            state.items.map((i) => (i.id === id && i.type === found.type ? { ...i, ...updates } as Item : i)),
+          ),
+          ...(demotion ? { goals: demotion.goals } : {}),
+        }));
         dbUpdateItem(id, dbTypeOf(found), updates).catch(console.error);
       };
 
@@ -399,6 +1494,13 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) saveSettings(userId, { show_completed_tasks: show });
       },
+      showPausedOnGrid: false,
+      // Local-only, unlike its showCompletedTasks neighbour: persisting it
+      // server-side would mean a user_settings column, and a migration is a
+      // steep price for a preference that answers "what am I looking at on this
+      // screen". It rides planner-storage's partialize, which is where the rest
+      // of the view preferences already live.
+      setShowPausedOnGrid: (show) => set({ showPausedOnGrid: show }),
       defaultView: 'day',
       setDefaultView: (view) => {
         set({ defaultView: view, viewMode: view });
@@ -469,7 +1571,315 @@ export const usePlannerStore = create<PlannerStore>()(
         dbDeleteItemType(id).catch(console.error);
       },
 
+      // ── Routines (Phase 2) ─────────────────────────────────────────────────
+      routines: [],
+      collectionsAvailable: true,
+      addRoutine: (routine) => {
+        const userId = get().userId;
+        const full: Routine = { ...routine, id: routine.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add routine: ${full.name}`);
+        set({ routines: [...get().routines, full] });
+        if (userId) dbCreateRoutine(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateRoutine: (id, updates) => {
+        const userId = get().userId;
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        setNextActionLabel(`Edit routine: ${updates.name ?? routine.name}`);
+        // Only a membership change can release anything; a rename or a colour
+        // cannot, and the diff costs two resolver passes.
+        const run = () =>
+          set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        if (updates.itemIds) withReleaseGrace(run);
+        else run();
+        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+      },
+      removeRoutine: (id) => {
+        const userId = get().userId;
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        // Soft delete. The join rows survive, so a restore within the purge
+        // window brings the membership back intact — which is also what makes
+        // undo of a delete a real undo rather than an empty shell.
+        setNextActionLabel(`Delete routine: ${routine.name}`);
+        withReleaseGrace(() => set({ routines: get().routines.filter((r) => r.id !== id) }));
+        if (userId) dbDeleteRoutine(userId, id).catch(console.error);
+      },
+      setRoutinePaused: (id, paused, until) => {
+        const routine = get().routines.find((r) => r.id === id);
+        if (!routine) return;
+        // Resolved at TODAY from a single instant, never at selectedDate —
+        // pausing is dateless (decision 3), and this is the bug Phase 1 shipped
+        // and had to fix on the item side. Same reasoning, same shape.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+
+        // Delegated to resolvePauseWrite rather than hand-built here, which is
+        // both a simplification and a BUG FIX. This action used to open with
+        //
+        //     if (isPausedOn(routine, todayStr, tz) === paused) return;
+        //
+        // — an idempotence guard that also swallowed the one request it should
+        // have honoured: a new resume date on a pause that is already running.
+        // Since a resume date can only be chosen while something is paused,
+        // `pausedUntil` was unreachable from the UI entirely; the third
+        // parameter has been on this signature, unwritable, since it landed.
+        //
+        // resolvePauseWrite (lib/active.ts) is the one definition of what the
+        // pause VERB means in terms of columns, and already states this case:
+        // "Already paused: honour a new resume date, but leave pausedAt where it
+        // is" — never restamping the lower bound, which would drag it forward
+        // and un-hide the days between. Every previously-supported call resolves
+        // identically: a two-argument toggle still writes nothing when the
+        // routine is already in the requested state, and a manual resume still
+        // normalizes to `pausedUntil = todayStr` rather than clearing the pair,
+        // so the interval survives on the row for the sweep's grace.
+        //
+        // `until` is `string | null | undefined`, and the three are distinct:
+        // undefined = "not specified" (the toggles), null = "clear the date",
+        // a string = "come back then".
+        const write = resolvePauseWrite(
+          routine,
+          { paused, pausedUntil: until },
+          todayStr,
+          new Date().toISOString(),
+          tz
+        );
+        // A `reason` is a request the resolver refused (a resume date already in
+        // the past). The UI cannot produce one — the picker disables today and
+        // everything before it — so there is nothing to report here.
+        if (!('patch' in write)) return;
+        const updates = write.patch as Partial<Routine>;
+        if (Object.keys(updates).length === 0) return;
+
+        // Writes directly rather than delegating to updateRoutine: that action
+        // stamps its own "Edit routine" label, and the history subscriber fires
+        // synchronously on its set(), so a label applied afterwards would land
+        // on whatever the user does NEXT.
+        //
+        // A pausedUntil-only write is neither a pause nor a resume — it moves
+        // the end of one already running — and gets its own label so undo can
+        // name it.
+        const verb = !('pausedAt' in updates) && paused ? 'Resume date' : paused ? 'Pause' : 'Resume';
+        setNextActionLabel(`${verb} routine: ${routine.name}`);
+        set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
+        const userId = get().userId;
+        // dbUpdateRoutine keys on `'pausedUntil' in updates` (lib/db.ts:958), so
+        // an explicit-undefined value still writes paused_until = null.
+        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+      },
+
+      // ── Programs (Phase 3) ─────────────────────────────────────────────────
+      programs: [],
+      addProgram: (program) => {
+        const userId = get().userId;
+        const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add program: ${full.name}`);
+        set({ programs: [...get().programs, full] });
+        if (userId) dbCreateProgram(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateProgram: (id, updates) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program) return;
+        setNextActionLabel(`Edit program: ${updates.name ?? program.name}`);
+        const run = () =>
+          set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
+        // Membership OR a date range: moving `startsOn` earlier switches the
+        // program on for today just as surely as adding a member does.
+        if (updates.itemIds || updates.routineIds || 'startsOn' in updates || 'endsOn' in updates) {
+          withReleaseGrace(run);
+        } else {
+          run();
+        }
+        if (userId) dbUpdateProgram(userId, id, updates).catch(console.error);
+      },
+      removeProgram: (id) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program) return;
+        // Soft delete, and the join rows survive it — so a restore inside the
+        // 30-day purge window brings the membership back intact, and undo of a
+        // delete is a real undo rather than an empty shell. Note the members
+        // REAPPEAR while the program is trashed: a routine it was the only
+        // holder of falls back to standalone (resolver decision 3). That is the
+        // designed behaviour — a container in the trash must not keep hiding
+        // work behind a control nobody can reach.
+        setNextActionLabel(`Delete program: ${program.name}`);
+        withReleaseGrace(() => set({ programs: get().programs.filter((p) => p.id !== id) }));
+        if (userId) dbDeleteProgram(userId, id).catch(console.error);
+      },
+      setProgramState: (id, state) => {
+        const userId = get().userId;
+        const program = get().programs.find((p) => p.id === id);
+        if (!program || program.state === state) return;
+        const verb =
+          state === 'active' ? 'Activate' : state === 'paused' ? 'Pause' : 'Auto-schedule';
+        // Written directly rather than through updateProgram for the same
+        // reason setRoutinePaused is: that action stamps its own "Edit program"
+        // label, and the history subscriber fires synchronously inside its
+        // set(), so a label applied afterwards lands on the user's NEXT action.
+        setNextActionLabel(`${verb} program: ${program.name}`);
+        // `updatedAt` is stamped optimistically to mirror what the DB trigger is
+        // about to do. Without it the store keeps the value it loaded with, and
+        // the overdue sweep's grace (c) — whose ONLY evidence that a program
+        // recently stopped hiding its members is this timestamp — would not fire
+        // until the next reload. Turning a program on and leaving the tab open
+        // overnight is exactly the case it protects.
+        const stamped = { state, updatedAt: new Date().toISOString() };
+        set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...stamped } : p)) });
+        if (userId) dbUpdateProgram(userId, id, { state }).catch(console.error);
+      },
+      swapToProgram: (id) => {
+        const userId = get().userId;
+        const target = get().programs.find((p) => p.id === id);
+        if (!target) return;
+        // Resolved at TODAY, never at selectedDate — switching programs is a
+        // statement about now, not about the week being browsed.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
+
+        const patches = new Map<string, Partial<Program>>();
+        // Only write a program that is not ALREADY where the swap wants it. An
+        // `auto` program inside its own date range is already carrying its
+        // members, and stamping 'active' would silently convert a self-managing
+        // program into one the user must remember to turn off.
+        //
+        // The state written comes from `programStateForSwitch` — the same rule
+        // the scope rail and the palette use — rather than a literal
+        // 'active'/'paused'. Writing the literal is only half right: it can
+        // never hand a program back to `auto`, so swapping away from a summer
+        // and back again loses the Aug 31 end it was following.
+        if (!isProgramActiveOn(target, todayStr)) {
+          patches.set(id, { state: programStateForSwitch(target, true, todayStr) });
+        }
+        for (const program of get().programs) {
+          if (program.id === id) continue;
+          if (isProgramActiveOn(program, todayStr)) {
+            patches.set(program.id, { state: programStateForSwitch(program, false, todayStr) });
+          }
+        }
+        if (patches.size === 0) return;
+
+        // ONE set() for the whole swap: one history entry, one ⌘Z. A loop over
+        // setProgramState would cost one undo press per program that happened
+        // to be on, which for a verb the user experiences as a single switch is
+        // effectively not undoable.
+        setNextActionLabel(`Switch to program: ${target.name}`);
+        const now = new Date().toISOString();
+        set({
+          programs: get().programs.map((p) => {
+            const patch = patches.get(p.id);
+            // Same optimistic `updatedAt` as setProgramState, and needed most
+            // here: a swap is precisely the moment a dormant program's members
+            // flood back in, already carrying weeks of accrued overdue age.
+            return patch ? { ...p, ...patch, updatedAt: now } : p;
+          }),
+        });
+        if (userId) {
+          for (const [programId, patch] of patches) {
+            dbUpdateProgram(userId, programId, patch).catch(console.error);
+          }
+        }
+      },
+
+      // ── Goals (036) ────────────────────────────────────────────────────────
+      goals: [],
+      goalsAvailable: true,
+      addGoal: (goal) => {
+        const userId = get().userId;
+        const full: Goal = { ...goal, id: goal.id ?? crypto.randomUUID() };
+        setNextActionLabel(`Add goal: ${full.name}`);
+        set({ goals: [...get().goals, full] });
+        if (userId) dbCreateGoal(userId, full).catch(console.error);
+        return full.id;
+      },
+      updateGoal: (id, updates) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+
+        // An id in two role arrays is two contradictory instructions about one
+        // join row, and the PK holds exactly one role. db.ts refuses it — but
+        // it refuses INSIDE the write, which this action fires as
+        // `.catch(console.error)` AFTER the optimistic set() has landed. So the
+        // store would keep a state the database rejected, the item would render
+        // in two lists, goalProgress would count a milestone that does not
+        // exist, and every SUBSEQUENT membership edit on this goal would throw
+        // on the same contradiction. Refusing here keeps the store honest.
+        const roleArrays = [updates.memberIds, updates.milestoneIds, updates.checkinIds];
+        const seen = new Set<string>();
+        for (const ids of roleArrays) {
+          if (!ids) continue;
+          for (const memberId of new Set(ids)) {
+            if (seen.has(memberId)) {
+              console.error(
+                `updateGoal: item ${memberId} was given two roles in goal ${id}; write refused.`,
+              );
+              return;
+            }
+            seen.add(memberId);
+          }
+        }
+
+        setNextActionLabel(`Edit goal: ${updates.name ?? goal.name}`);
+        set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...updates } : g)) });
+        // No withReleaseGrace, unlike updateRoutine: a goal suppresses nothing,
+        // so no membership change here can release an item back onto the canvas.
+        // That grace exists for the resolver's benefit and goals never reach it.
+        if (userId) dbUpdateGoal(userId, id, updates).catch(console.error);
+      },
+      removeGoal: (id) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+        // Soft delete, and the MEMBERS ARE UNTOUCHED: they are ordinary items
+        // that exist for their own sake, and only the goal and its links go to
+        // the bin. The delete confirm has to say so — "delete Learn Chinese"
+        // sounds like it takes a year of work with it.
+        setNextActionLabel(`Delete goal: ${goal.name}`);
+        set({ goals: get().goals.filter((g) => g.id !== id) });
+        if (userId) dbDeleteGoal(userId, id).catch(console.error);
+      },
+      setGoalState: (id, state) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === id);
+        if (!goal) return;
+        // One definition of what a state change writes, shared with Phase 4's
+        // agent route. Empty for a same-state write, so a retry can never drag
+        // a multi-year achievement date forward.
+        const patch = resolveGoalStateWrite(goal, state, new Date().toISOString());
+        if (Object.keys(patch).length === 0) return;
+        const verb =
+          state === 'achieved' ? 'Achieve' : state === 'abandoned' ? 'Abandon' : 'Reopen';
+        setNextActionLabel(`${verb} goal: ${goal.name}`);
+        set({ goals: get().goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) });
+        // `achievedAt: undefined` must reach the DB as a CLEAR rather than be
+        // dropped as an absent key. db.ts tests `'achievedAt' in updates` and
+        // writes `?? null`, and the spread preserves the key — which is what
+        // makes reopening a goal actually erase the stamp.
+        if (userId) dbUpdateGoal(userId, id, patch).catch(console.error);
+      },
+
       initializeStore: async (userId: string) => {
+        // Re-initializing the account that is already loaded is never a
+        // refresh — it is a reset. It refetches six tables, flips isLoading
+        // back to true (blanking any surface that gates on it), and throws away
+        // the undo history below. Nothing calls this wanting that.
+        //
+        // The callers make it reachable by accident, not by intent:
+        // supabase-provider's SIGNED_IN branch fires on token refresh and on
+        // tab focus, not only on a real sign-in. Guarding here rather than at
+        // each call site means a future caller cannot reintroduce it.
+        //
+        // `isLoading` is part of the condition so a genuine in-flight load is
+        // never mistaken for a settled one — a second call while the first is
+        // still running must be allowed through to replace it.
+        const current = get();
+        if (current.userId === userId && !current.isLoading) return;
+
         // Block subscriber during initialization to prevent poisoned history entries
         isUpdatingUndoRedo = true;
         hasInitializedHistory = false;
@@ -483,18 +1893,48 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ userId, isLoading: true, error: null });
 
         try {
-          const [items, projects, habitGroups, itemTypesResult] = await Promise.all([
-            fetchItems(userId),
-            fetchProjects(userId),
-            fetchHabitGroups(userId),
-            fetchItemTypes(userId),
-          ]);
+          const [
+            items,
+            projects,
+            habitGroups,
+            itemTypesResult,
+            routinesResult,
+            programsResult,
+            goalsResult,
+          ] =
+            await Promise.all([
+              fetchItems(userId),
+              fetchProjects(userId),
+              fetchHabitGroups(userId),
+              fetchItemTypes(userId),
+              fetchRoutines(userId),
+              // Rides the SAME Promise.all as items, deliberately: the overdue
+              // sweep's only hydration gate is `!isLoading`, which is cleared by
+              // the single set() below. Fetch programs anywhere else — a lazy
+              // load, a second effect — and the sweep runs against an empty
+              // list, reads every member of an inactive program as unprotected,
+              // and unschedules them in one silent batch. See use-overdue-sweep.
+              fetchPrograms(userId),
+              // Goals ride the same Promise.all, and for the sweep's sake as
+              // much as the programs above: the auto-age sweep subtracts
+              // milestone-role items before unscheduling anything, and its only
+              // hydration gate is the `!isLoading` that the single set() below
+              // clears. Fetch goals anywhere else and the sweep runs against an
+              // empty goal list, reads every milestone as unprotected, and
+              // erases a year of target dates in one silent batch.
+              fetchGoals(userId),
+            ]);
           const itemTypes = itemTypesResult ?? [];
+          // null means the table is unreachable, NOT "no rows" — the flag gates
+          // the UI so a write can't look like it landed and vanish.
+          const routines = routinesResult ?? [];
+          const programs = programsResult ?? [];
+          const goals = goalsResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, habitGroups };
+          const snapshot = { items, projects, habitGroups, routines, programs, goals };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -515,6 +1955,14 @@ export const usePlannerStore = create<PlannerStore>()(
             habitGroups,
             itemTypes,
             itemTypesAvailable: itemTypesResult !== null,
+            routines,
+            programs,
+            // Both tables arrive with migration 024, so either coming back
+            // unreachable means the same thing: the whole collections feature
+            // is not deployed and its UI must stay hidden.
+            collectionsAvailable: routinesResult !== null && programsResult !== null,
+            goals,
+            goalsAvailable: goalsResult !== null,
             isLoading: false,
             canUndo: false,
             canRedo: false,
@@ -545,6 +1993,17 @@ export const usePlannerStore = create<PlannerStore>()(
           projects: [],
           habitGroups: [],
           itemTypes: [],
+          routines: [],
+          programs: [],
+          collectionsAvailable: true,
+          // Goals reset with every other slice. Missed, the previous account's
+          // goal names, whys and target dates stay in memory after SIGNED_OUT —
+          // and initializeStore's catch branch sets only isLoading/error, so a
+          // FAILED next sign-in leaves user B looking at user A's goals in the
+          // chip and the console, with updateGoal firing user-B writes at
+          // user-A ids.
+          goals: [],
+          goalsAvailable: true,
           isLoading: false,
           error: null,
           canUndo: false,
@@ -556,7 +2015,7 @@ export const usePlannerStore = create<PlannerStore>()(
         isUpdatingUndoRedo = false;
       },
 
-      addItem: (customType, itemData) => {
+      addItem: (customType, itemData, memberships) => {
         // Only hydrated custom slugs: 'task'/'habit' would write a corrupt
         // row through the task-shaped mapper, 'custom' is the envelope
         // discriminant, and unknown slugs shouldn't be minted by a typo.
@@ -579,14 +2038,20 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: 0, // custom types aren't manually orderable (created_at sorts)
+          projectId: projectIdFor(itemData.project, get().projects),
         };
-        set((state) => projectItems([...state.items, item]));
+        set((state) => ({
+          ...projectItems([...state.items, item]),
+          routines: withMembership(state.routines, item.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
+          programs: withMembership(state.programs, item.id, memberships?.programIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, item).catch(console.error);
+        if (userId) persistNewItem(userId, item, memberships, get);
       },
 
-      addTask: (taskData) => {
+      addTask: (taskData, memberships) => {
         setNextActionLabel(`Add task: ${taskData.title}`);
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
@@ -598,16 +2063,100 @@ export const usePlannerStore = create<PlannerStore>()(
           status: 'pending',
           isScheduled: !!timeBucket,
           order: get().tasks.length,
+          projectId: projectIdFor(taskData.project, get().projects),
         };
-        set((state) => projectItems([...state.items, task]));
+        set((state) => ({
+          ...projectItems([...state.items, task]),
+          routines: withMembership(state.routines, task.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
+          programs: withMembership(state.programs, task.id, memberships?.programIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, task).catch(console.error);
+        if (userId) persistNewItem(userId, task, memberships, get);
+      },
+
+      addTasksBulk: (type, itemsData) => {
+        if (itemsData.length === 0) return;
+        // One row is a normal add wearing a bulk sleeve — delegate so the
+        // history label keeps its natural single-item form.
+        if (itemsData.length === 1) {
+          if (type === 'task') get().addTask(itemsData[0]);
+          else get().addItem(type, itemsData[0]);
+          return;
+        }
+        // Same slug guard as addItem, with 'task' additionally allowed:
+        // 'habit' would write corrupt rows through the task-shaped mapper,
+        // 'custom' is the envelope discriminant, unknown slugs stay unminted.
+        const isCustom = type !== 'task';
+        if (
+          isCustom &&
+          (type === 'habit' || type === 'custom' || !get().itemTypes.some((t) => t.name === type))
+        ) {
+          return;
+        }
+
+        // Always "items", never a pluralised type label — the undo toast
+        // matches on this prefix, and "7 grocerys" is what naive pluralisation
+        // buys.
+        setNextActionLabel(`Bulk add: ${itemsData.length} items`);
+
+        const baseOrder = get().tasks.length;
+        const projects = get().projects;
+        const rows: Item[] = itemsData.map((itemData, i) => {
+          const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
+          return {
+            ...itemData,
+            ...(isCustom ? { type: 'custom' as const, customType: type } : { type: 'task' as const }),
+            timeBucket,
+            id: crypto.randomUUID(),
+            status: 'pending',
+            isScheduled: !!timeBucket,
+            // Custom types aren't manually orderable (created_at sorts).
+            order: isCustom ? 0 : baseOrder + i,
+            projectId: projectIdFor(itemData.project, projects),
+          } as Item;
+        });
+
+        // ONE set() for the whole paste: one history entry, one ⌘Z.
+        set((state) => projectItems([...state.items, ...rows]));
+
+        // Tasks: one INSERT statement, not N createItem calls — all-or-nothing
+        // on the wire, and the undo-races-insert window stays as narrow as a
+        // single add's (see createItems in lib/db.ts). Their explicit `order`
+        // values carry the paste order through the shared created_at.
+        //
+        // Custom types can't ride that statement: they are order-0 by design
+        // (created_at sorts, per the registry decision), and a single INSERT
+        // stamps every row with the statement's created_at — the paste order
+        // would scramble on reload. A sequential chain gives each row its own
+        // timestamp; custom bulk adds are rare enough to pay the round trips.
+        const userId = get().userId;
+        if (userId) {
+          if (isCustom) {
+            void (async () => {
+              for (const row of rows) {
+                await dbCreateItem(userId, row).catch(console.error);
+              }
+            })();
+          } else {
+            dbCreateItems(userId, rows).catch(console.error);
+          }
+        }
       },
 
       updateTask: (id, updates) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Edit task: ${task?.title || 'Unknown'}`);
+        // A date change through the generic edit action IS a move verb, and two
+        // of the surfaces decision 11 names by name arrive here rather than at
+        // moveTaskToDate: the EOD review's "Tomorrow" button and date picker
+        // (which is also how "Move all to tomorrow" works, one row at a time),
+        // and the item dialog's date chip. Attaching the receipt to the update
+        // itself is what stops the next such surface from being missed too.
+        setNextActionLabel(
+          `Edit task: ${task?.title || 'Unknown'}`,
+          'startDate' in updates ? landingReceipt(get(), [id], updates.startDate) : undefined
+        );
 
         const newUpdates = { ...updates };
         // Auto-correct bucket if start time changes
@@ -615,6 +2164,14 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || task.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // Re-file: the id follows the name, INCLUDING to undefined. Key
+        // presence is the test, not truthiness — clearing `project` is how
+        // unfiling is expressed, and leaving a stale id behind would let a
+        // later rename of the old container pull the name back onto an item
+        // the user had already taken out of it.
+        if ('project' in updates) {
+          newUpdates.projectId = projectIdFor(updates.project, get().projects);
         }
 
         updateItemAction(id, 'task', newUpdates);
@@ -624,9 +2181,24 @@ export const usePlannerStore = create<PlannerStore>()(
         const found = findTaskLike(id);
         setNextActionLabel(`Delete task: ${found?.title || 'Unknown'}`);
         if (!found) return;
-        set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === found.type))));
+        // Cascade to subtasks explicitly: soft-delete doesn't fire the DB's
+        // ON DELETE SET NULL (that's for the hard purge), and an orphaned
+        // subtask would be unreachable — excluded from every view, parent gone.
+        const children = get().items.filter(
+          (i) => i.type !== 'habit' && i.parentItemId === id
+        );
+        set((state) =>
+          projectItems(
+            state.items.filter(
+              (i) =>
+                !(i.id === id && i.type === found.type) &&
+                !children.some((c) => c.id === i.id)
+            )
+          )
+        );
 
         dbDeleteItem(id, dbTypeOf(found)).catch(console.error);
+        children.forEach((c) => dbDeleteItem(c.id, dbTypeOf(c)).catch(console.error));
       },
 
       toggleTaskStatus: (id, status?, date?) => {
@@ -647,17 +2219,30 @@ export const usePlannerStore = create<PlannerStore>()(
             state.items.map(i => i.id === id && i.type === found.type ? { ...i, completedDates: newCompletedDates } : i),
           ));
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
+          if (!alreadyDone) {
+            celebrateCompletion();
+            offerCheckinNote(task, dateStr);
+          }
         } else {
           // One-off task — existing behavior unchanged
           const newStatus: TaskStatus = status ?? (task.status === 'completed' ? 'pending' : 'completed');
           setNextActionLabel(`${newStatus === 'completed' ? 'Complete' : 'Uncomplete'} task: ${task.title}`);
           updateItemAction(id, 'task', { status: newStatus });
+          // Transition-only, like the recurring/habit taps: an explicit
+          // status='completed' on an already-completed task must not celebrate.
+          if (newStatus === 'completed' && task.status !== 'completed') {
+            celebrateCompletion();
+            offerAchievementFor(id);
+          }
         }
       },
 
       scheduleTask: (id, bucket, time, date) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Schedule task: ${task?.title || 'Unknown'}`);
+        setNextActionLabel(
+          `Schedule task: ${task?.title || 'Unknown'}`,
+          landingReceipt(get(), [id], date ?? startDateOf(task))
+        );
         const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
 
         const updates: Partial<Task> = {
@@ -675,7 +2260,10 @@ export const usePlannerStore = create<PlannerStore>()(
 
       assignTaskToBucket: (id, bucket) => {
         const task = findTaskLike(id);
-        setNextActionLabel(`Move task to ${bucket}: ${task?.title || 'Unknown'}`);
+        setNextActionLabel(
+          `Move task to ${bucket}: ${task?.title || 'Unknown'}`,
+          landingReceipt(get(), [id], startDateOf(task))
+        );
         const updates: Partial<Task> = {
           isScheduled: false,
           timeBucket: bucket,
@@ -712,7 +2300,10 @@ export const usePlannerStore = create<PlannerStore>()(
         // 'Move task to' is the prefix hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS
         // matches (shared with assignTaskToBucket) — keep it verbatim or the undo
         // toast silently stops appearing.
-        setNextActionLabel(`Move task to ${dateStr}: ${task.title}`);
+        setNextActionLabel(
+          `Move task to ${dateStr}: ${task.title}`,
+          landingReceipt(get(), [id], dateStr)
+        );
         updateItemAction(id, 'task', {
           startDate: dateStr,
           timeBucket: task.timeBucket ?? 'anytime',
@@ -724,23 +2315,39 @@ export const usePlannerStore = create<PlannerStore>()(
        * recurring task's startDate is its recurrence anchor, so carrying it
        * rewrites the series rather than moving an occurrence.
        */
-      moveTasksToDate: (ids, dateStr) => {
+      moveTasksToDate: (ids, dateStr, bucket) => {
         const idSet = new Set(ids);
         // Resolved before the label is set: setNextActionLabel arms a pending
         // label consumed by the NEXT history save, so labelling a no-op would
         // mislabel whatever the user does next.
-        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        //
+        // MILESTONES ARE EXCLUDED, exactly as recurring items already are from
+        // EOD's carry. For an ordinary task `startDate` is a scheduling
+        // intention and "move all to tomorrow" is a kindness; for a milestone
+        // it is the TARGET DATE — the one field that says when the checkpoint
+        // was meant to happen — and a habitual bulk tap would silently walk a
+        // goal's deadline forward a day at a time. Moving one deliberately is
+        // still allowed everywhere (the dialog's date chip, the tray's "pick a
+        // new date"); it is only the sweeping verb that must not.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && idSet.has(i.id) && !milestones.has(i.id),
+        );
         if (targets.length === 0) return;
         // 'Move all tasks' is already in SIGNIFICANT_ACTIONS; this is its first producer.
-        setNextActionLabel(`Move all tasks to ${dateStr} (${targets.length})`);
+        setNextActionLabel(
+          `Move all tasks to ${dateStr} (${targets.length})`,
+          landingReceipt(get(), targets.map((t) => t.id), dateStr)
+        );
 
         const writes = targets.map((item) => ({
           id: item.id,
           dbType: dbTypeOf(item),
           updates: {
             startDate: dateStr,
-            // Same load-bearing visibility guarantee as moveTaskToDate.
-            timeBucket: item.timeBucket ?? 'anytime',
+            // Same load-bearing visibility guarantee as moveTaskToDate. A group
+            // week-grid drop passes the target bucket; otherwise keep own.
+            timeBucket: bucket ?? item.timeBucket ?? 'anytime',
             // Deliberately cleared, unlike the single-item verb: a bulk carry can
             // drag 18 stale clock times (06:00, 22:30, …) onto today at once, and
             // deriveGridRange widens the schedule window to cover them, which
@@ -858,17 +2465,37 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       /** Batched unscheduleTask (bulk "move to Braindump", auto-age sweep). */
-      unscheduleTasks: (ids) => {
+      unscheduleTasks: (ids, opts) => {
         const idSet = new Set(ids);
-        const targets = get().items.filter((i) => i.type !== 'habit' && idSet.has(i.id));
+        // Milestones excluded, and here it matters most: this verb CLEARS
+        // startDate, and its heaviest caller is the unattended auto-age sweep.
+        // Left in, a milestone thirty days behind would lose its target date
+        // overnight — leaving the past-due bar (so the goal stops looking
+        // behind), sinking below every dated checkpoint in nextMilestone's
+        // ordering, and giving the goal timeline nothing to annotate. The
+        // behind-ness would be laundered into "undated" rather than shown.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && idSet.has(i.id) && !milestones.has(i.id),
+        );
         if (targets.length === 0) return;
         // The prefix must stay exactly 'Unschedule task:' — that is the string in
         // hooks/use-undo-toast.ts SIGNIFICANT_ACTIONS. A plural 'Unschedule tasks:'
         // would NOT match its startsWith() test and the undo toast would never fire.
+        //
+        // ONE caller overrides it, and does so precisely to opt OUT of that
+        // toast: the auto-age sweep (hooks/use-overdue-sweep.ts). A five-second
+        // toast is a confirmation of something YOU just did; the sweep runs
+        // unattended, often before the tab was open, so the toast was never a
+        // receipt for it — it fired at whatever moment the app happened to
+        // load. Its receipt is a dock line that persists instead. The history
+        // entry is unaffected either way, so ⌘Z still reverses the sweep; only
+        // the toast stands down.
         setNextActionLabel(
-          targets.length === 1
-            ? `Unschedule task: ${targets[0].title}`
-            : `Unschedule task: ${targets.length} items`,
+          opts?.label ??
+            (targets.length === 1
+              ? `Unschedule task: ${targets[0].title}`
+              : `Unschedule task: ${targets.length} items`),
         );
 
         // Field-for-field identical to unscheduleTask so the single and batched
@@ -881,12 +2508,57 @@ export const usePlannerStore = create<PlannerStore>()(
         };
 
         // One set() => one history entry => one undo (see moveTasksToDate).
+        //
+        // Keyed on `targetIds`, NOT on the caller's `idSet`. They used to be
+        // interchangeable; the milestone exclusion above made them different,
+        // and re-deriving from `idSet` here would clear a milestone's date in
+        // the store while writing nothing for it — so it would look unscheduled
+        // until the next reload silently put it back.
+        const targetIds = new Set(targets.map((t) => t.id));
         set((state) => projectItems(state.items.map((i) => (
-          i.type !== 'habit' && idSet.has(i.id) ? ({ ...i, ...updates } as Item) : i
+          targetIds.has(i.id) ? ({ ...i, ...updates } as Item) : i
         ))));
 
         targets.forEach((item) =>
           dbUpdateItem(item.id, dbTypeOf(item), updates).catch(console.error),
+        );
+      },
+
+      restoreScheduling: (entries) => {
+        // Rows the user has since deleted are silently skipped rather than
+        // resurrected: a receipt can be hours old, and "put them back" must
+        // never mean "and undelete the two you threw away in between".
+        const byId = new Map(entries.map((e) => [e.id, e]));
+        const targets = get().items.filter((i) => i.type !== 'habit' && byId.has(i.id));
+        if (targets.length === 0) return;
+
+        // 'Schedule task:' is a SIGNIFICANT_ACTIONS prefix, so this one DOES
+        // raise the undo toast — unlike the sweep it reverses. This is a thing
+        // the user just did, at a moment they were looking at the screen, which
+        // is exactly the case a five-second toast is for.
+        setNextActionLabel(
+          targets.length === 1
+            ? `Schedule task: ${targets[0].title}`
+            : `Schedule task: ${targets.length} items`,
+        );
+
+        const updatesFor = (id: string): Partial<Task> => {
+          const e = byId.get(id)!;
+          return {
+            isScheduled: e.isScheduled,
+            startDate: e.startDate,
+            timeBucket: e.timeBucket as Task['timeBucket'],
+            startTime: e.startTime,
+          };
+        };
+
+        // One set() => one history entry => one undo (see moveTasksToDate).
+        set((state) => projectItems(state.items.map((i) => (
+          i.type !== 'habit' && byId.has(i.id) ? ({ ...i, ...updatesFor(i.id) } as Item) : i
+        ))));
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item.id)).catch(console.error),
         );
       },
 
@@ -913,7 +2585,416 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
-      addHabit: (habitData) => {
+      /**
+       * Bulk delete for multi-select. Accepts a mixed selection of any kind
+       * (habits + task-like), cascades task-like subtasks the way deleteTask
+       * does, and does exactly ONE set() so the whole gesture is a single undo.
+       * Ids are unique across the items table, so id-only membership is safe.
+       */
+      deleteItems: (ids) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+
+        // Subtasks of any deleted task-like parent (habits carry none). Soft
+        // delete doesn't fire the DB's ON DELETE SET NULL, so an orphaned
+        // subtask would be unreachable — cascade explicitly, as deleteTask does.
+        const deletedTaskLike = new Set(
+          targets.filter((i) => i.type !== 'habit').map((i) => i.id)
+        );
+        const children = get().items.filter(
+          (i) =>
+            i.type !== 'habit' &&
+            i.parentItemId != null &&
+            deletedTaskLike.has(i.parentItemId) &&
+            !idSet.has(i.id)
+        );
+
+        setNextActionLabel(`Delete items (${targets.length})`);
+
+        const removeIds = new Set<string>([...idSet, ...children.map((c) => c.id)]);
+        set((state) => projectItems(state.items.filter((i) => !removeIds.has(i.id))));
+
+        [...targets, ...children].forEach((item) =>
+          dbDeleteItem(item.id, dbTypeOf(item)).catch(console.error)
+        );
+      },
+
+      /**
+       * Bulk completion for multi-select. Marks every eligible id complete (or
+       * incomplete) for `date`, routed per kind:
+       *   - habit               → per-date completedDates + optimistic streak
+       *                           (the RPC owns streak server-side, as in
+       *                           toggleHabitStatus)
+       *   - recurring task-like → per-date completedDates (never scalar status)
+       *   - one-off task-like   → scalar status
+       * Items already in the target state are skipped, so a re-complete never
+       * double-counts a streak. One set() ⇒ one undo.
+       */
+      setItemsCompleted: (ids, completed, date) => {
+        const idSet = new Set(ids);
+        const dateStr = resolveDateStr(date);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+
+        const patchById = new Map<string, Record<string, unknown>>();
+        const dbWrites: (() => void)[] = [];
+
+        for (const item of targets) {
+          if (item.type === 'habit') {
+            const habit = item as HabitItem;
+            const wasCompleted = habit.completedDates.includes(dateStr);
+            if (wasCompleted === completed) continue;
+            // Completing also clears a skip for the day (mirrors toggleHabitStatus).
+            const newSkippedDates = completed
+              ? (habit.skippedDates ?? []).filter((d) => d !== dateStr)
+              : habit.skippedDates ?? [];
+            const newStatus = completed ? 'done' : 'pending';
+            patchById.set(item.id, {
+              status: newStatus,
+              completedDates: completed
+                ? [...habit.completedDates, dateStr]
+                : habit.completedDates.filter((d) => d !== dateStr),
+              skippedDates: newSkippedDates,
+              streak: completed ? habit.streak + 1 : Math.max(0, habit.streak - 1),
+            });
+            const clearsSkip = completed && (habit.skippedDates ?? []).includes(dateStr);
+            dbWrites.push(() => {
+              // Streak + completedDates are server-owned on the completion RPC,
+              // which never touches skipped_dates — so the skip-clear needs its
+              // own write or it reappears on reload. That write is a per-date
+              // intent (029), never the recomputed array: only `dateStr` moved.
+              dbSetItemCompletion(item.id, 'habit', dateStr, completed).catch(console.error);
+              if (clearsSkip) {
+                dbSetItemSkip(item.id, 'habit', dateStr, false).catch(console.error);
+              }
+              dbUpdateItem(item.id, 'habit', { status: newStatus }).catch(console.error);
+            });
+          } else {
+            const task = item as TaskItem;
+            const dbType = dbTypeOf(item);
+            if (isRecurring(task)) {
+              if (isCompletedOnDate(task, dateStr) === completed) continue;
+              patchById.set(item.id, {
+                completedDates: completed
+                  ? [...(task.completedDates ?? []), dateStr]
+                  : (task.completedDates ?? []).filter((d) => d !== dateStr),
+              });
+              dbWrites.push(() =>
+                dbSetItemCompletion(item.id, dbType, dateStr, completed).catch(console.error)
+              );
+            } else {
+              const newStatus: TaskStatus = completed ? 'completed' : 'pending';
+              if (task.status === newStatus) continue;
+              patchById.set(item.id, { status: newStatus });
+              dbWrites.push(() =>
+                dbUpdateItem(item.id, dbType, { status: newStatus }).catch(console.error)
+              );
+            }
+          }
+        }
+
+        if (patchById.size === 0) return;
+        setNextActionLabel(`${completed ? 'Complete' : 'Uncomplete'} items (${patchById.size})`);
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) => {
+              const patch = patchById.get(i.id);
+              return patch ? ({ ...i, ...patch } as Item) : i;
+            })
+          )
+        );
+
+        dbWrites.forEach((w) => w());
+      },
+
+      /**
+       * Collect a selection into a routine or program, or release it.
+       *
+       * The membership half of the bulk verbs, and the reason it is one action
+       * rather than N calls to updateRoutine: each of those would push its own
+       * history entry, so undoing "add twelve items to Summer" would take twelve
+       * Cmd+Z. One set(), one entry, same contract the other bulk verbs hold.
+       *
+       * Both directions have a consequence the user must be told about, and they
+       * are opposites:
+       *  · ADDING to a container that is currently off hides the items on the
+       *    spot. Allowed — that is what collecting into a paused program means —
+       *    but never silently, so it carries decision 11's receipt.
+       *  · REMOVING from a container that was hiding them makes them visible
+       *    again, possibly weeks overdue, so it needs the sweep's release grace
+       *    exactly as removeRoutine and updateRoutine do.
+       */
+      setItemsCollected: (ids, kind, containerId, member) => {
+        const userId = get().userId;
+        const idSet = new Set(ids);
+        // Registry, not a type check: the subtask rule lives in isCollectible,
+        // and a second copy here would drift the first time a capability moves.
+        const eligible = get()
+          .items.filter((i) => idSet.has(i.id) && isCollectible(i))
+          .map((i) => i.id);
+        if (eligible.length === 0) return;
+
+        const list = kind === 'routine' ? get().routines : get().programs;
+        const container = list.find((c) => c.id === containerId);
+        if (!container) return;
+
+        const eligibleSet = new Set(eligible);
+        const nextIds = member
+          ? [...container.itemIds, ...eligible.filter((id) => !container.itemIds.includes(id))]
+          : container.itemIds.filter((id) => !eligibleSet.has(id));
+        // Nothing to do — every item was already in the requested state. Bail
+        // before the label, or an undo entry appears for a write that never was.
+        if (nextIds.length === container.itemIds.length) return;
+
+        const changed = Math.abs(nextIds.length - container.itemIds.length);
+        const withNext = <T extends { id: string; itemIds: string[] }>(cs: T[]) =>
+          cs.map((c) => (c.id === containerId ? { ...c, itemIds: nextIds } : c));
+        const nextRoutines = kind === 'routine' ? withNext(get().routines) : get().routines;
+        const nextPrograms = kind === 'program' ? withNext(get().programs) : get().programs;
+
+        // Resolved against the PROSPECTIVE containers, not the current ones.
+        // Every other caller of landingReceipt moves an item's date while the
+        // containers hold still, so asking before the write is the same answer;
+        // here it is the containers that move, and asking before would report
+        // the world the user is leaving. Cheaper and simpler than writing first
+        // and re-labelling, which would need the label read back out.
+        const receipt = member
+          ? landingReceipt(
+              {
+                items: get().items,
+                routines: nextRoutines,
+                programs: nextPrograms,
+                userTimezone: get().userTimezone,
+              },
+              eligible,
+            )
+          : undefined;
+
+        setNextActionLabel(
+          member
+            ? `Add to ${container.name}: ${changed} ${changed === 1 ? 'item' : 'items'}`
+            : `Remove from ${container.name}: ${changed} ${changed === 1 ? 'item' : 'items'}`,
+          receipt,
+        );
+
+        withReleaseGrace(() =>
+          set(kind === 'routine' ? { routines: nextRoutines } : { programs: nextPrograms }),
+        );
+
+        if (userId) {
+          const write =
+            kind === 'routine'
+              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
+              : dbUpdateProgram(userId, containerId, { itemIds: nextIds });
+          write.catch(console.error);
+        }
+      },
+
+      /**
+       * Bulk bucket assignment for a group drag. Mirrors assignTaskToBucket
+       * (untimed) for task-likes and assignHabitToBucket for habits, in one
+       * set() ⇒ one undo. A group dropped on a timed slot degrades to the slot's
+       * bucket, untimed — N items can't share one clock time coherently.
+       */
+      assignItemsToBucket: (ids, bucket) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+        setNextActionLabel(`Move ${targets.length} items to ${bucket}`);
+
+        const taskUpdates: Partial<Task> = {
+          isScheduled: false,
+          timeBucket: bucket,
+          startTime: undefined,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+        };
+        const habitUpdates: Partial<Habit> = { timeBucket: bucket, startTime: undefined };
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) =>
+              idSet.has(i.id)
+                ? ({ ...i, ...(i.type === 'habit' ? habitUpdates : taskUpdates) } as Item)
+                : i
+            )
+          )
+        );
+
+        targets.forEach((item) =>
+          dbUpdateItem(
+            item.id,
+            dbTypeOf(item),
+            item.type === 'habit' ? habitUpdates : taskUpdates
+          ).catch(console.error)
+        );
+      },
+
+      scheduleItemsAt: (ids, bucket, time, dateStr) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter((i) => idSet.has(i.id));
+        if (targets.length === 0) return;
+        const corrected = autoCorrectBucket(time, bucket) ?? bucket;
+        // 'Schedule items' — plural — is its own SIGNIFICANT_ACTIONS prefix in
+        // hooks/use-undo-toast.ts. The old label matched none of them, so a
+        // group drag onto the grid produced no toast at ALL: no undo affordance
+        // and, once decision 11 arrived, nowhere for the receipt to appear.
+        // MILESTONES KEEP THEIR TARGET DATE, for the reason moveTasksToDate
+        // states at length — but only the DATE is withheld, not the whole drop.
+        // This verb carries time and bucket too, and refusing outright would
+        // silently discard a drag the user plainly meant. So a milestone dropped
+        // on an hour cell gets the hour and keeps its deadline.
+        //
+        // Without this the two halves of the SAME drop handler disagreed: an
+        // untimed week column went through moveTasksToDate and preserved the
+        // target date, while an hour cell one column over rewrote it.
+        const milestones = milestoneItemIds(get().goals);
+        const datedIds = targets
+          .filter((i) => i.type !== 'habit' && !milestones.has(i.id))
+          .map((i) => i.id);
+        setNextActionLabel(
+          `Schedule items: ${targets.length} items`,
+          // Only the items that actually take the date belong in a receipt that
+          // says where things landed.
+          landingReceipt(get(), datedIds, dateStr)
+        );
+
+        // All land at the same clock time; the grid's overlap layout tiles them.
+        const baseTaskUpdates: Partial<Task> = {
+          isScheduled: true,
+          timeBucket: corrected,
+          startTime: time,
+          inProjectBlock: false,
+          previousStartTime: undefined,
+          previousStartDate: undefined,
+        };
+        const habitUpdates: Partial<Habit> = { timeBucket: corrected, startTime: time };
+        // ONE resolver for the optimistic set() and the DB write, deliberately:
+        // Phase 1's unscheduleTasks bug was exactly two lists that had been
+        // interchangeable until a milestone rule made them differ.
+        const updatesFor = (item: Item): Partial<Task> | Partial<Habit> =>
+          item.type === 'habit'
+            ? habitUpdates
+            : dateStr && !milestones.has(item.id)
+              ? { ...baseTaskUpdates, startDate: dateStr }
+              : baseTaskUpdates;
+
+        set((state) =>
+          projectItems(
+            state.items.map((i) =>
+              idSet.has(i.id) ? ({ ...i, ...updatesFor(i) } as Item) : i
+            )
+          )
+        );
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item)).catch(console.error)
+        );
+      },
+
+      setItemSkipped: (id, skipped, date) => {
+        const item = get().items.find((i) => i.id === id);
+        if (!item) return;
+        const config = getItemTypeConfig(itemTypeName(item));
+        // Capability + recurrence, never `type === 'habit'`. A one-shot item
+        // has no occurrence to skip, so this is a no-op rather than a write
+        // that no surface would ever read back.
+        if (!isSkippable(item)) return;
+
+        // Types whose status vocabulary carries a skip value (habits) keep
+        // going through the status toggle: it owns the interaction between a
+        // skip, the day's completion and the server-side streak, and that
+        // behavior is deliberately untouched here.
+        if (config.skipStatus) {
+          get().toggleHabitStatus(id, (skipped ? config.skipStatus : 'pending') as HabitStatus, undefined, date);
+          return;
+        }
+
+        const dateStr = resolveDateStr(date);
+        const current = item.skippedDates ?? [];
+        if (current.includes(dateStr) === skipped) return;
+        setNextActionLabel(
+          `${skipped ? 'Skip' : 'Unskip'} ${config.label.toLowerCase()} on ${dateStr}: ${item.title}`,
+        );
+
+        const optimistic: Partial<Task> = {
+          skippedDates: skipped ? [...current, dateStr] : current.filter((d) => d !== dateStr),
+        };
+        // A skipped occurrence is not a completed one — same exclusivity the
+        // habit path enforces. Completion belongs to the atomic RPC, so it is
+        // applied optimistically here and written there, never as an absolute
+        // array through the update allowlist.
+        const clearCompletion = skipped && isCompletedOnDate(item, dateStr);
+        if (clearCompletion) {
+          optimistic.completedDates = (item.completedDates ?? []).filter((d) => d !== dateStr);
+        }
+
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id && i.type === item.type ? { ...i, ...optimistic } as Item : i)),
+        ));
+
+        if (clearCompletion) {
+          dbSetItemCompletion(id, dbTypeOf(item), dateStr, false).catch(console.error);
+        }
+        // Per-date intent, not the whole array: this path knows the one date
+        // that moved, so it says so. Writing `optimistic.skippedDates` whole
+        // would make this client's copy the new server truth.
+        dbSetItemSkip(id, dbTypeOf(item), dateStr, skipped).catch(console.error);
+      },
+
+      /**
+       * Pause or resume ONE item.
+       *
+       * Writes nothing but the two pause columns — never status, streak,
+       * completedDates, skippedDates, startDate, repeat* or timeBucket. That
+       * restraint is the feature: because a streak only ever moves inside the
+       * completion RPC and nothing in the app decays one on a missed day,
+       * "pause without losing your streak" needs no streak handling at all, and
+       * resume finds the item exactly where it was (an item with no timeBucket
+       * is invisible in day views, so a pause that touched it would strand it).
+       *
+       * A resume sets `pausedUntil` to today rather than clearing the pair, so
+       * the interval stays readable on the row — the auto-age sweep's resume
+       * grace is computed from it, and clearing would make a returning user's
+       * whole backlog sweepable the next morning.
+       */
+      setItemPaused: (id, paused, until) => {
+        const item = get().items.find((i) => i.id === id);
+        if (!item) return;
+        if (!isPausable(item)) return;
+        const config = getItemTypeConfig(itemTypeName(item));
+
+        // TODAY, deliberately — NOT resolveDateStr(), which resolves the
+        // navigable selectedDate. Pausing is not a per-date verb the way
+        // completing or skipping is (plan decision 3: dateless surfaces resolve
+        // at today), so browsing next week and hitting Pause must not write a
+        // resume date from the day you happen to be looking at. Both values
+        // come off one instant so they cannot straddle midnight.
+        const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const now = new Date();
+        const todayStr = toDateStr(now, tz);
+        if (isPausedOn(item, todayStr, tz) === paused) return;
+
+        const updates: Partial<Task> = paused
+          ? { pausedAt: now.toISOString(), pausedUntil: until }
+          : { pausedUntil: todayStr };
+
+        setNextActionLabel(
+          paused
+            ? `Pause ${config.label.toLowerCase()}: ${item.title}`
+            : `Resume ${config.label.toLowerCase()}: ${item.title}`,
+        );
+
+        set((state) => projectItems(
+          state.items.map((i) => (i.id === id ? { ...i, ...updates } as Item : i)),
+        ));
+        dbUpdateItem(id, dbTypeOf(item), updates).catch(console.error);
+      },
+
+      addHabit: (habitData, memberships) => {
         setNextActionLabel(`Add habit: ${habitData.title}`);
         const timeBucket = autoCorrectBucket(habitData.startTime, habitData.timeBucket);
 
@@ -928,11 +3009,17 @@ export const usePlannerStore = create<PlannerStore>()(
           skippedDates: [],
           dailyCounts: {},
           currentDayCount: 0,
+          groupId: groupIdFor(habitData.group, get().habitGroups),
         };
-        set((state) => projectItems([...state.items, habit]));
+        set((state) => ({
+          ...projectItems([...state.items, habit]),
+          routines: withMembership(state.routines, habit.id, memberships?.routineIds),
+          goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
+          programs: withMembership(state.programs, habit.id, memberships?.programIds),
+        }));
 
         const userId = get().userId;
-        if (userId) dbCreateItem(userId, habit).catch(console.error);
+        if (userId) persistNewItem(userId, habit, memberships, get);
       },
 
       updateHabit: (id, updates) => {
@@ -945,6 +3032,10 @@ export const usePlannerStore = create<PlannerStore>()(
           const bucket = updates.timeBucket || habit.timeBucket;
           const corrected = autoCorrectBucket(updates.startTime, bucket);
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
+        }
+        // See updateTask — the id follows the name on every re-file.
+        if ('group' in updates) {
+          newUpdates.groupId = groupIdFor(updates.group, get().habitGroups);
         }
 
         updateItemAction(id, 'habit', newUpdates);
@@ -1012,8 +3103,22 @@ export const usePlannerStore = create<PlannerStore>()(
         ));
 
         dbSetItemCompletion(id, 'habit', dateStr, status === 'done').catch(console.error);
-        const { completedDates: _cd, streak: _st, ...rest } = optimistic;
+        // skippedDates joins completedDates and streak in the exclusion list:
+        // all three are per-date/server-owned state that the companion update
+        // must not clobber with this client's recomputed copy. The skip moves
+        // through its own intent RPC, and only when it actually changed.
+        const { completedDates: _cd, streak: _st, skippedDates: _sd, ...rest } = optimistic;
+        if (wasSkipped !== (status === 'skipped')) {
+          dbSetItemSkip(id, 'habit', dateStr, status === 'skipped').catch(console.error);
+        }
         dbUpdateItem(id, 'habit', rest).catch(console.error);
+        if (status === 'done' && !wasCompleted) {
+          celebrateCompletion();
+          // Habits can serve as check-ins too — `isCheckinEligible` asks only
+          // that the item recurs — so the bridge belongs on both completion
+          // verbs, not just the task one.
+          offerCheckinNote(habit, dateStr);
+        }
       },
 
       scheduleHabit: (id, bucket, time) => {
@@ -1025,7 +3130,12 @@ export const usePlannerStore = create<PlannerStore>()(
 
       assignHabitToBucket: (id, bucket) => {
         const habit = findItem(id, 'habit');
-        setNextActionLabel(`Move habit to ${bucket}: ${habit?.title || 'Unknown'}`);
+        // Habits are date-blind, so the receipt resolves at today — which is
+        // what a dateless surface must use anyway (decision 3).
+        setNextActionLabel(
+          `Move habit to ${bucket}: ${habit?.title || 'Unknown'}`,
+          landingReceipt(get(), [id])
+        );
         updateItemAction(id, 'habit', { timeBucket: bucket, startTime: undefined });
       },
 
@@ -1050,28 +3160,244 @@ export const usePlannerStore = create<PlannerStore>()(
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
 
       addProject: (name, emoji) => {
-        setNextActionLabel(`Add project: ${name}`);
-        const alreadyExists = get().projects.some((p) => p.name === name);
+        // The label goes AFTER the guard. Armed before it, a no-op create
+        // leaves `Add project: Foo` pending on a module-level variable and the
+        // user's next unlabelled mutation is logged and undone under that name.
+        const alreadyExists = get().projects.some((p) => sameContainerName('project', p.name, name));
         if (alreadyExists) return;
+        setNextActionLabel(`Add project: ${name}`);
 
         const project: Project = { id: crypto.randomUUID(), name, emoji };
         set((state) => ({ projects: [...state.projects, project] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateProject(userId, project).catch(console.error);
+        if (userId) {
+          dbCreateProject(userId, project).catch((error) => {
+            undoFailedCreate(error, entryId, 'project', project.id, name);
+          });
+        }
+      },
+
+      /**
+       * The first-run starter set, and the repair that shares its shape.
+       *
+       * ONE `set()` AND ONE HISTORY ENTRY, not six. Six `addProject` calls would
+       * work and would be wrong: the history popover would open on a brand-new
+       * account already listing six actions the user did not perform, and their
+       * first ⌘Z would delete one starter container while leaving five. This is
+       * a single arrival, so it undoes as one.
+       *
+       * GUARDS, ALL THREE. `userId` because a create without one writes nothing
+       * and leaves an optimistic row that vanishes on reload. `isLoading`
+       * because `initializeStore` REPLACES `projects`, `habitGroups` and `items`
+       * wholesale when its fetch resolves — anything seeded inside that window
+       * is silently discarded, which is the same trap `canCreate` guards in the
+       * console and the one the e2e suite found the hard way. And the container
+       * arrays being empty, re-checked HERE rather than trusted from the plan:
+       * the plan was computed before two awaits (the latch read and the bin
+       * read), and a fetch resolving in between is exactly how an account with
+       * containers gets a second set of them.
+       *
+       * ADOPTION IS PART OF THE SAME `set()`. When a container is created for a
+       * name its items already carry, those items get the new id in the same
+       * commit — otherwise the store holds members whose `groupId` is undefined
+       * while the database has just linked them, and the next edit writes the
+       * stale shape back.
+       */
+      seedStarterContainers: (plan, forUserId) => {
+        const state = get();
+        const userId = state.userId;
+        // THE OWNER CHECK, and it is not redundant with the caller's. The plan
+        // is computed across two more awaits after the caller looked, and
+        // Supabase delivers a bare SIGNED_IN for a different user with no
+        // intervening SIGNED_OUT — the provider handles that case in two other
+        // places. Without this, one account's plan was committed into another
+        // account's store, and with adoption in the mix that meant creating a
+        // container named after someone else's data.
+        if (!userId || userId !== forUserId || state.isLoading) return 'refused';
+        if (state.projects.length > 0 || state.habitGroups.length > 0) return 'refused';
+        // Distinguished from a refusal on purpose: this is a stable answer, and
+        // the caller latches on it so the account stops being asked. A refusal
+        // is "ask again next load".
+        if (plan.projects.length === 0 && plan.groups.length === 0) return 'nothing-to-do';
+
+        const projects: Project[] = plan.projects.map((p) => ({
+          id: crypto.randomUUID(),
+          name: p.name,
+          emoji: p.emoji,
+        }));
+        const groups: HabitGroupType[] = plan.groups.map((g) => ({
+          id: crypto.randomUUID(),
+          name: g.name,
+          emoji: g.emoji,
+        }));
+
+        const projectByName = new Map(projects.map((p) => [p.name, p]));
+        const groupByName = new Map(groups.map((g) => [g.name, g]));
+
+        /**
+         * NO HISTORY ENTRY, and this is a change of mind the review earned.
+         *
+         * The plan asked for the seed to be "undoable like anything else", and
+         * the first version obliged with one entry. Two consequences neither of
+         * us had costed: a brand-new account arrives with `canUndo: true` and a
+         * logged action its owner did not perform, and pressing ⌘Z — the very
+         * first thing many people try — SOFT-DELETES all six rows, which puts
+         * six containers the user never made into a Trash they have never opened
+         * and reserves all six names for thirty days, because the unique indexes
+         * have no `WHERE deleted_at IS NULL`.
+         *
+         * Decision 2 asks for "fully deletable", and they are: every one goes
+         * through the console's ordinary delete. It does not ask for undoable,
+         * and a seed is not a user action — the same reasoning `undoFailedCreate`
+         * already applies to itself two hundred lines up.
+         *
+         * Suppressed the way the rollback suppresses: save and restore the flag
+         * rather than clearing it, because `initializeStore` holds it true
+         * across its whole fetch and a hard `false` here would hand it back
+         * unblocked mid-load.
+         */
+        const wasSuppressed = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set((s) => ({
+            projects: [...s.projects, ...projects],
+            habitGroups: [...s.habitGroups, ...groups],
+            ...projectItems(
+              s.items.map((item) => {
+                // Matched on the EXACT stored text, never a trimmed copy. The
+                // adopting UPDATE filters on the name it is given, so a store
+                // that links " Personal" while the database matches "Personal"
+                // produces a link that looks right until the next reload drops
+                // it. planSeed keeps names exact for the same reason.
+                if (item.type === 'habit') {
+                  const g = item.group ? groupByName.get(item.group) : undefined;
+                  return g && !item.groupId ? { ...item, groupId: g.id } : item;
+                }
+                const p = item.project ? projectByName.get(item.project) : undefined;
+                return p && !item.projectId ? { ...item, projectId: p.id } : item;
+              })
+            ),
+          }));
+          /**
+           * BOTH BASELINES, and the second one is not optional — the first
+           * version updated only `prevStateJson` and undo walked straight past
+           * the seed.
+           *
+           * `updatePrevStateBaseline` sets what the NEXT change is diffed
+           * against. But history is a stack of whole snapshots, and the one at
+           * `historyIndex` is still 'Session start' from before the seed. The
+           * user's first real edit pushes a snapshot on top of that, so one ⌘Z
+           * lands on the pre-seed state and takes the containers with it — the
+           * suppression having made sure there was no entry in between to stop
+           * at.
+           *
+           * Rewriting that snapshot in place is the honest fix rather than a
+           * patch: the seed is part of what this session STARTED with, which is
+           * exactly what 'Session start' is supposed to name. Length and index
+           * are untouched, so it cannot break the invariant that `historyIndex`
+           * names the state the store holds.
+           */
+          const s = get();
+          const seeded = {
+            items: s.items,
+            projects: s.projects,
+            habitGroups: s.habitGroups,
+            routines: s.routines,
+            programs: s.programs,
+            goals: s.goals,
+          };
+          updatePrevStateBaseline(seeded);
+          if (historyStack[historyIndex]) {
+            historyStack[historyIndex] = JSON.parse(JSON.stringify(seeded));
+          }
+        } finally {
+          isUpdatingUndoRedo = wasSuppressed;
+        }
+
+        // Sequential per container: the adopt UPDATE must not go out before the
+        // INSERT it depends on, or `items_project_id_fkey` rejects it — the
+        // composite key means a bad id takes the whole statement down.
+        //
+        // A REFUSED INSERT IS ROLLED BACK, exactly as a hand-made one is. Two
+        // tabs opening a first run both read the latch as false and both plan
+        // the same names; the second one's insert hits the unique index, and
+        // without this the tab keeps six containers that do not exist — and the
+        // first item filed into one is rejected by the composite FK and lost.
+        for (const project of projects) {
+          dbCreateProject(userId, project)
+            .then(() => adoptContainerMembers(userId, 'project_id', project.id, project.name))
+            .catch((error) => rollbackSeedContainer(error, 'project', project.id, project.name));
+        }
+        for (const group of groups) {
+          dbCreateHabitGroup(userId, group)
+            .then(() => adoptContainerMembers(userId, 'group_id', group.id, group.name))
+            .catch((error) => rollbackSeedContainer(error, 'group', group.id, group.name));
+        }
+
+        return 'committed';
       },
 
       updateProject: (id, updates) => {
         const project = get().projects.find((p) => p.id === id);
         setNextActionLabel(`Edit project: ${project?.name || 'Unknown'}`);
+        // THE RENAME FAN-OUT (migration 027). Members hold the name for display
+        // and the id for identity; renaming has to move the name on every one of
+        // them or the container silently empties. Keyed on projectId, so a
+        // member whose text drifted still follows and a same-named stranger does
+        // not. Guarded on the name actually changing — an emoji or colour edit
+        // arrives through this same action.
+        const renamedTo =
+          updates.name !== undefined && project && updates.name !== project.name
+            ? updates.name
+            : null;
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates } : p
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type !== 'habit' && i.projectId === id
+                    ? { ...i, project: renamedTo }
+                    : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateProject(userId, id, updates).catch(console.error);
+        if (userId) {
+          // CHAINED, not fired side by side, and this is the safety net under
+          // `takenBy`. That guard can only see LIVE projects — the store never
+          // loads soft-deleted ones — while projects_user_id_name_key is a
+          // plain unique index that spans them. So renaming onto a TRASHED
+          // project's name passes the guard, and the two writes do not fail
+          // together: the container UPDATE raises 23505 while the member
+          // fan-out touches no unique index and succeeds. The container would
+          // keep its old name while every member claimed the new one.
+          //
+          // Sequencing them turns that corruption into an ordinary optimistic
+          // update that reverts on reload, which is the failure mode every
+          // other write in this store already has. A better message needs the
+          // trashed names, which arrive with the Trash in Phase 4.
+          const write = dbUpdateProject(userId, id, updates);
+          (renamedTo
+            ? write.then(() => {
+                // A ROUND TRIP HAS PASSED, so re-check before firing. Chaining
+                // fixed the split write but moved this dispatch AFTER undo's:
+                // undo restores the old name with plain per-item writes and no
+                // fan-out of its own, so a ⌘Z landing inside this window used to
+                // be overwritten here — the container reverted while every
+                // member kept the name the user had just undone, and unlike an
+                // ordinary optimistic write that state survives a reload.
+                if (get().projects.find((p) => p.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'project_id', id, renamedTo);
+              })
+            : write
+          ).catch(console.error);
+        }
       },
 
       removeProject: (id) => {
@@ -1080,7 +3406,35 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           ...projectItems(state.items.map((i) =>
-            i.type === 'task' && i.project === project?.name ? { ...i, project: undefined } : i
+            // Custom types hold projects too, so this has to reach them: it is
+            // the ONLY live repair. cleanupOrphanedReferences below looks like
+            // a safety net and is not — it has no callers anywhere in the app.
+            //
+            // In-session only, and that is pre-existing and symmetric with
+            // removeHabitGroup: dbDeleteProject stamps projects.deleted_at and
+            // items.project is plain text with no FK and no trigger, so a
+            // reload re-reads the dead name. Name-referenced containers are the
+            // documented parked limitation (migration 024).
+            // Both halves, or the store contradicts itself: an item reading
+            // unfiled while still carrying the id would follow the container's
+            // next rename straight back into a project it had left.
+            //
+            // The DB row keeps BOTH on purpose — deleteProject only stamps
+            // deleted_at, so the link survives for a Trash restore to reconnect
+            // (Phase 4). That in-session/persisted asymmetry is pre-existing and
+            // unchanged here; 027 makes fixing it possible, it does not fix it.
+            //
+            // `project &&` guards the whole disjunction, not just the name half:
+            // an id that is not in the store leaves `project` undefined, and
+            // `i.projectId === project?.id` then reads `undefined === undefined`
+            // and unfiles every item that never had an id — which is all of them
+            // before 027's backfill reaches an account.
+            i.type !== 'habit' &&
+            project &&
+            (i.projectId === project.id ||
+              (i.project && sameContainerName('project', i.project, project.name)))
+              ? { ...i, project: undefined, projectId: undefined }
+              : i
           )),
         }));
 
@@ -1088,29 +3442,57 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbDeleteProject(userId, id).catch(console.error);
       },
 
+      // These three, and every identity lookup below, ask the container registry
+      // whether this kind folds rather than spelling a comparison. Projects do
+      // not fold, so they are `===` in effect — written this way so the policy
+      // has one home and the two kinds read the same, not two idioms whose
+      // difference you have to already know about.
       getProjectEmoji: (name) => {
-        const project = get().projects.find((p) => p.name === name);
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
         return project?.emoji || '';
       },
 
-      getProjectColor: (name) => accentColorForName(name),
-
-      getProject: (name) => {
-        return get().projects.find((p) => p.name === name);
+      // Stored color wins (same precedence as getHabitGroupColor); the
+      // name-hash ramp remains the no-choice default, so nothing changes for
+      // projects that never picked one.
+      getProjectColor: (name) => {
+        const project = get().projects.find((p) => sameContainerName('project', p.name, name));
+        return project?.color || accentColorForName(foldContainerName('project', name));
       },
 
+      getProject: (name) => {
+        return get().projects.find((p) => sameContainerName('project', p.name, name));
+      },
+
+      // TASK-LIKE, not 'task'. These three used findItem(id, 'task') and wrote
+      // dbUpdateItem(id, 'task', …) while every affordance that reaches them —
+      // project-block's availableTasks, its move button, and the drag arming —
+      // reads the `tasks` PROJECTION, which is `type !== 'habit'`. So a custom
+      // item rendered a live "move to block" button and a live drop target, and
+      // the verb returned state unchanged: no row moved, no DB write (db.ts
+      // filters .eq('type', type), so 'task' matches zero rows for a custom
+      // item), and the group path still reported success and cleared the
+      // selection. Armed on the way in, dead on arrival.
       moveTaskToProjectBlock: (taskId) => {
-        const moved = findItem(taskId, 'task');
+        const moved = findTaskLike(taskId);
         setNextActionLabel(`Move task into project block: ${moved?.title || 'Unknown'}`);
-        const selectedDate = get().selectedDate;
-        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        // resolveDateStr = toDateStr(selectedDate, userTimezone) — the user-tz
+        // day the canvas is derived against, so a machine-tz off-by-one can't
+        // file this into a project block on the wrong day.
+        const selectedDateStr = resolveDateStr();
         let taskUpdates: Partial<Task> | null = null;
+        let dbType = 'task';
 
         set((state) => {
-          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
+          const task = state.items.find(
+            (i) => i.id === taskId && i.type !== 'habit'
+          ) as TaskItem | undefined;
           if (!task || !task.project) return state;
+          dbType = dbTypeOf(task);
 
-          const project = state.projects.find((p) => p.name === task.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, task.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           taskUpdates = {
@@ -1124,30 +3506,36 @@ export const usePlannerStore = create<PlannerStore>()(
           };
 
           return projectItems(state.items.map((i) =>
-            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+            i.id === taskId && i.type !== 'habit' ? { ...i, ...taskUpdates! } as Item : i
           ));
         });
 
-        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, dbType, taskUpdates).catch(console.error);
       },
 
       moveTasksToProjectBlock: (taskIds) => {
         setNextActionLabel(`Move ${taskIds.length} tasks into project block`);
-        const selectedDate = get().selectedDate;
-        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+        // resolveDateStr = toDateStr(selectedDate, userTimezone) — the user-tz
+        // day the canvas is derived against, so a machine-tz off-by-one can't
+        // file this into a project block on the wrong day.
+        const selectedDateStr = resolveDateStr();
         const updatesMap = new Map<string, Partial<Task>>();
+        const dbTypes = new Map<string, string>();
 
         set((state) => {
           const firstTask = state.items.find(
-            (i): i is TaskItem => i.type === 'task' && taskIds.includes(i.id)
+            (i): i is TaskItem => i.type !== 'habit' && taskIds.includes(i.id)
           );
           if (!firstTask || !firstTask.project) return state;
 
-          const project = state.projects.find((p) => p.name === firstTask.project);
+          const project = state.projects.find((p) =>
+            sameContainerName('project', p.name, firstTask.project!)
+          );
           if (!project || !project.startTime || !project.timeBucket) return state;
 
           return projectItems(state.items.map((i) => {
-            if (i.type !== 'task' || !taskIds.includes(i.id)) return i;
+            if (i.type === 'habit' || !taskIds.includes(i.id)) return i;
+            dbTypes.set(i.id, dbTypeOf(i));
             const updates: Partial<Task> = {
               inProjectBlock: true,
               previousStartTime: i.startTime,
@@ -1163,18 +3551,22 @@ export const usePlannerStore = create<PlannerStore>()(
         });
 
         updatesMap.forEach((updates, id) =>
-          dbUpdateItem(id, 'task', updates).catch(console.error)
+          dbUpdateItem(id, dbTypes.get(id) ?? 'task', updates).catch(console.error)
         );
       },
 
       moveTaskOutOfProjectBlock: (taskId) => {
-        const moved = findItem(taskId, 'task');
+        const moved = findTaskLike(taskId);
         setNextActionLabel(`Move task out of project block: ${moved?.title || 'Unknown'}`);
         let taskUpdates: Partial<Task> | null = null;
+        let dbType = 'task';
 
         set((state) => {
-          const task = state.items.find((i) => i.id === taskId && i.type === 'task') as TaskItem | undefined;
+          const task = state.items.find(
+            (i) => i.id === taskId && i.type !== 'habit'
+          ) as TaskItem | undefined;
           if (!task) return state;
+          dbType = dbTypeOf(task);
           taskUpdates = {
             inProjectBlock: false,
             startTime: task.previousStartTime,
@@ -1183,43 +3575,101 @@ export const usePlannerStore = create<PlannerStore>()(
             previousStartDate: undefined,
           };
           return projectItems(state.items.map((i) =>
-            i.id === taskId && i.type === 'task' ? { ...i, ...taskUpdates! } as Item : i
+            i.id === taskId && i.type !== 'habit' ? { ...i, ...taskUpdates! } as Item : i
           ));
         });
 
-        if (taskUpdates) dbUpdateItem(taskId, 'task', taskUpdates).catch(console.error);
+        if (taskUpdates) dbUpdateItem(taskId, dbType, taskUpdates).catch(console.error);
       },
 
       addHabitGroup: (name, emoji, color) => {
-        const normalized = name.toLowerCase();
-        const alreadyExists = get().habitGroups.some((g) => g.name.toLowerCase() === normalized);
+        const alreadyExists = get().habitGroups.some((g) => sameContainerName('group', g.name, name));
         if (alreadyExists) return;
+        // Labelled at last: this create has always logged as "Unknown action"
+        // while its own delete was named, so the history popover could show you
+        // a group being removed and never how it arrived. Not in
+        // SIGNIFICANT_ACTIONS, so no undo toast — same as `Add project:`.
+        setNextActionLabel(`Add habit group: ${name}`);
 
         const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
         set((state) => ({ habitGroups: [...state.habitGroups, group] }));
+        const entryId = lastHistoryEntryId();
 
         const userId = get().userId;
-        if (userId) dbCreateHabitGroup(userId, group).catch(console.error);
+        if (userId) {
+          dbCreateHabitGroup(userId, group).catch((error) => {
+            undoFailedCreate(error, entryId, 'group', group.id, name);
+          });
+        }
       },
 
       updateHabitGroup: (id, updates) => {
+        const group = get().habitGroups.find((g) => g.id === id);
+        // See updateProject — the same fan-out, for the same reason.
+        const renamedTo =
+          updates.name !== undefined && group && updates.name !== group.name
+            ? updates.name
+            : null;
         set((state) => ({
           habitGroups: state.habitGroups.map((g) =>
             g.id === id ? { ...g, ...updates } : g
           ),
+          ...(renamedTo
+            ? projectItems(
+                state.items.map((i) =>
+                  i.type === 'habit' && i.groupId === id ? { ...i, group: renamedTo } : i
+                )
+              )
+            : {}),
         }));
 
         const userId = get().userId;
-        if (userId) dbUpdateHabitGroup(userId, id, updates).catch(console.error);
+        if (userId) {
+          // Chained, and re-checked on resume, for the same two reasons as
+          // updateProject — see the notes there.
+          const write = dbUpdateHabitGroup(userId, id, updates);
+          (renamedTo
+            ? write.then(() => {
+                if (get().habitGroups.find((g) => g.id === id)?.name !== renamedTo) return;
+                return dbRenameContainerMembers(userId, 'group_id', id, renamedTo);
+              })
+            : write
+          ).catch(console.error);
+        }
       },
 
       removeHabitGroup: (id) => {
         const group = get().habitGroups.find((g) => g.id === id);
+        // The sibling of removeProject's label, and now load-bearing: the delete
+        // confirm promises "⌘Z brings the group back", and without this the
+        // entry that undo offers is titled "Unknown action" — a correct
+        // operation the history cannot name.
+        setNextActionLabel(`Delete habit group: ${group?.name || 'Unknown'}`);
         set((state) => ({
           habitGroups: state.habitGroups.filter((g) => g.id !== id),
+          // Folded, unlike every version before A′. `makeAddDraft` writes a
+          // lowercase 'personal' against the seeded 'Personal' whenever the
+          // groups list has not loaded yet, so `i.group === group.name` left
+          // exactly those habits pointing at a group that no longer exists —
+          // the orphan this reassignment is here to prevent.
           ...projectItems(state.items.map((i) =>
-            i.type === 'habit' && i.group === group?.name
-              ? { ...i, group: state.habitGroups.find(g => g.id !== id)?.name || 'Personal' }
+            // Reassigns rather than unassigns — see the confirm copy, which
+            // names the destination. The id moves with the name (027): a
+            // destination that exists as a row hands over its id, and the
+            // 'Personal' fallback resolves to undefined when no such row exists,
+            // which is the honest answer for an account whose default groups
+            // were never persisted.
+            //
+            // `group &&` guards the whole disjunction for the same reason
+            // removeProject's does: without it an unknown id makes
+            // `i.groupId === group?.id` true for every habit not yet linked.
+            i.type === 'habit' &&
+            group &&
+            (i.groupId === group.id || sameContainerName('group', i.group, group.name))
+              ? (() => {
+                  const dest = state.habitGroups.find((g) => g.id !== id);
+                  return { ...i, group: dest?.name || 'Personal', groupId: dest?.id };
+                })()
               : i
           )),
         }));
@@ -1228,15 +3678,167 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbDeleteHabitGroup(userId, id).catch(console.error);
       },
 
+      restoreFromTrash: (entry) => {
+        const userId = get().userId;
+        const state = get();
+
+        /**
+         * The next state, computed BEFORE anything is labelled.
+         *
+         * TRAP A — an armed label with no state change. setNextActionLabel
+         * writes a module-level variable that only saveToHistory consumes, and
+         * saveToHistory only runs when the subscriber sees the snapshot JSON
+         * actually move. So labelling a restore that turns out to be a no-op
+         * (the row is already back — a double-click, a stale bin) leaves
+         * "Restore project: Work" armed, and the user's next unrelated edit is
+         * logged, undone and receipted under that name. Returning early here,
+         * before the label, is what makes that unreachable.
+         */
+        const next = (() => {
+          switch (entry.kind) {
+            case 'item': {
+              const item = entry.entity as Item;
+              if (state.items.some((i) => i.id === item.id)) return null;
+              // The co-deleted subtasks land in the SAME projection rebuild —
+              // db.restoreItem's cascade puts them back in the database, and a
+              // parent that reappeared with an empty checklist until the next
+              // reload would read as the subtasks having been lost.
+              const back = [item, ...(entry.children ?? [])].filter(
+                (i) => !state.items.some((existing) => existing.id === i.id)
+              );
+              if (back.length === 0) return null;
+              return projectItems([...state.items, ...back]);
+            }
+            case 'project': {
+              const project = entry.entity as Project;
+              if (state.projects.some((p) => p.id === project.id)) return null;
+              // Members re-file in the same set(). The link never left the
+              // database — removeProject clears the store's copy and writes
+              // nothing to items — so this is the store catching up with what a
+              // reload would have shown anyway, not a new claim about the data.
+              //
+              // KNOWN LIMIT, and it is the price of doing this at all: ⌘Z after
+              // a restore goes through applyHistoryState, whose per-item diff
+              // sees {project: undefined, projectId: undefined} against the
+              // pre-restore snapshot and writes both as NULL. So undoing a
+              // restore does not merely re-bin the container — it also severs
+              // the DB link the NEXT restore would have reconnected, and a
+              // second trip through the Trash returns an empty container. The
+              // gesture is rare (you have just deliberately restored the thing)
+              // and the outcome still matches what the delete confirm promised
+              // — "they just stop being filed under Work" — so it is accepted
+              // rather than papered over. Fixing it properly means teaching the
+              // history diff that a container's membership is the container's
+              // to own, which is a change to undo, not to this action.
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                projects: [...state.projects, project],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type !== 'habit'
+                          ? { ...i, project: project.name, projectId: project.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'group': {
+              const group = entry.entity as HabitGroupType;
+              if (state.habitGroups.some((g) => g.id === group.id)) return null;
+              const members = new Set(entry.memberIds ?? []);
+              return {
+                habitGroups: [...state.habitGroups, group],
+                ...projectItems(
+                  members.size === 0
+                    ? state.items
+                    : state.items.map((i) =>
+                        members.has(i.id) && i.type === 'habit'
+                          ? { ...i, group: group.name, groupId: group.id }
+                          : i
+                      )
+                ),
+              };
+            }
+            case 'routine': {
+              const routine = entry.entity as Routine;
+              if (state.routines.some((r) => r.id === routine.id)) return null;
+              // itemIds arrive already hydrated from the join tables — see
+              // listDeleted on why an empty array here would hard-delete the
+              // very membership the soft delete preserved.
+              return { routines: [...state.routines, routine] };
+            }
+            case 'program': {
+              const program = entry.entity as Program;
+              if (state.programs.some((p) => p.id === program.id)) return null;
+              return { programs: [...state.programs, program] };
+            }
+            case 'goal': {
+              const goal = entry.entity as Goal;
+              if (state.goals.some((g) => g.id === goal.id)) return null;
+              // All three role arrays arrive hydrated, WITH their roles — see
+              // listDeleted. Restored from bare ids they would come back as
+              // plain members, which is a silent change to the goal's progress
+              // denominator that the visible gate (the row is back) cannot see.
+              return { goals: [...state.goals, goal] };
+            }
+          }
+        })();
+        if (!next) return;
+
+        setNextActionLabel(`Restore ${TRASH_NOUNS[entry.kind]}: ${entry.name}`);
+
+        /**
+         * TRAP B — exactly ONE set(). A second one produces a second history
+         * entry that the label has already been spent on, so it logs as
+         * "Unknown action" and ⌘Z undoes only half the restore: the container
+         * comes back trashed while its members stay re-filed. Every slice this
+         * touches is in the object above for that reason.
+         *
+         * A restored container releases its members' suppression, so this rides
+         * withReleaseGrace exactly as removeRoutine and updateRoutine do.
+         */
+        if (entry.kind === 'routine' || entry.kind === 'program') {
+          withReleaseGrace(() => set(next));
+        } else {
+          set(next);
+        }
+
+        if (!userId) return;
+        switch (entry.kind) {
+          case 'item':
+            dbRestoreItem(entry.id, itemDbType(entry.entity as Item)).catch(console.error);
+            break;
+          case 'project':
+            dbRestoreProject(userId, entry.id).catch(console.error);
+            break;
+          case 'group':
+            dbRestoreHabitGroup(userId, entry.id).catch(console.error);
+            break;
+          case 'routine':
+            dbRestoreRoutine(userId, entry.id).catch(console.error);
+            break;
+          case 'program':
+            dbRestoreProgram(userId, entry.id).catch(console.error);
+            break;
+          case 'goal':
+            // No withReleaseGrace above for this kind, deliberately: a goal
+            // suppresses nothing, so restoring one releases nothing onto the
+            // canvas and there is no grace period to open.
+            dbRestoreGoal(userId, entry.id).catch(console.error);
+            break;
+        }
+      },
+
       getHabitGroupEmoji: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         return group?.emoji || '';
       },
 
       getHabitGroupColor: (name) => {
-        const normalized = name.toLowerCase();
-        const group = get().habitGroups.find((g) => g.name.toLowerCase() === normalized);
+        const normalized = foldContainerName('group', name);
+        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
         if (group?.color) return group.color;
 
         // Theme-aware tokens (app/globals.css). Stored group.color above passes
@@ -1253,14 +3855,26 @@ export const usePlannerStore = create<PlannerStore>()(
 
       cleanupOrphanedReferences: () => {
         const state = get();
-        const projectNames = new Set(state.projects.map(p => p.name));
-        const groupNames = new Set(state.habitGroups.map(g => g.name));
+        // Keyed on the FOLDED name so membership answers the same question the
+        // rest of the app does: a habit stored as 'personal' is not an orphan
+        // while a group called 'Personal' exists.
+        const projectNames = new Set(state.projects.map((p) => foldContainerName('project', p.name)));
+        const groupNames = new Set(state.habitGroups.map((g) => foldContainerName('group', g.name)));
 
         set(projectItems(state.items.map((i) => {
-          if (i.type === 'task' && i.project && !projectNames.has(i.project)) {
+          // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
+          // (registry containerKind 'projects'), so this has to reach them.
+          //
+          // NB this whole action currently has ZERO CALLERS — it is declared,
+          // implemented, and wired to nothing. Kept correct rather than deleted
+          // because the container work (memory/plans/display-menu.md, phase B)
+          // wants exactly this sweep once containers move to ids. If you wire
+          // it up, note that it only mutates state: persisting the repair needs
+          // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
+          if (i.type !== 'habit' && i.project && !projectNames.has(foldContainerName('project', i.project))) {
             return { ...i, project: undefined };
           }
-          if (i.type === 'habit' && !groupNames.has(i.group)) {
+          if (i.type === 'habit' && !groupNames.has(foldContainerName('group', i.group))) {
             return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
           }
           return i;
@@ -1330,6 +3944,7 @@ export const usePlannerStore = create<PlannerStore>()(
         showCurrentTimeIndicator: state.showCurrentTimeIndicator,
         timelineItemFilter: state.timelineItemFilter,
         showCompletedTasks: state.showCompletedTasks,
+        showPausedOnGrid: state.showPausedOnGrid,
         defaultView: state.defaultView,
         defaultTimeBucket: state.defaultTimeBucket,
         animationsEnabled: state.animationsEnabled,
@@ -1348,7 +3963,10 @@ export const usePlannerStore = create<PlannerStore>()(
  */
 function applyHistoryState(
   target: HistoryState,
-  currentState: { items: Item[]; projects: Project[]; habitGroups: HabitGroupType[] },
+  // HistoryState itself, rather than a hand-repeated structural copy: the two
+  // lists were identical and the copy was a second place to forget a slice.
+  // Callers pass the whole store, which is assignable.
+  currentState: HistoryState,
   flags: { canUndo: boolean; canRedo: boolean },
   userId: string | null,
   set: (partial: Partial<PlannerStore>) => void,
@@ -1356,19 +3974,36 @@ function applyHistoryState(
   const restoredItems: Item[] = JSON.parse(JSON.stringify(target.items));
   const restoredProjects: Project[] = JSON.parse(JSON.stringify(target.projects));
   const restoredGroups: HabitGroupType[] = JSON.parse(JSON.stringify(target.habitGroups));
+  // The `?? []` here is a tolerance for snapshots that predate a field, NOT a
+  // licence to omit one from saveToHistory: an absent slice reads downstream as
+  // "every row deleted" and syncContainers will faithfully soft-delete them all.
+  // Every key of HistoryState must be snapshotted; this only softens the crash.
+  const restoredRoutines: Routine[] = JSON.parse(JSON.stringify(target.routines ?? []));
+  const restoredPrograms: Program[] = JSON.parse(JSON.stringify(target.programs ?? []));
+  const restoredGoals: Goal[] = JSON.parse(JSON.stringify(target.goals ?? []));
 
   const info = getHistoryInfo();
   set({
     ...projectItems(restoredItems),
     projects: restoredProjects,
     habitGroups: restoredGroups,
+    routines: restoredRoutines,
+    programs: restoredPrograms,
+    goals: restoredGoals,
     canUndo: flags.canUndo,
     canRedo: flags.canRedo,
     actionLog: info.actionLog,
     historyIndex: info.currentIndex,
   });
 
-  updatePrevStateBaseline({ items: restoredItems, projects: restoredProjects, habitGroups: restoredGroups });
+  updatePrevStateBaseline({
+    items: restoredItems,
+    projects: restoredProjects,
+    habitGroups: restoredGroups,
+    routines: restoredRoutines,
+    programs: restoredPrograms,
+    goals: restoredGoals,
+  });
 
   if (!userId) return;
 
@@ -1387,11 +4022,15 @@ function applyHistoryState(
       return;
     }
     const patch = diffItem(cur, item);
-    // completedDates must never be written as an absolute array from a
-    // snapshot — the live flow's set_item_completion RPC owns that column, and
-    // a clobber here would race an in-flight completion. Replay the delta as
-    // per-date intents instead (adjustStreak=false: the patch below restores
-    // streak absolutely).
+    // completedDates/skippedDates must never be written as an absolute array
+    // from a snapshot — the set_item_completion / set_item_skip RPCs own those
+    // columns, and a clobber here would race an in-flight toggle. Replay the
+    // delta as per-date intents instead (adjustStreak=false on completion: the
+    // patch below restores streak absolutely).
+    //
+    // updateItem now reconciles these at the boundary too, so a miss here is no
+    // longer data loss — but doing it in-place keeps the restore to one round
+    // trip per changed date instead of a read plus the same intents.
     if ('completedDates' in patch) {
       delete patch.completedDates;
       const curDates = new Set(cur.completedDates ?? []);
@@ -1401,6 +4040,17 @@ function applyHistoryState(
       });
       curDates.forEach((d) => {
         if (!restoredDates.has(d)) dbSetItemCompletion(item.id, dbType(item), d, false, false).catch(console.error);
+      });
+    }
+    if ('skippedDates' in patch) {
+      delete patch.skippedDates;
+      const curSkips = new Set(cur.skippedDates ?? []);
+      const restoredSkips = new Set(item.skippedDates ?? []);
+      restoredSkips.forEach((d) => {
+        if (!curSkips.has(d)) dbSetItemSkip(item.id, dbType(item), d, true).catch(console.error);
+      });
+      curSkips.forEach((d) => {
+        if (!restoredSkips.has(d)) dbSetItemSkip(item.id, dbType(item), d, false).catch(console.error);
       });
     }
     if (Object.keys(patch).length > 0) {
@@ -1425,6 +4075,40 @@ function applyHistoryState(
     (id) => dbRestoreHabitGroup(userId, id),
     (id, patch) => dbUpdateHabitGroup(userId, id, patch),
     (id) => dbDeleteHabitGroup(userId, id),
+  );
+  // Routines ride the same diff, but their update callback carries join-table
+  // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
+  // arrives here as an {itemIds} patch and dbUpdateRoutine turns it into
+  // inserts/deletes. A column-mapper-style callback would drop it silently and
+  // membership undo would never reach the DB.
+  syncContainers(
+    currentState.routines, restoredRoutines, ROUTINE_FIELDS,
+    (id) => dbRestoreRoutine(userId, id),
+    (id, patch) => dbUpdateRoutine(userId, id, patch),
+    (id) => dbDeleteRoutine(userId, id),
+  );
+  // Programs carry TWO member arrays (itemIds and routineIds), both in
+  // PROGRAM_FIELDS and both reconciled by dbUpdateProgram against their own
+  // join table. Undoing "added Morning to Summer" therefore arrives here as a
+  // {routineIds} patch and deletes exactly that one join row.
+  syncContainers(
+    currentState.programs, restoredPrograms, PROGRAM_FIELDS,
+    (id) => dbRestoreProgram(userId, id),
+    (id, patch) => dbUpdateProgram(userId, id, patch),
+    (id) => dbDeleteProgram(userId, id),
+  );
+  // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
+  // reconciles whichever of them the diff produced — a patch naming one role
+  // leaves the other two alone rather than emptying them. That property is the
+  // whole reason this call site works: syncContainers patches only the fields
+  // that differ, so undoing "added a milestone" arrives as {milestoneIds} and
+  // nothing else, and it fires as .catch(console.error) — anything thrown here
+  // would be a silent no-op rather than a visible failure.
+  syncContainers(
+    currentState.goals, restoredGoals, GOAL_FIELDS,
+    (id) => dbRestoreGoal(userId, id),
+    (id, patch) => dbUpdateGoal(userId, id, patch),
+    (id) => dbDeleteGoal(userId, id),
   );
 }
 
@@ -1468,11 +4152,23 @@ let hasInitializedHistory = false;
 // Initialize prevStateJson eagerly with the store's initial state
 // This captures the "before" state so we can properly undo the first action
 const initialStoreState = usePlannerStore.getState();
-let prevStateJson: string | null = JSON.stringify({
-  items: initialStoreState.items,
-  projects: initialStoreState.projects,
-  habitGroups: initialStoreState.habitGroups,
+// ANNOTATED, and that is the point: this literal used to be untyped, so it was
+// the one place a new history slice could be forgotten silently. Every other
+// site is forced by the compiler (saveToHistory takes a HistoryState), but a
+// bare object handed to JSON.stringify accepts anything. Miss a slice here and
+// the session-start baseline holds no goals, so undoing back to it reads every
+// goal as "present in current, absent in restored" — which syncContainers
+// executes as a DELETE of all of them.
+const historySlice = (s: HistoryState): HistoryState => ({
+  items: s.items,
+  projects: s.projects,
+  habitGroups: s.habitGroups,
+  routines: s.routines,
+  programs: s.programs,
+  goals: s.goals,
 });
+
+let prevStateJson: string | null = JSON.stringify(historySlice(initialStoreState));
 
 // Function to update baseline from undo/redo actions
 const updatePrevStateBaseline = (state: HistoryState) => {
@@ -1482,11 +4178,7 @@ const updatePrevStateBaseline = (state: HistoryState) => {
 usePlannerStore.subscribe((state) => {
   if (isUndoRedoAction || isUpdatingUndoRedo) return;
 
-  const currentState = {
-    items: state.items,
-    projects: state.projects,
-    habitGroups: state.habitGroups,
-  };
+  const currentState = historySlice(state);
 
   const currentStateJson = JSON.stringify(currentState);
 

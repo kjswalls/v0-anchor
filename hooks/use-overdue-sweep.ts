@@ -4,7 +4,108 @@ import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore, readPersistedAutoAgeLastRunDate } from '@/lib/morning-store';
 import { toDateStr } from '@/lib/recurrence';
-import { selectOverdue, daysOverdue } from '@/lib/overdue';
+import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
+import { milestoneItemIds } from '@/lib/goals';
+import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
+import { releasedOn } from '@/lib/sweep-grace';
+import type { Item, Routine, Program } from '@/lib/planner-types';
+
+/** Did this pause interval end within the trailing `windowDays`? */
+function pauseEndedRecently(x: Pausable, todayStr: string, windowDays: number): boolean {
+  const until = x.pausedUntil;
+  if (!x.pausedAt || !until) return false;
+  const resumed = toDateOnly(until);
+  if (resumed > todayStr) return true; // still paused (belt-and-braces)
+  return daysOverdue({ startDate: resumed }, todayStr) <= windowDays;
+}
+
+/** Did `dateStr` fall inside the trailing `windowDays`, today included? */
+function withinTrailingWindow(dateStr: string, todayStr: string, windowDays: number): boolean {
+  const day = toDateOnly(dateStr);
+  if (day > todayStr) return true; // boundary still ahead (belt-and-braces)
+  return daysOverdue({ startDate: day }, todayStr) <= windowDays;
+}
+
+/**
+ * Did this PROGRAM stop suppressing its members within the trailing window?
+ *
+ * Two arms, both deliberately over-broad:
+ *
+ * (b) An `auto` program's `startsOn` is a resume boundary in exactly the way a
+ *     pause's `pausedUntil` is — the day the range opened is the day its members
+ *     came back, and they accrued overdue age the whole time they were hidden.
+ * (c) `updatedAt` on any container, as a conservative proxy for a MANUAL state
+ *     flip. Nothing records when someone switched a program from paused to
+ *     active — the tri-state has no history — so there is no honest date to
+ *     grace against, and the only alternative to this proxy is no grace at all
+ *     for the single most likely way a program gets turned back on. It is wrong
+ *     in the safe direction: renaming a program merely delays sweeping its
+ *     members by the window.
+ */
+function programEndedSuppressionRecently(
+  program: Program,
+  todayStr: string,
+  windowDays: number,
+): boolean {
+  if (
+    program.state === 'auto' &&
+    program.startsOn &&
+    withinTrailingWindow(program.startsOn, todayStr, windowDays)
+  ) {
+    return true;
+  }
+  return !!program.updatedAt && withinTrailingWindow(program.updatedAt.slice(0, 10), todayStr, windowDays);
+}
+
+/**
+ * Did this item come off a suppression within the trailing `windowDays` — its
+ * OWN, or one of its containers'?
+ *
+ * Reads recorded intervals where they exist: `pausedUntil` is the resume date,
+ * and it survives a manual resume precisely so this is answerable. The container
+ * arms matter for the same reason the item arm does — a routine's pause or a
+ * program's off-season suppresses members just as thoroughly as an item's own
+ * pause, so coming back has to earn the same window. Without them the sweep
+ * unschedules a whole program the morning after it resumes: the exact disaster
+ * the exclusion exists to prevent, merely relocated from the item to the
+ * container.
+ *
+ * Every arm errs toward NOT sweeping. The cost of a false grace is one more day
+ * of a stale row; the cost of a false sweep is a silent mass-unschedule of work
+ * the user never stopped caring about.
+ */
+function resumedRecently(
+  item: Item,
+  todayStr: string,
+  windowDays: number,
+  routines: readonly Routine[],
+  programs: readonly Program[],
+): boolean {
+  if (pauseEndedRecently(item, todayStr, windowDays)) return true;
+
+  // The container that was hiding this item may be GONE — deleted, or no longer
+  // holding it. Then there is no resume date to read anywhere, because the row
+  // it would have been read from is exactly what was removed, and the item
+  // reappears carrying every day of age it accrued while hidden. lib/sweep-grace
+  // records those releases as they happen; see that module for why it is
+  // device-local.
+  const released = releasedOn(item.id);
+  if (released && withinTrailingWindow(released, todayStr, windowDays)) return true;
+
+  const holdingRoutines = routines.filter((r) => r.itemIds.includes(item.id));
+  if (holdingRoutines.some((r) => pauseEndedRecently(r, todayStr, windowDays))) return true;
+
+  // A program reaches this item directly OR through any routine holding it —
+  // the same two membership shapes the resolver walks. Missing the indirect one
+  // would leave every routine-in-a-program member ungraced, which is the common
+  // case once programs are used at all.
+  const routineIds = new Set(holdingRoutines.map((r) => r.id));
+  return programs.some(
+    (p) =>
+      (p.itemIds.includes(item.id) || p.routineIds.some((id) => routineIds.has(id))) &&
+      programEndedSuppressionRecently(p, todayStr, windowDays),
+  );
+}
 
 /**
  * use-overdue-sweep — the OPT-IN "auto-clear stale items" decay (user decision D1).
@@ -93,6 +194,25 @@ export function useOverdueSweep() {
     // A partially-loaded array can't happen here — initializeStore does a single
     // Promise.all followed by a single set() — but if that ever changes, this
     // gate is the place that has to grow.
+    //
+    // That single-set() property is now load-bearing for ROUTINES and PROGRAMS
+    // too, not just items. Both fetches ride the same Promise.all and land in
+    // the same set() that clears `isLoading`, so passing this gate guarantees
+    // membership is known — which the suppression exclusion and the container
+    // resume-grace below both depend on. Hydrate either separately (a lazy
+    // fetch, a second effect) and this sweep starts running against an empty
+    // container list: every member of a paused routine or an off-season program
+    // reads as unprotected and gets unscheduled in one silent batch. If they
+    // ever move out of that Promise.all, they need their own gate here FIRST.
+    //
+    // GOALS joined that list for a third reason, and it is the sharpest of the
+    // three. This sweep clears `startDate`, and on a milestone that field is
+    // not stale scheduling residue — it is the target date, the only record of
+    // when the checkpoint was meant to happen. `unscheduleTasks` subtracts
+    // milestone-role items before it writes, so it needs the goal list to be
+    // populated; hydrate goals separately and the sweep sees none, reads every
+    // milestone as an ordinary stale task, and erases a year of target dates in
+    // one unattended batch that no toast even announces.
     if (!userId || isLoading || loadError) return;
 
     // ── Gate 2: the SETTINGS in memory demonstrably belong to THIS user ───────
@@ -173,10 +293,49 @@ export function useOverdueSweep() {
     // excludes completed/cancelled, and already respects the item-type registry's
     // carryForwardEligible/dateAnchored capabilities. Never re-implement it here.
     // `> autoAgeDays` is exactly "past due by MORE than N days".
-    const stale = selectOverdue(planner.items, todayStr).filter(
+    const routines = planner.routines;
+    const programs = planner.programs;
+    const inactive = inactiveItemIdsOn(planner.items, todayStr, {
+      userTimezone,
+      routines,
+      programs,
+    });
+    const stale = selectOverdue(planner.items, todayStr, inactive).filter(
       (item) => daysOverdue(item, todayStr) > autoAgeDays,
     );
-    if (stale.length === 0) return;
+
+    // ── Resume grace ─────────────────────────────────────────────────────────
+    // Excluding suppressed items above is necessary but NOT sufficient, and the
+    // gap is this sweep's worst failure mode. daysOverdue counts from startDate,
+    // which a pause never moves, so age keeps accruing THROUGH a pause: the
+    // exclusion protects an item only while it is paused. Come back from a
+    // 35-day break with a 30-day threshold and every dated item resurfaces
+    // already past the line, so the next morning's sweep unschedules the lot in
+    // one batch — exactly the disaster the exclusion was supposed to prevent,
+    // merely deferred by the length of the pause.
+    //
+    // So: an item whose pause ended within the trailing window gets the window
+    // to be dealt with, measured from the resume rather than the due date. This
+    // is why a manual resume normalizes to `pausedUntil = today` instead of
+    // clearing the pause pair — the interval has to survive on the row for this
+    // to be computable at all.
+    const graced = stale.filter(
+      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, programs)
+    );
+
+    // Milestones are subtracted HERE, not left to unscheduleTasks to refuse.
+    // The verb already declines them — a milestone's startDate is the goal's
+    // target date, not stale scheduling residue — but the receipt below is
+    // built from this list, and a receipt is a promise about what happened.
+    // Left in, the dock would announce "N items put aside this morning"
+    // counting milestones still sitting on their dates, and its "Put back"
+    // would then write their PRE-SWEEP scheduling over them hours later,
+    // silently reverting any deliberate reschedule made in between. When every
+    // stale item is a milestone the verb writes nothing at all, so the notice
+    // would be pure fiction.
+    const milestones = milestoneItemIds(planner.goals);
+    const sweepable = graced.filter((item) => !milestones.has(item.id));
+    if (sweepable.length === 0) return;
 
     // ── Gate 7: no sibling tab beat us to it ─────────────────────────────────
     // Gate 6 only saw this tab's copy of the store. Two tabs open at the same
@@ -189,12 +348,39 @@ export function useOverdueSweep() {
     // duplicate toast.
     if (readPersistedAutoAgeLastRunDate(userId) === todayStr) return;
 
-    // ONE batched action => one history entry => one undo. The undo toast is NOT
-    // raised here: unscheduleTasks labels the entry `Unschedule task: N items`,
-    // which is a SIGNIFICANT_ACTIONS prefix in hooks/use-undo-toast.ts, so the
-    // global undo toast fires on its own with a working Undo button. Raising our
-    // own toast as well would stack two toasts for one action.
-    planner.unscheduleTasks(stale.map((item) => item.id));
+    // Snapshot BEFORE the mutation — these are the fields it is about to clear,
+    // and they are the only record of them that will exist afterwards. The
+    // receipt is what lets the dock offer "Put them back" as a forward action
+    // hours later, when popping the history stack would reverse something else
+    // entirely (lib/planner-store.ts `restoreScheduling`).
+    const receipt = {
+      date: todayStr,
+      items: sweepable.map((item) => ({
+        id: item.id,
+        title: item.title,
+        isScheduled: 'isScheduled' in item ? !!item.isScheduled : false,
+        startDate: 'startDate' in item ? item.startDate : undefined,
+        timeBucket: item.timeBucket,
+        startTime: item.startTime,
+      })),
+    };
+
+    // ONE batched action => one history entry => one undo.
+    //
+    // The undo TOAST is deliberately stood down with the label override. It
+    // used to fire on its own, because `Unschedule task:` is a
+    // SIGNIFICANT_ACTIONS prefix in hooks/use-undo-toast.ts — but a five-second
+    // toast is a confirmation of something the user just did, and this ran
+    // unattended, frequently before the tab was even open. It appeared at
+    // whatever instant the app happened to load and then it was gone, which is
+    // why the sweep was effectively silent. The dock line replaces it and
+    // persists (components/sidebar/dock-notices.tsx). ⌘Z is untouched — the
+    // history entry is still written, only the toast is suppressed.
+    planner.unscheduleTasks(
+      sweepable.map((item) => item.id),
+      { label: `Aged out: ${sweepable.length} items` },
+    );
+    morning.setAutoAgeReceipt(userId, receipt);
 
     // Stamp AFTER the mutation, never before.
     //

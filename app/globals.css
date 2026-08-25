@@ -83,6 +83,9 @@
   --border: oklch(0.9 0.008 272);     /* cool hairline (~#DCDDE1) */
   --input: oklch(0.86 0.012 272);     /* cool control border (~#C7C9D4) */
   --ring: var(--lime-solid);
+  /* Multi-select highlight — the same neutral wash as --accent (hover), one
+     notch stronger so a latched selection reads a touch above a passing hover. */
+  --row-selected: oklch(0.22 0.012 272 / 9%);
 
   /* ── 3b. Anchor semantics ────────────────────────────────────────────── */
   /* The plane every modal stands on — dialogs, alert dialogs, mobile sheets.
@@ -96,6 +99,16 @@
      canvas → well → card. Light is unaffected in practice (canvas 0.996 vs
      card 1.0). Retune here, not at the call sites. */
   --modal: var(--canvas);
+
+  /* The frost behind non-destructive modals (dialog + drawer overlays): the
+     blur lives in the overlay's backdrop-blur utility; this token is only the
+     faint tint laid over it. Hue 272 is the ink's own hue (same reasoning as
+     the hover wash above), so the frosted app reads as itself gone quiet, not
+     as a color arriving. AlertDialog deliberately keeps bg-black/50 — a
+     destructive confirm has earned the heavier curtain. If frost janks on the
+     schedule grid, the self-veil fallback is recorded in
+     memory/plans/item-surface-growth.md. */
+  --scrim: oklch(0.22 0.012 272 / 12%);
 
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
@@ -207,6 +220,14 @@
 
   /* ── 4. Geometry ─────────────────────────────────────────────────────── */
   --radius: 1rem;
+
+  /* Drag-resized sidebar column width. Published by components/sidebar/
+     sidebar.tsx, which writes it every frame during a drag — that's how the
+     column resizes without re-rendering the braindump 60 times a second. The
+     literal here is only the pre-hydration value; lib/sidebar-store.ts owns
+     SIDEBAR_DEFAULT_WIDTH and the two must agree. Theme-independent, so it
+     lives in :root only and .dark never restates it. */
+  --sidebar-w: 406px;
 }
 
 .dark {
@@ -286,6 +307,11 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 8%);
   --ring: var(--lime-solid);
+  --row-selected: oklch(1 0 0 / 12%);
+
+  /* Frost tint on a dark ground goes black and a notch heavier — see the
+     light block's --scrim note. */
+  --scrim: oklch(0 0 0 / 30%);
 
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
@@ -363,6 +389,107 @@
   --sidebar-ring: var(--lime-solid);
 }
 
+/* ── Preset palettes ──────────────────────────────────────────────────────────
+   Ground-only re-tints, stamped as <html data-theme="slug"> by the palette
+   store (lib/palette-store.ts); the catalog lives in lib/theme-palettes.ts and
+   a unit test keeps the two in sync. `.dark` stays the physics switch — these
+   blocks never touch shadows, and every block is mode-scoped: the attribute
+   selector alone is (0,2,0), which would beat `.dark` (0,1,0) and leak light
+   values into dark, so light blocks carry :not(.dark) and dark blocks carry
+   .dark, both landing on (0,3,0).
+
+   A palette overrides the paper/ink ramps plus the standalone literals that
+   carry the ground's hue (border, input, accent wash, row-selected, scrim,
+   sidebar-border — light mode only: dark's are white-alpha and hue-free).
+   The lime/honey/coral triads, accent-1..8, and every domain literal stay
+   untouched: the accent contract (lime never dims) is inherited, not restated.
+   Surfaces, shadcn aliases, and the sched/bkt machinery derive via var()/
+   color-mix and re-tune automatically. */
+
+/* Slate — cool blue-gray ground; the teal-slate of the relay field's cousin. */
+:root[data-theme='slate']:not(.dark) {
+  --paper-0: oklch(0.977 0.004 235);
+  --paper-1: oklch(0.982 0.004 235);
+  --paper-2: oklch(0.992 0.002 235);
+  --paper-3: oklch(0.998 0.001 235);
+  --paper-well: oklch(0.936 0.007 235);
+  --ink-0: oklch(0.245 0.015 255);
+  --ink-1: oklch(0.5 0.025 250);
+  --ink-2: oklch(0.66 0.03 245);
+  --accent: oklch(0.24 0.02 250 / 4%);
+  --border: oklch(0.895 0.012 235);
+  --input: oklch(0.855 0.016 235);
+  --row-selected: oklch(0.24 0.02 250 / 9%);
+  --scrim: oklch(0.24 0.02 250 / 12%);
+  --sidebar-border: oklch(0.91 0.008 235);
+}
+:root[data-theme='slate'].dark {
+  --paper-0: oklch(0.168 0.014 240);
+  --paper-1: oklch(0.174 0.013 240);
+  --paper-2: oklch(0.205 0.012 245);
+  --paper-well: oklch(0.24 0.011 245);
+  --paper-3: oklch(0.273 0.011 245);
+  --ink-0: oklch(0.955 0.004 240);
+  --ink-1: oklch(0.8 0.008 240);
+  --ink-2: oklch(0.7 0.012 240);
+}
+
+/* Dune — warm sand ground; the paper leans into its own hue instead of near-neutral. */
+:root[data-theme='dune']:not(.dark) {
+  --paper-0: oklch(0.973 0.007 85);
+  --paper-1: oklch(0.979 0.006 85);
+  --paper-2: oklch(0.99 0.004 85);
+  --paper-3: oklch(0.998 0.002 85);
+  --paper-well: oklch(0.934 0.011 85);
+  --ink-0: oklch(0.25 0.012 60);
+  --ink-1: oklch(0.5 0.018 65);
+  --ink-2: oklch(0.65 0.022 70);
+  --accent: oklch(0.3 0.03 70 / 4%);
+  --border: oklch(0.89 0.014 85);
+  --input: oklch(0.85 0.018 85);
+  --row-selected: oklch(0.3 0.03 70 / 9%);
+  --scrim: oklch(0.3 0.03 70 / 12%);
+  --sidebar-border: oklch(0.905 0.012 85);
+}
+:root[data-theme='dune'].dark {
+  --paper-0: oklch(0.172 0.007 65);
+  --paper-1: oklch(0.178 0.007 65);
+  --paper-2: oklch(0.207 0.007 70);
+  --paper-well: oklch(0.242 0.007 70);
+  --paper-3: oklch(0.275 0.008 70);
+  --ink-0: oklch(0.955 0.004 85);
+  --ink-1: oklch(0.8 0.007 85);
+  --ink-2: oklch(0.7 0.01 85);
+}
+
+/* Iris — faint violet ground; the coolest pairing the lime accent tolerates. */
+:root[data-theme='iris']:not(.dark) {
+  --paper-0: oklch(0.977 0.005 305);
+  --paper-1: oklch(0.982 0.005 305);
+  --paper-2: oklch(0.992 0.003 305);
+  --paper-3: oklch(0.998 0.001 305);
+  --paper-well: oklch(0.936 0.008 305);
+  --ink-0: oklch(0.25 0.016 295);
+  --ink-1: oklch(0.5 0.025 295);
+  --ink-2: oklch(0.66 0.03 295);
+  --accent: oklch(0.26 0.025 295 / 4%);
+  --border: oklch(0.895 0.012 305);
+  --input: oklch(0.855 0.016 305);
+  --row-selected: oklch(0.26 0.025 295 / 9%);
+  --scrim: oklch(0.26 0.025 295 / 12%);
+  --sidebar-border: oklch(0.91 0.008 305);
+}
+:root[data-theme='iris'].dark {
+  --paper-0: oklch(0.168 0.012 300);
+  --paper-1: oklch(0.174 0.012 300);
+  --paper-2: oklch(0.205 0.011 300);
+  --paper-well: oklch(0.24 0.011 300);
+  --paper-3: oklch(0.273 0.011 300);
+  --ink-0: oklch(0.955 0.004 300);
+  --ink-1: oklch(0.8 0.008 300);
+  --ink-2: oklch(0.7 0.012 300);
+}
+
 @theme inline {
   /* Fonts — loaded via next/font in app/layout.tsx */
   --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
@@ -429,6 +556,7 @@
   --color-surface-3: var(--surface-3);
   --color-canvas: var(--canvas);
   --color-modal: var(--modal);
+  --color-scrim: var(--scrim);
 
   /* Anchor semantics */
   --color-success: var(--success);
@@ -513,6 +641,19 @@
   /* Motion — the "settle" identity */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* Motion for a TURN rather than a settle. The two curves above are near-expo
+     ease-outs — measured, --ease-out-soft is 76% travelled by the first quarter
+     of its run and 96% by the midpoint. That is exactly right for something
+     arriving at rest, where all you read is the landing; it is wrong for two
+     bodies crossing through one another, where the middle of the run is the only
+     part you read. Under the settle curve a crossover is over before the eye
+     catches it and the remaining 80% of the duration is a sub-pixel crawl — it
+     looks like a jump no matter how long you make it.
+
+     Symmetric, crossover dead centre at 50%, travel spread across the whole
+     window. Used by the meta-roll pair below. */
+  --ease-roll: cubic-bezier(0.45, 0, 0.55, 1);
 }
 
 /* Elevation shadows — the surfaces that must read as FLOATING above the paper
@@ -531,6 +672,17 @@
   --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
   --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
   --shadow-elev-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+
+  /* A recessed surface — the sunken tray in the braindump quick-add. Light gets
+     a soft black inset; dark needs a deeper one, since a black inset barely
+     registers on the dark ground (same reasoning as the elev family). */
+  --shadow-inset-well: inset 0 1px 2px oklch(0 0 0 / 10%);
+
+  /* Lit recess — the sunken quick-add tray's focused fill: the well eased toward
+     white so it brightens IN PLACE without rising to a raised pill. One
+     definition serves both themes; the var()s it mixes resolve per-theme at the
+     point of use (.dark redefines --surface-2/--surface-3, not this). */
+  --surface-3-lit: color-mix(in oklab, var(--surface-3), var(--surface-2) 62%);
 
   /* ── The "key press" pair (omnibar input) ────────────────────────────────
      Rest = a raised pill floating above the dock. Pressed = the same pill sunk
@@ -585,6 +737,22 @@
      shadowed elev-sm pill and two competing drops read muddy. */
   --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
 
+  /* The Organize console's plate — a 938×640 surface standing on the frosted
+     app, one step below the body panel's 30px radius with a scrim between them.
+
+     Not --shadow-elev-lg, which is tuned for popovers: a 24px ambient at 16%
+     under a 200px menu reads as a lift, and the SAME shadow under a plate two
+     thirds the width of the window reads as a hard dark edge drawn around it.
+     A large surface needs a longer, softer falloff at lower alpha — the drop
+     has to be bigger than the thing casting it looks, or the eye reads a border.
+
+     Plain custom property, consumed as shadow-[var(--shadow-elev-plate)] and
+     never as a named @theme utility, for the reason the whole elev family is:
+     Tailwind inlines theme shadows into --tw-shadow and the .dark re-tune below
+     would never be seen. See memory/plans/organize-console.md. */
+  --shadow-elev-plate:
+    0 24px 64px oklch(0 0 0 / 14%), 0 4px 12px oklch(0 0 0 / 10%);
+
   /* ── Schedule blocks — "the rail is the lamp" ──────────────────────────────
      A block is glass standing beside a 12px lane. The lane carries a hairline
      rail; the accent swells it to 2px for exactly as long as the event runs, and
@@ -618,9 +786,35 @@
      patch covering it. */
   --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
   --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
+  /* Multi-selected: brighter than hover — the pane picks up the lamp. Opaque
+     surface-2 lifted toward white so it reads lit, not merely un-glassed. */
+  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
   /* Done goes the other way — INTO the well. The lamp is off, so the block sinks
      to the grey the whole set used to sit at. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
+  /* Off-group, while another lane is focused. Its OWN value, never an alias of
+     --sched-pane-done: reusing that would make every receded INCOMPLETE block
+     read as finished on a focused day, which is a false claim about the work
+     rather than a dimmer one. So it goes flatter and cooler than the resting
+     pane while staying clearly above the canvas — recession is "not what you
+     asked about", not "done" and not "gone". */
+  --grp-off-pane: color-mix(in oklab, var(--surface-2) 42%, transparent);
+  /* The hairline that replaces the plate's shadow when it recedes. A receded
+     block keeps its edge — losing it entirely turns the grid into a field of
+     floating titles.
+     Wrapped in its own shadow token, and that is load-bearing rather than tidy:
+     `shadow-[0_0_0_1px_var(--grp-off-edge)]` and `shadow-[var(--sched-shadow)]`
+     land in DIFFERENT tailwind-merge groups, so cn() emits both and Tailwind's
+     own utility order decides — which it settles alphabetically, '0' before 'v',
+     handing it to the base. Var-shaped, they collide in one group and the later
+     one wins, which is what every other pane state here relies on. */
+  --grp-off-edge: color-mix(in oklab, var(--border) 70%, transparent);
+  --sched-shadow-off: 0 0 0 1px var(--grp-off-edge);
+  /* Accent marks on a receded block. NOT an opacity on the block: three lime
+     things live inside one (the done checkbox, the selection mark, and the whole
+     accent of a project-less task), and lime is the one colour that never fades.
+     The rail and bead take this ink instead, and everything lime stays lime. */
+  --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
   --sched-shadow: var(--sched-lit), var(--shadow-elev-md);
   --sched-shadow-hover: var(--sched-lit), var(--shadow-elev-lg);
   /* Done: the modelling goes out, but the card keeps floating. */
@@ -638,6 +832,107 @@
   /* The unlit rail down the lane. Deliberately BELOW hairline contrast: it
      carries no information of its own and must not out-shout the hour grid. */
   --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
+
+  /* ── Containment: the pocket (lib/schedule-overlap.ts) ────────────────────
+     When a block CONTAINS another — a 7h session with a 3h task inside it — the
+     container stops being a lamp and becomes the field its contents are lit
+     against. Its wash drops to --sched-wash-field, and it sinks one POCKET per
+     child: a well in its own plate that the child's plate then sits in.
+
+     The pocket is what makes containment read in LIGHT MODE, and it is the whole
+     reason this direction won over the ones that expressed depth with alpha.
+     On white, a 94%-opaque plate over an 80%-opaque one is 0.00003 L apart —
+     invisible. So depth here is a real VALUE step instead: the pocket composites
+     to ~0.975 against a ~0.999 pane, and the nested child then goes SOLID
+     surface-2 (pure white) on top of it. Three distinct values, both themes.
+
+     A nested plate is deliberately not glass: there is nothing informative behind
+     it, so it has nothing to let through. */
+  --sched-wash-field: 0.2;
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
+  /* The lip the child's plate disappears under — same gesture as the pressed-key
+     inset, one hair of it. */
+  --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 5%);
+
+  /* ── The threaded seam (components/primitives/bucket-card.tsx) ────────────
+     One hairline runs the height of the day; each bucket is a node pinned to it
+     and a caption beside it, and the bucket's BODY is a card the rail passes
+     over — the card's left edge sits 5px outside the rail, so the line bites its
+     top-left shoulder (~4.4px below the tangent at r16) and then runs down a
+     10px blank mat before the rows start. That overlap is the whole design: a
+     comment bubble always sits BESIDE its rail with a gap, and this one's gap is
+     minus five, so it reads as threaded rather than parked alongside.
+
+     This is day-schedule's rail-and-bead rotated onto the day's axis, and the
+     tokens are deliberately its siblings.
+
+     Plain custom properties, not @theme, for the reason stated at the elev
+     family above: a Tailwind arbitrary value compiles the LIGHT numbers into
+     the class and never sees the .dark re-tune. The var() form stays live.
+
+     --bkt-spine is pitched between --sched-rail (explicitly "carries no
+     information of its own" — too quiet for the only line in a view) and
+     --border (too loud run across ~1200px of open canvas). Light composites to
+     ~0.921 over the canvas, Δ0.075. */
+  --bkt-spine: color-mix(in oklab, var(--border) 78%, transparent);
+
+  /* The slot that OPENS under a drag. At rest the view has no filled box at
+     all, which leaves the {bucket} droppable nothing to light up and puts four
+     caption-only rects ~44px apart — too close for closestCenter to separate.
+     So a recess appears for the duration of the drag: it restores ~110px of
+     pitch AND gives the drop target a surface.
+
+     Depth is 0.022 L in both themes. Light does NOT use --surface-0 (0.986):
+     that is Δ0.010 from the canvas, three 8-bit levels at the top of the ramp,
+     and it only ever read in the Figma mockup because a #EEEDED border bounded
+     it. The app's own light recess (--sched-pocket) runs Δ0.024; this matches.
+     Dark has no ready-made rung between canvas 0.210 and backdrop 0.173 —
+     taking --surface-0 straight is −0.037 and reads as a hole punched through
+     to the desktop. */
+  --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));   /* 0.9737 */
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  /* Light shades the far edge, dark lights it — --sched-lit's rule verbatim. */
+  --bkt-walls: inset -1px 0 0 oklch(0 0 0 / 4%), inset 0 -1px 0 oklch(0 0 0 / 3.5%);
+  --bkt-lip: oklch(0 0 0 / 6%);
+  --bkt-lip-armed: oklch(0 0 0 / 11%);
+
+  /* The card the rows sit on at rest, and the reason the view stopped reading
+     as the list view: a bucket is an OBJECT with a moat around it, not a run of
+     full-width bars.
+
+     Light floats on ring + shadow alone, because --surface-2 (1.000) over the
+     canvas (0.996) is ΔL 0.004 — nothing. The ring is the border (Vercel's
+     shadow-as-border: zero offset, zero blur, so the box model is untouched and
+     a 1px edge never costs a layout pass), and the far layer takes a NEGATIVE
+     spread so the card reads as built into the page rather than hovering over
+     it. Warm-grey rather than pure black: a neutral-black shadow on this canvas
+     goes visibly cool next to the lime. */
+  --bkt-card: var(--surface-2);
+  /* Light has nowhere to go above 1.000, so the current card is promoted by
+     shadow alone and its fill is unchanged. Dark re-points this at a real step.  */
+  --bkt-card-now: var(--surface-2);
+  --bkt-card-ring: 0 0 0 1px oklch(0.32 0.005 272 / 7%);
+  --bkt-card-shadow:
+    var(--bkt-card-ring),
+    0 1px 2px oklch(0.32 0.005 272 / 5%),
+    0 4px 10px -4px oklch(0.32 0.005 272 / 7%);
+  /* The current bucket is promoted a step rather than tinted — the lime already
+     lives on the rail, and a second lime mark on the card would be the ring this
+     redesign spent round 1 removing. */
+  --bkt-card-shadow-now: var(--bkt-card-shadow), 0 8px 16px -8px oklch(0.32 0.005 272 / 7%);
+
+  /* A project block, floating ON the bucket card. Light has nowhere left to go
+     — the card underneath is already 1.000 — so the block keeps that value and
+     is separated by a firmer ring and a real cast shadow instead. That is the
+     one case where shadow has to do the whole job, and it is why the ring steps
+     up to 9%: a 7% hairline that reads against the canvas disappears against
+     another white plate. */
+  --bkt-block: var(--surface-2);
+  --bkt-block-shadow:
+    0 0 0 1px oklch(0.32 0.005 272 / 9%),
+    0 1px 2px oklch(0.32 0.005 272 / 6%),
+    0 6px 14px -6px oklch(0.32 0.005 272 / 10%);
+
 }
 
 /* Dark mode: on navy a black drop shadow barely registers, so elevation is
@@ -653,6 +948,8 @@
   --shadow-elev-sm: inset 0 1px 0 oklch(1 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 35%), 0 4px 10px oklch(0 0 0 / 30%);
   --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
   --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
+
+  --shadow-inset-well: inset 0 1px 3px oklch(0 0 0 / 45%);
 
   /* The key-press pair, dark. Same padding contract as the light one above —
      matched layer order and inset-ness in both states, or the shadow snaps
@@ -697,6 +994,17 @@
     inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%),
     0 6px 18px -4px oklch(0 0 0 / 45%);
 
+  /* The console plate, dark. The `inset 0 1px 0` light-catch is mandatory, not
+     decorative: on the near-black ramp a drop shadow alone does not read at all,
+     and the whole dark elevation system is (a) a lighter surface than its base
+     plus (b) a 1px lit lip along the top edge. The plate is --modal (0.21) over
+     the backdrop (0.173), which is only 0.037 of separation — the lip is what
+     turns that into an edge. Alphas roughly triple light's, the same ratio the
+     rest of this block carries. */
+  --shadow-elev-plate:
+    inset 0 1px 0 oklch(1 0 0 / 10%),
+    0 24px 64px oklch(0 0 0 / 50%), 0 4px 12px oklch(0 0 0 / 40%);
+
   /* Schedule blocks, dark. Only the leaf values are re-declared — --sched-shadow
      and friends compose from these with var(), and a custom property is
      substituted per element, so the composed ones pick the dark leaves up
@@ -710,15 +1018,82 @@
   --sched-lit: inset 1px 0 0 oklch(1 0 0 / 10%), inset 0 1px 0 oklch(1 0 0 / 9%);
   --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
   --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  /* Multi-selected, dark: lift surface-2 toward white so the block brightens
+     against the ground instead of just losing its glass. */
+  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
   /* Floors at a real step above the canvas: surface-3/32 resolves to ~0.224 over
      a 0.21 ground, which is vanishing rather than receding. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+
+  /* Off-group, dark. Same floor argument as done: on a 0.21 canvas a thin
+     translucent plate vanishes rather than recedes, so this keeps more of
+     surface-2 than light does. Still its own value, not the done token — see
+     the light block. */
+  --grp-off-pane: color-mix(in oklab, var(--surface-2) 55%, transparent);
+  --grp-off-edge: oklch(1 0 0 / 9%);
+  --sched-shadow-off: 0 0 0 1px var(--grp-off-edge);
+  --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
   --sched-wash: 0.55;
   --sched-wash-hover: 0.78;
   --sched-wash-reach: 72px;
 
   --sched-rail: oklch(1 0 0 / 7%);
+
+  /* The pocket, dark. Dark has a value step available to it that light does not,
+     so the well only has to go a little deeper than the plate — 0.251 under a
+     0.264 pane — and the nested child's solid surface-2 (0.278) then reads
+     clearly above both. The lip goes heavier: a black inset barely registers on
+     a dark ground. */
+  --sched-wash-field: 0.34;
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
+  --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 25%);
+
+  /* Day spine, dark — see the light block for the whole rationale. Note this
+     does NOT mirror light's "quieter than --border" ratio. Light reduces to 78%
+     because a dark hairline on near-white paper holds its weight over a long
+     run; on the near-black ramp a pale hairline at the same relative weight
+     drops to --sched-rail's 7% and disappears, which is the wrong end of the
+     scale for the only structural line in the view. Same asymmetry --day-off
+     and --ring carry, for the same reason. */
+  --bkt-spine: oklch(1 0 0 / 13%);
+  --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));      /* 0.1878 */
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  --bkt-walls: inset -1px 0 0 oklch(1 0 0 / 5%), inset 0 -1px 0 oklch(1 0 0 / 6%);
+  --bkt-lip: oklch(0 0 0 / 30%);
+  --bkt-lip-armed: oklch(0 0 0 / 46%);
+
+  /* The card, dark. NOT light's recipe with darker numbers: a layered black
+     shadow on a 0.210 ground is mud — it darkens a halo around the card without
+     ever reading as lift. Dark floats the way Linear's does, on three cheap
+     layers and no ambient: the surface STEP does the separating (0.210 → 0.278
+     is ΔL 0.068, seventeen times light's), a specular top edge says which way
+     the light is coming from, a hairline ring lighter than the fill closes the
+     shape, and exactly one small contact shadow keeps the bottom edge crisp.
+     The inset highlight is listed FIRST so it paints under the ring rather than
+     over it. */
+  --bkt-card-ring: 0 0 0 1px oklch(1 0 0 / 5%);
+  --bkt-card-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 6%),
+    var(--bkt-card-ring),
+    0 2px 4px oklch(0 0 0 / 35%);
+  /* Dark promotes the current card by raising its own surface (see
+     bucket-card.tsx), so the shadow only strengthens the specular edge — a
+     bigger ambient here would just be more mud. */
+  --bkt-card-shadow-now:
+    inset 0 1px 0 oklch(1 0 0 / 10%),
+    var(--bkt-card-ring),
+    0 2px 4px oklch(0 0 0 / 35%);
+  --bkt-card-now: color-mix(in oklab, white 4%, var(--surface-2));           /* 0.290 */
+
+  /* Dark has the headroom light doesn't: the block takes a real step above the
+     card (0.278 → 0.312) and the shadow goes back to being a contact edge
+     rather than the whole signal. Specular top edge first, as everywhere else. */
+  --bkt-block: color-mix(in oklab, white 6%, var(--surface-2));              /* 0.312 */
+  --bkt-block-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 8%),
+    0 0 0 1px oklch(1 0 0 / 6%),
+    0 2px 6px oklch(0 0 0 / 40%);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
@@ -805,7 +1180,22 @@ body {
   margin-inline: auto;
   width: 100%;
   max-width: 1100px;
+  /* Mirrored in lib/week-columns.ts as CANVAS_PAD_PX — the week column widths
+     are derived from the scrollport minus this padding, and JS cannot read a
+     utility. Change one, change both. */
   padding-inline: 2rem;
+}
+
+/* The week COLUMN views (schedule, buckets) opt out of the cap: seven day
+   columns need more than 1036px of content box, so under the cap they rendered
+   at their floor width on every monitor and the grid scrolled even on a 4K
+   screen. Unlayered on purpose — a plain rule beats anything in @layer
+   utilities, so this wins over the max-width above regardless of the order
+   Tailwind emits them in, and the [attr] selector makes it win on specificity
+   too. Every canvas-container on the page flips together (header capsule,
+   past-due bar, grid), which is what keeps their shared left edge shared. */
+.canvas-container[data-wide='true'] {
+  max-width: none;
 }
 
 /* On phones the views live inside a floating rounded panel (mobile-shell),
@@ -828,24 +1218,26 @@ body {
 }
 
 /* Timeline day navigation slide animations */
+/* Day/week navigation. Deliberately transform-ONLY: these animate the container
+   that wraps every bucket, and the current-bucket signal inside it is a lime
+   spine segment. An `opacity: 0.5 → 1` here (which is what these used to carry)
+   is the one place in either bucket view where a parent opacity touches the
+   accent, and fading lime through a parent is exactly what the accent rule
+   forbids. The travel already reads; the fade was never doing the work. */
 @keyframes slide-in-from-left {
   from {
-    opacity: 0.5;
     transform: translateX(-40px);
   }
   to {
-    opacity: 1;
     transform: translateX(0);
   }
 }
 
 @keyframes slide-in-from-right {
   from {
-    opacity: 0.5;
     transform: translateX(40px);
   }
   to {
-    opacity: 1;
     transform: translateX(0);
   }
 }
@@ -856,6 +1248,109 @@ body {
 
 .animate-slide-in-from-right {
   animation: slide-in-from-right 0.4s var(--ease-out-soft);
+}
+
+/* A metadata figure turning over to a new value — RollingMetaText, driving the
+   duration on a schedule block under a resize drag. The slot clips to one line
+   and the two figures pass through it like an odometer: the outgoing one leaves
+   the way the value went and the incoming one arrives from the opposite side.
+   --roll-dir is +1 when the value grew and -1 when it shrank, so the turn always
+   matches the direction of the edge being dragged.
+
+   The two halves TILE: at the midpoint the incoming figure sits at +50% and the
+   outgoing at -50%, so the slot always holds one full line of glyphs with the
+   seam running through it. That's why opacity holds at 1 across the middle of
+   both runs and only fades at the extremes — a fade through the crossover washes
+   the motion out to a grey smear, and the crossover is the only part of an
+   odometer you actually read. The fades stay as insurance for the case where the
+   slot is taller than its line box, where ±100% wouldn't fully clear the clip.
+
+   --ease-roll, NOT --ease-out-soft: see the token. The app's settle curve spends
+   96% of its travel before the midpoint, which puts the crossover before the eye
+   arrives and leaves the rest of the run crawling sub-pixel — under it this reads
+   as an instant swap at any duration. That was the whole bug.
+
+   190ms: a full turn has to be legible at 11px, and with the travel actually
+   spread across the run this is 190ms of visible motion rather than 60ms and a
+   tail. Still short enough that a normal drag (a snap every few frames) settles
+   between steps, and that a flick reads as the slot spinning rather than as a
+   queue of stale values paying out after the pointer has stopped. */
+@keyframes meta-roll-in {
+  0% {
+    opacity: 0;
+    transform: translateY(calc(var(--roll-dir, 1) * 100%));
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes meta-roll-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--roll-dir, 1) * -100%));
+  }
+}
+
+.animate-meta-roll-in {
+  animation: meta-roll-in 190ms var(--ease-roll);
+}
+
+/* `forwards` is load-bearing: it parks the outgoing figure translated clear of
+   the clip at opacity 0, which is what lets RollingMetaText leave it mounted
+   instead of racing a timer against the next step of the drag. */
+.animate-meta-roll-out {
+  animation: meta-roll-out 190ms var(--ease-roll) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-meta-roll-in {
+    animation: none;
+  }
+  .animate-meta-roll-out {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Selected-item marker — the neutral dot on the row whose editor is open in the
+   docked panel. A slow breathing pulse (opacity + scale) on its OWN element, so
+   nothing else in the row composites or dims it. Neutral fill (--foreground:
+   near-black on paper, near-white on the dark ramp), so — unlike the lime accent
+   — the pulse can dip its alpha freely without drifting hue. --ease-roll is the
+   symmetric in/out curve, so the breath is even both ways. */
+@keyframes row-selected-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.78);
+  }
+}
+
+.animate-row-selected-pulse {
+  animation: row-selected-pulse 2s var(--ease-roll) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No breath — the dot stays a solid static marker at full opacity. */
+  .animate-row-selected-pulse {
+    animation: none;
+  }
 }
 
 /* Hide scrollbar while keeping scroll functionality */
@@ -905,22 +1400,64 @@ body {
   stroke-width: 1.5;
 }
 
-/* Undo toast placement: a cohesive card that floats ABOVE the sidebar dock
-   (history controls) rather than covering them, aligned to the sidebar's left
-   edge. Sonner 1.x only takes a single offset, so pin left+bottom here.
-   Desktop clears the dock (~156px); mobile sits above the tab bar + omnibar. */
+/* Undo toast placement: a cohesive card that floats ABOVE the dock (history
+   controls, and now the app's notice stack) rather than covering them, aligned
+   to the sidebar's left edge. Sonner 1.x only takes a single offset, so pin
+   left+bottom here.
+
+   BOTH breakpoints measure now. --toast-bottom is published by whichever dock
+   is mounted, via hooks/use-toast-anchor.ts, so the toast tracks a capsule that
+   changes height for three reasons: chat expanding, a notice arriving, and a
+   notice being dismissed. Mobile used to hardcode 120px against a capsule
+   standing 130–164px tall — it was already drawing over the tab bar, and a
+   notice row would only have pushed it further under.
+
+   The fallbacks are per-breakpoint because the two docks are different heights,
+   and they only cover the frame before the first measurement lands. */
 [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
   left: 12px !important;
   right: 12px !important;
-  bottom: 120px !important;
+  bottom: var(--toast-bottom, 140px) !important;
 }
 @media (min-width: 768px) {
   [data-sonner-toaster][data-y-position='bottom'][data-x-position='left'] {
     left: 20px !important;
     right: auto !important;
-    /* --toast-bottom is measured from the live dock (sidebar-dock.tsx); the
-       fallback covers the moment before it's set. */
     bottom: var(--toast-bottom, 156px) !important;
     width: 356px !important;
+  }
+}
+
+/* ─── Theme swap ──────────────────────────────────────────────────────────────
+   next-themes' `disableTransitionOnChange` is deliberately NOT set (see
+   app/layout.tsx). It repainted the whole screen in one frame with nothing
+   easing, which is indistinguishable from a page reload — the single most
+   common complaint about the theme control.
+
+   Dropping it on its own would be worse: transitions here are property-scoped
+   by convention, so a handful of elements would animate while everything else
+   snapped. Instead lib/theme-transition.ts opens this window for ~180ms around
+   the swap, and only colour properties are granted a transition — never
+   `all`, which would drag layout, transform and opacity into it and make the
+   lime accent fade through its parents.
+
+   `!important` is load-bearing: it has to beat the property-scoped transitions
+   already declared on cards, chips and rows, which would otherwise run on their
+   own durations and break the screen into pieces mid-swap. */
+:root[data-theme-changing] *,
+:root[data-theme-changing] *::before,
+:root[data-theme-changing] *::after {
+  transition-property: background-color, border-color, color, fill, stroke,
+    text-decoration-color, box-shadow !important;
+  transition-duration: 180ms !important;
+  transition-timing-function: var(--ease-out-soft) !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme-changing] *,
+  :root[data-theme-changing] *::before,
+  :root[data-theme-changing] *::after {
+    transition-duration: 0s !important;
   }
 }

@@ -1,11 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { saveSettings } from '@/lib/settings-service';
+import { applyThemeChange } from '@/lib/theme-transition';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { CommandContext } from '@/lib/commands';
 
@@ -20,6 +22,7 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
   const { theme, resolvedTheme, setTheme } = useTheme();
   const userId = usePlannerStore((s) => s.userId);
   const isMobile = useIsMobile();
+  const router = useRouter();
   const openChatOverride = overrides?.openChat;
 
   return useMemo<CommandContext>(
@@ -28,7 +31,9 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
         resolved: resolvedTheme === 'dark' ? 'dark' : 'light',
         value: theme,
         set: (next) => {
-          setTheme(next);
+          // Wrapped so the swap eases instead of snapping — see
+          // lib/theme-transition.ts for why that is not next-themes' job.
+          applyThemeChange(() => setTheme(next));
           // setTheme is localStorage-only. Settings hydrate from Supabase on
           // login (components/providers/supabase-provider.tsx), so without
           // this the choice is reverted on the next sign-in.
@@ -50,7 +55,8 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
         }),
       userId,
       isMobile,
+      navigate: (href: string) => router.push(href),
     }),
-    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride]
+    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride, router]
   );
 }

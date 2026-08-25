@@ -17,9 +17,33 @@ const SIGNIFICANT_ACTIONS = [
   'Unschedule task:',
   'Move task to',
   'Schedule task:',
+  // The multi-select group drag. It wrote startDate and isScheduled on every
+  // selected item and raised nothing — not even an undo affordance.
+  'Schedule items:',
   'Move habit to',
   'Move all tasks',
   'Reset streak:',
+  'Delete items',
+  'Complete items',
+  'Uncomplete items',
+  // Bulk membership. Collecting into a container that is currently off hides
+  // the items on the spot, so this is a move verb in every way that matters and
+  // carries the same receipt — it needs the toast to show it.
+  'Add to ',
+  'Remove from ',
+  // A goal role that stopped being true of its item — a milestone made
+  // recurring, a check-in made one-shot. The membership yields rather than the
+  // edit (goals never constrain their members), which means the user's item
+  // edit succeeded and something ELSE quietly changed. That is precisely the
+  // shape of change that needs a receipt: without it the milestone silently
+  // stops counting and the goal reads behind weeks later, with nothing on
+  // screen ever having said so.
+  'Role changed:',
+  // The paste-a-list path. A single add shows its row right where you typed
+  // it and stays quiet; a bulk add lands N rows in one gesture — possibly on
+  // a surface you aren't looking at — so it earns the receipt and the one-⌘Z
+  // offer.
+  'Bulk add:',
   // planner-store.applyProposal emits exactly this prefix. Accepting an AI
   // proposal is the single most important place to show the undo affordance:
   // one tap changes several items at once, and the offer to take it back is
@@ -60,7 +84,13 @@ export function useUndoToast() {
       // Show toast with undo button
       // Get fresh state at click time to ensure canUndo is accurate
       toastIdRef.current = toast(latestAction.label, {
-        duration: 5000,
+        // Decision 11's receipt, when the store attached one: the move was
+        // allowed, but what it moved is not visible where it landed. Absent on
+        // every other action, so this reads as an exception rather than chrome.
+        description: latestAction.receipt,
+        // A receipt has something to read, so it gets longer than the reflexive
+        // "oops, undo" window the bare label needs.
+        duration: latestAction.receipt ? 8000 : 5000,
         action: {
           label: 'Undo',
           onClick: () => {

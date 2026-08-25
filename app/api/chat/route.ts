@@ -2,7 +2,12 @@ import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 import { createClient } from '@/lib/supabase-server'
-import { chatSessionKey, getGatewayConfig, streamGatewayChat } from '@/lib/openclaw-gateway'
+import {
+  chatSessionKey,
+  getGatewayConfig,
+  itemSessionKey,
+  streamGatewayChat,
+} from '@/lib/openclaw-gateway'
 
 const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
@@ -47,6 +52,7 @@ export async function POST(req: NextRequest) {
     apiKey,
     systemPrompt,
     context,
+    threadItemId,
   } = await req.json()
 
   const encoder = new TextEncoder()
@@ -79,10 +85,15 @@ export async function POST(req: NextRequest) {
       const resolvedPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
       const stream = await streamGatewayChat({
         config,
-        // Derived from the authenticated user, never taken from the body: a
-        // client-supplied key would let a browser address the gateway's
-        // reserved namespaces or another thread entirely.
-        sessionKey: chatSessionKey(user.id),
+        // Derived from the authenticated user, never taken from the body. The
+        // client names which THREAD it is (an item id, or nothing for the
+        // global conversation); the key itself is built here, so a browser
+        // cannot address another user's thread or a reserved gateway
+        // namespace. Per-item threads get their own durable gateway session.
+        sessionKey:
+          typeof threadItemId === 'string' && threadItemId
+            ? itemSessionKey(user.id, threadItemId)
+            : chatSessionKey(user.id),
         messages: [
           { role: 'system', content: context ? `${resolvedPrompt}\n\n${context}` : resolvedPrompt },
           ...messages,

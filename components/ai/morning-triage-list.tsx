@@ -15,9 +15,11 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { milestoneItemIds } from '@/lib/goals';
 import { useMorningStore } from '@/lib/morning-store';
 import { OVERDUE_COHORT_LABELS, splitOverdueCohorts, toDateOnly } from '@/lib/overdue';
 import { itemTypeName } from '@/lib/item-registry';
+import { isRecurring } from '@/lib/recurrence';
 import { openEditFor } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 import type { Item, Task, TaskItem } from '@/lib/planner-types';
@@ -176,7 +178,7 @@ type RowAction =
  * the receipt to be stamped unconditionally afterwards, i.e. the tray telling
  * the user it had carried an item it had in fact not touched.
  */
-type StaleReason = 'deleted' | 'completed';
+type StaleReason = 'deleted' | 'completed' | 'recurring';
 
 /**
  * @param live the item as the store has it RIGHT NOW; `undefined` = gone.
@@ -189,6 +191,18 @@ type StaleReason = 'deleted' | 'completed';
  */
 function staleReasonFor(live: Item | undefined): StaleReason | null {
   if (!live || live.type === 'habit') return 'deleted';
+  // Turned recurring under the tray — the row's own title button opens the edit
+  // dialog on top of this list, so it is a two-click trip from here.
+  //
+  // lib/overdue.ts refuses recurring items on the way IN (their misses are
+  // per-date state, never a property of the item), and this is the same rule on
+  // the way OUT: every exit in this list writes startDate, which for a recurring
+  // item is the recurrence ANCHOR rather than the date of the row you are
+  // looking at. "Move to Braindump" in particular would clear it and take the
+  // whole series off the calendar — issue #187, the EOD ✕'s bug. So the row
+  // stops offering exits rather than quietly mangling the series; the item is
+  // now something the past-due pile has no opinion about.
+  if (isRecurring(live)) return 'recurring';
   // 'pending' is the only status lib/overdue.ts:109 accepts, so anything else —
   // completed in the day list behind the tray, or 'cancelled' via the agent API
   // — means the item has left the pile for real and must not be carried.
@@ -218,6 +232,8 @@ export function MorningTriageList({
   const isSheet = variant === 'sheet';
 
   const liveItems = usePlannerStore((s) => s.items);
+  const goals = usePlannerStore((s) => s.goals);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
   const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
   const moveTaskToDate = usePlannerStore((s) => s.moveTaskToDate);
   const moveTasksToDate = usePlannerStore((s) => s.moveTasksToDate);
@@ -280,8 +296,18 @@ export function MorningTriageList({
     staleReasonFor(usePlannerStore.getState().items.find((i) => i.id === id));
 
   /** Untouched this session AND still real — the only rows "Move all" may act on. */
+  // Milestones are excluded here, at the same seam that already drops stale and
+  // already-actioned rows — NOT left to moveTasksToDate to refuse. The verb does
+  // refuse them (a milestone's startDate is the goal's target date, not a
+  // scheduling intention), but this list also drives the button's count AND the
+  // per-row `{kind:'today'}` receipts below. Left in, a refused milestone would
+  // wear "Moved to today · Undo" for a write that never happened — the exact
+  // hazard handleMoveAll's own comment names three lines down.
   const carryable = snapshot.filter(
-    (t) => !actions.has(t.id) && staleReasonFor(liveById.get(t.id)) === null
+    (t) =>
+      !actions.has(t.id) &&
+      staleReasonFor(liveById.get(t.id)) === null &&
+      !milestoneIds.has(t.id)
   );
 
   const setAction = (id: string, action: RowAction) =>
@@ -698,8 +724,11 @@ function TriageRow({
         )}
       >
         {stale ? (
+          // "Repeats", not "Skipped" or anything with a verdict in it: it names
+          // what the item BECAME, which is also the whole reason the exits went
+          // away. Same muted register as the other two markers.
           <span className="w-full truncate text-right text-2xs text-muted-foreground">
-            {stale === 'deleted' ? 'Deleted' : 'Completed'}
+            {stale === 'deleted' ? 'Deleted' : stale === 'recurring' ? 'Repeats' : 'Completed'}
           </span>
         ) : action ? (
           <button

@@ -60,8 +60,32 @@ export function isCompletedOnDate(
 }
 
 /**
+ * Returns true if the occurrence on the given date was explicitly skipped.
+ * The skip twin of isCompletedOnDate — same per-date shape, same rule that
+ * scalar `status` is never the truth for a recurring item.
+ * dateStr must be a YYYY-MM-DD string resolved to the user's local timezone before calling.
+ */
+export function isSkippedOnDate(
+  item: { skippedDates?: string[] },
+  dateStr: string
+): boolean {
+  return item.skippedDates?.includes(dateStr) ?? false;
+}
+
+/**
  * Returns true if the item is a recurring item (has a repeat frequency other than none/undefined).
  */
 export function isRecurring(item: { repeatFrequency?: string }): boolean {
   return !!item.repeatFrequency && item.repeatFrequency !== 'none';
+}
+
+/**
+ * Today's day-of-week index (0 = Sun … 6 = Sat) in the given IANA timezone —
+ * the same convention repeatDays / Date.getDay() use. Resolves "today" via
+ * toDateStr rather than a raw `new Date().getDay()` so it reflects the user's
+ * timezone, not the runtime's.
+ */
+export function currentDayOfWeek(userTimezone: string): number {
+  const dateStr = toDateStr(new Date(), userTimezone);
+  return new Date(dateStr + 'T00:00:00').getDay();
 }

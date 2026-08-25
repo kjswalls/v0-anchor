@@ -4,7 +4,10 @@ import { resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
   return {
     itemType: 'task',
-    selectedDateStr: '2026-07-04',
+    // Noon UTC in UTC resolves to 2026-07-04 — the day-string the existing
+    // assertions below expect. resolveDrop derives it via toDateStr(date, tz).
+    selectedDate: new Date('2026-07-04T12:00:00Z'),
+    userTimezone: 'UTC',
     getRefTime: () => undefined,
     inferDropTime: (bucket, position, refTime) => refTime ?? '09:00',
     ...overrides,
@@ -134,6 +137,38 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
     it('rejects out-of-range hours', () => {
       expect(resolveDrop('t1', 'hour:24', ctx())).toBeNull();
       expect(resolveDrop('t1', 'hour:x', ctx())).toBeNull();
+    });
+  });
+
+  describe('day-view drop date is resolved in the USER timezone', () => {
+    // Regression: the drop date used to be pre-formatted with date-fns in the
+    // MACHINE timezone, while the day is derived with toDateStr in the user's
+    // saved timezone. When the two disagreed, a drop on "today" landed on an
+    // adjacent day. resolveDrop now owns the conversion, so it must key off the
+    // user's timezone — proven with an instant that straddles the date line.
+    const lateUtc = new Date('2026-07-04T23:30:00Z'); // 11:30pm UTC
+
+    it('uses the user timezone, not UTC/machine, for the dropped day', () => {
+      // Same instant, two saved timezones → two different calendar days.
+      expect(
+        resolveDrop('t1', 'hour:9', ctx({ selectedDate: lateUtc, userTimezone: 'UTC' }))
+      ).toMatchObject({ dateStr: '2026-07-04' });
+
+      // Tokyo (UTC+9): 11:30pm Jul 4 UTC is already 8:30am Jul 5 in Tokyo.
+      expect(
+        resolveDrop('t1', 'hour:9', ctx({ selectedDate: lateUtc, userTimezone: 'Asia/Tokyo' }))
+      ).toMatchObject({ dateStr: '2026-07-05' });
+    });
+
+    it('applies to every day-view drop target that carries a date', () => {
+      const tokyo = { selectedDate: lateUtc, userTimezone: 'Asia/Tokyo' };
+      expect(resolveDrop('t1', 'anytime', ctx(tokyo))).toMatchObject({ dateStr: '2026-07-05' });
+      expect(resolveDrop('t1', 'unscheduled:morning', ctx(tokyo))).toMatchObject({
+        dateStr: '2026-07-05',
+      });
+      expect(
+        resolveDrop('t1', 'scheduled:afternoon:empty', ctx({ ...tokyo, inferDropTime: () => '14:00' }))
+      ).toMatchObject({ dateStr: '2026-07-05' });
     });
   });
 

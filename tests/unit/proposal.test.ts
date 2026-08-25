@@ -266,7 +266,7 @@ describe('buildCatchUpProposal', () => {
   });
 
   const build = (items: Item[]) =>
-    buildCatchUpProposal({ items, customTypeNames: [], todayStr: TODAY });
+    buildCatchUpProposal({ items, customTypeNames: [], todayStr: TODAY, inactiveIds: new Set() });
 
   it('returns null when nothing is waiting', () => {
     expect(build([items[1]])).toBeNull();

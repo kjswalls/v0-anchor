@@ -13,6 +13,28 @@
  */
 export const TEST_TZ = 'America/Los_Angeles';
 
+/**
+ * Where the suite points, and the ONE place that decides it.
+ *
+ * Hardcoding :3000 in three files made the suite unrunnable from a worktree —
+ * and unrunnable in a way that produced results rather than an error. This repo
+ * is worked in several worktrees at once (see CLAUDE.md), each with its own
+ * branch and its own `next dev`. Whichever one happens to be up owns :3000, and
+ * `reuseExistingServer: !CI` means Playwright ADOPTS it: the run goes green or
+ * red against a branch that is not the one under test, with nothing on screen
+ * saying so. Overriding this is how a second checkout gets an honest run:
+ *
+ *     E2E_BASE_URL=http://localhost:3100 pnpm e2e
+ *
+ * playwright.config.ts derives both `use.baseURL` and `webServer.url` from this,
+ * and passes the port to `next dev`, so the server started and the server tested
+ * cannot drift apart.
+ */
+export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+
+/** The port half of BASE_URL, for the dev-server command. */
+export const E2E_PORT = new URL(BASE_URL).port || '3000';
+
 /** Where globalSetup parks the authenticated session + resolved API key. */
 export const STORAGE_STATE = 'tests/e2e/.auth/state.json';
 export const SETUP_ARTIFACT = 'tests/e2e/.auth/setup.json';

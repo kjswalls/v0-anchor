@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 // VAPID public key — must also be set in Vercel env vars (NEXT_PUBLIC_VAPID_PUBLIC_KEY)
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '';
@@ -101,5 +101,12 @@ export function usePushSubscription(): UsePushSubscriptionReturn {
     setIsSubscribed(false);
   }, [isSupported]);
 
-  return { isSupported, isSubscribed, permissionState, subscribe, unsubscribe };
+  // Memoized because the settings route folds this straight into a useMemo'd
+  // context object: a fresh literal every render made that memo a no-op, so the
+  // whole settings surface re-rendered on every keystroke in the search field.
+  // subscribe/unsubscribe are already useCallback-stable.
+  return useMemo(
+    () => ({ isSupported, isSubscribed, permissionState, subscribe, unsubscribe }),
+    [isSupported, isSubscribed, permissionState, subscribe, unsubscribe]
+  );
 }

@@ -1,7 +1,11 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X } from 'lucide-react';
+import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
+  Target,
+} from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import {
   Command,
@@ -12,10 +16,14 @@ import {
 } from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useUIStore, openEditFor, openAddDialog } from '@/lib/ui-store';
+import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
+import { isBulkPaste } from '@/lib/bulk-add';
 import { useChatStore } from '@/lib/chat-store';
-import { groupResults, searchItems, type SearchGroup } from '@/lib/search';
+import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
+import { sortGoalsForDisplay } from '@/lib/goals';
 import { getItemTypeConfig } from '@/lib/item-registry';
+import { suppressionReason } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
@@ -41,20 +49,35 @@ import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import { useCommandContext } from '@/hooks/use-command-context';
 
 /**
- * The omnibar: search, quick-add, /commands and chat from one input at the
- * bottom of the sidebar. Prefixes: '+' add, '/' command, '?' chat. ⌘K focuses
- * it via ui-store.focusOmnibar().
+ * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
+ * '+' add, '/' command, '?' chat.
  *
- * Commands are NOT declared here — they come from lib/commands/registry.ts,
- * which also owns the keyboard bindings, so this component only knows how to
- * render and run whatever the registry exposes.
+ * ONE COMPONENT, TWO SHELLS (`variant`). The same input logic renders in two
+ * chromes: the resting `dock` bar at the bottom of the sidebar, and the
+ * summoned `launcher` modal. All four modes work in both — the shells differ
+ * only in emphasis, default state, Enter semantics, and copy. Every difference
+ * reads off `variant`; everything else is shared, which is the whole reason
+ * this is a prop and not two components.
+ *
+ * Commands AND their keyboard bindings are NOT declared here — they come from
+ * lib/commands/registry.ts, so this component only knows how to render and run
+ * whatever the registry exposes (and focuses on ui-store's focus token).
  */
 
 /** Mobile has ~320px of panel above a docked input; desktop can scroll. */
 const MOBILE_ROW_LIMIT = 8;
 const FREE_TEXT_COMMAND_LIMIT = 4;
 
+/** Which shell is hosting the shared input. See the component doc-comment. */
+export type OmnibarVariant = 'dock' | 'launcher';
+
 /**
+ * @param variant which shell is hosting this instance — 'dock' (sidebar,
+ *   default) or 'launcher' (the summoned command modal). Exposed as
+ *   `data-omnibar-variant` so tests can target one shell unambiguously when
+ *   both are mounted.
+ * @param initialQuery seeds the input on mount (launcher only) — e.g. the `/`
+ *   binding opens the launcher already in command mode.
  * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
  *   grows the sidebar dock (default); mobile switches to the Chat tab.
  * @param onFocusChange reports the input's focus state to the parent (the dock
@@ -65,19 +88,43 @@ const FREE_TEXT_COMMAND_LIMIT = 4;
  *   focused input fires no focus event but should still register.
  */
 export function Omnibar({
+  variant = 'dock',
+  initialQuery,
   onAskBeacon,
   onFocusChange,
   onPulse,
 }: {
+  variant?: OmnibarVariant;
+  initialQuery?: string;
   onAskBeacon?: () => void;
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
 } = {}) {
-  const { tasks, habits, addTask, getProjectEmoji, getHabitGroupEmoji } = usePlannerStore();
+  const isLauncher = variant === 'launcher';
+  const {
+    tasks,
+    habits,
+    addTask,
+    getProjectEmoji,
+    getHabitGroupEmoji,
+    userTimezone,
+    routines,
+    programs,
+    goals,
+  } = usePlannerStore();
+  const router = useRouter();
+  // Today, not selectedDate — the omnibar carries no date of its own.
+  const searchTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const searchTodayStr = toDateStr(new Date(), searchTz);
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
 
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  // The launcher can be summoned pre-seeded (the `/` binding opens it in command
+  // mode); the dock always starts empty.
+  const [query, setQuery] = useState(initialQuery ?? '');
+  // The launcher opens with its resting panel already showing (it's a summoned
+  // modal); the dock starts closed and opens on focus. Derived at init rather
+  // than set in an effect so no synchronous setState-in-effect is needed.
+  const [open, setOpen] = useState(isLauncher);
   const [focused, setFocused] = useState(false);
   /** Set once a command needing an argument is picked — the "chip" state. */
   const [activeCommand, setActiveCommand] = useState<AnchorCommand | null>(null);
@@ -119,6 +166,17 @@ export function Omnibar({
       onPulseRef.current?.();
     }
   }, [focusToken]);
+
+  // The launcher is a summoned modal: it must open already focused (its resting
+  // panel is shown via the initial `open` state above). The dock instead grabs
+  // focus on demand via the focus token; here focus arrives with the mount.
+  // Radix autofocus usually lands on the first focusable, but cmdk's combobox
+  // input makes that unreliable, so claim it explicitly. `variant` is stable
+  // per instance, so this runs once, on mount.
+  useEffect(() => {
+    if (variant !== 'launcher') return;
+    inputRef.current?.focus();
+  }, [variant]);
 
   // Report focus up so the dock can light its relay off a reliable signal.
   useEffect(() => {
@@ -180,6 +238,25 @@ export function Omnibar({
 
   /* ── rows ──────────────────────────────────────────────────────────── */
 
+  /**
+   * Goals, resolved BESIDE the item sections rather than inside them — a goal
+   * is not an Item, needs a navigate action rather than an edit, and the key
+   * `goal` would collide with a custom item type of that name. See searchGoals.
+   */
+  const goalHits = useMemo(() => {
+    // Same four-mode gate the item results carry. Without it a `/`, `+` or `?`
+    // prefix still ran a substring search — and since a goal's `why` is
+    // paragraph-shaped, prose containing a slash meant pressing `/` could
+    // render a Goals section above the command palette.
+    if (activeCommand || isCommandMode || isAddMode || isChatMode) return [];
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    // Ended goals sort last inside the cap. They stay findable — searching by
+    // name is how you reach a record — but four achieved goals must not push
+    // the one you are running off the list.
+    return sortGoalsForDisplay(searchGoals(trimmed, goals)).slice(0, 4);
+  }, [query, goals, activeCommand, isCommandMode, isAddMode, isChatMode]);
+
   /** Search hits as one section per item type; row caps live in groupResults. */
   const results = useMemo<SearchGroup[]>(() => {
     if (activeCommand || isCommandMode || isAddMode || isChatMode || !trimmed) return [];
@@ -216,9 +293,19 @@ export function Omnibar({
     }
 
     // Free text: the inline quick-add and Ask Beacon rows below already ARE
-    // those two commands, so drop the duplicates before capping.
+    // those two commands, so drop the duplicates before capping. Per-goal
+    // "Open X" commands go the same way and for the same reason — the Goals
+    // section above is those rows, with the same destination — and leaving both
+    // in also spent one of a capped four slots on a repeat. In COMMAND mode
+    // they stay: the goal channel is gated off there, so the command row is the
+    // only way to reach a goal by typing.
     return matchCommands(trimmed, ctx, { usage })
-      .filter((row) => row.command.id !== 'create.task' && row.command.id !== 'rituals.chat')
+      .filter(
+        (row) =>
+          row.command.id !== 'create.task' &&
+          row.command.id !== 'rituals.chat' &&
+          !row.command.id.startsWith('goal.open.'),
+      )
       .slice(0, ctx.isMobile ? 3 : FREE_TEXT_COMMAND_LIMIT);
   }, [activeCommand, isAddMode, isChatMode, isCommandMode, commandQuery, trimmed, ctx, usage]);
 
@@ -250,6 +337,17 @@ export function Omnibar({
     inputRef.current?.focus();
   };
 
+  // In the launcher, a terminal action closes the modal — UNLESS the action
+  // itself opened another dialog (edit item, add, organize, bulk-add), which has
+  // already replaced the launcher slot in ui-store; closing then would clobber
+  // that new dialog. So only close while the launcher is still the active
+  // dialog. No-op for the dock.
+  const closeLauncher = () => {
+    if (!isLauncher) return;
+    const ui = useUIStore.getState();
+    if (ui.activeDialog?.type === 'launcher') ui.closeDialog();
+  };
+
   const runCommand = (command: AnchorCommand, arg?: string) => {
     if (!isAvailable(command, ctx)) return;
 
@@ -264,6 +362,7 @@ export function Omnibar({
     command.run(ctx, arg);
     useCommandUsageStore.getState().record(command.id);
     closeAndClear();
+    closeLauncher();
   };
 
   const quickAdd = () => {
@@ -271,9 +370,17 @@ export function Omnibar({
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
+      // openAddDialog replaced the launcher slot — nothing to close here.
       return;
     }
     addTask({ title: addTitle });
+    // The launcher is a one-shot command surface: close after the add. The dock
+    // stays open and refocuses for rapid successive capture.
+    if (isLauncher) {
+      closeAndClear();
+      closeLauncher();
+      return;
+    }
     setQuery('');
     inputRef.current?.focus();
   };
@@ -284,6 +391,9 @@ export function Omnibar({
     if (chatText) useChatStore.getState().send(chatText);
     closeAndClear();
     inputRef.current?.blur();
+    // Chat opens in the sidebar (not a dialog), so the launcher is still active
+    // — close it so the modal doesn't sit over the conversation.
+    closeLauncher();
   };
 
   /* ── rendering ─────────────────────────────────────────────────────── */
@@ -353,6 +463,12 @@ export function Omnibar({
       <CommandItem
         key={option.value}
         value={`arg:${option.value}`}
+        // Addressable for the same reason renderCommandRow is: an entity row's
+        // only other handle is its label, and item titles are user data. The
+        // command id rides along so a picker row is unambiguous about which
+        // command it would run.
+        data-command-id={activeCommand?.id}
+        data-arg={option.value}
         onSelect={() => activeCommand && runCommand(activeCommand, option.value)}
       >
         <Icon
@@ -390,13 +506,19 @@ export function Omnibar({
   };
 
   return (
-    <div ref={containerRef} className="relative" data-tour="omnibar">
+    <div ref={containerRef} className="relative" data-tour="omnibar" data-omnibar-variant={variant}>
       <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
         {/* Panel above the input */}
         {open && (
           <CommandList
             data-testid="omnibar-panel"
-            className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg"
+            className={cn(
+              'absolute left-0 right-0 z-50 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg',
+              // The dock sits at the bottom of the sidebar, so its panel grows
+              // upward; the launcher sits near the top of the screen, so it
+              // drops downward like a normal command palette.
+              isLauncher ? 'top-full mt-2' : 'bottom-full mb-2',
+            )}
           >
             {/* Argument mode owns the whole panel — nothing else is relevant
                 while a command is waiting for its value. */}
@@ -461,6 +583,35 @@ export function Omnibar({
                   </CommandGroup>
                 )}
 
+                {/* Goals first: they are containers, so a hit here reframes
+                    every item row beneath it. Four at most — this is a jump,
+                    not a browse. */}
+                {goalHits.length > 0 && (
+                  <CommandGroup heading="Goals">
+                    {goalHits.map((goal) => (
+                      <CommandItem
+                        key={goal.id}
+                        value={`goal-${goal.id}`}
+                        data-testid="omnibar-goal-result"
+                        data-goal-id={goal.id}
+                        onSelect={() => {
+                          closeAndClear();
+                          closeLauncher();
+                          router.push(`/goal/${goal.id}`);
+                        }}
+                      >
+                        <Target className="size-4 shrink-0" />
+                        <span className="truncate">{goal.name}</span>
+                        {goal.state !== 'active' && (
+                          <span className="text-muted-foreground ml-auto text-[11px]">
+                            {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
+                          </span>
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
                 {/* One section per item type, in registry order. A custom type
                     gets its own heading and its own glyph instead of being
                     filed under Tasks because it rides the task pipeline. */}
@@ -475,6 +626,15 @@ export function Omnibar({
                       const done =
                         item.type !== 'habit' &&
                         item.status === getItemTypeConfig(group.type).doneStatus;
+                      // Search deliberately keeps finding paused items — looking
+                      // something up by name is explicit intent, and this is one
+                      // of the few places a set-aside item can still be reached.
+                      // It just says so, quietly.
+                      const paused = !!suppressionReason(item, searchTodayStr, {
+                        userTimezone: searchTz,
+                        routines,
+                        programs,
+                      });
                       return (
                         <CommandItem
                           key={item.id}
@@ -482,6 +642,7 @@ export function Omnibar({
                           data-testid="omnibar-result"
                           data-item-id={item.id}
                           data-item-type={group.type}
+                          data-paused={paused || undefined}
                           onSelect={() => {
                             openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
                             closeAndClear();
@@ -508,13 +669,19 @@ export function Omnibar({
                           >
                             {item.title}
                           </span>
+                          {/* Short on purpose: the panel is ~320px and the
+                              title truncates against it. */}
+                          {paused && <CommandShortcut>Paused</CommandShortcut>}
                         </CommandItem>
                       );
                     })}
                   </CommandGroup>
                 ))}
 
-                {isCommandMode && recentGroup}
+                {/* Recents on top when they're the point: /command mode, and
+                    the launcher's resting root (command-first — Enter runs the
+                    first recent rather than adding a task). */}
+                {(isCommandMode || isLauncher) && recentGroup}
 
                 {/* Grouped palette — /command mode on desktop */}
                 {grouped?.map((group) => (
@@ -569,7 +736,10 @@ export function Omnibar({
                   </CommandGroup>
                 )}
 
-                {!isCommandMode && recentGroup}
+                {/* Dock rests capture-first: recents sit BELOW the Add/Ask rows
+                    so Enter still adds a task. The launcher puts them on top
+                    (above), so this branch is dock-only. */}
+                {!isCommandMode && !isLauncher && recentGroup}
 
                 {!isChatMode && !isCommandMode && !trimmed && (
                   <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
@@ -638,6 +808,10 @@ export function Omnibar({
               activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
               'translate-y-0 shadow-[var(--shadow-key-rest)]',
               'transition-[box-shadow,translate,background-color] duration-150 ease-[var(--ease-out-soft)]',
+              // Hover, only while NOT focused (focus keeps its clean pressed
+              // look): a 1px inner hairline traces the pill on top of its raised
+              // rest shadow — parity with the braindump quick-add tray.
+              '[&:hover:not(:focus-within)]:shadow-[var(--shadow-key-rest),inset_0_0_0_1px_var(--border)]',
               focused &&
                 'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]'
             )}
@@ -672,8 +846,26 @@ export function Omnibar({
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
                   e.preventDefault();
+                  // Consumed here, not left to bubble: an enclosing surface
+                  // (a dialog, a future host) may have its own Escape handler,
+                  // and dismissing search must not also dismiss that.
+                  e.stopPropagation();
                   if (activeCommand) {
                     clearArgument();
+                    return;
+                  }
+                  if (isLauncher) {
+                    // Raycast-style staging: first Escape clears a typed query,
+                    // the next closes the modal. This only works because the
+                    // launcher host (omni-launcher.tsx) preventDefaults Radix's
+                    // capture-phase Escape — otherwise DismissableLayer would
+                    // dismiss on the first press before this bubble-phase handler
+                    // ran. We do the closing ourselves via closeLauncher().
+                    if (query) {
+                      setQuery('');
+                      return;
+                    }
+                    closeLauncher();
                     return;
                   }
                   closeAndClear();
@@ -708,10 +900,32 @@ export function Omnibar({
                   quickAdd();
                 }
               }}
+              // A multi-line paste can't be a search and can't be typed into a
+              // single-line input without folding — treat it as a list and hand
+              // it to the bulk-add dialog. Chat mode keeps native paste (a
+              // pasted paragraph is a legitimate question for Beacon), and so
+              // does a pending command chip (its argument is a value, not a
+              // list). The typed query survives, as the braindump's draft
+              // does: the paste is what's being promoted, not the draft.
+              onPaste={(e) => {
+                if (isChatMode || activeCommand) return;
+                const pasted = e.clipboardData.getData('text/plain');
+                if (isBulkPaste(pasted)) {
+                  e.preventDefault();
+                  openBulkAdd({ text: pasted });
+                  setOpen(false);
+                  inputRef.current?.blur();
+                }
+              }}
               placeholder={
                 activeCommand
                   ? (activeCommand.argument?.placeholder ?? '')
-                  : 'Search, add a task, start a chat, run a command...'
+                  : isLauncher
+                    ? 'Search, add a task, run a command, or ask Beacon…'
+                    : // Dock leans capture: lead with the everyday action. Search
+                      // and commands still work here (and live under ⌘K); the
+                      // hint row below still advertises the + / command / ? prefixes.
+                      'Add a task…'
               }
               aria-label="Omnibar"
               // cmdk gives this input role="combobox", and Playwright's

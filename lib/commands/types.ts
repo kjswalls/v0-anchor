@@ -57,6 +57,17 @@ export interface CommandContext {
   openChat: () => void;
   userId: string | null;
   isMobile: boolean;
+  /**
+   * Client-side navigation, for the commands that now open a route rather than
+   * a dialog (`app.settings` → /settings).
+   *
+   * OPTIONAL on purpose. Commands are plain modules with no React in scope, so
+   * this can only be assembled in hooks/use-command-context.ts via useRouter —
+   * and tests/unit/commands.test.ts constructs a bare CommandContext literal,
+   * which a required field would break at compile time. Callers fall back to a
+   * full page load, which is correct-but-slower rather than broken.
+   */
+  navigate?: (href: string) => void;
 }
 
 export interface CommandArgOption {

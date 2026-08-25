@@ -39,6 +39,14 @@ export interface RelayFieldProps {
   mask?: string;
   /** Vertical origin of the ripple, 0 (top) – 1 (bottom). Default 0.42. */
   focalY?: number;
+  /**
+   * Horizontal origin of the ripple, 0 (left) – 1 (right). Default 0.5.
+   *
+   * Exists for surfaces whose content is not horizontally centred — the login
+   * page measures its own sign-in column and passes its centre, so the wave is
+   * born under the content rather than in whichever half happens to be empty.
+   */
+  focalX?: number;
   /** Target grid spacing in px. Smaller = denser field. Default 40. */
   pitch?: number;
   /** Pulse period in seconds. Default 3.6. */
@@ -51,6 +59,14 @@ export interface RelayFieldProps {
   active?: boolean;
   /** Master alpha multiplier at rest (active=false). Default 0.6. */
   idleIntensity?: number;
+  /**
+   * Overrides `idleIntensity` in a LIGHT context — the idle mirror of
+   * `activeIntensityLight`. Light-mode tiles are subtractive ink on paper, so
+   * the same idle level reads far fainter than the dark glow; this lets one
+   * instance sit brighter on paper without touching its dark rest level. Falls
+   * back to `idleIntensity` when unset.
+   */
+  idleIntensityLight?: number;
   /** Master alpha multiplier while `active`. Default 1. */
   activeIntensity?: number;
   /**
@@ -83,6 +99,41 @@ export interface RelayFieldProps {
    */
   burstDecay?: number;
   /**
+   * Center-to-edge intensity ramp. Alpha is scaled by
+   * `radialGain + (1 - radialGain) * d`, where d is 0 at the focal point and 1
+   * at the farthest corner — so `radialGain < 1` starts the ring calm at the
+   * center and lets it grow hotter as it expands outward. Default 1 (uniform).
+   */
+  radialGain?: number;
+  /**
+   * When true, the ripple's focal point smoothly chases the pointer across the
+   * field's container instead of resting at `focalX`/`focalY` — which is also
+   * the point `pointerParallax` leans away from, so a field whose resting focal
+   * has been moved onto its content leans away from the content, not from the
+   * middle of the window. Adds a window pointer
+   * listener, so opt in only where the field is meant to be interactive.
+   * Default false.
+   */
+  pointerFocus?: boolean;
+  /**
+   * When true, a click/tap flares the whole field brighter for a beat (a
+   * `burstBoost`/`burstDecay` swell) — a brightness pulse in place, without
+   * restarting the ripple or moving the focal. Default false.
+   */
+  pointerBurst?: boolean;
+  /**
+   * How fast the focal eases toward the pointer under `pointerFocus`, per frame
+   * (0–1). Lower = slower, subtler drift. Default 0.12.
+   */
+  pointerEase?: number;
+  /**
+   * Under `pointerFocus`, the fraction of the pointer's offset-from-center the
+   * focal adopts: 1 lets it ride all the way to the cursor, while a small value
+   * (e.g. 0.15) keeps it near center and only tilts slightly toward the pointer
+   * — a parallax lean rather than a follow. Default 1.
+   */
+  pointerParallax?: number;
+  /**
    * Which light-mode palette to paint (see lib/relay-palettes.ts). Only affects
    * light contexts — dark always reads the live theme tokens. Defaults to the
    * catalog default ('gray'); this is the seam for future user theming.
@@ -93,7 +144,16 @@ export interface RelayFieldProps {
 interface Cell {
   x: number;
   y: number;
-  phase: number;
+  /** Grid-space center (column + 0.5, row + 0.5) — kept so a moving focal can
+   *  recompute distance/phase per frame without touching pixel positions. */
+  gx: number;
+  gy: number;
+  /** Normalized distance to the static (focalX/focalY) focal, and the phase
+   *  derived from it. Used whenever the field is NOT pointer-driven. */
+  d0: number;
+  phase0: number;
+  /** Per-tile phase jitter (0.09 * hash), reused when phase is recomputed live. */
+  jitter: number;
   max: number;
   ci: number;
 }
@@ -204,11 +264,20 @@ function isDarkContext(el: Element): boolean {
   return !!el.closest('.dark');
 }
 
+/** Farthest-corner distance from a focal, in grid units (min 1 to avoid /0). */
+function cornerMaxD(fx: number, fy: number, cols: number, rows: number): number {
+  let m = 1;
+  for (const [x, y] of [[0, 0], [cols, 0], [0, rows], [cols, rows]]) {
+    m = Math.max(m, Math.hypot(x - fx, y - fy));
+  }
+  return m;
+}
+
 /** Pulse envelope: quick bloom → decay → dim floor, phase-shifted per tile. */
-function pulse(cell: Cell, t: number, period: number): number {
-  const r = t / period - cell.phase - Math.floor(t / period - cell.phase);
-  if (r < 0.12) return 0.05 + (cell.max - 0.05) * (r / 0.12);
-  if (r < 0.36) return cell.max - (cell.max - 0.05) * ((r - 0.12) / 0.24);
+function pulse(phase: number, max: number, t: number, period: number): number {
+  const r = t / period - phase - Math.floor(t / period - phase);
+  if (r < 0.12) return 0.05 + (max - 0.05) * (r / 0.12);
+  if (r < 0.36) return max - (max - 0.05) * ((r - 0.12) / 0.24);
   return 0.05;
 }
 
@@ -216,15 +285,22 @@ export function RelayField({
   className,
   mask,
   focalY = 0.42,
+  focalX = 0.5,
   pitch = 40,
   period = 3.6,
   active = false,
   idleIntensity = 0.6,
+  idleIntensityLight,
   activeIntensity = 1,
   activeIntensityLight,
   burst = 0,
   burstBoost = 1.6,
   burstDecay = 0.9,
+  radialGain = 1,
+  pointerFocus = false,
+  pointerBurst = false,
+  pointerEase = 0.12,
+  pointerParallax = 1,
   lightPalette = DEFAULT_LIGHT_PALETTE,
 }: RelayFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -234,23 +310,31 @@ export function RelayField({
   const knobs = useRef({
     active,
     idleIntensity,
+    idleIntensityLight,
     activeIntensity,
     activeIntensityLight,
     period,
     burst,
     burstBoost,
     burstDecay,
+    radialGain,
+    pointerEase,
+    pointerParallax,
   });
   useEffect(() => {
     knobs.current = {
       active,
       idleIntensity,
+      idleIntensityLight,
       activeIntensity,
       activeIntensityLight,
       period,
       burst,
       burstBoost,
       burstDecay,
+      radialGain,
+      pointerEase,
+      pointerParallax,
     };
   });
 
@@ -269,12 +353,39 @@ export function RelayField({
     let sprites = palette.map((c) => buildSprite(c, dark));
     let cells: Cell[] = [];
     let gridPitch = pitch;
-    // In a light context, a defined activeIntensityLight overrides activeIntensity.
+    // Grid geometry, kept around for pointer→grid mapping and the moving focal.
+    let gridCols = 0;
+    let gridRows = 0;
+    let yOffset = 0;
+    let staticMaxD = 1;
+    // The resting focal (grid units) parallax leans away from.
+    let staticFx = 0;
+    let staticFy = 0;
+    // Live ripple focal (grid units) and the target it eases toward. Anchored to
+    // the static focalX/focalY focal until the pointer takes over.
+    //
+    // Named liveFx/liveFy, NOT focalX/focalY: those are the props, and a local
+    // of the same name shadows them everywhere inside this effect — including
+    // in layout(), where `fx` is derived from the focalX PROP. That shadowing
+    // type-checks and lints clean while quietly making the resting focal
+    // circular (fx from the live focal, live focal from fx).
+    let liveFx = 0;
+    let liveFy = 0;
+    let targetX = 0;
+    let targetY = 0;
+    let pointerActive = false;
+    let flash = false; // a click brightness flash is pending
+    // Only pointerFocus needs the per-frame moving-focal path; a burst-only
+    // field keeps its baked static distances and just flares on click.
+    const dynamicFocal = pointerFocus;
+    // In a light context, a defined *Light override wins for that state.
     const activeFor = (k: typeof knobs.current) =>
       !dark && k.activeIntensityLight != null ? k.activeIntensityLight : k.activeIntensity;
+    const idleFor = (k: typeof knobs.current) =>
+      !dark && k.idleIntensityLight != null ? k.idleIntensityLight : k.idleIntensity;
     let curIntensity = knobs.current.active
       ? activeFor(knobs.current)
-      : knobs.current.idleIntensity;
+      : idleFor(knobs.current);
 
     let rafId = 0;
     let startTs = 0;
@@ -294,7 +405,7 @@ export function RelayField({
       // Mosaic tiles sit tighter (less overlap) than the wide glow sprites.
       const size = (dark ? 1.9 : 1.3) * gridPitch;
       const k = knobs.current;
-      const target = k.active ? activeFor(k) : k.idleIntensity;
+      const target = k.active ? activeFor(k) : idleFor(k);
       curIntensity += (target - curIntensity) * 0.08;
 
       // A burst re-strikes the pond: the ripple's origin moves to now, so the
@@ -306,6 +417,12 @@ export function RelayField({
         phaseT0 = t;
         flareT0 = t;
       }
+      // A click flashes the field brighter in place — flare only, no wave
+      // restart (phaseT0 untouched), so the ripple keeps its rhythm.
+      if (flash) {
+        flash = false;
+        flareT0 = t;
+      }
       let flare = 1;
       if (flareT0 >= 0) {
         const u = (t - flareT0) / Math.max(0.05, k.burstDecay);
@@ -315,14 +432,33 @@ export function RelayField({
         else flare = 1 + (k.burstBoost - 1) * (1 - u) * (1 - u);
       }
 
+      // Chase the pointer: the focal eases toward its target each frame so the
+      // ring re-centers smoothly rather than snapping, and maxD tracks the
+      // moving focal so the outward ramp stays normalized.
+      let liveMaxD = staticMaxD;
+      if (dynamicFocal) {
+        liveFx += (targetX - liveFx) * k.pointerEase;
+        liveFy += (targetY - liveFy) * k.pointerEase;
+        liveMaxD = cornerMaxD(liveFx, liveFy, gridCols, gridRows);
+      }
+      const rg = k.radialGain;
+
       ctx.clearRect(0, 0, w, h);
       // Dark adds light (lighter); light lays down ink (source-over) — higher
       // alpha = a deeper ink tile on the paper, so the pulse darkens toward the
       // crest rather than brightening.
       ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
       for (const cell of cells) {
-        const env = reduced ? 0.5 * cell.max : pulse(cell, t - phaseT0, k.period);
-        const a = Math.min(1, env * curIntensity * flare);
+        // Distance/phase are recomputed per frame while the focal moves, else
+        // the baked statics.
+        const d = dynamicFocal
+          ? Math.min(1, Math.hypot(cell.gx - liveFx, cell.gy - liveFy) / liveMaxD)
+          : cell.d0;
+        const phase = dynamicFocal ? (2.4 * d + cell.jitter) % 1 : cell.phase0;
+        const env = reduced ? 0.5 * cell.max : pulse(phase, cell.max, t - phaseT0, k.period);
+        // Center-calm → edge-hot ramp; a no-op (1) at the default radialGain 1.
+        const radial = rg + (1 - rg) * d;
+        const a = Math.min(1, env * curIntensity * flare * radial);
         if (a <= 0.02) continue;
         ctx.globalAlpha = a;
         ctx.drawImage(sprites[cell.ci], cell.x - size / 2, cell.y - size / 2, size, size);
@@ -358,26 +494,25 @@ export function RelayField({
       const cell = cw / cols;
       const rows = Math.ceil(ch / cell) + 1;
       const yOff = (ch - rows * cell) / 2;
-      const fx = cols / 2;
+      const fx = cols * focalX;
       const fy = rows * focalY;
-      let maxD = 1;
-      for (const [x, y] of [
-        [0, 0],
-        [cols, 0],
-        [0, rows],
-        [cols, rows],
-      ]) {
-        maxD = Math.max(maxD, Math.hypot(x - fx, y - fy));
-      }
+      staticMaxD = cornerMaxD(fx, fy, cols, rows);
       const next: Cell[] = [];
       for (let ry = 0; ry < rows; ry++) {
         for (let rx = 0; rx < cols; rx++) {
           const idx = ry * cols + rx;
-          const d = Math.min(1, Math.hypot(rx + 0.5 - fx, ry + 0.5 - fy) / maxD);
+          const gx = rx + 0.5;
+          const gy = ry + 0.5;
+          const jitter = 0.09 * hash(idx, 4);
+          const d = Math.min(1, Math.hypot(gx - fx, gy - fy) / staticMaxD);
           next.push({
             x: rx * cell + cell / 2,
             y: yOff + ry * cell + cell / 2,
-            phase: (2.4 * d + 0.09 * hash(idx, 4)) % 1,
+            gx,
+            gy,
+            d0: d,
+            phase0: (2.4 * d + jitter) % 1,
+            jitter,
             max: 0.45 + 0.35 * hash(idx, 5),
             ci: Math.floor(hash(idx, 1) * palette.length),
           });
@@ -385,6 +520,17 @@ export function RelayField({
       }
       cells = next;
       gridPitch = cell;
+      gridCols = cols;
+      gridRows = rows;
+      yOffset = yOff;
+      staticFx = fx;
+      staticFy = fy;
+      // Re-anchor the live focal to the static one on (re)layout — grid units
+      // change meaning with cell size — but never yank it away from the pointer.
+      if (!pointerActive) {
+        liveFx = targetX = fx;
+        liveFy = targetY = fy;
+      }
       if (reduced) draw(0);
     };
 
@@ -417,6 +563,33 @@ export function RelayField({
     };
     document.addEventListener('visibilitychange', onVisibility);
 
+    // Pointer interaction (opt-in). The field is pointer-events-none, so we
+    // listen on the window and map clientX/Y into the container's box.
+    const toGrid = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return null;
+      return {
+        x: (clientX - rect.left) / gridPitch,
+        y: (clientY - rect.top - yOffset) / gridPitch,
+      };
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      const g = toGrid(e.clientX, e.clientY);
+      if (!g) return;
+      pointerActive = true;
+      // Lean only a fraction of the way from center to the pointer, so the focal
+      // tilts off-center rather than chasing the cursor outright.
+      const p = knobs.current.pointerParallax;
+      targetX = staticFx + (g.x - staticFx) * p;
+      targetY = staticFy + (g.y - staticFy) * p;
+    };
+    const onPointerDown = () => {
+      // Brightness flash only — no focal move, no ripple restart.
+      flash = true;
+    };
+    if (pointerFocus) window.addEventListener('pointermove', onPointerMove, { passive: true });
+    if (pointerBurst) window.addEventListener('pointerdown', onPointerDown, { passive: true });
+
     // Re-bake sprites/palette when the theme toggles (class or inline style on <html>).
     const themeObserver = new MutationObserver(rebuildForTheme);
     themeObserver.observe(document.documentElement, {
@@ -430,8 +603,10 @@ export function RelayField({
       io.disconnect();
       themeObserver.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [focalY, pitch, lightPalette]);
+  }, [focalY, focalX, pitch, lightPalette, pointerFocus, pointerBurst]);
 
   return (
     <div

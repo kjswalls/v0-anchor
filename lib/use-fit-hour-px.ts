@@ -70,6 +70,62 @@ export function useFitHourPx(rowCount: number, freeze = false) {
 }
 
 /**
+ * Measured width of the events layer, for the overlap pass.
+ *
+ * The pass emits PERCENTAGE bands — deliberately, so it needs no measurement to
+ * position anything — but a floor expressed in pixels (MIN_CHANNEL_PX) cannot be
+ * enforced against a percentage without knowing what the percentages are of. So
+ * day measures its field once and on resize, and the pass turns that into "as
+ * many channels as actually fit".
+ *
+ * Measured in a LAYOUT effect so the first paint already has the real width;
+ * seeding from state would flash a full set of columns before capping them.
+ *
+ * There is no measure → resize → measure loop here: the events layer is
+ * absolutely positioned against the grid, so its width depends on the viewport
+ * and never on what this hook reports.
+ */
+export function useFieldWidth(freeze = false) {
+  const fieldRef = useRef<HTMLDivElement>(null);
+  /** What the observer sees. Never frozen — the element really is this wide. */
+  const [measured, setMeasured] = useState<number | null>(null);
+  /** What callers see. Stops tracking `measured` while a gesture is in flight. */
+  const [fieldWidth, setFieldWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const el = fieldRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setMeasured((prev) => (prev === w ? prev : w));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /**
+   * The freeze, held here rather than inside the observer.
+   *
+   * A ref written during render is the obvious way to do this and is exactly
+   * what React forbids; gating the observer on a dep would tear it down and
+   * re-attach it, which fires an immediate measurement — the one thing the
+   * freeze exists to prevent. Holding the EXPOSED value instead leaves the
+   * observer untouched and costs one render when a gesture ends.
+   *
+   * `fieldWidth === null` overrides the freeze: with no width at all the lane
+   * planner cannot divide, so a component mounting mid-gesture would otherwise
+   * be locked into focus mode until the gesture ended.
+   */
+  useEffect(() => {
+    if (!freeze || fieldWidth === null) setFieldWidth(measured);
+  }, [freeze, measured, fieldWidth]);
+
+  return { fieldWidth, fieldRef };
+}
+
+/**
  * Keeps the grid visually anchored when `gridStartHour` changes while `active`
  * (a resize is in progress). Expanding the window to the full day at resize-start
  * adds rows above the content, which would shove every block — and the edge under

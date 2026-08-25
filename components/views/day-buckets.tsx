@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Clock } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BucketCard } from '@/components/primitives/bucket-card';
+import { BucketCard, bucketGap } from '@/components/primitives/bucket-card';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
+import { useCurrentBucket } from '@/hooks/use-current-bucket';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useViewStore } from '@/lib/view-store';
+import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
+import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
+import { groupBySupport } from '@/lib/view-options';
 import type { Task, Habit, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -36,11 +37,20 @@ function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boo
       // can silently resolve here instead and assign a TIME.
       data-dnd-id={dropId}
       data-dnd-over={isOver ? 'true' : 'false'}
-      className={cn(
-        '-my-0.5 h-2 rounded transition-all',
-        isOver ? 'my-1 h-8 border-2 border-dashed border-primary bg-primary/15' : 'bg-transparent'
-      )}
-    />
+      className={cn('-my-0.5 flex h-2 items-center transition-all', isOver && 'my-1 h-6')}
+    >
+      {/* A solid 2px rule, not a dashed box. The dashed rectangle was the only
+          drop affordance in the view that looked nothing like the view; a rule
+          where the row will land is the same gesture the schedule grid uses.
+          Lime never takes alpha — see the NowMarker. */}
+      <span
+        aria-hidden
+        className={cn(
+          'h-[2px] w-full rounded-[1px] transition-colors',
+          isOver ? 'bg-primary' : 'bg-transparent'
+        )}
+      />
+    </div>
   );
 }
 
@@ -51,36 +61,22 @@ function EmptyBucketDropZone({ bucket }: { bucket: TimeBucket }) {
       ref={setNodeRef}
       data-dnd-id={`scheduled:${bucket}:empty`}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // A step BELOW the slot it sits in, in every state, so it never flattens
+      // into an armed bucket. --chip-well would be the token if the recessed
+      // -container contract lands; against the open slot's 0.9737 / 0.1878 the
+      // well reads at −0.016 / −0.019 either way.
       className={cn(
-        'flex items-center justify-center rounded-lg border-2 border-dashed transition-all',
-        isOver ? 'h-16 border-primary bg-primary/10' : 'h-10 border-border/60 bg-surface-3/50'
+        'flex items-center justify-center rounded-lg transition-all',
+        isOver ? 'h-12 bg-[var(--bkt-tray-armed)]' : 'h-10 bg-[color-mix(in_oklab,var(--bkt-tray),var(--surface-3)_55%)]'
       )}
     >
-      <span className={cn('text-xs', isOver ? 'text-success-text' : 'text-muted-foreground')}>
-        Drop here to schedule with time
-      </span>
+      {isOver ? (
+        <span aria-hidden className="h-[2px] w-[calc(100%-24px)] rounded-[1px] bg-primary" />
+      ) : (
+        <span className="text-xs text-muted-foreground">Drop here to schedule with time</span>
+      )}
     </div>
   );
-}
-
-/** Current time-of-day bucket, minute-refreshed; null when not viewing today. */
-function useCurrentBucket(selectedDate: Date): TimeBucket | null {
-  const [current, setCurrent] = useState<TimeBucket | null>(null);
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      if (now.toDateString() !== selectedDate.toDateString()) {
-        setCurrent(null);
-        return;
-      }
-      const hour = now.getHours();
-      setCurrent(hour >= 5 && hour < 12 ? 'morning' : hour >= 12 && hour < 17 ? 'afternoon' : 'evening');
-    };
-    update();
-    const id = setInterval(update, 60_000);
-    return () => clearInterval(id);
-  }, [selectedDate]);
-  return current;
 }
 
 interface DayBucketProps {
@@ -90,10 +86,26 @@ interface DayBucketProps {
   recurringProjects: Project[];
   activeId: string | null;
   isCurrent: boolean;
+  variant: BucketStyle;
 }
 
-function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent }: DayBucketProps) {
+/**
+ * This card's no-grouping look inside the untimed section: HABITS then TASKS.
+ *
+ * Local for the same reason Day × List's is — it is what this view renders when
+ * nothing is grouped, not an answer to "group by what".
+ */
+function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
+  return [
+    { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
+    { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
+  ].filter((g) => g.rows.length > 0);
+}
+
+function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant }: DayBucketProps) {
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const dragging = !!activeId;
 
   // Whole-card droppable: highlight + fallback drop target (bare bucket id)
@@ -112,17 +124,27 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   const hasTimed = timedTasks.length > 0 || timedHabits.length > 0;
   const bucketProjects = recurringProjects.filter((p) => p.timeBucket === bucket);
 
-  // Untimed task groups: by type (default) or by project
-  const untimedTaskGroups: [string, Task[]][] =
-    canvasGroupBy === 'project'
-      ? [...untimedTasks.reduce((m, t) => {
-          const key = t.project || 'No project';
-          m.set(key, [...(m.get(key) ?? []), t]);
-          return m;
-        }, new Map<string, Task[]>())]
-      : untimedTasks.length
-        ? [['Tasks', untimedTasks]]
-        : [];
+  /**
+   * The UNTIMED rows only — the timed spine below is never partitioned.
+   *
+   * `inferDropTime` resolves `scheduled:{bucket}:before|after:{type}:{id}` as
+   * ±30 min from THAT row's own time (lib/dnd/CONTRACT.md), so "the gap above
+   * row X" only means "just before X" while the row above X is earlier in the
+   * day. Group the spine and a drop lands at a time that contradicts where the
+   * row visibly went. `groupBySupport` states the same rule to the menu, which
+   * puts "Untimed rows only" on the Grouping rail here.
+   *
+   * This used to honour 'project' and nothing else, so choosing Priority on
+   * Buckets rendered identically to None with the trigger still counting it.
+   */
+  const untimedRows: GroupableRow[] = [
+    ...untimedHabits.map((h) => ({ itemType: 'habit' as const, item: h })),
+    ...untimedTasks.map((t) => ({ itemType: 'task' as const, item: t })),
+  ];
+  const untimedGroups =
+    canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
+      ? groupRows(untimedRows, canvasGroupBy, { routines, programs })
+      : defaultBucketGroups(untimedRows);
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
   const timedRows = [
@@ -146,6 +168,9 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
         onAdd={(b, type) => openAddDialog(type, b, usePlannerStore.getState().selectedDate)}
         isCurrent={isCurrent}
         isDropTarget={isOver || isOverUnscheduled}
+        dragging={dragging}
+        isEmpty={totalItems === 0 && bucketProjects.length === 0}
+        variant={variant}
       >
         {/* Unscheduled section — dedicated drop target, mounted whenever
             dragging so the rect is measurable (see CONTRACT.md). */}
@@ -154,19 +179,16 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
             ref={setUnscheduledRef}
             data-dnd-id={`unscheduled:${bucket}`}
             data-dnd-over={isOverUnscheduled ? 'true' : 'false'}
-            className="space-y-2 pl-4"
+            // The 16px indent is gone: the bucket's own content edge already
+            // aligns rows with the caption above them, and pl-4 pushed every
+            // row 16px past it — which is what made "one edge runs the whole
+            // bucket" untrue by exactly that much.
+            className="space-y-2"
           >
-            {untimedHabits.length > 0 && (
-              <GroupSection label="Habits" variant="canvas">
-                {untimedHabits.map((habit) => (
-                  <TaskRow key={habit.id} row={{ itemType: 'habit', item: habit }} />
-                ))}
-              </GroupSection>
-            )}
-            {untimedTaskGroups.map(([label, groupTasks]) => (
-              <GroupSection key={label} label={label} variant="canvas">
-                {groupTasks.map((task) => (
-                  <TaskRow key={task.id} row={{ itemType: 'task', item: task }} />
+            {untimedGroups.map((g) => (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} />
                 ))}
               </GroupSection>
             ))}
@@ -178,18 +200,21 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
           </div>
         )}
 
-        {/* Divider between untimed and timed */}
+        {/* Untimed → timed. The full-width rule with a clock in the middle is
+            gone: it was a second horizontal division inside a bucket that no
+            longer has even one (the header band's divider went with the band).
+            In its place the timed section indents and takes a 6px branch tick
+            off the spine — day-schedule.tsx:996-1002's gesture, which is how
+            that view already says "this hangs off the rail". */}
         {hasUntimed && (hasTimed || bucketProjects.length > 0) && bucket !== 'anytime' && (
-          <div className="flex items-center gap-2 py-2">
-            <div className="h-px flex-1 bg-border" />
-            <Clock className="h-3 w-3 text-muted-foreground/50" />
-            <div className="h-px flex-1 bg-border" />
+          <div aria-hidden className="relative h-4">
+            <span className="absolute left-0 top-1/2 w-1.5 border-t border-border" />
           </div>
         )}
 
         {/* Scheduled section: project blocks + timed rows */}
         {(hasTimed || bucketProjects.length > 0 || dragging) && (
-          <div className={cn('pl-4', hasUntimed ? '' : 'pt-1')}>
+          <div className={cn(hasUntimed ? 'pl-2' : 'pt-1')}>
             {bucketProjects.map((project) => (
               <ProjectBlock
                 key={project.name}
@@ -220,12 +245,12 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
           </div>
         )}
 
-        {/* Completely empty, not dragging */}
-        {totalItems === 0 && bucketProjects.length === 0 && !dragging && (
-          <p className="py-2 pl-4 font-serif text-sm italic text-muted-foreground/60">
-            Nothing here yet — drag something in, or hit +
-          </p>
-        )}
+        {/* Completely empty and not dragging renders NOTHING — BucketCard
+            collapses to its 22px caption. The serif "Nothing here yet" line
+            that used to live here cost ~100px per empty bucket, and four empty
+            buckets is a common evening; the column's vertical rhythm is now a
+            readout of the shape of the day instead of four equal boxes. The
+            add affordance is still in the caption, and a drag opens the slot. */}
       </BucketCard>
     </div>
   );
@@ -234,16 +259,30 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 export function DayBuckets({ activeId }: { activeId: string | null }) {
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems();
   const { selectedDate, navDirection } = usePlannerStore();
+  // No `mounted` flag — useCurrentBucket returns null on the first render,
+  // which is the hydration guard the flag used to duplicate.
   const currentBucket = useCurrentBucket(selectedDate);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const bucketStyle = useViewStore((s) => s.bucketStyle);
 
   return (
     <ScrollArea className="h-full flex-1">
       <div
         key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
+        // Full container width — the cards run the same edges as the header
+        // capsule above them (that is what `canvas-container` is for). A
+        // narrower centred column was tried and reverted: the moat read as the
+        // view having shrunk rather than as the buckets having become objects,
+        // and the card's own edge already does the containing.
+        //
+        // Flex GAP, not space-y-* and not padding inside the sections. The
+        // section's box is the {bucket} droppable's rect, so trailing space
+        // inside it drags the bare bucket's centre down onto
+        // scheduled:{bucket}:empty — see the note in bucket-card's GEO table.
+        // Gap puts the space between the boxes instead of in one of them, and
+        // the rail bleeds across it to keep the day's line unbroken.
+        style={{ gap: bucketGap(bucketStyle, 'full') }}
         className={cn(
-          'canvas-container space-y-6 py-6 pb-20',
+          'canvas-container flex flex-col py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
@@ -255,7 +294,8 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
             habits={habitsByBucket[bucket]}
             recurringProjects={recurringProjects}
             activeId={activeId}
-            isCurrent={mounted && currentBucket === bucket}
+            isCurrent={currentBucket === bucket}
+            variant={bucketStyle}
           />
         ))}
       </div>
