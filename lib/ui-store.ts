@@ -54,7 +54,14 @@ export type ActiveDialog =
       /** yyyy-MM-dd */
       date?: string;
       bucket?: TimeBucket;
-    };
+    }
+  /**
+   * The ⌘K launcher: the summoned command + search modal. It renders the same
+   * <Omnibar> the sidebar dock does, in variant="launcher" — one core, two
+   * shells. `query` seeds the input so a caller can open it pre-scoped (the `/`
+   * binding opens it already in command mode).
+   */
+  | { type: 'launcher'; query?: string };
 
 export interface ConfirmRequest {
   title: string;

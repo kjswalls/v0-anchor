@@ -219,16 +219,29 @@ export async function navigateToDate(page: Page, targetDateStr: string): Promise
 
 /* ── omnibar / commands ────────────────────────────────────────────────── */
 
+// The dock and the ⌘K launcher render the SAME <Omnibar>, so they share every
+// testid. Scope by data-omnibar-variant so a locator is unambiguous even when
+// the launcher is open over the dock.
+//
+// NOT getByLabel('Omnibar'): cmdk gives this input role="combobox" and
+// Playwright's label engine does not resolve aria-label on it — verified 0
+// matches while [aria-label="Omnibar"] matched 1. That single locator was the
+// whole of the omnibar spec's 60s timeouts.
 export function omnibar(page: Page): Locator {
-  // NOT getByLabel('Omnibar'): cmdk gives this input role="combobox" and
-  // Playwright's label engine does not resolve aria-label on it — verified 0
-  // matches while [aria-label="Omnibar"] matched 1. That single locator was the
-  // whole of the omnibar spec's 60s timeouts.
-  return page.getByTestId('omnibar-input');
+  return page.locator('[data-omnibar-variant="dock"] [data-testid="omnibar-input"]');
 }
 
 export function omnibarPanel(page: Page): Locator {
-  return page.getByTestId('omnibar-panel');
+  return page.locator('[data-omnibar-variant="dock"] [data-testid="omnibar-panel"]');
+}
+
+/** The summoned ⌘K launcher's input and its command/results panel. */
+export function launcherInput(page: Page): Locator {
+  return page.locator('[data-omnibar-variant="launcher"] [data-testid="omnibar-input"]');
+}
+
+export function launcherPanel(page: Page): Locator {
+  return page.locator('[data-omnibar-variant="launcher"] [data-testid="omnibar-panel"]');
 }
 
 /**

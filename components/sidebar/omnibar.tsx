@@ -49,20 +49,35 @@ import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import { useCommandContext } from '@/hooks/use-command-context';
 
 /**
- * The omnibar: search, quick-add, /commands and chat from one input at the
- * bottom of the sidebar. Prefixes: '+' add, '/' command, '?' chat. ⌘K focuses
- * it via ui-store.focusOmnibar().
+ * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
+ * '+' add, '/' command, '?' chat.
  *
- * Commands are NOT declared here — they come from lib/commands/registry.ts,
- * which also owns the keyboard bindings, so this component only knows how to
- * render and run whatever the registry exposes.
+ * ONE COMPONENT, TWO SHELLS (`variant`). The same input logic renders in two
+ * chromes: the resting `dock` bar at the bottom of the sidebar, and the
+ * summoned `launcher` modal. All four modes work in both — the shells differ
+ * only in emphasis, default state, Enter semantics, and copy. Every difference
+ * reads off `variant`; everything else is shared, which is the whole reason
+ * this is a prop and not two components.
+ *
+ * Commands AND their keyboard bindings are NOT declared here — they come from
+ * lib/commands/registry.ts, so this component only knows how to render and run
+ * whatever the registry exposes (and focuses on ui-store's focus token).
  */
 
 /** Mobile has ~320px of panel above a docked input; desktop can scroll. */
 const MOBILE_ROW_LIMIT = 8;
 const FREE_TEXT_COMMAND_LIMIT = 4;
 
+/** Which shell is hosting the shared input. See the component doc-comment. */
+export type OmnibarVariant = 'dock' | 'launcher';
+
 /**
+ * @param variant which shell is hosting this instance — 'dock' (sidebar,
+ *   default) or 'launcher' (the summoned command modal). Exposed as
+ *   `data-omnibar-variant` so tests can target one shell unambiguously when
+ *   both are mounted.
+ * @param initialQuery seeds the input on mount (launcher only) — e.g. the `/`
+ *   binding opens the launcher already in command mode.
  * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
  *   grows the sidebar dock (default); mobile switches to the Chat tab.
  * @param onFocusChange reports the input's focus state to the parent (the dock
@@ -73,14 +88,19 @@ const FREE_TEXT_COMMAND_LIMIT = 4;
  *   focused input fires no focus event but should still register.
  */
 export function Omnibar({
+  variant = 'dock',
+  initialQuery,
   onAskBeacon,
   onFocusChange,
   onPulse,
 }: {
+  variant?: OmnibarVariant;
+  initialQuery?: string;
   onAskBeacon?: () => void;
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
 } = {}) {
+  const isLauncher = variant === 'launcher';
   const {
     tasks,
     habits,
@@ -98,8 +118,13 @@ export function Omnibar({
   const searchTodayStr = toDateStr(new Date(), searchTz);
   const focusToken = useUIStore((s) => s.omnibarFocusToken);
 
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  // The launcher can be summoned pre-seeded (the `/` binding opens it in command
+  // mode); the dock always starts empty.
+  const [query, setQuery] = useState(initialQuery ?? '');
+  // The launcher opens with its resting panel already showing (it's a summoned
+  // modal); the dock starts closed and opens on focus. Derived at init rather
+  // than set in an effect so no synchronous setState-in-effect is needed.
+  const [open, setOpen] = useState(isLauncher);
   const [focused, setFocused] = useState(false);
   /** Set once a command needing an argument is picked — the "chip" state. */
   const [activeCommand, setActiveCommand] = useState<AnchorCommand | null>(null);
@@ -141,6 +166,17 @@ export function Omnibar({
       onPulseRef.current?.();
     }
   }, [focusToken]);
+
+  // The launcher is a summoned modal: it must open already focused (its resting
+  // panel is shown via the initial `open` state above). The dock instead grabs
+  // focus on demand via the focus token; here focus arrives with the mount.
+  // Radix autofocus usually lands on the first focusable, but cmdk's combobox
+  // input makes that unreliable, so claim it explicitly. `variant` is stable
+  // per instance, so this runs once, on mount.
+  useEffect(() => {
+    if (variant !== 'launcher') return;
+    inputRef.current?.focus();
+  }, [variant]);
 
   // Report focus up so the dock can light its relay off a reliable signal.
   useEffect(() => {
@@ -301,6 +337,17 @@ export function Omnibar({
     inputRef.current?.focus();
   };
 
+  // In the launcher, a terminal action closes the modal — UNLESS the action
+  // itself opened another dialog (edit item, add, organize, bulk-add), which has
+  // already replaced the launcher slot in ui-store; closing then would clobber
+  // that new dialog. So only close while the launcher is still the active
+  // dialog. No-op for the dock.
+  const closeLauncher = () => {
+    if (!isLauncher) return;
+    const ui = useUIStore.getState();
+    if (ui.activeDialog?.type === 'launcher') ui.closeDialog();
+  };
+
   const runCommand = (command: AnchorCommand, arg?: string) => {
     if (!isAvailable(command, ctx)) return;
 
@@ -315,6 +362,7 @@ export function Omnibar({
     command.run(ctx, arg);
     useCommandUsageStore.getState().record(command.id);
     closeAndClear();
+    closeLauncher();
   };
 
   const quickAdd = () => {
@@ -322,9 +370,17 @@ export function Omnibar({
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
+      // openAddDialog replaced the launcher slot — nothing to close here.
       return;
     }
     addTask({ title: addTitle });
+    // The launcher is a one-shot command surface: close after the add. The dock
+    // stays open and refocuses for rapid successive capture.
+    if (isLauncher) {
+      closeAndClear();
+      closeLauncher();
+      return;
+    }
     setQuery('');
     inputRef.current?.focus();
   };
@@ -335,6 +391,9 @@ export function Omnibar({
     if (chatText) useChatStore.getState().send(chatText);
     closeAndClear();
     inputRef.current?.blur();
+    // Chat opens in the sidebar (not a dialog), so the launcher is still active
+    // — close it so the modal doesn't sit over the conversation.
+    closeLauncher();
   };
 
   /* ── rendering ─────────────────────────────────────────────────────── */
@@ -447,13 +506,19 @@ export function Omnibar({
   };
 
   return (
-    <div ref={containerRef} className="relative" data-tour="omnibar">
+    <div ref={containerRef} className="relative" data-tour="omnibar" data-omnibar-variant={variant}>
       <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
         {/* Panel above the input */}
         {open && (
           <CommandList
             data-testid="omnibar-panel"
-            className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg"
+            className={cn(
+              'absolute left-0 right-0 z-50 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg',
+              // The dock sits at the bottom of the sidebar, so its panel grows
+              // upward; the launcher sits near the top of the screen, so it
+              // drops downward like a normal command palette.
+              isLauncher ? 'top-full mt-2' : 'bottom-full mb-2',
+            )}
           >
             {/* Argument mode owns the whole panel — nothing else is relevant
                 while a command is waiting for its value. */}
@@ -531,6 +596,7 @@ export function Omnibar({
                         data-goal-id={goal.id}
                         onSelect={() => {
                           closeAndClear();
+                          closeLauncher();
                           router.push(`/goal/${goal.id}`);
                         }}
                       >
@@ -612,7 +678,10 @@ export function Omnibar({
                   </CommandGroup>
                 ))}
 
-                {isCommandMode && recentGroup}
+                {/* Recents on top when they're the point: /command mode, and
+                    the launcher's resting root (command-first — Enter runs the
+                    first recent rather than adding a task). */}
+                {(isCommandMode || isLauncher) && recentGroup}
 
                 {/* Grouped palette — /command mode on desktop */}
                 {grouped?.map((group) => (
@@ -667,7 +736,10 @@ export function Omnibar({
                   </CommandGroup>
                 )}
 
-                {!isCommandMode && recentGroup}
+                {/* Dock rests capture-first: recents sit BELOW the Add/Ask rows
+                    so Enter still adds a task. The launcher puts them on top
+                    (above), so this branch is dock-only. */}
+                {!isCommandMode && !isLauncher && recentGroup}
 
                 {!isChatMode && !isCommandMode && !trimmed && (
                   <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
@@ -782,6 +854,20 @@ export function Omnibar({
                     clearArgument();
                     return;
                   }
+                  if (isLauncher) {
+                    // Raycast-style staging: first Escape clears a typed query,
+                    // the next closes the modal. This only works because the
+                    // launcher host (omni-launcher.tsx) preventDefaults Radix's
+                    // capture-phase Escape — otherwise DismissableLayer would
+                    // dismiss on the first press before this bubble-phase handler
+                    // ran. We do the closing ourselves via closeLauncher().
+                    if (query) {
+                      setQuery('');
+                      return;
+                    }
+                    closeLauncher();
+                    return;
+                  }
                   closeAndClear();
                   inputRef.current?.blur();
                   return;
@@ -834,7 +920,12 @@ export function Omnibar({
               placeholder={
                 activeCommand
                   ? (activeCommand.argument?.placeholder ?? '')
-                  : 'Search, add a task, start a chat, run a command...'
+                  : isLauncher
+                    ? 'Search, add a task, run a command, or ask Beacon…'
+                    : // Dock leans capture: lead with the everyday action. Search
+                      // and commands still work here (and live under ⌘K); the
+                      // hint row below still advertises the + / command / ? prefixes.
+                      'Add a task…'
               }
               aria-label="Omnibar"
               // cmdk gives this input role="combobox", and Playwright's
