@@ -13,7 +13,15 @@ import Image from 'next/image';
 
 const SPOTLIGHT_PADDING = 8;
 
-function useSpotlightRect(selector: string | null) {
+/**
+ * @param revision re-measures when the selector has NOT changed but the target
+ *   may have moved. All three mobile steps spotlight the same mode card while
+ *   switching the tab underneath it, and the dock the card rides is only as tall
+ *   as its notice stack — one notice arriving or clearing between steps slides
+ *   the card without the selector changing a character, and the cutout would sit
+ *   a few px off the control it is pointing at.
+ */
+function useSpotlightRect(selector: string | null, revision?: string) {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
@@ -35,12 +43,27 @@ function useSpotlightRect(selector: string | null) {
       clearTimeout(t2);
       window.removeEventListener('resize', measure);
     };
-  }, [selector]);
+  }, [selector, revision]);
 
   return rect;
 }
 
 const EDGE_BLUR = 24; // blur radius for soft edge fade
+
+/**
+ * Where a mobile coach-mark card sits: just above the bottom dock.
+ *
+ * It used to be a flat `bottom-20`, chosen when the mobile steps spotlighted the
+ * tab bar and the card only had to not cover the tab bar's LABELS. The spotlight
+ * target is now the dock's mode card, so a card overlapping the dock would cover
+ * the cutout the step exists to point at.
+ *
+ * `--toast-bottom` is the dock's own measured top edge plus 8px
+ * (hooks/use-toast-anchor.ts) — the same number the undo toast floats above, and
+ * it already tracks the safe-area inset and the notice stack. The fallback only
+ * covers the frame before the dock's first measurement lands.
+ */
+const MOBILE_CARD_ABOVE_DOCK = { bottom: 'var(--toast-bottom, 96px)' } as const;
 
 // Hook to detect dark mode
 function useIsDarkMode() {
@@ -60,8 +83,27 @@ function useIsDarkMode() {
 /**
  * Spotlight overlay: single element with a massive box-shadow that covers
  * the entire screen except the cutout, with soft blurred edges.
+ *
+ * @param blockTarget covers the cutout with the click catcher instead of
+ *   clipping a hole in it, so the spotlit control cannot be operated while the
+ *   tour is up. The hole is click-through by default because the desktop steps
+ *   spotlight panels, and the retired mobile tab bar was idempotent — a tap fell
+ *   through to `setActiveTab(<the tab the step had just switched to>)`. The
+ *   mobile steps now spotlight the dock's mode card, which is a Drawer trigger:
+ *   the sheet portals to body at z-50, this overlay is z-[100], so a tap through
+ *   the hole opens a modal UNDER a scrim the user cannot dismiss, and its rows
+ *   land on the catcher rather than the sheet. The step's own Next/Back are the
+ *   only controls while the tour owns the screen.
  */
-function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: () => void }) {
+function SpotlightOverlay({
+  rect,
+  onClick,
+  blockTarget = false,
+}: {
+  rect: DOMRect | null;
+  onClick?: () => void;
+  blockTarget?: boolean;
+}) {
   const isDark = useIsDarkMode();
   const overlayColor = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.55)';
   
@@ -93,15 +135,17 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick?: (
         }} 
       />
       {/* Invisible click catcher for the overlay area */}
-      <div 
+      <div
         className="absolute inset-0 pointer-events-auto"
         onClick={onClick}
         style={{
-          clipPath: `polygon(
-            0% 0%, 0% 100%, 
-            ${l}px 100%, ${l}px ${t}px, 
-            ${l + w}px ${t}px, ${l + w}px ${t + h}px, 
-            ${l}px ${t + h}px, ${l}px 100%, 
+          clipPath: blockTarget
+            ? undefined
+            : `polygon(
+            0% 0%, 0% 100%,
+            ${l}px 100%, ${l}px ${t}px,
+            ${l + w}px ${t}px, ${l + w}px ${t + h}px,
+            ${l}px ${t + h}px, ${l}px 100%,
             100% 100%, 100% 0%
           )`
         }}
@@ -180,18 +224,28 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         if (desktopSubStep === 'B') return '[data-tour="timeline"]';
         if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
       } else {
-        if (mobileSubStep === 'A') return '[data-tour="tab-braindump"]';
-        if (mobileSubStep === 'B') return '[data-tour="tab-today"]';
+        // Every mobile step spotlights the DOCK'S MODE CARD, not a per-surface
+        // target. The three-tab bar these steps used to point at is gone; its
+        // `tab-*` handles moved onto the switcher sheet's entries, which are
+        // only in the DOM while that sheet is open — a spotlight there would cut
+        // a hole in the overlay around nothing. The card is on screen for every
+        // step, and it is what the effects below have just moved. It is also a
+        // Drawer trigger, which is why the mobile steps seal the cutout with
+        // `blockTarget` — see SpotlightOverlay.
+        if (mobileSubStep === 'A' || mobileSubStep === 'B') return '[data-tour="mode-card"]';
       }
     }
     if (step === 4) {
-      if (isMobile) return '[data-tour="tab-chat"]';
+      if (isMobile) return '[data-tour="mode-card"]';
       return '[data-tour="right-sidebar"]';
     }
     return null;
   })();
   
-  const spotlightRect = useSpotlightRect(spotlightSelector);
+  const spotlightRect = useSpotlightRect(
+    spotlightSelector,
+    `${step}-${desktopSubStep}-${mobileSubStep}`
+  );
 
   // Anchor a card just outside the spotlight target, computed from its live
   // rect — replaces hardcoded left/right offsets that broke when the sidebar
@@ -473,7 +527,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
       const mobileContent = {
         A: {
           title: 'Your tasks live here',
-          description: "Head to Schedule to plan when you'll do them.",
+          // Names the control under the spotlight, which is also the answer to
+          // the question the old copy left open ("head to Schedule" — how?).
+          // Only step A says it: the card is spotlighted on all three, and
+          // repeating it each time reads as the tour losing track.
+          //
+          // Describes the control rather than telling the user to press it: the
+          // cutout is sealed while the tour is up (blockTarget below), so an
+          // instruction to tap now would be an instruction that does nothing.
+          description:
+            'The mode button in the dock is how you move between Braindump, Today and Beacon.',
         },
         B: {
           title: 'Plan your day',
@@ -485,8 +548,11 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
-          <SpotlightOverlay rect={spotlightRect} onClick={handleNext} />
-          <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <SpotlightOverlay rect={spotlightRect} onClick={handleNext} blockTarget />
+          <div
+            className="absolute left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300"
+            style={MOBILE_CARD_ABOVE_DOCK}
+          >
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
               <p className="text-sm text-foreground font-medium">{mc.title}</p>
               <p className="text-xs text-muted-foreground leading-relaxed">{mc.description}</p>
@@ -577,12 +643,15 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
   // ─── Step 4: AI Chat (coach mark) ───────────────────────────────────────────
   if (step === 4) {
-    // Mobile: tooltip card above the tab bar (chat tab already active via effect)
+    // Mobile: tooltip card above the dock (chat tab already active via effect)
     if (isMobile) {
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
-          <SpotlightOverlay rect={spotlightRect} />
-          <div className="absolute bottom-20 left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <SpotlightOverlay rect={spotlightRect} blockTarget />
+          <div
+            className="absolute left-4 right-4 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-300"
+            style={MOBILE_CARD_ABOVE_DOCK}
+          >
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
               <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
               <p className="text-xs text-muted-foreground leading-relaxed">

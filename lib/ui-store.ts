@@ -88,6 +88,20 @@ interface UIStore {
   confirm: (request: ConfirmRequest) => void;
   resolveConfirm: (confirmed: boolean) => void;
 
+  /**
+   * Beacon's first-run Q&A (components/ai/onboarding-chat.tsx) is on screen.
+   *
+   * It lives here rather than in ChatConversation's own state because the
+   * phone's chat input is no longer inside the conversation — it is the dock's
+   * bar (components/mobile/mobile-bottom-dock.tsx) — while the onboarding chat
+   * brings a field of its own. Two components that must agree on which field is
+   * the real one cannot each hold their own answer. AppShell seeds it from the
+   * completion check it already runs for the tour, so it is settled before the
+   * tour's step 4 (or a swipe) can reach the Beacon tab.
+   */
+  chatOnboardingActive: boolean;
+  setChatOnboardingActive: (active: boolean) => void;
+
   /** Bumping the token tells the omnibar to grab focus (⌘K etc.). */
   omnibarFocusToken: number;
   focusOmnibar: () => void;
@@ -111,6 +125,9 @@ export const useUIStore = create<UIStore>()((set, get) => ({
     set({ confirmRequest: null });
     if (confirmed) request?.onConfirm();
   },
+
+  chatOnboardingActive: false,
+  setChatOnboardingActive: (active) => set({ chatOnboardingActive: active }),
 
   omnibarFocusToken: 0,
   focusOmnibar: () => set((s) => ({ omnibarFocusToken: s.omnibarFocusToken + 1 })),

@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User } from 'lucide-react';
+import { Sparkles, MessageSquarePlus, Copy, Check, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ChatComposer } from '@/components/ai/chat-composer';
 import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useChatStore } from '@/lib/chat-store';
@@ -13,13 +12,11 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
-import { stripReasoningTags } from '@/lib/chat-utils';
+import { chatAssistantLabel, chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { createClient } from '@/lib/supabase';
 import { isOnboardingComplete } from '@/lib/user-profile';
+import { useUIStore } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
-
-const ASSISTANT_NAME = 'Beacon';
-const OPENCLAW_NAME = 'OpenClaw';
 
 interface ChatConversationProps {
   variant: 'desktop' | 'mobile';
@@ -28,6 +25,21 @@ interface ChatConversationProps {
   focusSignal?: number;
   /** Hide the provider header row (the desktop panel renders its own). */
   hideHeader?: boolean;
+  /**
+   * Drop the composer. The phone's Beacon tab passes this: its input is the
+   * dock's bar (components/mobile/mobile-bottom-dock.tsx), so leaving this one
+   * mounted would stack two text fields, the lower of which is the real one.
+   */
+  hideComposer?: boolean;
+  /**
+   * Give Beacon's replies a card of their own (surface-2, hairline, soft
+   * shadow, a notched 16px radius), per design/mobile-redesign/ChatTab.dc.html.
+   * The phone's Beacon tab passes it: with the panel gone the conversation sits
+   * straight on the paper, and bare prose there has nothing bounding it — in
+   * dark mode the user's bubble ends up the only carded turn on screen. The
+   * desktop panel already IS a card, so it keeps the flat default.
+   */
+  cardedReplies?: boolean;
 }
 
 /**
@@ -35,23 +47,32 @@ interface ChatConversationProps {
  * Shared by the desktop sidebar chat panel and the mobile chat tab —
  * replaces the duplicated bodies of chat-sidebar and mobile-chat-panel.
  */
-export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHeader }: ChatConversationProps) {
-  const { messages, isLoading, isTyping, send, hydrate, syncOpenclawInfo, openclawAgentIdDisplay } =
+export function ChatConversation({
+  variant,
+  onOpenSettings,
+  focusSignal,
+  hideHeader,
+  hideComposer,
+  cardedReplies,
+}: ChatConversationProps) {
+  const { messages, isLoading, isTyping, hydrate, syncOpenclawInfo, openclawAgentIdDisplay } =
     useChatStore();
   const aiProvider = useAISettingsStore((s) => s.provider);
   const aiApiKey = useAISettingsStore((s) => s.apiKey);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const timeFormatStr = useTimeFormat();
 
-  const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  // Shared, not local: the phone's chat field lives in the dock now, and the
+  // dock has to stand down while this branch is showing (see the note on
+  // chatOnboardingActive in lib/ui-store.ts).
+  const showOnboarding = useUIStore((s) => s.chatOnboardingActive);
+  const setShowOnboarding = useUIStore((s) => s.setChatOnboardingActive);
   const [userId, setUserId] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const isMobile = variant === 'mobile';
-  const displayName = aiProvider === 'openclaw' ? OPENCLAW_NAME : ASSISTANT_NAME;
+  const displayName = chatAssistantName(aiProvider);
 
   useEffect(() => {
     hydrate();
@@ -69,14 +90,7 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
       const done = await isOnboardingComplete(uid);
       if (!done) setShowOnboarding(true);
     });
-  }, []);
-
-  // Focus input on request
-  useEffect(() => {
-    if (focusSignal !== undefined && focusSignal > 0) {
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    }
-  }, [focusSignal]);
+  }, [setShowOnboarding]);
 
   // Auto-scroll to bottom — scroll within container, not the whole page
   useEffect(() => {
@@ -85,26 +99,11 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
     container.scrollTop = container.scrollHeight;
   }, [messages, isLoading, isTyping]);
 
-  // Auto-grow textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
-  }, [input]);
-
   const copyMessage = useCallback((content: string, index: number) => {
     navigator.clipboard.writeText(content);
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   }, []);
-
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || isLoading) return;
-    setInput('');
-    send(text);
-  };
 
   if (showOnboarding && userId) {
     return (
@@ -119,11 +118,7 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
       {!hideHeader && (
         <div className="shrink-0 border-b border-border px-3 py-2">
           <p className="text-2xs font-medium text-muted-foreground">
-            {aiProvider === 'openclaw'
-              ? openclawAgentIdDisplay
-                ? `OpenClaw · ${openclawAgentIdDisplay}`
-                : 'OpenClaw'
-              : 'Beacon'}
+            {chatAssistantLabel(aiProvider, openclawAgentIdDisplay)}
           </p>
         </div>
       )}
@@ -221,7 +216,15 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
                   </div>
                 ) : (
                   <div className="flex flex-col gap-1">
-                    <div className="prose prose-sm dark:prose-invert max-w-none break-words text-sm leading-relaxed text-foreground prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:rounded prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm prose-code:text-success-text prose-pre:rounded-lg prose-pre:bg-muted prose-pre:p-3 prose-a:text-success-text prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground">
+                    <div
+                      className={cn(
+                        'prose prose-sm dark:prose-invert max-w-none break-words text-sm leading-relaxed text-foreground prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-code:rounded prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm prose-code:text-success-text prose-pre:rounded-lg prose-pre:bg-muted prose-pre:p-3 prose-a:text-success-text prose-a:no-underline hover:prose-a:underline prose-strong:text-foreground',
+                        // The notched corner is the user bubble's, mirrored to
+                        // the side the reply is anchored on.
+                        cardedReplies &&
+                          'w-fit max-w-[85%] rounded-2xl rounded-bl-sm border border-surface-3 bg-surface-2 px-[14px] py-3 shadow-[var(--shadow-soft-sm)]'
+                      )}
+                    >
                       {msg.content ? (
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {stripReasoningTags(msg.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}
@@ -270,57 +273,13 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
       </div>
 
       {/* Input area */}
-      <div className={cn('shrink-0 px-3 pb-3 pt-2', isMobile && 'border-t border-border bg-background')}>
-        <div className="rounded-2xl border border-border bg-muted/30 transition-colors focus-within:bg-muted/50">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder={`Message ${displayName}...`}
-            rows={1}
-            className="min-h-0 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0"
-            disabled={isLoading}
-          />
-          <div className="flex items-center justify-between px-2 pb-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('rounded-full text-muted-foreground', isMobile ? 'h-9 w-9' : 'h-8 w-8')}
-              disabled
-              title="Attach files (coming soon)"
-            >
-              <Plus className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
-            </Button>
-            {input.trim() ? (
-              <Button
-                size="icon"
-                className={cn('rounded-full', isMobile ? 'h-9 w-9' : 'h-8 w-8')}
-                onClick={handleSend}
-                disabled={isLoading}
-                aria-label="Send"
-              >
-                <ArrowUp className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn('rounded-full text-muted-foreground', isMobile ? 'h-9 w-9' : 'h-8 w-8')}
-                disabled
-                title="Voice input (coming soon)"
-              >
-                <Mic className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
-              </Button>
-            )}
-          </div>
+      {!hideComposer && (
+        <div
+          className={cn('shrink-0 px-3 pb-3 pt-2', isMobile && 'border-t border-border bg-background')}
+        >
+          <ChatComposer variant="panel" touch={isMobile} focusSignal={focusSignal} />
         </div>
-      </div>
+      )}
     </>
   );
 }

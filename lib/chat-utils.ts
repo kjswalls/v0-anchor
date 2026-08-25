@@ -1,4 +1,24 @@
 /**
+ * Whoever is answering. The chat surface is named after the provider, so the
+ * placeholder, the empty state and the tab header all have to agree — three
+ * places computing the same ternary is how "Message Beacon…" ends up under an
+ * OpenClaw transcript.
+ */
+export function chatAssistantName(provider: string): string {
+  return provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
+}
+
+/**
+ * The same name, qualified by WHICH agent when there is more than one to mean.
+ * Header rows use this; anything speaking to the user in a sentence uses the
+ * bare name above.
+ */
+export function chatAssistantLabel(provider: string, agentIdDisplay?: string | null): string {
+  const name = chatAssistantName(provider);
+  return provider === 'openclaw' && agentIdDisplay ? `${name} · ${agentIdDisplay}` : name;
+}
+
+/**
  * Strips reasoning/internal tags from AI assistant output.
  *
  * Handles:

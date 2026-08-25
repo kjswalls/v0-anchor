@@ -1,0 +1,64 @@
+{
+  "pages": [
+    { "id": "page-synthesis", "name": "Synthesis" },
+    { "id": "page-buckets", "name": "Buckets" },
+    { "id": "page-bar", "name": "Command Bar" },
+    { "id": "page-round1", "name": "Round 1" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Today × Buckets", "page": "page-synthesis" },
+    { "file": "ViewList.dc.html", "x": 490, "y": 0, "w": 390, "h": 844, "title": "Today × List", "page": "page-synthesis" },
+    { "file": "ViewSchedule.dc.html", "x": 980, "y": 0, "w": 390, "h": 844, "title": "Today × Schedule", "page": "page-synthesis" },
+    { "file": "BraindumpTab.dc.html", "x": 1470, "y": 0, "w": 390, "h": 844, "title": "Braindump", "page": "page-synthesis" },
+    { "file": "ChatTab.dc.html", "x": 1960, "y": 0, "w": 390, "h": 844, "title": "Beacon", "page": "page-synthesis" },
+    { "file": "ChipsBar.dc.html", "x": 2450, "y": 0, "w": 390, "h": 300, "title": "Alt — Chips Above the Bar (not picked)", "page": "page-round1" },
+
+    { "file": "BucketsCards.dc.html", "x": 0, "y": 0, "w": 390, "h": 500, "title": "Buckets 1 — Cards (C) ✓", "page": "page-buckets" },
+    { "file": "BucketsSheet.dc.html", "x": 480, "y": 0, "w": 390, "h": 500, "title": "Buckets 2 — Single Sheet", "page": "page-buckets" },
+    { "file": "BucketsSpine.dc.html", "x": 960, "y": 0, "w": 390, "h": 500, "title": "Buckets 3 — Sheet + Spines", "page": "page-buckets" },
+    { "file": "BucketsTint.dc.html", "x": 1440, "y": 0, "w": 390, "h": 500, "title": "Buckets 4 — Tinted Headers", "page": "page-buckets" },
+    { "file": "BleedHairline.dc.html", "x": 0, "y": 700, "w": 390, "h": 560, "title": "Bleed A — Hairlines (1B)", "page": "page-buckets" },
+    { "file": "BleedWells.dc.html", "x": 480, "y": 700, "w": 390, "h": 560, "title": "Bleed B — Well Bands", "page": "page-buckets" },
+    { "file": "BleedGaps.dc.html", "x": 960, "y": 700, "w": 390, "h": 560, "title": "Bleed C — Paper Gaps", "page": "page-buckets" },
+    { "file": "BleedWash.dc.html", "x": 1440, "y": 700, "w": 390, "h": 560, "title": "Bleed D — Tint Washes", "page": "page-buckets" },
+
+    { "file": "BarSplit.dc.html", "x": 0, "y": 0, "w": 390, "h": 300, "title": "Bar 1 — Split Deck (B)", "page": "page-bar" },
+    { "file": "BarStacked.dc.html", "x": 480, "y": 0, "w": 390, "h": 300, "title": "Bar 2 — Stacked Deck", "page": "page-bar" },
+    { "file": "BarModes.dc.html", "x": 960, "y": 0, "w": 390, "h": 300, "title": "Bar 3 — Mode Chip ✓", "page": "page-bar" },
+    { "file": "BarFloating.dc.html", "x": 1440, "y": 0, "w": 390, "h": 300, "title": "Bar 4 — Nav + Capture Split", "page": "page-bar" },
+
+    { "file": "Current.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Current (reference)", "page": "page-round1" },
+    { "file": "CommandDeck.dc.html", "x": 490, "y": 0, "w": 390, "h": 844, "title": "B — Command Deck", "page": "page-round1" },
+    { "file": "Editorial.dc.html", "x": 980, "y": 0, "w": 390, "h": 844, "title": "C — Editorial Calm", "page": "page-round1" },
+    { "file": "MainSerif.dc.html", "x": 1470, "y": 0, "w": 390, "h": 844, "title": "Synthesis — Serif Header (not picked)", "page": "page-round1" },
+    { "file": "ToggleSheet.dc.html", "x": 1960, "y": 0, "w": 390, "h": 430, "title": "Toggle alt — In Mode Sheet (not picked)", "page": "page-round1" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": -330, "y": 0, "w": 290, "page": "page-synthesis", "text": "Round 12 — desktop chrome, verbatim:\n\n• Braindump/Beacon headers are the desktop braindump header ported exactly: gray capsule (radius 10, elev-bar shadow) framing a 37px white row-pill (radius 10, elev-sm, Inter Medium 13)\n• Dock matches the desktop sidebar-dock: well at radius 10 with the elev-bar shadow; the omnibar is the desktop 48px white pill (radius 10, px-22, key-rest shadow); mode card follows at radius 10\n• Today screens keep the larger header card (they carry the strip, which desktop's header doesn't)\n\nDecisions logged for build: dark mode reuses the desktop tokens verbatim; notices dock in the well above the bar; radial relay ports from components/primitives/relay-field.tsx." },
+    { "id": "note-main", "x": 0, "y": -180, "w": 390, "page": "page-synthesis", "text": "Today × Buckets (the home screen)\n\nCarded header over carded buckets: the paper gap between them keeps the two layers distinct, and the header card + dock card bookend the screen symmetrically. Lime underline marks the selected day." },
+    { "id": "note-vlist", "x": 490, "y": -180, "w": 390, "page": "page-synthesis", "text": "Today × List\n\nCarded header, rows straight on the paper in slash-label groups (Habits / Tasks) — the card provides the chrome/content break, so the hairline divider retired. The cycle button shows the List glyph — the button IS the state." },
+    { "id": "note-vsched", "x": 980, "y": -180, "w": 390, "page": "page-synthesis", "text": "Today × Schedule\n\nDesktop blocks, desktop marks: the 2px time-of-day rail + dot now sit OUTSIDE the pane with a small gap, panes keep the lit inner edge + elev-md shadow, and the lime now-rule keeps its rotated diamond. Untimed items stay reachable via Buckets/List." },
+    { "id": "note-bdump", "x": 1470, "y": -180, "w": 390, "page": "page-synthesis", "text": "Braindump\n\nThe desktop braindump header, ported: gray capsule framing the white row-pill (title · display filter · K at 24px). Rows straight on the paper, Paused as a quiet slash-label group, scope rail chips above the dock. Mode card shows the rows glyph." },
+    { "id": "note-chat", "x": 1960, "y": -180, "w": 390, "page": "page-synthesis", "text": "Beacon\n\nThe command bar becomes the chat input ('Message Beacon…') — the two halves of the conversation share one address, which is why the omnibar never hid on Chat in the old dock either. User turns in gray wells, Beacon on white cards with the honey sparkle. Mode card shows the sparkle glyph." },
+    { "id": "note-bk1", "x": 0, "y": -170, "w": 390, "page": "page-buckets", "text": "1 — Cards (from C) — PICKED\n\nOne white card per bucket on the paper backdrop. Strongest bucket identity and drag targets. Paper gaps (Bleed C) was tried in the synthesis and set aside.\nTradeoff: three borders + three shadows of visual weight, and empty buckets still cost a whole card." },
+    { "id": "note-bk2", "x": 480, "y": -170, "w": 390, "page": "page-buckets", "text": "2 — Single sheet (inset)\n\nOne continuous inset card, hairlines between sections. The full-bleed row below explores the edge-to-edge version of this idea.\nTradeoff: weakest bucket boundaries." },
+    { "id": "note-bk3", "x": 960, "y": -170, "w": 390, "page": "page-buckets", "text": "3 — Sheet + spines\n\nThe inset sheet with time-of-day spines (from the desktop bucket cards) instead of hairlines.\nTradeoff: the spine is subtle at 2px — it must never carry alone what the header says." },
+    { "id": "note-bk4", "x": 1440, "y": -170, "w": 390, "page": "page-buckets", "text": "4 — Tinted headers\n\nSeparate cards with a soft time-of-day wash on each header band.\nTradeoff: tinted fills need their own dark-mode values, and it is the least Linear-quiet of the row." },
+    { "id": "note-bl1", "x": 0, "y": 545, "w": 390, "page": "page-buckets", "text": "Bleed A — hairlines (the round-1B baseline)\n\nThe full-bleed sheet as it was: sections separated by full-width hairlines. Calmest, and the reference the other three iterate on.\nTradeoff: at a glance all rows blur into one list — bucket boundaries are the weakest here." },
+    { "id": "note-bl2", "x": 480, "y": 545, "w": 390, "page": "page-buckets", "text": "Bleed B — well bands\n\nEach section header sits on a recessed full-width gray band (the dock-well color, softened). Grouped-list rhythm: bands read as furniture, rows as content — clear separation with zero new colors, and it survives dark mode for free since the well ramp already exists there.\nTradeoff: horizontal gray stripes add back some visual weight the sheet was buying away." },
+    { "id": "note-bl3", "x": 960, "y": 545, "w": 390, "page": "page-buckets", "text": "Bleed C — paper gaps\n\nThe sheet breaks into edge-to-edge white bands, one per bucket, with 8px of paper showing between them. Still reads as one surface, but each bucket regains a real physical boundary — the strongest drop-target story of the full-bleed row.\nTradeoff: the gaps cost ~16px of vertical space, and the bands' hairline edges need care where they meet the screen edge." },
+    { "id": "note-bl4", "x": 1440, "y": 545, "w": 390, "page": "page-buckets", "text": "Bleed D — tint washes\n\nWell bands, but colored: each header band carries a soft time-of-day wash. Most glanceable — Morning/Afternoon/Evening are peripherally distinct.\nTradeoff: the washes need bespoke dark-mode values, and three pastel stripes is the least Linear-quiet of the full-bleed row." },
+    { "id": "note-bar1", "x": 0, "y": -190, "w": 390, "page": "page-bar", "text": "1 — Split deck (from B)\n\nNav segment | input | Beacon in one 56px capsule.\nTradeoff: unlabeled icons, and the input gets ~180px of the width." },
+    { "id": "note-bar2", "x": 480, "y": -190, "w": 390, "page": "page-bar", "text": "2 — Stacked deck\n\nThe current dock distilled into one white capsule: full-width input on top, labeled tabs below. Most discoverable.\nTradeoff: tallest option (~96px)." },
+    { "id": "note-bar3", "x": 960, "y": -190, "w": 390, "page": "page-bar", "text": "3 — Mode chip — PICKED\n\nIcon-only, detached, and now neutral: no lime square, just the surface glyph on the white card. Tapping it opens the switcher; /braindump, /chat still work as typed commands.\nTradeoff: with the color gone, the icon alone says 'you are here' — the glyph swap (rows / sun / sparkles) has to be unmistakable.\n\nRound 7: the pair now rides the desktop-style dock well instead of floating free." },
+    { "id": "note-bar4", "x": 1440, "y": -190, "w": 390, "page": "page-bar", "text": "4 — Nav + capture split\n\nA slim icons-only nav pill centered, capture as its own lime button.\nTradeoff: capture costs a tap before typing." },
+    { "id": "note-current", "x": 0, "y": -200, "w": 390, "page": "page-round1", "text": "Current (reference)\n\nWhat ships today: header pill + week-nav pill stacked (two borders, two shadows), then the canvas panel, then the dock well holding notices, omnibar, and tab bar. Five bordered surfaces compete before any content appears — this is why it reads busy rather than professional." },
+    { "id": "note-b", "x": 490, "y": -200, "w": 390, "page": "page-round1", "text": "B — Command Deck\n\nRaycast-inspired: chrome nearly disappears. Title and a bare day strip sit straight on paper, content becomes one full-bleed sheet with hairline sections, and a single bottom capsule owns everything.\nIts command bar, flat header, and full-bleed sheet all fed the synthesis." },
+    { "id": "note-c", "x": 980, "y": -200, "w": 390, "page": "page-round1", "text": "C — Editorial Calm\n\nTypography-led quiet: a Source Serif 'Today' headline on bare paper, a numeral day strip with a lime dot, bucket cards floating directly on the backdrop, and an icons-only tab row.\nIts bucket cards carried into the synthesis; its serif header was explored and set aside." },
+    { "id": "note-serif", "x": 1470, "y": -200, "w": 390, "page": "page-round1", "text": "Synthesis — serif header variant (not picked)\n\nKept for reference: same synthesis structure with C's Source Serif headline and numeral strip. Set aside in favor of the flat compact header." },
+    { "id": "note-tgsheet", "x": 1960, "y": -200, "w": 390, "page": "page-round1", "text": "Toggle alternate — in the mode sheet (not picked)\n\nKept for reference: the view control folded into the mode card's sheet. Set aside in favor of the header-row cycle button." },
+    { "id": "note-chips", "x": 2450, "y": -160, "w": 390, "page": "page-round1", "text": "Alternate — chips above the bar (not picked)\n\nView + display as chips above the command bar. Set aside for the header ghost icons: the chips sat over content, collided with the omnibar's upward results panel, and had no meaning on Braindump/Chat." },
+    { "id": "note-motion", "x": -330, "y": 420, "w": 290, "page": "page-synthesis", "text": "Motion (for real implementation) — radial relay animation candidates:\n\n• Command bar: on capture submit — radiates from the input as the item files itself; ties the animation to the app's core verb\n• Mode card: radiating from the tap on surface switch — a natural origin point\n• Frosted behind the header: ambient version — riskiest, since always-on motion fights the calm the redesign is buying\n\nRecommendation: earn it on discrete events (capture, mode switch) before going ambient." }
+  ],
+  "launch": { "view": "canvas", "page": "page-synthesis" }
+}

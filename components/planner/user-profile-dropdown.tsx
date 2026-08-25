@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Settings, LogOut } from 'lucide-react';
+import { User, Settings, LogOut, MessageSquarePlus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +19,13 @@ import { flushSettings } from '@/lib/settings-service';
 
 interface UserProfileDropdownProps {
   onOpenSettings: () => void;
+  /**
+   * Opens the bug-report/feature-request dialog. Optional, and the row is
+   * rendered only when it is supplied: the mobile header folded its standalone
+   * bug-report button into this menu to get down to one card, and any other
+   * mount that does not pass a handler keeps the menu it has today.
+   */
+  onOpenBugReport?: () => void;
 }
 
 function getInitials(email: string, name?: string | null): string {
@@ -31,7 +38,7 @@ function getInitials(email: string, name?: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export function UserProfileDropdown({ onOpenSettings }: UserProfileDropdownProps) {
+export function UserProfileDropdown({ onOpenSettings, onOpenBugReport }: UserProfileDropdownProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -99,6 +106,16 @@ export function UserProfileDropdown({ onOpenSettings }: UserProfileDropdownProps
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
           </DropdownMenuItem>
+          {onOpenBugReport && (
+            <DropdownMenuItem
+              onClick={onOpenBugReport}
+              data-testid="user-menu-bug-report"
+              className="cursor-pointer"
+            >
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              <span>Report a bug or request a feature</span>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem

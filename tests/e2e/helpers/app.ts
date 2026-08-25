@@ -186,15 +186,22 @@ export async function currentDateStr(page: Page): Promise<string> {
 /**
  * Navigate the canvas to a calendar date.
  *
- * Steps one day per click and asserts EXACT equality on `data-date`. The helper
- * this replaces asserted a formatted string through an unanchored regex, so
- * `new RegExp('Friday, August 1')` matched a header reading 'Fri, Aug 15' — a
- * 14-day overshoot passed as success. It also looked for the date inside a
- * `<header>`, which on desktop contains no date at all, so it timed out and took
- * ten tests with it.
+ * Asserts EXACT equality on `data-date`. The helper this replaces asserted a
+ * formatted string through an unanchored regex, so `new RegExp('Friday, August
+ * 1')` matched a header reading 'Fri, Aug 15' — a 14-day overshoot passed as
+ * success. It also looked for the date inside a `<header>`, which on desktop
+ * contains no date at all, so it timed out and took ten tests with it.
  *
- * Requires day scope (the seeded default): under week scope a chevron steps
- * seven days, which is how the old helper could overshoot in the first place.
+ * The two shells offer different controls, and this picks whichever is on the
+ * page rather than asking the viewport:
+ *
+ * - DESKTOP steps one day per chevron click. Requires day scope (the seeded
+ *   default): under week scope a chevron steps seven days, which is how the old
+ *   helper could overshoot in the first place.
+ * - MOBILE has no chevrons — the redesigned header is a week strip, so a day
+ *   inside the shown week is one tap, and anything further out goes through the
+ *   calendar popover, which is also the only route a real user has for a jump
+ *   of more than a week.
  */
 export async function navigateToDate(page: Page, targetDateStr: string): Promise<void> {
   await expect(page.getByTestId('view-root')).toHaveAttribute('data-view-scope', 'day');
@@ -208,13 +215,92 @@ export async function navigateToDate(page: Page, targetDateStr: string): Promise
   );
   if (days === 0) return;
 
-  const control = page.getByTestId(days > 0 ? 'header-next' : 'header-prev');
-  for (let i = 0; i < Math.abs(days); i++) await control.click();
+  const stepper = page.getByTestId(days > 0 ? 'header-next' : 'header-prev');
+  if (await stepper.count()) {
+    for (let i = 0; i < Math.abs(days); i++) await stepper.click();
+  } else {
+    await pickDateOnMobile(page, targetDateStr);
+  }
 
   await expect(
     header,
-    `navigateToDate: wanted ${targetDateStr}, stepped ${days} day(s) from ${from}`
+    `navigateToDate: wanted ${targetDateStr}, ${days} day(s) from ${from}`
   ).toHaveAttribute('data-date', targetDateStr);
+}
+
+/**
+ * The mobile route to a date: the week strip's own cell if the date is in the
+ * week on screen, the calendar popover otherwise.
+ *
+ * Both are controls a thumb can reach — nothing here is mounted for the tests'
+ * benefit. The popover is driven the way a person drives it: page to the target
+ * month with the picker's own arrows, then tap the day. react-day-picker's own
+ * grid cells carry `data-day="yyyy-MM-dd"`, which is why this addresses a day by
+ * date rather than by its aria-label — that label is a locale-formatted `PPPP`
+ * with "Today, " and ", selected" glued on either side.
+ */
+async function pickDateOnMobile(page: Page, targetDateStr: string): Promise<void> {
+  const cell = page.locator(`[data-testid="week-day"][data-date="${targetDateStr}"]`);
+  if (await cell.count()) {
+    await cell.first().click();
+    return;
+  }
+
+  const [fromY, fromM] = (await currentDateStr(page)).split('-').map(Number);
+  const [toY, toM] = targetDateStr.split('-').map(Number);
+  // Calendar months, not elapsed time: the picker opens on the cursor's month
+  // (`defaultMonth={selectedDate}` in mobile-header.tsx), so this is exactly how
+  // many arrow taps separate the two grids.
+  const months = (toY - fromY) * 12 + (toM - fromM);
+
+  await page.getByTestId('header-date').first().click();
+  const arrow = page.getByRole('button', {
+    name: months > 0 ? 'Go to the Next Month' : 'Go to the Previous Month',
+  });
+  for (let i = 0; i < Math.abs(months); i++) await arrow.click();
+
+  await page.locator(`[data-day="${targetDateStr}"] button`).first().click();
+}
+
+/* ── mobile surfaces ───────────────────────────────────────────────────── */
+
+/** The three surfaces the phone shell can show. */
+export type MobileTabName = 'braindump' | 'today' | 'chat';
+
+/**
+ * Switch the mobile shell's surface.
+ *
+ * Was one click on the bottom tab bar. That bar is retired — the dock carries a
+ * single mode card showing the CURRENT surface's glyph, and the three
+ * `[data-tour="tab-*"]` handles moved onto the entries of the sheet it opens. So
+ * this is two interactions now, and the entry only exists while the sheet is
+ * open; every @mobile spec that used to click a tab goes through here rather
+ * than each one re-deriving the sequence.
+ *
+ * Returns early when the surface is already showing: the sheet has no entry for
+ * "stay put", and opening it to pick the row you are already on would leave the
+ * drawer's own close animation racing the next assertion.
+ */
+export async function switchMobileTab(page: Page, tab: MobileTabName): Promise<void> {
+  const card = page.getByTestId('mobile-mode-card');
+  await expect(
+    card,
+    'no mobile mode card — is this running in the mobile project?'
+  ).toBeVisible({ timeout: 10_000 });
+  if ((await card.getAttribute('data-surface')) === tab) return;
+
+  await card.click();
+  const entry = page.locator(`[data-tour="tab-${tab}"]`);
+  await expect(entry, `the mode switcher sheet never offered "${tab}"`).toBeVisible({
+    timeout: 5_000,
+  });
+  await entry.click();
+
+  // Both halves matter. The sheet unmounting is what frees the next click from
+  // the drawer's overlay; `data-surface` is what proves the pick actually moved
+  // the shell rather than merely dismissing the sheet.
+  await expect(entry).toHaveCount(0);
+  await expect(card).toHaveAttribute('data-surface', tab);
 }
 
 /* ── omnibar / commands ────────────────────────────────────────────────── */

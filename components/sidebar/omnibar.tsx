@@ -72,6 +72,17 @@ const FREE_TEXT_COMMAND_LIMIT = 4;
 export type OmnibarVariant = 'dock' | 'launcher';
 
 /**
+ * How long the capture relay's brightness window stays open, in ms.
+ *
+ * The field rests at zero intensity, so this — not `burstDecay` — is what makes
+ * the strike visible at all: the restarted ripple is multiplied by the settled
+ * level, and a field settled at 0 renders nothing however hard it is struck. It
+ * outlasts the ring's trip across the bar and then closes, and RelayField's
+ * settle lerp fades the last of it over ~300ms more.
+ */
+const CAPTURE_SWELL_MS = 700;
+
+/**
  * @param variant which shell is hosting this instance — 'dock' (sidebar,
  *   default) or 'launcher' (the summoned command modal). Exposed as
  *   `data-omnibar-variant` so tests can target one shell unambiguously when
@@ -86,6 +97,18 @@ export type OmnibarVariant = 'dock' | 'launcher';
  * @param onPulse fires on the INSTANT focus arrives (and on every ⌘K), for a
  *   one-shot flourish. Not derivable from onFocusChange: ⌘K on an already
  *   focused input fires no focus event but should still register.
+ * @param captureRelay moves the relay INSIDE the pill and re-strikes it each
+ *   time an item files itself. Off by default, which is desktop: there the
+ *   field is a halo around the pill and the dock behind it carries the ambient
+ *   one, so a second lit surface in the same 48px would be two fields arguing.
+ *   The phone's dock has no such slack — the 44px mode card and the bar cover
+ *   the well end to end, leaving a 10px picture-frame no ripple can be read in
+ *   — so there the bar itself is the surface, and the one thing it lights for
+ *   is the app's core verb. See memory/plans/mobile-redesign.md § Motion.
+ *
+ *   Dock-only, and ignored under variant="launcher": a summoned modal closes on
+ *   the add it would be answering, so the field would unmount before the ripple
+ *   had crossed the bar. The launcher keeps the halo like the desktop dock.
  */
 export function Omnibar({
   variant = 'dock',
@@ -93,12 +116,14 @@ export function Omnibar({
   onAskBeacon,
   onFocusChange,
   onPulse,
+  captureRelay = false,
 }: {
   variant?: OmnibarVariant;
   initialQuery?: string;
   onAskBeacon?: () => void;
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
+  captureRelay?: boolean;
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
@@ -111,6 +136,7 @@ export function Omnibar({
     routines,
     programs,
     goals,
+    animationsEnabled,
   } = usePlannerStore();
   const router = useRouter();
   // Today, not selectedDate — the omnibar carries no date of its own.
@@ -131,6 +157,37 @@ export function Omnibar({
   const [isMac, setIsMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The capture relay's two halves (see `captureRelay`), and the switch that
+   * decides whether either exists.
+   *
+   * `filed` is a token, not a count: every change re-strikes the ripple from the
+   * middle of the bar. `filing` is the brightness window it travels in — held
+   * separately because the field rests dark, so the wave needs something to be
+   * multiplied by. The mount is gated on `animationsEnabled`, the store value
+   * that stamps `[data-reduce-motion]` on <html>: that attribute only reaches
+   * CSS animations and transitions, and this is a canvas running its own RAF
+   * loop, so honouring the setting has to be done here.
+   *
+   * `!isLauncher` is the deliberate half: `captureRelay` is a DOCK affordance,
+   * and the launcher would unmount the field on the very add it answers. This
+   * is also the switch the halo below reads (inverted), so the launcher always
+   * lands on the halo branch rather than on neither.
+   */
+  const inPillRelay = captureRelay && !isLauncher;
+  const relayOnCapture = RELAY.omnibar && inPillRelay && animationsEnabled;
+  const [filed, setFiled] = useState(0);
+  const [filing, setFiling] = useState(false);
+  const filingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Only on unmount. Re-running this on every render would cancel the window
+  // the render that opened it just started.
+  useEffect(
+    () => () => {
+      if (filingTimer.current) clearTimeout(filingTimer.current);
+    },
+    []
+  );
 
   const ctx = useCommandContext({ openChat: onAskBeacon });
   const usage = useCommandUsageStore((s) => s.usage);
@@ -367,6 +424,8 @@ export function Omnibar({
 
   const quickAdd = () => {
     if (!addTitle) {
+      // Nothing has been filed yet — the dialog is where that decision still
+      // gets made, so there is nothing for the relay to answer.
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
@@ -375,11 +434,21 @@ export function Omnibar({
     }
     addTask({ title: addTitle });
     // The launcher is a one-shot command surface: close after the add. The dock
-    // stays open and refocuses for rapid successive capture.
+    // stays open and refocuses for rapid successive capture. Nothing to strike
+    // on the way out — `relayOnCapture` is false here by construction (the field
+    // is dock-only), and a modal that unmounts on the add has no bar to light.
     if (isLauncher) {
       closeAndClear();
       closeLauncher();
       return;
+    }
+    // Dock, phone: the bar answers the add it just filed. Desktop leaves this
+    // off and keeps the halo instead.
+    if (relayOnCapture) {
+      setFiled((n) => n + 1);
+      setFiling(true);
+      if (filingTimer.current) clearTimeout(filingTimer.current);
+      filingTimer.current = setTimeout(() => setFiling(false), CAPTURE_SWELL_MS);
     }
     setQuery('');
     inputRef.current?.focus();
@@ -760,7 +829,7 @@ export function Omnibar({
         )}
 
         <div className="relative isolate">
-          {RELAY.omnibar && (
+          {RELAY.omnibar && !inPillRelay && (
             <RelayField
               className="absolute -inset-3 z-0"
               focalY={0.5}
@@ -813,9 +882,41 @@ export function Omnibar({
               // rest shadow — parity with the braindump quick-add tray.
               '[&:hover:not(:focus-within)]:shadow-[var(--shadow-key-rest),inset_0_0_0_1px_var(--border)]',
               focused &&
-                'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]'
+                'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]',
+              // Only where the field is actually mounted, so the desktop pill
+              // keeps the exact box it has always had. `isolate` is what lets a
+              // -z-10 child sit ABOVE this pill's own fill (it would otherwise
+              // fall through to the dock's stacking context and paint under it),
+              // and the clip is what keeps the ripple inside the radius.
+              relayOnCapture && 'isolate overflow-hidden'
             )}
           >
+            {/* The relay, struck by an item filing itself — the app's core verb,
+                and the only thing this bar lights for. Rests at zero: between
+                strikes the canvas paints nothing, because a bar that shimmers
+                while you are reading it is the ambient motion the redesign set
+                out to remove.
+
+                `period` is short by the standards of the other five instances.
+                A tile fires at 2.4 × period × its normalized distance, so the
+                ambient 3.2s would take eight seconds to cross the bar and the
+                wave would still be leaving the middle when the window shut. At
+                0.5s the ring reaches the ends in ~1.2s, which is the gesture. */}
+            {relayOnCapture && (
+              <RelayField
+                className="absolute inset-0 -z-10"
+                focalY={0.5}
+                pitch={20}
+                period={0.5}
+                idleIntensity={0}
+                activeIntensity={0.55}
+                activeIntensityLight={0.4}
+                active={filing}
+                burst={filed}
+                burstDecay={1.1}
+                mask="radial-gradient(70% 190% at 50% 50%, black 35%, transparent 100%)"
+              />
+            )}
             {activeCommand && (
               <button
                 type="button"

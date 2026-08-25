@@ -1096,6 +1096,25 @@
     0 2px 6px oklch(0 0 0 / 40%);
 }
 
+/* The bucket recess, on the PHONE's ground.
+   --bkt-tray above is cut 0.022 below the canvas (0.210), which is what the
+   desktop paints buckets on. The mobile shell paints them on --background
+   (0.173) — see the --canvas alias in components/shell/mobile-shell.tsx — and
+   that alias cannot reach this token: the color-mix's var()s were already
+   substituted at computed-value time up on <html>, so --bkt-tray stays 0.1878
+   while the ground under it drops. The recess would come out 0.015 ABOVE the
+   paper: the spine style's cards dissolve into the backdrop the moment you pick
+   an item up, and "Head & tray" (view-store's bucketStyle) renders every bucket
+   body that way at rest. Re-cut from the ground the phone actually paints, at
+   the same depth. --bkt-tray-armed comes along because it mixes the value above
+   and is therefore stale for exactly the same reason.
+   Light needs no counterpart: its tray is mixed from --surface-0/--surface-3 and
+   never names --canvas, so it tracks the phone's ground already. */
+.dark .mobile-ground {
+  --bkt-tray: color-mix(in oklab, oklch(0 0 0) 13%, var(--surface-0));      /* 0.1505 */
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+}
+
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
    look of item/content titles only — density, labels, and chrome stay
    identical in both modes. `data-type-mode` is stamped on <html> by
@@ -1198,9 +1217,11 @@ body {
   max-width: none;
 }
 
-/* On phones the views live inside a floating rounded panel (mobile-shell),
-   so the desktop 2rem gutter would waste ~64px of a 390px screen. Desktop is
-   md:/≥768, so this override never touches it. */
+/* On phones the views sit directly on the paper backdrop (mobile-shell), where
+   this gutter is the ONLY inset they get — the desktop 2rem would waste ~64px of
+   a 390px screen, and 14px is what the artboards draw
+   (design/mobile-redesign/Main.dc.html). Desktop is md:/≥768, so this override
+   never touches it. */
 @media (max-width: 767px) {
   .canvas-container {
     padding-inline: 0.875rem;
@@ -1394,8 +1415,10 @@ body {
 }
 
 /* Thin Lucide strokes (Linear-style icon pass). Attribute-scoped so the few
-   deliberate inline strokeWidth sites (mobile-header 1.75, chat 1.25, legacy
-   views) keep their values — CSS overrides the svg presentation attribute. */
+   deliberate inline strokeWidth sites (the dock's mode card 2.25, chat 1.25,
+   legacy views) keep their values — CSS overrides the svg presentation
+   attribute. The mobile header's 1.75 went with the two header pills; its icons
+   take the 1.5 default now. */
 .lucide[stroke-width='2'] {
   stroke-width: 1.5;
 }

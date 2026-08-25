@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.01 272); }
+    .anchor {
+      --paper-0: oklch(0.986 0.0012 90);
+      --pill: oklch(1 0 0);
+      --well: oklch(0.945 0.0015 90);
+      --ink-0: oklch(0.24 0.01 272);
+      --ink-2: oklch(0.66 0.03 272);
+      --lime-ink: oklch(0.32 0.07 130);
+      --lime-tint: oklch(0.95 0.05 125);
+      --honey-ink: oklch(0.38 0.08 75);
+      --sh-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+      --sh-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
+      --sh-soft-lg: 0 4px 8px oklch(0.3 0.02 80 / 6%), 0 16px 48px oklch(0.3 0.02 80 / 10%);
+    }
+  </style>
+</helmet>
+<div class="anchor" style="width: 390px; height: 300px; background: var(--paper-0); color: var(--ink-0); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 10px 12px; font-family: 'Inter', system-ui, sans-serif;">
+
+  <!-- Mode chip, round 3: icon-only and DETACHED — its own little card beside
+       the bar. Tapping it opens the surface switcher; /braindump, /chat still
+       work as typed commands in the bar. -->
+  <div style="background: var(--well); border-radius: 10px; padding: 10px; box-shadow: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%); display: flex; align-items: center; gap: 8px;">
+    <div style="width: 44px; height: 44px; flex-shrink: 0; background: var(--pill); border-radius: 10px; box-shadow: var(--sh-elev-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-0);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+    </div>
+    <div style="flex: 1; height: 48px; background: var(--pill); border-radius: 10px; box-shadow: var(--sh-elev-sm); display: flex; align-items: center; padding: 0 22px;">
+      <span style="flex: 1; font-size: 14px; color: var(--ink-2);">Add, search, or /command…</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

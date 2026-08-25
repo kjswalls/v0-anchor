@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.01 272); }
+    .anchor {
+      --paper-0: oklch(0.986 0.0012 90);
+      --canvas: oklch(0.996 0 0);
+      --pill: oklch(1 0 0);
+      --well: oklch(0.945 0.0015 90);
+      --ink-0: oklch(0.24 0.01 272);
+      --ink-1: oklch(0.5 0.02 272);
+      --ink-2: oklch(0.66 0.03 272);
+      --lime: oklch(0.86 0.17 125);
+      --lime-ink: oklch(0.32 0.07 130);
+      --lime-tint: oklch(0.95 0.05 125);
+      --honey: oklch(0.84 0.11 85);
+      --honey-ink: oklch(0.38 0.08 75);
+      --coral: oklch(0.72 0.14 30);
+      --border: oklch(0.9 0.008 272);
+      --input: oklch(0.86 0.012 272);
+      --morning: oklch(0.78 0.11 85);
+      --afternoon: oklch(0.76 0.11 55);
+      --evening: oklch(0.62 0.1 285);
+      --anytime: oklch(0.7 0.06 160);
+      --sh-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+      --sh-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
+    }
+  </style>
+</helmet>
+<div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; position: relative; font-family: 'Inter', system-ui, sans-serif;">
+
+  <!-- Typography-led header, straight on paper: serif headline, no container -->
+  <div style="padding: 24px 20px 0; display: flex; align-items: flex-start; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 30px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.1;">Today</span>
+      <span style="font-size: 13px; color: var(--ink-1);">Monday, August 24</span>
+    </div>
+    <div style="width: 30px; height: 30px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">K</div>
+  </div>
+
+  <!-- Quiet numeral strip: no container, a lime dot marks the selected day -->
+  <div style="padding: 16px 20px 14px; display: flex; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">23</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 600; color: var(--lime-ink);">24</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: var(--lime);"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">25</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">26</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">27</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">28</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">29</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+  </div>
+
+  <!-- Cards float directly on paper — no canvas panel between -->
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 14px; display: flex; flex-direction: column; gap: 10px;">
+
+    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+      <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--morning);"><path d="M12 2v8"></path><path d="m4.93 10.93 1.41 1.41"></path><path d="M2 18h2"></path><path d="M20 18h2"></path><path d="m19.07 10.93-1.41 1.41"></path><path d="M22 22H2"></path><path d="m8 6 4-4 4 4"></path><path d="M16 18a4 4 0 0 0-8 0"></path></svg>
+        <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Morning</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; background: var(--lime); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color: var(--lime-ink);"><path d="M20 6 9 17l-5-5"></path></svg>
+        </div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500; color: var(--ink-2); text-decoration: line-through;">Meditate</span>
+        <div style="display: flex; align-items: center; gap: 3px; color: var(--honey-ink);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+          <span style="font-size: 12px; font-weight: 600;">12</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Morning run</span>
+        <div style="display: flex; align-items: center; gap: 3px; color: var(--honey-ink);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+          <span style="font-size: 12px; font-weight: 600;">5</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Ship weekly review email</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--coral);"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" x2="4" y1="22" y2="15"></line></svg>
+      </div>
+    </div>
+
+    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+      <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--afternoon);"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+        <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Afternoon</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Call dentist about crown</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Draft Q3 goals doc</span>
+        <span style="font-size: 12px; color: var(--ink-2);">45m</span>
+      </div>
+    </div>
+
+    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+      <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--evening);"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+        <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Evening</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Read 20 pages</span>
+        <div style="display: flex; align-items: center; gap: 3px; color: var(--honey-ink);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+          <span style="font-size: 12px; font-weight: 600;">21</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+        <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
+        <span style="flex: 1; font-size: 14px; font-weight: 500;">Plan tomorrow</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating capture button: the omnibar opens as a sheet from here -->
+  <div style="position: absolute; right: 18px; bottom: 82px; width: 52px; height: 52px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; box-shadow: var(--sh-elev-md);">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+  </div>
+
+  <!-- Minimal tab row on bare paper: icons only, lime dot marks the active tab -->
+  <div style="padding: 10px 48px 22px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid oklch(0.9 0.008 272 / 45%); background: var(--paper-0);">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--ink-2); width: 44px; padding-top: 4px;">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12H3"></path><path d="M17 18H3"></path><path d="M21 6H3"></path></svg>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--ink-0); width: 44px; padding-top: 4px;">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: var(--lime);"></span>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--ink-2); width: 44px; padding-top: 4px;">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
