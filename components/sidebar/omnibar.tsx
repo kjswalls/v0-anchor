@@ -855,10 +855,12 @@ export function Omnibar({
                     return;
                   }
                   if (isLauncher) {
-                    // Raycast-style: the first Escape clears a typed query, the
-                    // next closes the modal. We close it ourselves (via ui-store)
-                    // rather than let the event reach Radix, so it behaves the
-                    // same whether or not stopPropagation is in play above.
+                    // Raycast-style staging: first Escape clears a typed query,
+                    // the next closes the modal. This only works because the
+                    // launcher host (omni-launcher.tsx) preventDefaults Radix's
+                    // capture-phase Escape — otherwise DismissableLayer would
+                    // dismiss on the first press before this bubble-phase handler
+                    // ran. We do the closing ourselves via closeLauncher().
                     if (query) {
                       setQuery('');
                       return;

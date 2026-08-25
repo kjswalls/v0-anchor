@@ -33,6 +33,14 @@ export function OmniLauncher() {
     <Dialog open={isOpen} onOpenChange={(next) => !next && closeDialog()}>
       <DialogContent
         showCloseButton={false}
+        // Escape is staged by the omnibar (clear the argument chip → clear a
+        // typed query → close). Radix's DismissableLayer runs its Escape handler
+        // in the document CAPTURE phase, before the omnibar input's bubble-phase
+        // onKeyDown, and would otherwise dismiss on the FIRST press. preventDefault
+        // here makes DismissableLayer skip its onDismiss (it guards on
+        // !defaultPrevented), handing Escape to the omnibar, which closes via
+        // ui-store when there's nothing left to clear.
+        onEscapeKeyDown={(e) => e.preventDefault()}
         // Sit in the upper third like a normal command palette, so the panel has
         // room to drop below the input (overrides DialogContent's centering).
         className="top-[12%] translate-y-0 gap-0 border-0 bg-transparent p-0 shadow-none sm:max-w-xl"

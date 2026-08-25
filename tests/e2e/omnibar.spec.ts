@@ -222,11 +222,30 @@ test.describe('Omnibar launcher (⌘K)', () => {
     await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
   });
 
-  test('Escape dismisses the launcher', async ({ page }) => {
+  test('Escape dismisses the launcher when empty', async ({ page }) => {
     await page.keyboard.press('ControlOrMeta+k');
     await expect(launcherInput(page)).toBeVisible({ timeout: 5_000 });
 
     await launcherInput(page).press('Escape');
+    await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
+  });
+
+  test('Escape clears a typed query first, then closes (two-step)', async ({ page }) => {
+    // Radix would dismiss on the first Escape (its handler runs in the document
+    // capture phase); the launcher host preventDefaults that so the omnibar owns
+    // the staged clear-then-close. This guards that wiring.
+    await page.keyboard.press('ControlOrMeta+k');
+    const input = launcherInput(page);
+    await expect(input).toBeVisible({ timeout: 5_000 });
+
+    await input.fill('foo');
+    await input.press('Escape');
+    // First Escape clears the query but leaves the launcher open.
+    await expect(input).toHaveValue('');
+    await expect(page.getByTestId('omni-launcher')).toBeVisible();
+
+    // Second Escape (now empty) closes it.
+    await input.press('Escape');
     await expect(page.getByTestId('omni-launcher')).toHaveCount(0);
   });
 });
