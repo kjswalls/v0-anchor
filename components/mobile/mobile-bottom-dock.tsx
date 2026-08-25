@@ -112,7 +112,13 @@ export function MobileBottomDock() {
               // cover it to its 10px padding, and a ripple in a picture-frame is
               // a ripple nobody sees — and the bar is where the verb happens
               // anyway. See the prop's docs in components/sidebar/omnibar.tsx.
+              // variant="dock" is explicit for the same reason both desktop
+              // mounts spell it out: the launcher (⌘K) mounts the same component
+              // as variant="launcher", and the e2e helpers select a shell by
+              // data-omnibar-variant. The phone has no launcher — its ⌘K path
+              // focuses this bar — so this mount is always the dock.
               <Omnibar
+                variant="dock"
                 captureRelay
                 onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')}
               />

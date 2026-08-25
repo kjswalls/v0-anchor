@@ -18,8 +18,10 @@ import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
+import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
+import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
@@ -531,6 +533,15 @@ export function AppShell() {
         open={activeDialog?.type === 'keyboard-shortcuts'}
         onOpenChange={(open) => !open && closeDialog()}
       />
+
+      <BulkAddDialog
+        open={activeDialog?.type === 'bulk-add'}
+        seed={activeDialog?.type === 'bulk-add' ? activeDialog : null}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      {/* ⌘K launcher — reads its own `launcher` slot off activeDialog. */}
+      <OmniLauncher />
 
       {showTour && tourUserId && (
         <OnboardingTour

@@ -25,7 +25,28 @@ import {
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program';
+
+const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
+  'none',
+  'type',
+  'project',
+  'routine',
+  'program',
+];
+
+/**
+ * Coerce a persisted `braindumpGroupBy`.
+ *
+ * Same hazard `isGroupBy` guards on the canvas side: an unrecognised string
+ * reaches `groupRows`, whose container branch is the fallthrough, so a stale or
+ * devtools-edited value would silently group the braindump by project. This
+ * union is user-persisted in `anchor-view` and was widened after ship, so a blob
+ * written when it was 'none' | 'type' | 'project' is fine, but a garbage value is
+ * not — and unlike the canvas keys, this one was never coerced in `merge` before.
+ */
+export const isBraindumpGroupBy = (v: unknown): v is BraindumpGroupBy =>
+  typeof v === 'string' && (BRAINDUMP_GROUP_BY_VALUES as readonly string[]).includes(v);
 /** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
 export type TypeMode = 'sans' | 'serif';
 /**
@@ -293,6 +314,11 @@ export const useViewStore = create<ViewStore>()(
           // the Grouping row would render "None" over it, because no option
           // matches, while the trigger counted it as one active clause.
           canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
+          // The braindump's own axis, uncoerced before this — it predates the
+          // routine/program values, so a blob written earlier holds a value that
+          // is still legal, but a garbage one would fall through groupRows to the
+          // container arm exactly as a stale canvasGroupBy would.
+          braindumpGroupBy: isBraindumpGroupBy(p.braindumpGroupBy) ? p.braindumpGroupBy : 'none',
         };
       },
     }

@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils';
  * Built on `TabsPrimitive.Root orientation="vertical"` and that choice is load
  * bearing rather than convenient — it is what keeps
  * `getByRole('tab', { name: 'Routines' })` resolving, which
- * `tests/e2e/programs.spec.ts:76` and `scope-rail.spec.ts` both drive the
- * manager with. Phase 2's acceptance criterion is that those specs run
+ * `tests/e2e/programs.spec.ts` drives the manager with. Phase 2's
+ * acceptance criterion is that that spec runs
  * UNCHANGED. It also gives roving tabindex and ↑/↓ traversal for free, and
  * `key={section}` remains the remount trick that makes a second open on a
  * different section actually land there.

@@ -10,7 +10,6 @@ import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
-import { ScopeRail } from '@/components/sidebar/scope-rail';
 import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
@@ -184,25 +183,17 @@ export function MobileShell() {
             />
           )}
 
-          {/* The rail rides the Braindump tab for the same reason the Paused
-              section does: it is the one mobile surface that is about what
-              exists rather than about today, and touch has no other route to
-              the containers. Its hover preview simply never fires here — the
-              switch and the count do all the work, which is also why the
-              count exists rather than the preview alone. */}
+          {/* No Scope Rail under it any more — the rail is retired (#229) and
+              its two jobs live on the group headers' pause switch and in the
+              Display menu's "Paused scopes" list, both of which the mobile
+              braindump already renders. Nothing takes its strip: the wrapper
+              that held it carried `pt-2` and no `pb`, so the 8px under the
+              quick-add well was always the dock's own `pt-2` and it is still
+              there. (Main restored a `pb-2` for this on the floating canvas
+              panel, whose rounded bottom corner was the thing it cleared —
+              that panel is gone here, so the clearance has nothing to buy.) */}
           {activeTab === 'braindump' && (
-            <>
-              <Braindump variant="mobile" headerAccessory={userMenu} />
-              {/* px-[10px], not the artboard's 14: the rail is a peer of the
-                  braindump's own capsules (header, Paused), which are inset
-                  mx-[10px] on an 8px internal rhythm, and a strip 4px narrower
-                  than the two it sits between reads as a misaligned fourth
-                  capsule. No pb — the dock's own pt-2 is the gap under it, and
-                  doubling it would push the rail 8px off the rhythm too. */}
-              <div className="shrink-0 px-[10px] pt-2">
-                <ScopeRail />
-              </div>
-            </>
+            <Braindump variant="mobile" headerAccessory={userMenu} />
           )}
 
           {/* Straight onto the paper. `canvas-container` already narrows its

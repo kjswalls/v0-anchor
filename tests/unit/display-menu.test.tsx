@@ -73,6 +73,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
+import type { Routine, Program } from '@anchor-app/types';
 
 /**
  * jsdom implements neither PointerEvent nor pointer capture, and Radix's menus
@@ -108,6 +109,10 @@ function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
     habitGroups: [{ id: 'g1', name: 'Health', emoji: '🌱' }],
+    // Reset the gate containers each test so a Paused-scopes fixture can't leak
+    // into the next case's menu.
+    routines: [],
+    programs: [],
     showPausedOnGrid: false,
   });
   useViewStore.setState({
@@ -571,5 +576,46 @@ describe('the mobile header mount', () => {
     expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
       'Untimed rows only'
     );
+  });
+});
+
+describe('the Paused scopes list', () => {
+  it('lists off scopes, hides on ones, and turns one back on when clicked', async () => {
+    const setProgramState = vi.fn();
+    usePlannerStore.setState({
+      programs: [
+        { id: 'off', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] },
+        { id: 'on', name: 'Term', state: 'active', itemIds: [], routineIds: [] },
+      ] as Program[],
+      setProgramState,
+    });
+    render(<DisplayMenu surface="canvas" />);
+    openMenu();
+
+    // The off scope is offered here; the on one toggles from its own group
+    // header instead, so it is deliberately NOT in this list.
+    expect(await screen.findByRole('menuitem', { name: /Summer/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Term/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Summer/ }));
+    // Rangeless → auto already yields on, so turning it on returns it to auto,
+    // never a raw 'active' that would discard the program's dates.
+    expect(setProgramState).toHaveBeenCalledWith('off', 'auto');
+  });
+
+  it('excludes a routine merely held off by a program — the program is listed instead', async () => {
+    usePlannerStore.setState({
+      routines: [{ id: 'r', name: 'Mornings', itemIds: [] }] as Routine[],
+      programs: [
+        { id: 'p', name: 'Term', state: 'paused', itemIds: [], routineIds: ['r'] },
+      ] as Program[],
+    });
+    render(<DisplayMenu surface="braindump" />);
+    openMenu('braindump');
+
+    // The routine's own switch is still on (localOn), so it is not a recovery
+    // row — the blocking program is, and turning it on brings the routine back.
+    expect(await screen.findByRole('menuitem', { name: /Term/ })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: /Mornings/ })).toBeNull();
   });
 });

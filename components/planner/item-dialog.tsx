@@ -63,7 +63,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { accentColorForName } from '@/lib/accent-colors';
 import { nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
-import { useUIStore } from '@/lib/ui-store';
+import { useUIStore, openBulkAdd } from '@/lib/ui-store';
+import { isBulkPaste } from '@/lib/bulk-add';
 import type {
   Habit,
   HabitItem,
@@ -2216,6 +2217,34 @@ export function ItemDialog({
       placeholder={activeConfig.form.titlePlaceholder}
       value={activeDraft.title}
       onChange={(e) => patchDraft(activeTypeName, { title: e.target.value })}
+      // A multi-line paste into a single title is a list wearing the wrong
+      // coat — hand it to the bulk-add dialog, carrying the type, project,
+      // date and bucket already chosen here so the hop drops nothing. Add
+      // mode only (an edit's title is one item's name), and never for
+      // habits: their config doesn't fit one-per-line, so the paste stays a
+      // native paste there.
+      onPaste={
+        mode === 'add' && activeTypeName !== 'habit'
+          ? (e) => {
+              const pasted = e.clipboardData.getData('text/plain');
+              if (isBulkPaste(pasted)) {
+                e.preventDefault();
+                openBulkAdd({
+                  text: pasted,
+                  itemType: activeTypeName,
+                  project: activeDraft.container !== 'none' ? activeDraft.container : undefined,
+                  date: activeDraft.startDate
+                    ? format(activeDraft.startDate, 'yyyy-MM-dd')
+                    : undefined,
+                  bucket:
+                    activeDraft.startDate && activeDraft.timeBucket !== 'none'
+                      ? activeDraft.timeBucket
+                      : undefined,
+                });
+              }
+            }
+          : undefined
+      }
       onBlur={autosaves ? flushNow : undefined}
       // The panel doesn't grab focus: it retargets on every row you click, and
       // stealing the caret each time would fight the canvas you're still in.

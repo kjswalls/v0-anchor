@@ -1,0 +1,8 @@
+# CodeRabbit is retired here in favor of the Claude Code review workflow
+# (.github/workflows/claude-review.yml). The GitHub App may still be
+# installed; this stands its automatic reviews down so two bots don't review
+# every PR. Uninstalling the app entirely is a repo-settings action only an
+# admin can take.
+reviews:
+  auto_review:
+    enabled: false

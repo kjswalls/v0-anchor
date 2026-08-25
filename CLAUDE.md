@@ -157,6 +157,14 @@ expected to be safe to re-run.
   is mirrored in JS as `CANVAS_PAD_PX` — change one, change both. Week × Schedule's pinned
   hour gutter depends on this: a sticky box is constrained to its containing block, so
   restoring the cap would unstick it mid-scroll.
+- **The omnibar is one component in two shells.** `components/sidebar/omnibar.tsx` takes a
+  `variant: 'dock' | 'launcher'` and renders both the resting sidebar capture bar and the
+  summoned ⌘K launcher modal (`components/shell/omni-launcher.tsx`, an `activeDialog` slot).
+  All four modes (search · `+` add · `/` command · `?` chat) work in both; only emphasis,
+  Enter semantics, panel direction, and copy differ off `variant`. Bindings: ⌘K opens the
+  launcher, `/` opens it in command mode, ⌘I focuses the dock — all in
+  `lib/commands/registry.ts`, whose shortcut ids are frozen by a test (add, never rename).
+  Tests scope by `data-omnibar-variant` since both shells share testids.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone

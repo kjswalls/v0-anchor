@@ -144,6 +144,7 @@ function WeekScheduleColumn({
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
@@ -154,9 +155,9 @@ function WeekScheduleColumn({
   const untimedGroups = useMemo(
     () =>
       groupBySupport('week', 'schedule', canvasGroupBy).honoured
-        ? groupRows(col.untimed, canvasGroupBy, { routines })
+        ? groupRows(col.untimed, canvasGroupBy, { routines, programs })
         : [{ key: '', label: '', rows: col.untimed }],
-    [col.untimed, canvasGroupBy, routines]
+    [col.untimed, canvasGroupBy, routines, programs]
   );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
@@ -286,7 +287,7 @@ function WeekScheduleColumn({
             shows fewer rows at rest — that is the cost of having asked. */}
         {untimedGroups.map((g) =>
           g.label ? (
-            <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+            <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
               {g.rows.map((row) => (
                 <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
               ))}
@@ -397,9 +398,9 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         perDay.flatMap((c) => c.timed.map((e) => ({ itemType: e.itemType, item: e.item }))),
         canvasGroupBy,
-        { variant: 'week', routines }
+        { variant: 'week', routines, programs }
       ),
-    [perDay, canvasGroupBy, routines]
+    [perDay, canvasGroupBy, routines, programs]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the

@@ -340,9 +340,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         data-row-variant="skipped"
         // Selected == in the multi-select set; drives the persistent highlight.
         data-selected={isMultiSelected ? 'true' : 'false'}
-        // A skipped occurrence is not an open loop, so no container flip can
-        // hide it — this is exactly the row the rail's ghost must not dim.
-        data-scope-date={suppressionDate}
         onClick={handleRowClick}
         className={cn(
           'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
@@ -409,13 +406,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       // Same reasoning for "set aside": the treatment is a muted title, and a
       // spec that asserts a Tailwind class is asserting the wrong thing.
       data-suppressed={suppressed ? 'true' : 'false'}
-      // The date this row's suppression was resolved at. The scope rail's hover
-      // preview reads it: its flip-delta is computed at TODAY (the rail is a
-      // dateless surface), so without this it dimmed the same item in all seven
-      // week columns — including dates the flip provably cannot change, because
-      // a pause's lower bound never reaches backwards and a marked occurrence
-      // is not an open loop.
-      data-scope-date={suppressionDate}
       // A row's resolved slot. The visible start time is `hidden md:inline`, so
       // without these a drop's inferred time is unassertable on narrow/mobile
       // viewports — and these are what distinguish an untimed bucket drop from

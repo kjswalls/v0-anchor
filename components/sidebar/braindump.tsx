@@ -11,7 +11,8 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useUIStore, openAddDialog } from '@/lib/ui-store';
+import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
+import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
 import { groupRows, type RowGroup } from '@/lib/grouping';
@@ -118,6 +119,17 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
           } else if (e.key === 'Escape') {
             setTitle('');
             inputRef.current?.blur();
+          }
+        }}
+        // A multi-line paste is a list, and a single-line input would silently
+        // fold it into one garbled title. Hand it to the bulk-add dialog, which
+        // shows the split before anything is created. The typed draft stays put
+        // in this field — the paste, not the draft, is what's being promoted.
+        onPaste={(e) => {
+          const pasted = e.clipboardData.getData('text/plain');
+          if (isBulkPaste(pasted)) {
+            e.preventDefault();
+            openBulkAdd({ text: pasted });
           }
         }}
         placeholder="Add item"
@@ -390,9 +402,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
             { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
-        : groupRows(rows, braindumpGroupBy, {});
+        : // routines/programs feed the gate values ('routine', 'program'); they
+          // are inert for 'none'/'project', so passing them always is harmless.
+          groupRows(rows, braindumpGroupBy, { routines, programs });
     return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy]);
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs]);
 
   return (
     <section
@@ -494,7 +508,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         <div className="px-[14px] py-2">
           {grouped.map((g) =>
             g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} className="pt-5 first:pt-1">
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} className="pt-5 first:pt-1">
                 {g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} context="braindump" />
                 ))}

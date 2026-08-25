@@ -893,7 +893,6 @@ export function ScheduleBlock({
         data-item-type={typeName}
         data-row-variant="skipped"
         data-completed="false"
-        data-scope-date={dateStr}
         data-start-min={entry.startMin}
         data-duration={entry.duration}
         // Same pointer contract as a live block: the wrapper (and so the 12px
@@ -999,9 +998,6 @@ export function ScheduleBlock({
       data-row-variant="default"
       data-completed={done ? 'true' : 'false'}
       data-suppressed={suppressed ? 'true' : 'false'}
-      // See task-row.tsx: the scope rail's hover preview only dims blocks whose
-      // suppression is resolved at the same date its flip-delta was.
-      data-scope-date={dateStr}
       data-multiselected={isMultiSelected ? 'true' : 'false'}
       // Duration and start are the whole point of a schedule block, and both
       // are otherwise encoded only in inline pixel styles. These make the
@@ -1372,12 +1368,13 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // single unlabelled group, which renders as today's flat strip.
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const untimedGroups = useMemo(
     () =>
       groupBySupport('day', 'schedule', canvasGroupBy).honoured
-        ? groupRows(untimed, canvasGroupBy, { routines })
+        ? groupRows(untimed, canvasGroupBy, { routines, programs })
         : [{ key: '', label: '', rows: untimed }],
-    [untimed, canvasGroupBy, routines]
+    [untimed, canvasGroupBy, routines, programs]
   );
   /** True when the strip renders real sections rather than one flat list. */
   const grouped = untimedGroups.some((g) => g.label);
@@ -1437,9 +1434,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         timed.map((e) => ({ itemType: e.itemType, item: e.item })),
         canvasGroupBy,
-        { variant: 'day', fieldWidth, routines }
+        { variant: 'day', fieldWidth, routines, programs }
       ),
-    [timed, canvasGroupBy, fieldWidth, routines]
+    [timed, canvasGroupBy, fieldWidth, routines, programs]
   );
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
 
@@ -1505,7 +1502,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                 its drop target. */}
             {grouped ? (
               untimedGroups.map((g) => (
-                <GroupSection key={g.key} groupKey={g.key} label={g.label} variant="canvas">
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
                   {g.rows.map((row) => (
                     <TaskRow key={row.item.id} row={row} />
                   ))}

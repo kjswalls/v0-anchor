@@ -39,6 +39,11 @@ const SIGNIFICANT_ACTIONS = [
   // stops counting and the goal reads behind weeks later, with nothing on
   // screen ever having said so.
   'Role changed:',
+  // The paste-a-list path. A single add shows its row right where you typed
+  // it and stays quiet; a bulk add lands N rows in one gesture — possibly on
+  // a surface you aren't looking at — so it earns the receipt and the one-⌘Z
+  // offer.
+  'Bulk add:',
 ];
 
 export function useUndoToast() {

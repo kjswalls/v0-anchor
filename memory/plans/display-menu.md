@@ -520,8 +520,25 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
 
 ---
 
+## Addendum (2026-08-23): gate grouping + the "Paused scopes" list
+
+The braindump group-by vocabulary widened from `none | type | project` to add **Routine**
+and **Program** (`BraindumpGroupBy` in [lib/view-store.ts](../../lib/view-store.ts), which
+also gained the `isBraindumpGroupBy` merge coercion it never had); the canvas gained
+**Program** (`GroupBy` in [lib/planner-types.ts](../../lib/planner-types.ts)). These are the
+GATE axis — grouping-WITH-A-SWITCH, still never a FILTER (the "deliberately not offered"
+rule holds: a gate's real answer is the resolver, not a client-side checkbox).
+
+A gate group's header carries a pause switch, and the menu gained a **"Paused scopes"**
+section (`PausedScopesSection`) below the separator — the off scopes, each one click from
+back on. This is the reversibility home for a scope with no visible members, and it
+replaces the retired Scope Rail (see `programs-routines.md`'s 2026-08-23 addendum). It sits
+below the Structure/Filter line because turning a scope on reveals work — a Show-region
+action, not a Structure one — and is app-wide (like Show paused), so Reset display leaves it
+alone.
+
 ## Related
 
 `unified-items.md` (the registry this extends), `organize-console.md` (shares Phase B),
-`overlap-blocks.md` (the pass lanes nest into), `programs-routines.md` (the scope rail that
-owns durable hiding).
+`overlap-blocks.md` (the pass lanes nest into), `programs-routines.md` (durable hiding, and
+the scope-rail retirement that moved these switches here).
