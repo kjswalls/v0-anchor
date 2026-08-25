@@ -5,16 +5,21 @@ scannable, low-overwhelm, guilt-free, but capability-rich. The AI is not a chatb
 to a planner — it is a **collaborator on the planner itself**. Some items are yours, some
 are Beacon's, and the grid tells you at a glance who is doing what and what needs you.
 
-**Status (2026-07-31, after merging 184 commits from main):** **Phase 1 SHIPPED**
-(`da56e9b` one SSE parser, `4df4ca7` the proposal primitive, `046adb4` the gateway
-transport, `01d254a` review fixes, `2b7dbd7` the re-baseline merge). This document governs
-the work the same way [unified-items.md](unified-items.md) governs the items refactor.
+**Status (2026-08-25):** **Phases 1, 2a and 2b SHIPPED.** Phase 1 — the proposal primitive
+and the gateway transport (`da56e9b`, `4df4ca7`, `046adb4`, `01d254a`, `2b7dbd7`).
+Phase 2a — Anchor as a remote MCP server (`142810c`, `1081f5c`, `eddc778`, `9385854`).
+Phase 2b — the delegation loop, built as a pull (`a376de5`, `00ec597`). This document
+governs the work the same way [unified-items.md](unified-items.md) governs the items refactor.
 
-**The re-baseline changed the plan more than the plan changed the code.** Delegation is
+**Nothing here has spoken to a real gateway yet.** Every protocol claim is pinned by tests,
+not by a handshake — see the verification list in
+[ai-vision-decisions.md](ai-vision-decisions.md).
+
+**The re-baseline changed the plan more than the plan changed the code.** Delegation was
 further along than this doc assumed: `assignee`/`aiStatus`/`aiResult`, `AgentSection`,
-`item_events` and per-item chat threads all shipped on main while Phase 1 was being
-written. What Pillar 2 still lacks is not schema or UI — it is a *transport* (something
-that actually starts a background run) and the needs-input loop. See the phasing section.
+`item_events` and per-item chat threads had all shipped on main while Phase 1 was being
+written. What Pillar 2 actually lacked was a transport and the needs-input loop, and both
+now exist.
 
 **What works right now, with no configuration at all:** the "Pick things back up" command
 (omnibar, or `/catchup`) produces a catch-up proposal computed locally — no key, no
@@ -310,7 +315,40 @@ docs describe consuming remote MCP servers (`mcp.servers.<name>`, `type: "http"`
 Doing it BEFORE delegation matters: it decides whether delegation's contract is written
 against a vendor-neutral tool surface or against one gateway's plugin API.
 
-**Phase 2b — delegation transport + needs-input. NOT STARTED, deliberately.** It is the largest
+**Phase 2b — delegation, as a PULL. SHIPPED** (`a376de5`, `00ec597`).
+
+The agent asks Anchor what it owes; Anchor never calls the gateway. Three MCP tools close
+the loop: `anchor_my_work` (assigned, open items only), `anchor_report_progress` (writes
+`aiStatus`/`aiResult`), `anchor_item_activity` (reads the trail, including the user's answer
+to a blocked question). The UI half already existed — `AgentSection` — and gained a reply
+box on `blocked`.
+
+**Why pull and not `POST /hooks/agent`.** OpenClaw's built-in Tailscale integration
+exposes only the Control UI and WebSocket — *"Serve/Funnel only expose the Gateway control
+UI + WS"* — not `/v1/*` or `/hooks/*`. Making the push path work from Vercel would mean
+hand-rolling a funnel across the whole gateway port, which publishes the endpoint the docs
+call **full operator access** to the internet behind one shared password; OpenClaw's own
+security audit lists that under *"fix immediately"*. Pull needs no ingress, no second
+credential, and no attack surface. The cost is pickup latency, which for "book the dentist"
+is not a cost. Funnel + hooks stays available as the upgrade if instant pickup ever matters.
+
+### Wiring it up (gateway side)
+
+Anchor's half is done; the agent needs a schedule. Roughly:
+
+```bash
+openclaw cron add anchor-work \
+  --schedule '*/10 * * * *' \
+  --prompt 'Call anchor_my_work. For each queued item: mark it working, do it, then report
+            done with what you found, or blocked with the question you need answered.
+            If anchor_my_work returns nothing, stop.'
+```
+
+Check `openclaw cron` for the exact flags — the shape above is from the automation docs,
+not from a run. **Unverified:** that a cron turn can carry MCP tools. Test with a throwaway
+job before relying on it.
+
+**Phase 2c — what delegation still lacks.** It is the largest
 surface in the plan (a thread table, delegation storage, agent + browser routes, plugin
 tools, hooks kickoff, four UI surfaces) and it is **100% unverifiable without a migration
 applied, a reachable gateway, and a hooks token with allowlisted prefixes**. It also
@@ -319,15 +357,20 @@ the context response, which `openclaw-plugin/src/cache.ts` `safeParse`s and thro
 Writing it blind, overnight, on top of a transport that has never spoken to a real gateway
 would produce a large diff nobody can trust. It starts once Phase 1 is confirmed working.
 
-When it does start, the order is much shorter than this doc originally assumed, because
-the schema and the UI already exist: an agent-facing way to report progress (write
-`aiStatus`/`aiResult`, append an `item_events` trace) → a kickoff path (`POST /hooks/agent`
-with an isolated session and an idempotency key) → the needs-input loop (`blocked` already
-renders as the one state that raises its voice; what is missing is the answer travelling
-back) → server-persisted threads, which item-surface-growth deferred on purpose as "the
-first stored chat data deserves its own review". Every step gates on `canDelegate()` and
-`verifyItemOwnership` **without loosening its signature**. Any context-response addition
-comes last and alone.
+Known gaps, none of them blocking a first run:
+
+- **Nothing un-sticks a `working` item.** If a run dies mid-task the item stays `working`
+  forever and later runs skip it. A staleness rule ("working for >N hours → back to
+  queued") is the fix, and it wants a real run's timings before being guessed at.
+- **Two overlapping runs could both claim the same item.** Claiming is read-then-write with
+  nothing atomic behind it. On a personal planner with a ten-minute schedule this is
+  unlikely and cheap when it happens; a conditional update is the fix if it ever bites.
+- **Only task-shaped items can be delegated.** `AgentSection` returns null for habits (right
+  — a habit is yours to build), and `anchor_report_progress` PATCHes `/api/agent/tasks/:id`,
+  which is the correct route for custom types too since they ride the task pipeline.
+- **Item threads are still localStorage-only.** The agent cannot read the conversation on an
+  item, only its activity trail. item-surface-growth deferred server persistence on purpose
+  — "the first stored chat data deserves its own review" — and that is still the right call.
 
 **Phase 3 — seams, not speculation.** Explicitly *not* building hosted-tier
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the
