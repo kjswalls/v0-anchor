@@ -38,11 +38,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
           plugins: "code-review@claude-code-plugins"
-          # `high` effort casts a wider net (broader coverage, includes
-          # lower-confidence findings) instead of the default's few
-          # high-confidence-only ones — a clean-looking PR should still get
-          # scrutiny. Bump to `max` if even that reads as too quiet.
-          prompt: "/code-review:code-review high --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          # `max` effort: broadest coverage, includes lower-confidence findings,
+          # correctness matters more than token cost — a clean-looking PR should
+          # still get real scrutiny (the default surfaced only a few
+          # high-confidence findings, so it was silent on tidy PRs).
+          prompt: "/code-review:code-review max --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
           # Two args, both load-bearing:
           #  --model: review on Opus, not the action's default (Sonnet).
           #  --allowedTools: --comment alone is not enough — the inline-comment
