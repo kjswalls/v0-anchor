@@ -296,3 +296,23 @@ describe('selectAssignedWork', () => {
     expect(selectAssignedWork({ items: [null, 3, 'x'] }).assigned).toEqual([]);
   });
 });
+
+describe('anchor_item_activity — the reply channel', () => {
+  it('reads one item\'s trail', () => {
+    expect(plan('anchor_item_activity', { id: 't1' })).toEqual({
+      method: 'GET',
+      path: '/api/agent/items/t1/events',
+    });
+  });
+
+  it('requires an id', () => {
+    expect(plan('anchor_item_activity', {})).toMatchObject({ error: expect.any(String) });
+  });
+
+  it('tells the agent where a blocked answer shows up', () => {
+    // Without this steer the agent marks something blocked and never looks back.
+    const description = toolByName('anchor_item_activity')!.description;
+    expect(description).toMatch(/agent_reply/);
+    expect(toolByName('anchor_my_work')!.description).toMatch(/anchor_item_activity/);
+  });
+});

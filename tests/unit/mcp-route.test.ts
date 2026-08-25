@@ -41,6 +41,13 @@ vi.mock('@/lib/agent-api', () => ({
   makeGoalCreateHandler: () => fake('create:goal'),
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
 }));
+vi.mock('@/app/api/agent/items/[id]/events/route', () => ({
+  GET: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
+    const { id } = await ctx.params;
+    calls.push({ handler: 'events', url: req.url, method: req.method, auth: req.headers.get('authorization'), id });
+    return Response.json({ itemId: id, events: [{ action: 'agent_reply', payload: { text: 'the one on King St' } }] });
+  },
+}));
 vi.mock('@/app/api/agent/context/route', () => ({
   GET: async (req: Request) => {
     calls.push({ handler: 'context', url: req.url, method: req.method, auth: req.headers.get('authorization') });
@@ -259,6 +266,18 @@ describe('the delegation loop, end to end through the route', () => {
   it('still reads through the ordinary context endpoint', async () => {
     await POST(call('anchor_my_work'));
     expect(calls[0]).toMatchObject({ handler: 'context', method: 'GET' });
+  });
+
+  it('reads an item\'s activity, which is where a blocked answer arrives', async () => {
+    const res = await POST(call('anchor_item_activity', { id: 'a' }));
+    expect(calls[0]).toMatchObject({ handler: 'events', method: 'GET', id: 'a' });
+    expect((await res.json()).result.content[0].text).toContain('King St');
+  });
+
+  it('refuses a traversal in an activity id too', async () => {
+    const res = await POST(call('anchor_item_activity', { id: '../../context' }));
+    expect((await res.json()).result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
   });
 
   it('reports progress as a PATCH on the item', async () => {

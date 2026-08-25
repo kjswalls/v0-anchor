@@ -8,6 +8,7 @@ import {
   makeGoalItemHandlers,
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
+import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
@@ -75,6 +76,14 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
 
+  // /api/agent/items/:id/events — its own handler, not one of the CRUD sets.
+  if (collection === 'items' && segments[2] === 'events') {
+    if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {
+      return NextResponse.json({ error: 'id must be a single path segment' }, { status: 400 })
+    }
+    return getItemEvents(proxyRequest(original, plan), { params: Promise.resolve({ id }) })
+  }
+
   const entry = COLLECTION[collection]
   if (!entry) return NextResponse.json({ error: `Unroutable path: ${plan.path}` }, { status: 400 })
 
@@ -89,6 +98,7 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
   if (segments.length > 2) {
     return NextResponse.json({ error: `Unroutable path: ${plan.path}` }, { status: 400 })
   }
+
 
   const req = proxyRequest(original, plan)
   if (!id) {

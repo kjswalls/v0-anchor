@@ -205,8 +205,10 @@ export const MCP_TOOLS: McpTool[] = [
       "aiStatus: 'queued' means nobody has started it, 'working' means someone has, " +
       "'blocked' means it is waiting on an answer from the user. " +
       'The loop is: take a queued item, mark it working so a second run does not double it, ' +
-      'do the work, then report with anchor_report_progress. If nothing comes back, there is ' +
-      'nothing to do — stop, do not go looking for work in the rest of the planner.',
+      'do the work, then report with anchor_report_progress. An item already sitting at ' +
+      "'blocked' may have been answered — read anchor_item_activity before assuming it is " +
+      'still stuck. If nothing comes back, there is nothing to do — stop, do not go looking ' +
+      'for work in the rest of the planner.',
     inputSchema: obj({
       includeFinished: {
         type: 'boolean',
@@ -218,6 +220,20 @@ export const MCP_TOOLS: McpTool[] = [
       path: '/api/agent/context',
       transform: (body) => selectAssignedWork(body, { includeFinished: args.includeFinished === true }),
     }),
+  },
+  {
+    name: 'anchor_item_activity',
+    description:
+      'The history of one item: status changes, edits, and — the reason you are here — any ' +
+      "answer the user has written back to you. After you mark something 'blocked' with a " +
+      'question, this is where their reply appears, as an `agent_reply` entry. Check it when ' +
+      'you pick up an item that is already in flight, so you continue rather than start over.',
+    inputSchema: obj({ id: ID }, ['id']),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      return { method: 'GET', path: `/api/agent/items/${id}/events` }
+    },
   },
   {
     name: 'anchor_report_progress',

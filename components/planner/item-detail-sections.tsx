@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
 import { ArrowUp, Check, Plus, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
 import {
   fetchItemEvents,
   getItemEventsAvailable,
+  recordAgentReply,
   type ItemEvent,
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
@@ -204,6 +206,59 @@ function AgentSection({ item }: { item: Item }) {
       {live.aiResult && (
         <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
       )}
+      {live.aiStatus === 'blocked' && <AgentReply item={live} />}
+    </div>
+  );
+}
+
+/**
+ * The answer half of `blocked`.
+ *
+ * Without this the agent can ask a question and nobody can answer it — the loop
+ * is open at exactly the point where a human is needed. Sending does two
+ * things: it writes the reply to the item's activity trail, which is where the
+ * agent reads it back from, and it flips the status to `queued` so the next
+ * scheduled run picks the work up again. The flip is the load-bearing half; a
+ * reply that did not re-queue would look answered and never move.
+ */
+function AgentReply({ item }: { item: TaskItem }) {
+  const updateTask = usePlannerStore((s) => s.updateTask);
+  const [text, setText] = useState('');
+
+  const send = () => {
+    const answer = text.trim();
+    if (!answer) return;
+    recordAgentReply(item.id, itemTypeName(item), answer);
+    updateTask(item.id, { aiStatus: 'queued' });
+    setText('');
+  };
+
+  return (
+    // data-sub-input so the dialog's Enter-to-submit guard leaves this alone —
+    // Enter here answers the agent, it does not save the item.
+    <div className="mt-1 flex items-center gap-1.5" data-sub-input>
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            send();
+          }
+        }}
+        placeholder="Answer…"
+        data-testid="agent-reply-input"
+        className="h-7 flex-1 text-xs"
+      />
+      <button
+        type="button"
+        onClick={send}
+        disabled={!text.trim()}
+        data-testid="agent-reply-send"
+        className="text-warning-text hover:text-foreground disabled:opacity-40 text-[10px] font-medium"
+      >
+        Send
+      </button>
     </div>
   );
 }
@@ -213,6 +268,12 @@ function AgentSection({ item }: { item: Item }) {
 function eventLabel(e: ItemEvent): string {
   if (e.action === 'create') return 'Created';
   if (e.action === 'delete') return 'Deleted';
+  // The user's answer to a blocked agent — like a check-in note, the payload is
+  // the only part worth reading.
+  if (e.action === 'agent_reply') {
+    const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
+    return text ? `You answered — ${text}` : 'You answered';
+  }
   // A check-in note reads here as well as on the goal page. It is the one event
   // whose payload is something the user WROTE, so showing the action alone
   // would hide the only part worth reading — and an item whose notes live

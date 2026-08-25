@@ -505,6 +505,24 @@ export function recordCheckin(
 }
 
 /**
+ * The user's answer to a question a delegated agent asked.
+ *
+ * `blocked` is the one agent state that wants something FROM the user, and
+ * until this existed the agent could ask and nobody could reply — the loop was
+ * open at exactly the point where a human was needed. The answer rides
+ * item_events rather than a new column because that is what the trail is for:
+ * it is a thing that happened, it belongs in the history beside the status
+ * changes it sits between, and it must survive the item's hard delete.
+ *
+ * Fire-and-forget like every other event write. The status flip back to
+ * `queued` is the load-bearing half and goes through the ordinary item update;
+ * losing the text would be a shame, losing the flip would strand the work.
+ */
+export function recordAgentReply(itemId: string, itemType: string, text: string): void {
+  recordItemEvent(itemId, itemType, 'agent_reply', { text });
+}
+
+/**
  * Every check-in note a goal has collected, newest first.
  *
  * Filtered on the PAYLOAD's `goalId` in the query, not on the goal's live
