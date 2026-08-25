@@ -262,6 +262,47 @@ async function pickDateOnMobile(page: Page, targetDateStr: string): Promise<void
   await page.locator(`[data-day="${targetDateStr}"] button`).first().click();
 }
 
+/* ── mobile surfaces ───────────────────────────────────────────────────── */
+
+/** The three surfaces the phone shell can show. */
+export type MobileTabName = 'braindump' | 'today' | 'chat';
+
+/**
+ * Switch the mobile shell's surface.
+ *
+ * Was one click on the bottom tab bar. That bar is retired — the dock carries a
+ * single mode card showing the CURRENT surface's glyph, and the three
+ * `[data-tour="tab-*"]` handles moved onto the entries of the sheet it opens. So
+ * this is two interactions now, and the entry only exists while the sheet is
+ * open; every @mobile spec that used to click a tab goes through here rather
+ * than each one re-deriving the sequence.
+ *
+ * Returns early when the surface is already showing: the sheet has no entry for
+ * "stay put", and opening it to pick the row you are already on would leave the
+ * drawer's own close animation racing the next assertion.
+ */
+export async function switchMobileTab(page: Page, tab: MobileTabName): Promise<void> {
+  const card = page.getByTestId('mobile-mode-card');
+  await expect(
+    card,
+    'no mobile mode card — is this running in the mobile project?'
+  ).toBeVisible({ timeout: 10_000 });
+  if ((await card.getAttribute('data-surface')) === tab) return;
+
+  await card.click();
+  const entry = page.locator(`[data-tour="tab-${tab}"]`);
+  await expect(entry, `the mode switcher sheet never offered "${tab}"`).toBeVisible({
+    timeout: 5_000,
+  });
+  await entry.click();
+
+  // Both halves matter. The sheet unmounting is what frees the next click from
+  // the drawer's overlay; `data-surface` is what proves the pick actually moved
+  // the shell rather than merely dismissing the sheet.
+  await expect(entry).toHaveCount(0);
+  await expect(card).toHaveAttribute('data-surface', tab);
+}
+
 /* ── omnibar / commands ────────────────────────────────────────────────── */
 
 export function omnibar(page: Page): Locator {

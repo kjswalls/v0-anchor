@@ -3,13 +3,16 @@
 import { create } from 'zustand';
 
 /**
- * Mobile bottom-tab navigation. Order matches the tab bar: Braindump · Today ·
- * Chat. Default is Today (glanceable on open); Braindump sits first so the
- * "get it out of your head" surface is one swipe left.
+ * Which surface the phone shell is showing. Default is Today (glanceable on
+ * open); Braindump sits first in the order below so the "get it out of your
+ * head" surface is one swipe left.
  */
 export type MobileTab = 'braindump' | 'today' | 'chat';
 
-/** Left-to-right order in the tab bar; also drives swipe navigation. */
+/**
+ * The order the switcher sheet lists these in (the dock's mode card opens it);
+ * also the left-to-right axis swipe navigation walks.
+ */
 export const MOBILE_TAB_ORDER: MobileTab[] = ['braindump', 'today', 'chat'];
 
 interface MobileNavStore {

@@ -17,10 +17,13 @@ import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
 /**
  * Mobile layout: the header card (date row, plus the week strip on Today), the
- * active tab's surface, and a bottom tab bar — Braindump · Today · Chat. Tabs reuse the
- * desktop primitives (shared Braindump, DayBuckets/DayList via
- * MobileViewRouter, ChatConversation) rather than the old bespoke panels.
- * Rendered under the shell's single DndContext, so items stay draggable.
+ * active surface, and the bottom dock. The three-tab bar is gone — the dock's
+ * mode card shows which surface you are on and opens the switcher sheet
+ * (components/mobile/mode-switcher-sheet.tsx) to leave it; a swipe still walks
+ * MOBILE_TAB_ORDER, Braindump · Today · Chat. Surfaces reuse the desktop
+ * primitives (shared Braindump, DayBuckets/DayList via MobileViewRouter,
+ * ChatConversation) rather than the old bespoke panels. Rendered under the
+ * shell's single DndContext, so items stay draggable.
  */
 export function MobileShell() {
   const activeTab = useMobileNavStore((s) => s.activeTab);

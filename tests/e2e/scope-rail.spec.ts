@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { reloadApp, itemCardIn } from './helpers/app';
+import { reloadApp, itemCardIn, switchMobileTab } from './helpers/app';
 import {
   createTestHabit,
   cleanupTestData,
@@ -110,9 +110,10 @@ test.describe('scope rail', () => {
    */
   test('@mobile reaches the containers from the Braindump tab', async ({ page }) => {
     const name = scope.title('Summer');
-    // data-tour, not a role: the mobile dock's tabs are plain buttons, and
-    // pause.spec's own @mobile test reaches them the same way.
-    await page.click('[data-tour="tab-braindump"]');
+    // Two interactions since the tab bar retired — the dock's mode card opens
+    // a switcher sheet. The shared helper owns that sequence; pause.spec's own
+    // @mobile test reaches the surfaces the same way.
+    await switchMobileTab(page, 'braindump');
     await expect(rail(page)).toBeVisible();
 
     await rail(page).getByTestId('scope-rail-add').click();

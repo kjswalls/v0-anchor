@@ -104,7 +104,7 @@ export default function RootLayout({
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement
-              (clear of the dock on desktop, above the tab bar on mobile) is a
+              (clear of the dock on either shell) is a
               globals.css override — sonner 1.x only takes a single offset. */}
           <Toaster position="bottom-left" closeButton />
         </ThemeProvider>

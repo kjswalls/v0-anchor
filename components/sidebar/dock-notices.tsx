@@ -476,8 +476,9 @@ export function DockNotices() {
 /**
  * Mobile mount: components/mobile/mobile-bottom-dock.tsx, above the omnibar.
  *
- * One row, never two: this capsule already stands 130–164px into a short
- * viewport. Trays are Drawers rather than Popovers — a 420px tray does not
+ * One row, never two: the dock already stands ~88px into a short viewport
+ * before a notice is added, plus whatever the safe-area inset adds past its
+ * 12px floor. Trays are Drawers rather than Popovers — a 420px tray does not
  * exist here.
  */
 export function DockNoticesMobile() {

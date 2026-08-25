@@ -14,11 +14,14 @@ import { useEffect, type RefObject } from 'react';
  * the incoming dock overwrites it on mount anyway.
  *
  * Desktop has measured its dock since the dock was built. Mobile did not, and
- * hardcoded `bottom: 120px` against a capsule that stands between 130px and
- * 164px tall depending on whether the omnibar is showing — so the toast was
+ * hardcoded `bottom: 120px` against a capsule that then stood between 130px and
+ * 164px tall depending on whether the omnibar was showing — so the toast was
  * already drawing over the tab bar before anything was added to the dock. Any
  * surface that changes the dock's height (a notice row) makes that worse, which
- * is why the port is a prerequisite of the move and not a follow-up.
+ * is why the port is a prerequisite of the move and not a follow-up. The
+ * redesigned dock is ~88px and the tab bar is gone, so no single constant would
+ * be right for it either — it still moves with the notice stack, the safe-area
+ * inset and the omnibar's absence on Chat.
  */
 export function useToastAnchor(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
