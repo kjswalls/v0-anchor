@@ -23,13 +23,19 @@ import { useUIStore } from '@/lib/ui-store';
  */
 export function OmniLauncher() {
   const isOpen = useUIStore((s) => s.activeDialog?.type === 'launcher');
+  // Seed for a pre-scoped summon (the `/` binding opens it in command mode).
+  const initialQuery = useUIStore((s) =>
+    s.activeDialog?.type === 'launcher' ? s.activeDialog.query : undefined,
+  );
   const closeDialog = useUIStore((s) => s.closeDialog);
 
   return (
     <Dialog open={isOpen} onOpenChange={(next) => !next && closeDialog()}>
       <DialogContent
         showCloseButton={false}
-        className="gap-0 border-0 bg-transparent p-0 shadow-none sm:max-w-xl"
+        // Sit in the upper third like a normal command palette, so the panel has
+        // room to drop below the input (overrides DialogContent's centering).
+        className="top-[12%] translate-y-0 gap-0 border-0 bg-transparent p-0 shadow-none sm:max-w-xl"
         data-testid="omni-launcher"
       >
         {/* Radix requires a labelled title + description for the dialog; the
@@ -41,7 +47,7 @@ export function OmniLauncher() {
         {/* Render the omnibar only while open so it MOUNTS FRESH each summon —
             its focus + resting-panel effect keys off mount, and this guarantees
             a fresh mount independent of Radix's content mount/unmount timing. */}
-        {isOpen && <Omnibar variant="launcher" />}
+        {isOpen && <Omnibar variant="launcher" initialQuery={initialQuery} />}
       </DialogContent>
     </Dialog>
   );

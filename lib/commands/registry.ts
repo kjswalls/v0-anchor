@@ -27,6 +27,7 @@ import {
   Rows3,
   Search,
   Settings,
+  SlashSquare,
   Sparkles,
   Sun,
   Sunrise,
@@ -820,6 +821,30 @@ export const STATIC_COMMANDS: Command[] = [
         return;
       }
       useUIStore.getState().openDialog({ type: 'launcher' });
+    },
+  },
+  {
+    id: 'workspace.openCommandLauncher',
+    label: 'Commands',
+    description: 'Open the command launcher in command mode',
+    group: 'workspace',
+    icon: SlashSquare,
+    keywords: 'command palette slash run launcher',
+    // Bare '/', suppressed while typing (allowInInput omitted) so the key stays
+    // typeable in every text field; it only fires from a non-input surface.
+    shortcut: { id: 'system_command', keys: ['/'] },
+    hidden: true,
+    // Desktop: '/' opens the launcher already in command mode (the '/' seeds the
+    // input). Mobile has no launcher — focus the docked omnibar, where typing
+    // '/' reaches the same palette.
+    run: (ctx) => {
+      if (ctx.isMobile) {
+        const nav = useMobileNavStore.getState();
+        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+        useUIStore.getState().focusOmnibar();
+        return;
+      }
+      useUIStore.getState().openDialog({ type: 'launcher', query: '/' });
     },
   },
   {

@@ -133,6 +133,7 @@ describe('command registry', () => {
       'system_settings',
       'system_shortcuts',
       'system_search',
+      'system_command',
       'report_bug',
       'toggle_view_scope',
       'focus_item_panel',
