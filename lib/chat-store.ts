@@ -75,6 +75,18 @@ interface ChatStore {
 export function createChatStore(config: ChatThreadConfig) {
   const { historyKey, sessionKey, focusItemId } = config;
 
+  /**
+   * Resolves once this thread knows which transport it is on.
+   *
+   * syncOpenclawInfo fires unawaited, and send() reads the answer
+   * synchronously — so a user who opens the panel and types straight away
+   * could have their first message take the plugin path with a gateway
+   * configured, or be told "OpenClaw not connected yet" when it is. One
+   * message on the wrong transport is not a crash, which is exactly why it
+   * would have gone unnoticed.
+   */
+  let transportReady: Promise<void> | null = null;
+
   function saveHistory(messages: ChatMessage[]) {
     if (messages.length === 0) return;
     const stored =
@@ -150,7 +162,7 @@ export function createChatStore(config: ChatThreadConfig) {
         // Gateway status decides the transport; the legacy chat-url lookup
         // stays as the fallback for accounts still on the plugin path.
         // Independent requests so one failing endpoint cannot blank the other.
-        fetch('/api/agent/gateway')
+        transportReady = fetch('/api/agent/gateway')
           .then((r) => (r.ok ? r.json() : null))
           .then((gateway) =>
             set({
@@ -214,6 +226,12 @@ export function createChatStore(config: ChatThreadConfig) {
           const effectiveSystemPrompt =
             systemPrompt ||
             buildBeaconSystemPrompt(itemTypes.map((t) => t.labelPlural.toLowerCase()));
+
+          // Wait for the transport answer if it is still in flight, so the
+          // first message of a session cannot take the wrong path.
+          if (provider === 'openclaw' && transportReady) {
+            await transportReady;
+          }
 
           // Gateway transport rides the shared /api/chat path below — one
           // client code path for every tier, translation done server-side.

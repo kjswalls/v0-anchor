@@ -7,11 +7,14 @@ import { sseFrame } from './sse'
  * SERVER ONLY. The gateway token is full operator access to the user's gateway
  * — the docs are blunt about it — so it must never reach a client component or
  * the browser bundle. The browser talks to Anchor; Anchor talks to the gateway.
- * Enforced structurally rather than by convention: this module reaches
- * user_secrets through createServiceClient(), which throws without
- * SUPABASE_SECRET_KEY, so importing it into a client component fails loudly
- * instead of shipping a token. (The `server-only` package would say it more
- * directly, but it is not a dependency of this workspace.)
+ * That is a CONVENTION here, not a guarantee, and it is worth being honest
+ * about which: `createServiceClient()` throws without SUPABASE_SECRET_KEY, but
+ * only when called — importing this module into a client component would
+ * bundle it silently and fail at runtime, not at build. The token itself is
+ * never in the bundle (it is read from the database, server-side), so what the
+ * mistake would cost is a broken screen rather than a leak. The `server-only`
+ * package would make it a build error; it is not a dependency of this
+ * workspace, and adding one for a single import is the trade not yet taken.
  *
  * Transport is the gateway's OpenAI-compatible surface
  * (`POST /v1/chat/completions`, opt-in via
