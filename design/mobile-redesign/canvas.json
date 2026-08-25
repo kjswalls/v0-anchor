@@ -14,7 +14,7 @@
     { "file": "BucketsTint.dc.html", "x": 1440, "y": 0, "w": 390, "h": 500, "title": "Buckets 4 — Tinted Headers", "page": "page-buckets" },
     { "file": "BleedHairline.dc.html", "x": 0, "y": 700, "w": 390, "h": 560, "title": "Bleed A — Hairlines (1B)", "page": "page-buckets" },
     { "file": "BleedWells.dc.html", "x": 480, "y": 700, "w": 390, "h": 560, "title": "Bleed B — Well Bands", "page": "page-buckets" },
-    { "file": "BleedGaps.dc.html", "x": 960, "y": 700, "w": 390, "h": 560, "title": "Bleed C — Paper Gaps", "page": "page-buckets" },
+    { "file": "BleedGaps.dc.html", "x": 960, "y": 700, "w": 390, "h": 560, "title": "Bleed C — Paper Gaps ✓", "page": "page-buckets" },
     { "file": "BleedWash.dc.html", "x": 1440, "y": 700, "w": 390, "h": 560, "title": "Bleed D — Tint Washes", "page": "page-buckets" },
 
     { "file": "BarSplit.dc.html", "x": 0, "y": 0, "w": 390, "h": 300, "title": "Bar 1 — Split Deck (B)", "page": "page-bar" },
@@ -29,8 +29,8 @@
     { "file": "ToggleSheet.dc.html", "x": 1960, "y": 0, "w": 390, "h": 430, "title": "Toggle alt — In Mode Sheet (not picked)", "page": "page-round1" }
   ],
   "annotations": [
-    { "id": "brief", "x": -330, "y": 0, "w": 290, "page": "page-synthesis", "text": "Round 4 — your picks applied:\n\n• View toggle is now the cycle button (tap cycles Buckets → List → Schedule, long-press opens the picker), with the display filter/grouping button beside it — the desktop DisplayMenu's sliders icon, so filtering finally has a home on mobile\n• Command bar: detached icon-only mode card (round 3)\n• Buckets: still C cards here, pending your pick from the new full-bleed row on the Buckets page" },
-    { "id": "note-main", "x": 0, "y": -180, "w": 390, "page": "page-synthesis", "text": "Synthesis\n\nHeader right side is now: view cycle button · display menu · K. Both buttons share the same 34×30 well style so they read as one cluster of view controls, distinct from the K identity circle.\n\nWhen you pick a full-bleed bucket treatment I'll swap it in here — the sheet would start where the cards start and run to the command bar." },
+    { "id": "brief", "x": -330, "y": 0, "w": 290, "page": "page-synthesis", "text": "Round 5 — the full composition:\n\n• Flat one-row header: date · view cycle button · display menu · K (the one menu)\n• Bare week strip\n• Buckets: paper-gap bands (Bleed C) — edge-to-edge white bands with paper showing through the gaps, Evening running down to the command bar\n• Detached icon-only mode card + command bar\n\nCards (Buckets 1) remains the runner-up on the Buckets page if the bands don't feel right in context." },
+    { "id": "note-main", "x": 0, "y": -180, "w": 390, "page": "page-synthesis", "text": "Synthesis\n\nThe paper-gap bands in context: the first band's top corners round like the old panel did, the gaps echo the gap under the week strip, and the last band runs down to the command bar so the content region reads as one grounded surface.\n\nWorth judging here: whether two floating cards (mode card + bar) sitting on the Evening band's tail feels layered or busy." },
     { "id": "note-bk1", "x": 0, "y": -170, "w": 390, "page": "page-buckets", "text": "1 — Cards (from C)\n\nOne white card per bucket on the paper backdrop. Strongest bucket identity and drag targets.\nTradeoff: three borders + three shadows of visual weight, and empty buckets still cost a whole card." },
     { "id": "note-bk2", "x": 480, "y": -170, "w": 390, "page": "page-buckets", "text": "2 — Single sheet (inset)\n\nOne continuous inset card, hairlines between sections. The full-bleed row below explores the edge-to-edge version of this idea.\nTradeoff: weakest bucket boundaries." },
     { "id": "note-bk3", "x": 960, "y": -170, "w": 390, "page": "page-buckets", "text": "3 — Sheet + spines\n\nThe inset sheet with time-of-day spines (from the desktop bucket cards) instead of hairlines.\nTradeoff: the spine is subtle at 2px — it must never carry alone what the header says." },
@@ -49,5 +49,5 @@
     { "id": "note-serif", "x": 1470, "y": -200, "w": 390, "page": "page-round1", "text": "Synthesis — serif header variant (not picked)\n\nKept for reference: same synthesis structure with C's Source Serif headline and numeral strip. Set aside in favor of the flat compact header." },
     { "id": "note-tgsheet", "x": 1960, "y": -200, "w": 390, "page": "page-round1", "text": "Toggle alternate — in the mode sheet (not picked)\n\nKept for reference: the view control folded into the mode card's sheet. Set aside in favor of the header-row cycle button." }
   ],
-  "launch": { "view": "canvas", "page": "page-buckets" }
+  "launch": { "view": "canvas", "page": "page-synthesis" }
 }

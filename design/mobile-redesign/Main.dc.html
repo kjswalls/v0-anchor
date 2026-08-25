@@ -96,15 +96,16 @@
     </div>
   </div>
 
-  <!-- Buckets from C: cards floating directly on paper -->
-  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 14px; display: flex; flex-direction: column; gap: 10px;">
+  <!-- Buckets: full-bleed paper-gap bands (Bleed C) — edge-to-edge white
+       bands, one per bucket, paper showing through the 8px gaps -->
+  <div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 8px;">
 
-    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+    <div style="background: var(--canvas); border-top: 1px solid var(--well); border-bottom: 1px solid var(--well); border-radius: 20px 20px 0 0; box-shadow: var(--sh-soft-sm); padding: 12px 20px 6px; display: flex; flex-direction: column;">
       <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--morning);"><path d="M12 2v8"></path><path d="m4.93 10.93 1.41 1.41"></path><path d="M2 18h2"></path><path d="M20 18h2"></path><path d="m19.07 10.93-1.41 1.41"></path><path d="M22 22H2"></path><path d="m8 6 4-4 4 4"></path><path d="M16 18a4 4 0 0 0-8 0"></path></svg>
         <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Morning</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; background: var(--lime); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color: var(--lime-ink);"><path d="M20 6 9 17l-5-5"></path></svg>
         </div>
@@ -114,7 +115,7 @@
           <span style="font-size: 12px; font-weight: 600;">12</span>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Morning run</span>
         <div style="display: flex; align-items: center; gap: 3px; color: var(--honey-ink);">
@@ -122,35 +123,35 @@
           <span style="font-size: 12px; font-weight: 600;">5</span>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Ship weekly review email</span>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--coral);"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" x2="4" y1="22" y2="15"></line></svg>
       </div>
     </div>
 
-    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+    <div style="background: var(--canvas); border-top: 1px solid var(--well); border-bottom: 1px solid var(--well); box-shadow: var(--sh-soft-sm); padding: 10px 20px 6px; display: flex; flex-direction: column;">
       <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--afternoon);"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
         <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Afternoon</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Call dentist about crown</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Draft Q3 goals doc</span>
         <span style="font-size: 12px; color: var(--ink-2);">45m</span>
       </div>
     </div>
 
-    <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
+    <div style="flex: 1; background: var(--canvas); border-top: 1px solid var(--well); box-shadow: var(--sh-soft-sm); padding: 10px 20px 0; display: flex; flex-direction: column;">
       <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--evening);"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
         <span style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Evening</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Read 20 pages</span>
         <div style="display: flex; align-items: center; gap: 3px; color: var(--honey-ink);">
@@ -158,7 +159,7 @@
           <span style="font-size: 12px; font-weight: 600;">21</span>
         </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 4px; min-height: 42px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
         <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
         <span style="flex: 1; font-size: 14px; font-weight: 500;">Plan tomorrow</span>
       </div>
