@@ -77,6 +77,18 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
   const entry = COLLECTION[collection]
   if (!entry) return NextResponse.json({ error: `Unroutable path: ${plan.path}` }, { status: 400 })
 
+  // An id is one path segment and nothing else. Dispatch reads the RAW path
+  // while proxyRequest hands the handler a normalised URL, so a traversal in an
+  // id would make those two disagree about what is being addressed — harmless
+  // today (handlers read ctx.params, not the URL) and exactly the kind of
+  // disagreement that stops being harmless later.
+  if (id !== undefined && (id.includes('/') || id.includes('..') || id.includes('%'))) {
+    return NextResponse.json({ error: 'id must be a single path segment' }, { status: 400 })
+  }
+  if (segments.length > 2) {
+    return NextResponse.json({ error: `Unroutable path: ${plan.path}` }, { status: 400 })
+  }
+
   const req = proxyRequest(original, plan)
   if (!id) {
     if (plan.method !== 'POST') {

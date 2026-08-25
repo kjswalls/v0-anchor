@@ -1,0 +1,205 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+/**
+ * The MCP route's own plumbing: JSON-RPC in, the RIGHT agent handler called
+ * with the right method, path params and forwarded auth.
+ *
+ * agent-api is mocked so this stays a test of the glue — the handlers'
+ * behaviour is already covered by their own suites, and what is unproven here
+ * is the bit written last: synthesising a request and dispatching in-process.
+ */
+
+const calls: Array<{ handler: string; url: string; method: string; auth: string | null; id?: string; body?: unknown }> = [];
+
+/** Records the call and answers 200, standing in for a real agent handler. */
+function fake(handler: string) {
+  return async (req: Request, ctx?: { params: Promise<{ id: string }> }) => {
+    const id = ctx ? (await ctx.params).id : undefined;
+    let body: unknown;
+    try {
+      body = req.method === 'GET' ? undefined : await req.json();
+    } catch {
+      body = undefined;
+    }
+    calls.push({
+      handler,
+      url: req.url,
+      method: req.method,
+      auth: req.headers.get('authorization'),
+      id,
+      body,
+    });
+    return Response.json({ ok: handler });
+  };
+}
+
+vi.mock('@/lib/agent-api', () => ({
+  makeAgentCreateHandler: (t: string) => fake(`create:${t}`),
+  makeAgentItemHandlers: (t: string) => ({ PATCH: fake(`patch:${t}`), DELETE: fake(`delete:${t}`) }),
+  makeContainerCreateHandler: (k: string) => fake(`create:${k}`),
+  makeContainerItemHandlers: (k: string) => ({ PATCH: fake(`patch:${k}`), DELETE: fake(`delete:${k}`) }),
+  makeGoalCreateHandler: () => fake('create:goal'),
+  makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
+}));
+vi.mock('@/app/api/agent/context/route', () => ({ GET: fake('context') }));
+
+import { POST } from '@/app/api/mcp/route';
+import { NextRequest } from 'next/server';
+
+const AUTH = 'Bearer anchor_testkey';
+
+function rpc(body: unknown, auth: string | null = AUTH): NextRequest {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  if (auth) headers.set('authorization', auth);
+  return new NextRequest('https://anchor.test/api/mcp', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+const call = (name: string, args: Record<string, unknown> = {}) =>
+  rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+
+beforeEach(() => {
+  calls.length = 0;
+});
+
+describe('auth', () => {
+  it('refuses a request with no bearer token before any handshake', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' }, null));
+    expect(res.status).toBe(401);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('forwards the caller\'s bearer token to the agent handler', async () => {
+    await POST(call('anchor_get_context'));
+    expect(calls[0].auth).toBe(AUTH);
+  });
+});
+
+describe('dispatch to agent handlers', () => {
+  it('routes get_context to the context GET, with no body', async () => {
+    const res = await POST(call('anchor_get_context'));
+    expect(res.status).toBe(200);
+    expect(calls[0]).toMatchObject({ handler: 'context', method: 'GET' });
+    expect(calls[0].body).toBeUndefined();
+  });
+
+  it('routes a create to the create handler with the JSON body intact', async () => {
+    await POST(call('anchor_create_task', { title: 'Book dentist', priority: 'high' }));
+    expect(calls[0]).toMatchObject({
+      handler: 'create:task',
+      method: 'POST',
+      body: { title: 'Book dentist', priority: 'high' },
+    });
+  });
+
+  it('routes an update to PATCH and passes the id as a route param', async () => {
+    await POST(call('anchor_update_task', { id: 'task-42', priority: 'low' }));
+    expect(calls[0]).toMatchObject({
+      handler: 'patch:task',
+      method: 'PATCH',
+      id: 'task-42',
+      body: { priority: 'low' },
+    });
+  });
+
+  it('routes a delete to DELETE with the id', async () => {
+    await POST(call('anchor_delete_habit', { id: 'h-9' }));
+    expect(calls[0]).toMatchObject({ handler: 'delete:habit', method: 'DELETE', id: 'h-9' });
+  });
+
+  it('routes each collection kind to its own handler', async () => {
+    await POST(call('anchor_create_collection', { kind: 'goal', name: 'Run a 10k' }));
+    await POST(call('anchor_update_collection', { kind: 'program', id: 'p1', state: 'active' }));
+    await POST(call('anchor_delete_collection', { kind: 'routine', id: 'r1' }));
+    expect(calls.map((c) => c.handler)).toEqual(['create:goal', 'patch:program', 'delete:routine']);
+  });
+
+  it('builds an absolute URL on the request origin', async () => {
+    await POST(call('anchor_update_task', { id: 'abc' }));
+    expect(calls[0].url).toBe('https://anchor.test/api/agent/tasks/abc');
+  });
+});
+
+describe('tool-level failures stay inside a 200', () => {
+  it('returns isError for a refused argument rather than a protocol error', async () => {
+    const res = await POST(call('anchor_create_task', {}));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.error).toBeUndefined();
+    expect(calls).toHaveLength(0); // never reached the handler
+  });
+
+  it('does not mark a successful agent write as an error', async () => {
+    const res = await POST(call('anchor_create_task', { title: 'x' }));
+    const body = await res.json();
+    expect(body.result.isError).toBeUndefined();
+    expect(body.result.content[0].text).toContain('create:task');
+  });
+});
+
+describe('JSON-RPC transport rules', () => {
+  it('answers a notification with 202 and no body', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+    expect(res.status).toBe(202);
+    expect(await res.text()).toBe('');
+  });
+
+  it('handles a batch and answers only the non-notifications', async () => {
+    const res = await POST(
+      rpc([
+        { jsonrpc: '2.0', id: 1, method: 'ping' },
+        { jsonrpc: '2.0', method: 'notifications/initialized' },
+        { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      ])
+    );
+    const body = await res.json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.map((r: { id: number }) => r.id)).toEqual([1, 2]);
+  });
+
+  it('returns 202 for a batch of only notifications', async () => {
+    const res = await POST(rpc([{ jsonrpc: '2.0', method: 'notifications/initialized' }]));
+    expect(res.status).toBe(202);
+  });
+
+  it('returns a parse error for a malformed body', async () => {
+    const req = new NextRequest('https://anchor.test/api/mcp', {
+      method: 'POST',
+      headers: new Headers({ 'content-type': 'application/json', authorization: AUTH }),
+      body: '{not json',
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32700);
+  });
+
+  it('lists tools through the real registry', async () => {
+    const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }));
+    const body = await res.json();
+    expect(body.result.tools.length).toBeGreaterThan(5);
+    expect(body.result.tools.map((t: { name: string }) => t.name)).toContain('anchor_get_context');
+  });
+});
+
+describe('path safety', () => {
+  it('refuses a traversal in an id rather than dispatching it anywhere', async () => {
+    const res = await POST(call('anchor_update_task', { id: '../../context' }));
+    expect((await res.json()).result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a percent-encoded traversal too', async () => {
+    const res = await POST(call('anchor_delete_task', { id: '%2e%2e%2fcontext' }));
+    expect((await res.json()).result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('still accepts an ordinary uuid-shaped id', async () => {
+    await POST(call('anchor_update_task', { id: '3f1a2b6c-0000-4000-8000-abcdefabcdef' }));
+    expect(calls[0]).toMatchObject({ handler: 'patch:task' });
+  });
+});
