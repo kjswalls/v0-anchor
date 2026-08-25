@@ -78,7 +78,21 @@ Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-fir
 4. **Reachability from Vercel.** Anchor calls the gateway server-side, so browser CORS is
    irrelevant — but a tailnet-only gateway is not reachable from Vercel. Local dev works;
    production likely needs Funnel or equivalent. Still the most likely thing to be wrong.
-5. **Point a real MCP client at `/api/mcp`.** Nothing has spoken to it yet; the protocol is
-   pinned by tests, not by a handshake. In `openclaw.json`:
-   `mcp.servers.anchor = { type: "http", url: "https://<anchor>/api/mcp" }` with the bearer
-   key, then `openclaw mcp list`. `tools/list` working is the first real proof.
+5. **Point a real MCP client at `/api/mcp`.** Nothing has spoken to it yet — the protocol is
+   pinned by tests, not by a handshake. OpenClaw takes remote Streamable HTTP servers with
+   custom headers, which is exactly the shape this server needs:
+
+   ```bash
+   openclaw mcp add anchor \
+     --url https://<anchor-host>/api/mcp \
+     --transport streamable-http
+   # then add the header through the scoped config editor or config:
+   #   mcp.servers.anchor.headers.Authorization = "Bearer anchor_<key>"
+   #   (keep the key out of config literals — use the secret mechanism)
+   openclaw mcp doctor anchor --probe
+   ```
+
+   `doctor --probe` is the real proof: the docs are explicit that saving a definition proves
+   nothing about reachability. A successful probe listing eleven `anchor_*` tools is the
+   first time this code has spoken to a client. `--include` can narrow the tool set if you
+   want the agent to see only reads at first.
