@@ -5,11 +5,16 @@ scannable, low-overwhelm, guilt-free, but capability-rich. The AI is not a chatb
 to a planner — it is a **collaborator on the planner itself**. Some items are yours, some
 are Beacon's, and the grid tells you at a glance who is doing what and what needs you.
 
-**Status (2026-07-31):** **Phase 1 SHIPPED** (`da56e9b` one SSE parser, `4df4ca7` the
-proposal primitive, `046adb4` the gateway transport, `01d254a` review fixes). Phase 2
-(delegation) is deliberately **not started** — see the phasing section for why. This
-document governs the work the same way [unified-items.md](unified-items.md) governs the
-items refactor.
+**Status (2026-07-31, after merging 184 commits from main):** **Phase 1 SHIPPED**
+(`da56e9b` one SSE parser, `4df4ca7` the proposal primitive, `046adb4` the gateway
+transport, `01d254a` review fixes, `2b7dbd7` the re-baseline merge). This document governs
+the work the same way [unified-items.md](unified-items.md) governs the items refactor.
+
+**The re-baseline changed the plan more than the plan changed the code.** Delegation is
+further along than this doc assumed: `assignee`/`aiStatus`/`aiResult`, `AgentSection`,
+`item_events` and per-item chat threads all shipped on main while Phase 1 was being
+written. What Pillar 2 still lacks is not schema or UI — it is a *transport* (something
+that actually starts a background run) and the needs-input loop. See the phasing section.
 
 **What works right now, with no configuration at all:** the "Pick things back up" command
 (omnibar, or `/catchup`) produces a catch-up proposal computed locally — no key, no
@@ -194,34 +199,48 @@ client will stop connecting.)
 9. **The existing plugin chat path keeps working** until the user deliberately switches
    transports. No flag day.
 
-## Schema note — delegation must NOT enter the `Item` type
+## Schema note — where delegation state lives (corrected twice; read the whole note)
 
-*(Corrected 2026-07-31. The first version of this note said to adopt the existing columns
-app-side; a review found that would leak straight into a frozen external contract.)*
+*(2026-07-31, revision 3. Revision 1 said "adopt the unused 019 columns". Revision 2
+reversed that and locked "delegation never becomes a field on `Item`". Revision 2 was
+written against a stale tree and is WRONG — `assignee` / `aiStatus` / `aiResult` shipped
+as `taskShape` fields on 2026-07-29 in item-surface-growth Phase 4, and they work.)*
 
-Migration 019 did carry `assignee`, `ai_status`, `ai_result` and `parent_item_id` onto
-`items` (from 007's future-proofing) — all nullable, no CHECKs, referenced nowhere in
-`lib/db.ts`, `lib/planner-types.ts` or `packages/types`. Tempting, and a trap:
+What actually exists, and should be reused rather than rebuilt:
 
-```ts
-// lib/db.ts
-export function toLegacyTask(item: TaskItem): Task {
-  const { type: _type, ...task } = item;   // ← spreads EVERYTHING else
-  return task;
-}
-```
+- **`assignee` / `aiStatus` / `aiResult` are fields on `taskShape`** — loose on read, strict
+  on write (`aiStatus: 'queued'|'working'|'blocked'|'done'|'failed'`). `AgentSection` in
+  [components/planner/item-detail-sections.tsx](../../components/planner/item-detail-sections.tsx)
+  already renders assign/unassign and gives `blocked` the destructive treatment, because it
+  is "the only state that wants something FROM you".
+- **`item_events` (migration 023) is the activity trail.** Its own header anticipated this
+  work — *"text (not CHECK) so a future action (completion, assignment, agent progress) is
+  additive"* — and `eventLabel` already speaks `assignee` and `aiStatus`. `recordCheckin` is
+  the precedent for a deliberate, non-trace event writer.
+- **Per-item threads exist** (`itemChatStore(id)`, `ItemThread`), keyed to their own gateway
+  session via `itemSessionKey(userId, itemId)`.
 
-The legacy projection is a spread. Any field added to `taskShape` therefore (1) appears in
-the frozen `tasks[]` the agent API serves, (2) joins schema-derived `TASK_FIELDS`, which
-drives `diffItem` and so the undo/redo DB sync, and (3) has to be threaded through the
-per-type db allowlists. Delegation state changes many times a minute while an agent works;
-routing that through undo history and a frozen external contract is wrong in three
-directions at once.
+Revision 2's *reasoning* was not baseless, and the true part survives as the rule:
 
-**Locked: delegation state lives in a side table and an app-side store keyed by item id.
-It never becomes a field on `Item`.** The 019 columns stay unused — leave them alone
-rather than repurposing them, so nothing implies the Item type owns this. `parent_item_id`
-is a separate question (real subtasks) and is not part of delegation.
+> `toLegacyTask` is a spread, so every `taskShape` field enters the frozen `tasks[]`
+> projection and joins schema-derived `TASK_FIELDS` → `diffItem` → the 50-entry undo stack.
+
+That is a real hazard for anything that changes *often*. It is not a hazard for these three,
+because they are small, stable, and the frozen projection's schema already contains them (so
+the plugin's `safeParse` sees no drift), and because agent writes land through
+`/api/agent/*` → `lib/db.ts`, never through the store, so they push no history entries.
+
+**Locked, replacing revision 2's rule:** the delegation *state machine* is three fields on
+the item (`assignee`, `aiStatus`, `aiResult`) — a handful of transitions per delegation.
+Everything **high-frequency** — progress notes, tool traces, partial findings — goes to
+`item_events` as trace rows and NEVER to `items`. The split is not a compromise; it is what
+the two stores are each for. If `aiStatus` ever needs sub-states that tick, they are events,
+not statuses.
+
+Two consequences worth stating: `aiStatus`'s vocabulary becomes a frozen external contract
+the moment a real agent writes it, so extend it only additively; and `setItemCompletion` /
+`setItemSkip` go through RPCs that bypass `updateItem`, so completions currently emit no
+`item_events` — a gap to close when the trail is load-bearing.
 
 ## Unverified assumptions (test these first, with a real gateway)
 
@@ -254,7 +273,15 @@ Written down because none could be checked without a gateway, and each has a one
 - `lib/openclaw-gateway.ts` + the `/api/chat` gateway branch + `/api/agent/gateway` +
   migration 023 — the server-side transport, alongside the plugin path, opt-in by config.
 
-**Phase 2 — delegation + item threads. NOT STARTED, deliberately.** It is the largest
+**Phase 2a — Anchor as an MCP server.** The executor should be an adapter, not a
+commitment. Anchor's agent API is the durable asset; which runtime acts on it is not.
+Exposing that API over MCP means OpenClaw *and* Claude, ChatGPT, Cursor and anything else
+MCP-capable can act on the planner, with no per-vendor plugin each time — OpenClaw's own
+docs describe consuming remote MCP servers (`mcp.servers.<name>`, `type: "http"`, OAuth).
+Doing it BEFORE delegation matters: it decides whether delegation's contract is written
+against a vendor-neutral tool surface or against one gateway's plugin API.
+
+**Phase 2b — delegation transport + needs-input. NOT STARTED, deliberately.** It is the largest
 surface in the plan (a thread table, delegation storage, agent + browser routes, plugin
 tools, hooks kickoff, four UI surfaces) and it is **100% unverifiable without a migration
 applied, a reachable gateway, and a hooks token with allowlisted prefixes**. It also
@@ -263,12 +290,15 @@ the context response, which `openclaw-plugin/src/cache.ts` `safeParse`s and thro
 Writing it blind, overnight, on top of a transport that has never spoken to a real gateway
 would produce a large diff nobody can trust. It starts once Phase 1 is confirmed working.
 
-When it does start, the order is: migration 024 (thread entries + delegation side table,
-RLS, indexes) → `@anchor-app/types` schemas → `lib/db.ts` helpers that `console.warn` and
-return `null` on a missing relation, with an `available` flag defaulting FALSE (mirroring
-`fetchItemTypes` / `itemTypesAvailable`) → agent API routes on the `lib/agent-api.ts`
-machinery, each calling `verifyItemOwnership` **without loosening its signature** → plugin
-tools → UI behind `canDelegate()`. The context-response addition comes last and alone.
+When it does start, the order is much shorter than this doc originally assumed, because
+the schema and the UI already exist: an agent-facing way to report progress (write
+`aiStatus`/`aiResult`, append an `item_events` trace) → a kickoff path (`POST /hooks/agent`
+with an isolated session and an idempotency key) → the needs-input loop (`blocked` already
+renders as the one state that raises its voice; what is missing is the answer travelling
+back) → server-persisted threads, which item-surface-growth deferred on purpose as "the
+first stored chat data deserves its own review". Every step gates on `canDelegate()` and
+`verifyItemOwnership` **without loosening its signature**. Any context-response addition
+comes last and alone.
 
 **Phase 3 — seams, not speculation.** Explicitly *not* building hosted-tier
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the

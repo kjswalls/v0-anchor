@@ -16,6 +16,16 @@ import { assertAllowedGatewayUrl } from '@/lib/openclaw-gateway'
  * retire; it stays only until the plugin chat path is removed.
  */
 
+/** PostgREST's shape for "that column/table isn't there yet". */
+function isMissingSchema(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false
+  return (
+    error.code === '42703' ||
+    error.code === 'PGRST204' ||
+    /column\b.*\bdoes not exist/i.test(error.message ?? '')
+  )
+}
+
 interface GatewayBody {
   gatewayUrl?: string | null
   token?: string | null
@@ -30,7 +40,7 @@ export async function GET() {
     // The URL comes back through the session client (RLS-scoped); the token's
     // presence is checked with the service client because the user's own JWT
     // deliberately cannot read user_secrets at all.
-    const [{ data: settings }, { data: secrets }] = await Promise.all([
+    const [settingsRes, secretsRes] = await Promise.all([
       supabase
         .from('user_settings')
         .select('openclaw_gateway_url, openclaw_agent_id')
@@ -43,6 +53,21 @@ export async function GET() {
         .maybeSingle(),
     ])
 
+    // A database without migration 037 means "nothing is configured", which is
+    // true and renderable — not an error state for the settings page to
+    // explain. Same contract as /api/reminders/secrets.
+    if (isMissingSchema(settingsRes.error) || isMissingSchema(secretsRes.error)) {
+      return NextResponse.json({
+        gatewayUrl: null,
+        agentId: null,
+        hasToken: false,
+        configured: false,
+        unavailable: true,
+      })
+    }
+
+    const settings = settingsRes.data
+    const secrets = secretsRes.data
     const gatewayUrl = settings?.openclaw_gateway_url ?? null
     const hasToken = Boolean(secrets?.openclaw_gateway_token)
 
@@ -88,6 +113,12 @@ export async function POST(req: NextRequest) {
         .from('user_settings')
         .update({ openclaw_gateway_url: url })
         .eq('user_id', user.id)
+      if (isMissingSchema(error)) {
+        return NextResponse.json(
+          { error: 'Needs migration 037 — run pnpm db:push.', unavailable: true },
+          { status: 503 }
+        )
+      }
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -96,6 +127,12 @@ export async function POST(req: NextRequest) {
       const { error } = await createServiceClient()
         .from('user_secrets')
         .upsert({ user_id: user.id, openclaw_gateway_token: token }, { onConflict: 'user_id' })
+      if (isMissingSchema(error)) {
+        return NextResponse.json(
+          { error: 'Needs migration 037 — run pnpm db:push.', unavailable: true },
+          { status: 503 }
+        )
+      }
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     }
 

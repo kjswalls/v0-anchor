@@ -21,6 +21,7 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useGatewayStore } from '@/lib/gateway-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
 import { resetOnboardingComplete } from '@/lib/user-profile';
@@ -138,6 +139,11 @@ export default function SettingsPage() {
   const channelSecretsTick = useChannelSecretsStore(
     (s) => `${s.available}|${JSON.stringify(s.setKeys)}`
   );
+  // The URL is readable state and the text control compares against the last
+  // RENDERED value, so it has to ride the tick or the next edit is dropped.
+  const gatewayTick = useGatewayStore(
+    (s) => `${s.available}|${s.gatewayUrl}|${s.hasToken}|${s.error ?? ''}`
+  );
 
   const signOut = useCallback(async () => {
     // Anything still buffered has to land while the session is alive, or RLS
@@ -202,6 +208,7 @@ export default function SettingsPage() {
       paletteTick,
       extensionsTick,
       channelSecretsTick,
+      gatewayTick,
     ]
   );
 

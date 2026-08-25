@@ -12,6 +12,7 @@ import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useGatewayStore } from '@/lib/gateway-store';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { useTheme } from 'next-themes';
@@ -305,6 +306,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // fire-and-forget posture: a settings page that cannot say "saved" is a
         // cosmetic loss; a planner that failed to load is not.
         useChannelSecretsStore.getState().hydrate(session.user.id);
+        // Same posture again: which gateway is configured, never its token.
+        useGatewayStore.getState().hydrate(session.user.id);
       }
     });
 
@@ -314,12 +317,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         hydrateSettings(session.user.id);
         useExtensionsStore.getState().hydrate(session.user.id);
         useChannelSecretsStore.getState().hydrate(session.user.id);
+        // Same posture again: which gateway is configured, never its token.
+        useGatewayStore.getState().hydrate(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         loadedUserId.current = null;
         clearStore();
         useExtensionsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
+        useGatewayStore.getState().reset();
         // clearStore only resets the planner. The morning store holds
         // account-owned settings too — including the auto-age switch, which
         // drives an unattended mutation — and it persists them to a
