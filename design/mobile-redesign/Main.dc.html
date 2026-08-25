@@ -41,10 +41,9 @@
 </helmet>
 <div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; font-family: 'Inter', system-ui, sans-serif;">
 
-  <!-- Header straight on the surface — no card. The K avatar (top-right, where
-       the ... sat) is now the ONE menu: profile, settings, display options,
-       bug report all live behind it. -->
-  <div style="padding: 18px 20px 0; display: flex; align-items: center; justify-content: space-between;">
+  <!-- Flat header, one row: date on the left, view toggle + the K menu on the
+       right. No count row — the toggle lives up here now. -->
+  <div style="padding: 16px 20px 0; display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center; gap: 8px;">
       <div style="display: flex; align-items: baseline; gap: 7px;">
         <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Today</span>
@@ -52,11 +51,24 @@
       </div>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ink-2);"><path d="m6 9 6 6 6-6"></path></svg>
     </div>
-    <div style="width: 30px; height: 30px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">K</div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; gap: 2px; background: var(--well); border-radius: 10px; padding: 2px;">
+        <div style="width: 32px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--pill); box-shadow: var(--sh-soft-sm); color: var(--ink-0);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg>
+        </div>
+        <div style="width: 32px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"></path><path d="M3 18h.01"></path><path d="M3 6h.01"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M8 6h13"></path></svg>
+        </div>
+        <div style="width: 32px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </div>
+      </div>
+      <div style="width: 30px; height: 30px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">K</div>
+    </div>
   </div>
 
-  <!-- Bare week strip, no container -->
-  <div style="padding: 12px 20px 2px; display: flex; justify-content: space-between;">
+  <!-- Bare week strip -->
+  <div style="padding: 14px 20px 12px; display: flex; justify-content: space-between;">
     <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
       <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">S</span>
       <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">23</span>
@@ -84,22 +96,6 @@
     <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
       <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">S</span>
       <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">29</span>
-    </div>
-  </div>
-
-  <!-- View toggle row (from A), on the surface -->
-  <div style="padding: 8px 20px 10px; display: flex; align-items: center; justify-content: space-between;">
-    <span style="font-size: 12px; font-weight: 500; color: var(--ink-2);">1 done · 6 open</span>
-    <div style="display: flex; gap: 2px; background: var(--well); border-radius: 10px; padding: 2px;">
-      <div style="width: 34px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--pill); box-shadow: var(--sh-soft-sm); color: var(--ink-0);">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M21 9H3"></path><path d="M21 15H3"></path></svg>
-      </div>
-      <div style="width: 34px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"></path><path d="M3 18h.01"></path><path d="M3 6h.01"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M8 6h13"></path></svg>
-      </div>
-      <div style="width: 34px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-      </div>
     </div>
   </div>
 
@@ -172,20 +168,16 @@
     </div>
   </div>
 
-  <!-- Command bar from B -->
-  <div style="padding: 12px 16px 16px;">
-    <div style="height: 56px; background: var(--pill); border: 1px solid var(--well); border-radius: 18px; box-shadow: var(--sh-elev-md); display: flex; align-items: center; gap: 8px; padding: 0 8px;">
-      <div style="display: flex; gap: 2px;">
-        <div style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12H3"></path><path d="M17 18H3"></path><path d="M21 6H3"></path></svg>
-        </div>
-        <div style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--lime-tint); color: var(--lime-ink);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
-        </div>
+  <!-- Command bar: detached icon-only mode card + input capsule -->
+  <div style="padding: 12px 16px 16px; display: flex; align-items: center; gap: 8px;">
+    <div style="width: 56px; height: 56px; flex-shrink: 0; background: var(--pill); border: 1px solid var(--well); border-radius: 18px; box-shadow: var(--sh-elev-md); display: flex; align-items: center; justify-content: center;">
+      <div style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--lime-tint); color: var(--lime-ink);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
       </div>
-      <div style="width: 1px; height: 24px; background: var(--border); flex-shrink: 0;"></div>
-      <span style="flex: 1; font-size: 14px; color: var(--ink-2);">Type to add or command…</span>
-      <div style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: var(--honey-tint); color: var(--honey-ink);">
+    </div>
+    <div style="flex: 1; height: 56px; background: var(--pill); border: 1px solid var(--well); border-radius: 18px; box-shadow: var(--sh-elev-md); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px;">
+      <span style="flex: 1; font-size: 14px; color: var(--ink-2);">Add, search, or /command…</span>
+      <div style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--honey-ink);">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>
       </div>
     </div>
