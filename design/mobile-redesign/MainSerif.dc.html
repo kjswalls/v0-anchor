@@ -41,53 +41,49 @@
 </helmet>
 <div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; font-family: 'Inter', system-ui, sans-serif;">
 
-  <!-- Header straight on the surface — no card. The K avatar (top-right, where
-       the ... sat) is now the ONE menu: profile, settings, display options,
-       bug report all live behind it. -->
-  <div style="padding: 18px 20px 0; display: flex; align-items: center; justify-content: space-between;">
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <div style="display: flex; align-items: baseline; gap: 7px;">
-        <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Today</span>
-        <span style="font-size: 13px; color: var(--ink-2);">Mon, Aug 24</span>
-      </div>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ink-2);"><path d="m6 9 6 6 6-6"></path></svg>
+  <!-- C's serif header; the K avatar top-right is the ONE menu (profile,
+       settings, display options, bug report). -->
+  <div style="padding: 24px 20px 0; display: flex; align-items: flex-start; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 30px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.1;">Today</span>
+      <span style="font-size: 13px; color: var(--ink-1);">Monday, August 24</span>
     </div>
     <div style="width: 30px; height: 30px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">K</div>
   </div>
 
-  <!-- Bare week strip, no container -->
-  <div style="padding: 12px 20px 2px; display: flex; justify-content: space-between;">
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">S</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">23</span>
+  <!-- C's quiet numeral strip with the lime dot -->
+  <div style="padding: 16px 20px 2px; display: flex; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">23</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--lime-ink);">M</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--lime); color: var(--lime-ink);">24</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 600; color: var(--lime-ink);">24</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: var(--lime);"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">T</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">25</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">25</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">W</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">26</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">26</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">T</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">27</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">27</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">F</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">28</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">28</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
-    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
-      <span style="font-size: 10px; font-weight: 500; color: var(--ink-2);">S</span>
-      <span style="width: 28px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: var(--ink-1);">29</span>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 5px; width: 32px;">
+      <span style="font-size: 13px; font-weight: 500; color: var(--ink-2);">29</span>
+      <span style="width: 4px; height: 4px; border-radius: 999px; background: transparent;"></span>
     </div>
   </div>
 
-  <!-- View toggle row (from A), on the surface -->
+  <!-- View toggle row (from A) -->
   <div style="padding: 8px 20px 10px; display: flex; align-items: center; justify-content: space-between;">
     <span style="font-size: 12px; font-weight: 500; color: var(--ink-2);">1 done · 6 open</span>
     <div style="display: flex; gap: 2px; background: var(--well); border-radius: 10px; padding: 2px;">
@@ -103,7 +99,7 @@
     </div>
   </div>
 
-  <!-- Buckets from C: cards floating directly on paper -->
+  <!-- Buckets from C -->
   <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 14px; display: flex; flex-direction: column; gap: 10px;">
 
     <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
