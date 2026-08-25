@@ -87,6 +87,16 @@ export function validateProposalOperations(
       continue
     }
 
+    // Subtasks live inside their parent's detail surface and are excluded from
+    // the tasks projection, so the grid, braindump, buckets and EOD never show
+    // them. Rescheduling one would move something the user cannot see, on a day
+    // it will not appear — a change with no visible effect and no way to undo
+    // it from where they are looking.
+    if ('parentItemId' in target && target.parentItemId) {
+      reject(operation, 'subtasks are managed inside their parent, not scheduled')
+      continue
+    }
+
     const config = getItemTypeConfig(itemTypeName(target))
     const next = { ...operation }
 
@@ -184,7 +194,12 @@ export function buildProposalContext(
   const lines: string[] = ['## Items you can reference (use the bracketed id)']
   const actionable = ctx.items.filter((item) => {
     const config = getItemTypeConfig(itemTypeName(item))
-    return item.status !== config.doneStatus && item.status !== 'cancelled'
+    if (item.status === config.doneStatus || item.status === 'cancelled') return false
+    // Not offered to the model at all: validation would reject an operation on
+    // one anyway, and a model that can see an item it may not touch will keep
+    // proposing it.
+    if ('parentItemId' in item && item.parentItemId) return false
+    return true
   })
 
   for (const item of actionable.slice(0, limit)) {

@@ -109,10 +109,12 @@ export async function POST(req: NextRequest) {
         if (!allowed.ok) return NextResponse.json({ error: allowed.reason }, { status: 400 })
         url = allowed.url
       }
+      // upsert, not update: an account with no user_settings row yet would get
+      // a successful no-op — the settings page would say saved, the transport
+      // would stay on the plugin path, and nothing anywhere would disagree.
       const { error } = await supabase
         .from('user_settings')
-        .update({ openclaw_gateway_url: url })
-        .eq('user_id', user.id)
+        .upsert({ user_id: user.id, openclaw_gateway_url: url }, { onConflict: 'user_id' })
       if (isMissingSchema(error)) {
         return NextResponse.json(
           { error: 'Needs migration 037 — run pnpm db:push.', unavailable: true },

@@ -123,6 +123,21 @@ export async function POST(req: NextRequest) {
   }
 
   // ── OpenAI provider ────────────────────────────────────────────────────────
+  // A caller's OWN key is self-funded and needs no session. Falling back to the
+  // deployment's key does: without this, anyone could POST here and spend the
+  // owner's OpenAI budget. Pre-dates the gateway work; same hole, same fix.
+  if (!apiKey && process.env.OPENAI_API_KEY) {
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
+      }
+    } catch {
+      return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
+    }
+  }
+
   const resolvedSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
   const systemMessage = context ? `${resolvedSystemPrompt}\n\n${context}` : resolvedSystemPrompt
 

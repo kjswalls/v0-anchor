@@ -93,6 +93,18 @@ export function itemSessionKey(userId: string, itemId: string): string {
  * reject the correct configuration. What it does block is the cloud metadata
  * endpoint, and it requires TLS anywhere but local development.
  */
+/** `::ffff:a9fe:a9fe` → is that 169.254.x.x? */
+function isMappedLinkLocal(host: string): boolean {
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host)
+  if (hex) {
+    const high = parseInt(hex[1], 16)
+    return ((high >> 8) & 0xff) === 169 && (high & 0xff) === 254
+  }
+  // Some parsers keep the dotted tail; handle that spelling too.
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host)
+  return dotted ? /^169\.254\./.test(dotted[1]) : false
+}
+
 export function assertAllowedGatewayUrl(
   raw: string
 ): { ok: true; url: string } | { ok: false; reason: string } {
@@ -107,12 +119,25 @@ export function assertAllowedGatewayUrl(
     return { ok: false, reason: 'Only http and https URLs are supported' }
   }
 
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
   const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+
+  // Credentials in the URL would be written to user_settings, which the browser
+  // CAN read — the token column exists precisely so secrets stay out of there.
+  if (url.username || url.password) {
+    return { ok: false, reason: 'Put the token in the token field, not in the URL' }
+  }
 
   // 169.254.0.0/16 — cloud instance metadata lives at 169.254.169.254, and a
   // server-side fetch of it would hand over instance credentials.
-  if (/^169\.254\./.test(host) || host === 'fd00:ec2::254') {
+  //
+  // The WHATWG parser folds octal, decimal and trailing-dot IPv4 spellings back
+  // to a dotted quad, so those are caught by the plain test. What it does NOT
+  // fold away is the IPv4-mapped IPv6 form: `[::ffff:169.254.169.254]` becomes
+  // `[::ffff:a9fe:a9fe]`, hex rather than dotted, and reaches the same address.
+  // So the mapped form is decoded back to an IPv4 rather than matched as a
+  // literal — one hard-coded address would only block the one everybody knows.
+  if (/^169\.254\./.test(host) || host === 'fd00:ec2::254' || isMappedLinkLocal(host)) {
     return { ok: false, reason: 'That address range is not allowed' }
   }
 

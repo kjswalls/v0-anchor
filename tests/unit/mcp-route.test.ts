@@ -42,6 +42,12 @@ vi.mock('@/lib/agent-api', () => ({
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
 }));
 vi.mock('@/app/api/agent/context/route', () => ({ GET: fake('context') }));
+// The route resolves the bearer key before doing any work; the handlers still
+// authenticate independently, which their own suites cover.
+vi.mock('@/lib/supabase-service', () => ({
+  createServiceClient: vi.fn(() => ({})),
+  resolveUserIdFromApiKey: vi.fn(async (key: string) => (key === 'anchor_testkey' ? 'user-1' : null)),
+}));
 
 import { POST } from '@/app/api/mcp/route';
 import { NextRequest } from 'next/server';
@@ -68,6 +74,14 @@ beforeEach(() => {
 describe('auth', () => {
   it('refuses a request with no bearer token before any handshake', async () => {
     const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'initialize' }, null));
+    expect(res.status).toBe(401);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a bearer token that is not a real key, before any work', async () => {
+    // A prefix check costs nothing to satisfy, so an unresolvable key must not
+    // reach the batch loop and spend a round-trip per element.
+    const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, 'Bearer not-a-key'));
     expect(res.status).toBe(401);
     expect(calls).toHaveLength(0);
   });
@@ -164,6 +178,39 @@ describe('JSON-RPC transport rules', () => {
   it('returns 202 for a batch of only notifications', async () => {
     const res = await POST(rpc([{ jsonrpc: '2.0', method: 'notifications/initialized' }]));
     expect(res.status).toBe(202);
+  });
+
+  it('rejects an empty batch as an Invalid Request', async () => {
+    const res = await POST(rpc([]));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32600);
+  });
+
+  it('refuses an oversized batch rather than executing it', async () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({
+      jsonrpc: '2.0', id: i, method: 'tools/call',
+      params: { name: 'anchor_get_context' },
+    }));
+    const res = await POST(rpc(many));
+    expect(res.status).toBe(400);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('never answers or executes an id-less tools/call', async () => {
+    // Without an id there is nothing to report failure to, so a fire-and-forget
+    // write is worse than the protocol violation.
+    const res = await POST(
+      rpc({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'anchor_create_task', arguments: { title: 'x' } } })
+    );
+    expect(res.status).toBe(202);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('answers GET with 405, since it cannot open an SSE stream', async () => {
+    const { GET } = await import('@/app/api/mcp/route');
+    const res = await GET();
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('POST');
   });
 
   it('returns a parse error for a malformed body', async () => {

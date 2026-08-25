@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { ProposalDraftSchema } from '@anchor-app/types'
+import { createClient } from '@/lib/supabase-server'
 
 /**
  * POST /api/ai/propose — turn a free-form ask into a planner diff.
@@ -41,6 +42,18 @@ Rules:
 - If you have nothing useful to propose, return {"summary":"","operations":[]}.`
 
 export async function POST(req: NextRequest) {
+  // Authenticated, always. This route can fall back to the deployment's own
+  // OPENAI_API_KEY, so leaving it open would let anyone on the internet spend
+  // the owner's money by POSTing a prompt at it. The browser always has a
+  // session here — the chat surfaces live inside the authenticated shell.
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   let body: {
     prompt?: string
     provider?: string
@@ -60,6 +73,17 @@ export async function POST(req: NextRequest) {
   if (provider === 'anthropic') {
     return NextResponse.json(
       { error: 'Claude support is coming soon — use OpenAI for now.' },
+      { status: 400 }
+    )
+  }
+
+  // The agent tier has no proposal transport yet, and falling through to OpenAI
+  // would quietly send an OpenClaw user's planner to a provider they chose not
+  // to use. Refusing is the honest failure; routing it elsewhere is not a
+  // degraded mode, it is a broken promise about where their data goes.
+  if (provider === 'openclaw') {
+    return NextResponse.json(
+      { error: 'Asking your gateway for a plan is not wired up yet — the catch-up suggestion works without it.' },
       { status: 400 }
     )
   }

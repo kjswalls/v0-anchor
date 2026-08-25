@@ -114,6 +114,14 @@ export async function dispatch(
     return notification ? null : fail(id, RpcError.INVALID_REQUEST, 'method must be a string')
   }
 
+  // A notification takes NO response, whatever it names. Guarding only the
+  // error paths meant an id-less `initialize` or `tools/call` still got one —
+  // and an id-less tools/call would also have EXECUTED, which is worse than the
+  // protocol violation: fire-and-forget writes with nothing to report failure
+  // to. The one method that legitimately arrives without an id is a
+  // notifications/* one, handled below.
+  if (notification && !req.method.startsWith('notifications/')) return null
+
   switch (req.method) {
     case 'initialize': {
       const asked = req.params?.protocolVersion

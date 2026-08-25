@@ -8,7 +8,8 @@ import {
   makeGoalItemHandlers,
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
-import { dispatch, isNotification, type ToolResult } from '@/lib/mcp/protocol'
+import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
+import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
 
 /**
@@ -119,15 +120,41 @@ async function toToolResult(res: Response): Promise<ToolResult> {
   }
 }
 
+/**
+ * The most work one request may ask for.
+ *
+ * A JSON-RPC batch is an array of any length and every element here becomes at
+ * least one database round-trip. Without a cap, a single request is an
+ * amplifier — and the cap matters more than it looks because the batch is
+ * expanded before any tool runs.
+ */
+const MAX_BATCH = 32
+
 export async function POST(req: NextRequest) {
-  // Auth is checked by the agent handlers themselves on every tool call. It is
-  // ALSO checked here so that a client with no key fails at initialize, rather
-  // than completing a handshake and discovering every tool 401s.
+  // The key is RESOLVED here, not merely prefix-checked. A `startsWith('Bearer ')`
+  // test costs nothing to satisfy, so it would let an anonymous caller reach the
+  // batch loop and spend a database round-trip per element before the first
+  // handler said 401. The agent handlers still authenticate independently — this
+  // is the outer gate, not a replacement for theirs.
   const auth = req.headers.get('authorization')
   if (!auth?.startsWith('Bearer ')) {
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Missing bearer token' } },
       { status: 401 }
+    )
+  }
+  try {
+    const userId = await resolveUserIdFromApiKey(auth.slice(7), createServiceClient())
+    if (!userId) {
+      return NextResponse.json(
+        { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Unauthorized' } },
+        { status: 401 }
+      )
+    }
+  } catch {
+    return NextResponse.json(
+      { jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth unavailable' } },
+      { status: 503 }
     )
   }
 
@@ -145,6 +172,24 @@ export async function POST(req: NextRequest) {
   // batch of only notifications produces no body at all.
   const batch = Array.isArray(message)
   const messages: unknown[] = batch ? (message as unknown[]) : [message]
+
+  // JSON-RPC 2.0 §6: an empty batch is an Invalid Request, not an empty result.
+  if (batch && messages.length === 0) {
+    return NextResponse.json(
+      { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Empty batch' } },
+      { status: 400 }
+    )
+  }
+  if (messages.length > MAX_BATCH) {
+    return NextResponse.json(
+      {
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32600, message: `Batch too large: ${messages.length} > ${MAX_BATCH}` },
+      },
+      { status: 400 }
+    )
+  }
 
   const responses: unknown[] = []
   for (const one of messages) {
@@ -171,14 +216,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(batch ? responses : responses[0])
 }
 
-/** Some clients probe with GET before opening a session; say what this is. */
+/**
+ * Streamable HTTP uses GET to open a server->client SSE stream. This server has
+ * nothing to push, and the spec says a server that will not provide that stream
+ * MUST answer 405 — a friendly 200 makes a conformant client sit waiting for
+ * events that will never arrive.
+ */
 export async function GET() {
-  return NextResponse.json({
-    name: 'anchor',
-    transport: 'streamable-http',
-    methods: ['initialize', 'tools/list', 'tools/call', 'ping'],
-    hint: 'POST JSON-RPC 2.0 here with an Authorization: Bearer <anchor api key> header.',
-  })
+  return new NextResponse(null, { status: 405, headers: { Allow: 'POST' } })
 }
-
-export { isNotification }

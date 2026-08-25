@@ -49,7 +49,8 @@ function plannerContext() {
     // Work a routine or program has paused today is not "waiting on you" — the
     // same rule the auto-age sweep and the past-due bar obey.
     inactiveIds: inactiveItemIdsOn(state.items, today, {
-      userTimezone: state.userTimezone,
+      // Same fallback the store uses everywhere it needs a zone.
+      userTimezone: state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       routines: state.routines,
       programs: state.programs,
     }),

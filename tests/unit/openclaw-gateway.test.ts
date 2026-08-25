@@ -158,6 +158,33 @@ describe('assertAllowedGatewayUrl', () => {
     expect(assertAllowedGatewayUrl('https://169.254.169.254').ok).toBe(false);
   });
 
+  it('blocks the IPv4-mapped IPv6 form of the metadata address', () => {
+    // The WHATWG parser normalises decimal/octal/hex/trailing-dot IPv4 back to
+    // dotted quad, but NOT this form — and it reaches the same address.
+    expect(assertAllowedGatewayUrl('https://[::ffff:169.254.169.254]').ok).toBe(false);
+    expect(assertAllowedGatewayUrl('https://[::ffff:a9fe:a9fe]').ok).toBe(false);
+  });
+
+  it('blocks the trailing-dot spelling of a metadata host', () => {
+    expect(assertAllowedGatewayUrl('https://169.254.169.254.').ok).toBe(false);
+  });
+
+  it('catches the octal spelling, which the URL parser folds to a dotted quad', () => {
+    expect(assertAllowedGatewayUrl('https://0251.0376.0251.0376').ok).toBe(false);
+  });
+
+  it('blocks the whole link-local /16, not just the famous address', () => {
+    expect(assertAllowedGatewayUrl('https://169.254.1.1').ok).toBe(false);
+    expect(assertAllowedGatewayUrl('https://[::ffff:169.254.1.1]').ok).toBe(false);
+  });
+
+  it('refuses credentials embedded in the URL', () => {
+    // user_settings is browser-readable; a token in the URL would land there.
+    const result = assertAllowedGatewayUrl('https://anchor:sekrit@gw.example.ts.net:8787');
+    expect(result.ok).toBe(false);
+    expect((result as { reason: string }).reason).toMatch(/token field/);
+  });
+
   it('allows private and Tailscale ranges — that is the intended deployment', () => {
     expect(assertAllowedGatewayUrl('https://100.101.102.103:8787').ok).toBe(true);
     expect(assertAllowedGatewayUrl('https://192.168.1.50:8787').ok).toBe(true);

@@ -2405,6 +2405,10 @@ export const usePlannerStore = create<PlannerStore>()(
               notes: op.notes,
               priority: op.priority,
               project: op.project,
+              // Every other create path resolves this, and the container rename
+              // fan-out is keyed on projectId — an item carrying only the NAME
+              // silently stops following its project when the project is renamed.
+              projectId: projectIdFor(op.project, state.projects),
               startDate: op.startDate,
               startTime: op.startTime,
               timeBucket,
@@ -2427,6 +2431,10 @@ export const usePlannerStore = create<PlannerStore>()(
           if (!target) continue;
 
           const updates = { ...rest } as Partial<Task>;
+          // Same reason as the create path: the id has to move with the name.
+          if (updates.project !== undefined) {
+            updates.projectId = projectIdFor(updates.project, state.projects);
+          }
           // Same auto-correct the manual edit path applies: a concrete start
           // time overrides a mismatched bucket.
           if (updates.startTime) {
