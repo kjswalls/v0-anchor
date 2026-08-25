@@ -1,34 +1,42 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { format, isToday } from 'date-fns';
-import { Calendar, Rows3, List, Clock, Check, ChevronDown, MessageSquarePlus } from 'lucide-react';
+import {
+  format,
+  addDays,
+  subDays,
+  startOfWeek,
+  isSameDay,
+  isToday,
+  isTomorrow,
+  isYesterday,
+} from 'date-fns';
+import { useSwipeable } from 'react-swipeable';
+import { Rows3, List, Clock, ChevronDown } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
-import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
+import { goToDate } from '@/lib/nav-commands';
+import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
   onOpenSettings: () => void;
   /**
-   * Opens the bug-report/feature-request dialog. Temporary dogfooding
-   * affordance for #196, in the header slot the manual morning/EOD trigger
-   * buttons used to occupy.
+   * Opens the bug-report/feature-request dialog. Dogfooding affordance for
+   * #196; it lives inside the user menu now rather than in its own header
+   * slot, which is what let the header collapse to one card.
    */
   onOpenBugReport: () => void;
 }
 
-/** Mobile layouts that ship on small screens (subset of the desktop capsule). */
+/**
+ * The layouts a phone offers, in cycle order. Mobile is day-only, so this is a
+ * subset of the desktop capsule's matrix — there is no scope axis to cross.
+ */
 const LAYOUTS: { value: ViewLayout; label: string; icon: typeof Rows3 }[] = [
   { value: 'buckets', label: 'Buckets', icon: Rows3 },
   { value: 'list', label: 'List', icon: List },
@@ -36,13 +44,128 @@ const LAYOUTS: { value: ViewLayout; label: string; icon: typeof Rows3 }[] = [
 ];
 
 /**
- * Mobile header: user menu + date on the left, layout picker on the right.
- * No logo (the user menu takes that slot) and no add button (the always-present
- * omnibar strip handles capture). pt-safe lives on the outer element so the
- * content row keeps symmetric vertical padding (stays centered) under the notch.
+ * The week-start preference as date-fns' index.
+ *
+ * Both date controls in this card read it — the strip's seven columns and the
+ * calendar popover's month grid. A picker that put Aug 24 in a different column
+ * than the strip directly above it is exactly the confusion the strip's fixed
+ * columns exist to prevent, and react-day-picker takes the en-US default
+ * (Sunday) unless told otherwise.
+ */
+function weekStartIndex(day: 'sunday' | 'monday' | 'saturday'): 0 | 1 | 6 {
+  return day === 'monday' ? 1 : day === 'saturday' ? 6 : 0;
+}
+
+/**
+ * The week the strip shows, and the day cells in it.
+ *
+ * Seven cells, always the calendar week containing the cursor — not a rolling
+ * window — so the weekday initials stay in their columns as the cursor moves
+ * and the strip never re-orders under a thumb. Paging is a horizontal swipe;
+ * the calendar popover in the row above is the arbitrary jump.
+ */
+function WeekStrip() {
+  const selectedDate = usePlannerStore((s) => s.selectedDate);
+  const weekStartDay = usePlannerStore((s) => s.weekStartDay);
+
+  const weekStart = startOfWeek(selectedDate, { weekStartsOn: weekStartIndex(weekStartDay) });
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  // A week per swipe, keeping the weekday: land on the same column one week
+  // over, so the underline does not jump across the strip as it pages.
+  const swipe = useSwipeable({
+    onSwipedLeft: () => goToDate(addDays(selectedDate, 7), 'left'),
+    onSwipedRight: () => goToDate(subDays(selectedDate, 7), 'right'),
+    // The header card sits OUTSIDE the shell's swipeable content container, so
+    // a strip swipe cannot reach the tab swipe by bubbling today. Stopping it
+    // here anyway makes that independent of where the header ends up sitting:
+    // a swipe that pages the week must never also change tab.
+    onTouchStartOrOnMouseDown: ({ event }) => event.stopPropagation(),
+    trackMouse: false,
+    delta: 40,
+    preventScrollOnSwipe: false,
+  });
+
+  return (
+    <div {...swipe} className="flex touch-pan-y justify-between px-1">
+      {days.map((day) => {
+        const selected = isSameDay(day, selectedDate);
+        const today = isToday(day);
+        const dateStr = format(day, 'yyyy-MM-dd');
+
+        return (
+          <button
+            key={dateStr}
+            type="button"
+            onClick={() => goToDate(day)}
+            // The strip is the mobile date control now that the chevrons are
+            // gone, so each cell is addressable by the date it moves to —
+            // tests/e2e/helpers/app.ts:navigateToDate clicks these.
+            data-testid="week-day"
+            data-date={dateStr}
+            data-selected={selected ? 'true' : 'false'}
+            aria-current={selected ? 'date' : undefined}
+            aria-label={
+              today ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')
+            }
+            className="flex flex-1 flex-col items-center gap-[3px] rounded-lg py-0.5"
+          >
+            <span
+              className={cn(
+                'text-[9px] font-medium',
+                // --lime-ink is near-black in dark mode, so the lime accent
+                // reads as ink only through --day-today, which flips to the
+                // bright lime there. Never through an opacity — this is the
+                // one mark on the card that is allowed to be lime.
+                selected ? 'text-day-today' : 'text-muted-foreground'
+              )}
+            >
+              {format(day, 'EEEEE')}
+            </span>
+            <span
+              className={cn(
+                'flex h-5 items-center justify-center text-[12px]',
+                // Today is marked even when the cursor is elsewhere — in ink
+                // and weight, not a second badge, so the lime underline stays
+                // the one thing that means "selected". The mini-week-nav this
+                // replaced distinguished the two (bg-primary vs bg-secondary);
+                // without it, a week paged away from now renders seven
+                // identical cells and nothing on the card says where today is.
+                selected
+                  ? 'font-semibold text-day-today'
+                  : today
+                    ? 'font-semibold text-foreground'
+                    : 'font-medium text-foreground/70'
+              )}
+            >
+              {format(day, 'd')}
+            </span>
+            <span
+              aria-hidden="true"
+              className={cn(
+                'h-[3px] w-4 rounded-[2px]',
+                selected ? 'bg-primary' : 'bg-transparent'
+              )}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Mobile header: on Today, one card carrying the date row and the week strip.
+ * It replaces the two stacked pills (header + mini week nav) the phone used to
+ * open with; two bordered, shadowed surfaces competing above the first row of
+ * content is what made the shell read busy. The other two tabs bring their own
+ * header and get no card at all (see the gate below).
+ *
+ * pt-safe lives on the outer <header> and the card carries its own top margin,
+ * so the notch inset and the card's gap add rather than collide.
  */
 export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderProps) {
-  const { selectedDate, setSelectedDate } = usePlannerStore();
+  const { selectedDate, setSelectedDate, weekStartDay } = usePlannerStore();
   const { layout, setLayout } = useViewStore();
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const [mounted, setMounted] = useState(false);
@@ -50,38 +173,96 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
 
   useEffect(() => setMounted(true), []);
 
-  const currentLayout = LAYOUTS.find((l) => l.value === layout) ?? LAYOUTS[0];
+  const currentIndex = Math.max(
+    0,
+    LAYOUTS.findIndex((l) => l.value === layout)
+  );
+  const currentLayout = LAYOUTS[currentIndex];
+  const nextLayout = LAYOUTS[(currentIndex + 1) % LAYOUTS.length];
   const LayoutIcon = currentLayout.icon;
+
+  // A relative word where there is one, because "Today" is the phone's whole
+  // orientation; otherwise the weekday carries it. The secondary line then
+  // supplies whatever the primary did not — the weekday is already spelled out
+  // above on a dated day, so repeating it there would be noise.
+  const relativeDay = isToday(selectedDate)
+    ? 'Today'
+    : isTomorrow(selectedDate)
+      ? 'Tomorrow'
+      : isYesterday(selectedDate)
+        ? 'Yesterday'
+        : null;
+
+  const primaryDate = relativeDay ?? format(selectedDate, 'EEEE');
+  const secondaryDate = relativeDay
+    ? format(selectedDate, 'EEE, MMM d')
+    : format(selectedDate, 'MMM d');
+
+  // The dateless tabs get NO card. Braindump already opens with the header this
+  // redesign ports — its own surface-3 capsule (components/sidebar/braindump.tsx)
+  // — and Beacon gets that shape in phase 3; a dated card above either is two
+  // stacked headers, the upper one offering a calendar for a surface with no
+  // date, where the chevron moved the Today cursor with no visible effect on the
+  // tab you were looking at. The user menu goes with the card until phase 3 puts
+  // the avatar inside those capsules, as the artboards show
+  // (design/mobile-redesign/BraindumpTab.dc.html). The empty wrapper stays: it
+  // carries the notch inset, plus the 10px the card's own top margin used to put
+  // between the inset and whatever opens below — those surfaces need both
+  // whether or not there is a card in it.
+  if (activeTab !== 'today') return <header className="pb-[10px] pt-safe" />;
 
   return (
     <header className="pt-safe">
-      {/* A shadowed white pill floating on the paper backdrop (desktop's
-          white-pill recipe: surface-2 + surface-3 hairline + hard shadow that
-          still reads in light mode). pt-safe on the header, mt-2 on the pill —
-          separate elements, so the safe inset and the top gap don't collide. */}
-      <div className="mx-3 mt-2 flex items-center justify-between rounded-[16px] border border-surface-3 bg-surface-2 px-2 py-1.5 shadow-[var(--shadow-elev-sm)]">
-        <div className="flex items-center gap-1">
-          <UserProfileDropdown onOpenSettings={onOpenSettings} />
+      <div className="mx-[10px] mt-[10px] flex flex-col gap-2 rounded-[20px] border border-surface-3 bg-surface-2 px-3 pb-2 pt-[10px] shadow-[var(--shadow-elev-sm)]">
+        <div className="flex items-center justify-between gap-2">
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
             <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
+              <button
+                type="button"
                 data-testid="header-date"
                 // Same machine-readable date as the desktop capsule, so one
-                // navigation helper works across both shells. Mobile also
-                // renders the literal 'Today' instead of a date, which no
-                // format-string assertion can match.
+                // navigation helper works across both shells. The visible copy
+                // is a relative word as often as not, which no format-string
+                // assertion could match.
                 data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
-                className="h-9 gap-1.5 px-2 text-sm font-medium text-foreground hover:bg-accent"
+                // Composed FROM the visible words, not instead of them: an
+                // aria-label replaces an element's contents in the accessible
+                // name, so a bare "Change date" left the date — the whole
+                // readout — unannounced, and left voice control with no
+                // "tap Today" to match (WCAG 2.5.3). Pre-mount there is no date
+                // to name yet, so the verb stands alone for that one frame.
+                aria-label={
+                  mounted ? `${primaryDate} ${secondaryDate}. Change date.` : 'Change date'
+                }
+                className="-ml-1 flex min-w-0 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-accent"
               >
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                {mounted ? (isToday(selectedDate) ? 'Today' : format(selectedDate, 'EEE, MMM d')) : <span className="w-16" />}
-              </Button>
+                {mounted ? (
+                  <span className="flex min-w-0 items-baseline gap-[7px]">
+                    <span className="truncate text-[16px] font-semibold tracking-[-0.01em] text-foreground">
+                      {primaryDate}
+                    </span>
+                    <span className="shrink-0 text-[13px] text-muted-foreground">
+                      {secondaryDate}
+                    </span>
+                  </span>
+                ) : (
+                  // Pre-mount the date is whatever the server rendered; hold the
+                  // space rather than paint a value the client may replace.
+                  <span className="h-6 w-40" />
+                )}
+                <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
               <CalendarComponent
                 mode="single"
                 selected={selectedDate}
+                // Without this the picker opens on the CURRENT month whatever
+                // the cursor is on (react-day-picker takes `today`, not
+                // `selected`, as its initial month) — so paging a few weeks out
+                // and reaching for the calendar threw you back to this month.
+                defaultMonth={selectedDate}
+                weekStartsOn={weekStartIndex(weekStartDay)}
                 onSelect={(date) => {
                   if (date) setSelectedDate(date);
                   setCalendarOpen(false);
@@ -90,72 +271,58 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
               />
             </PopoverContent>
           </Popover>
-        </div>
 
-        <div className="flex items-center gap-1">
-          {/* Temporary dogfooding affordance (#196), reusing the shared
-              bug-report/feature-request dialog rather than building a
-              mobile-only one. Icon sized to match the other icon glyphs in
-              this header (h-4 w-4). */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onOpenBugReport}
-            aria-label="Report a bug or request a feature"
-            title="Report a bug or request a feature"
-            className="h-9 w-9 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-2.5">
+            {/* Both icons answer for the canvas, which is why the whole card
+                rides Today only: on Braindump the display menu would be a
+                second, pixel-identical trigger beside the braindump's own,
+                writing canvasFilters while the list below reads
+                braindumpFilters; on Chat both would configure a canvas nobody
+                is looking at. */}
+            <div className="flex items-center gap-0.5">
+              {/* The button IS the layout readout: it shows where you are and
+                  tapping moves you on. A picker would need a second tap to
+                  say anything, on a surface with exactly three states.
 
-          {/* Three of the seven surfaces exist on a phone, and until now none of
-              them had any filter affordance at all — the command palette was the
-              only path, on a device with no keyboard to open it with. The icon
-              trigger costs 24px.
-
-              Today ONLY. MobileShell renders this header above every activeTab
-              guard (mobile-shell.tsx:55), so an ungated mount rides all three
-              tabs: on Braindump it would be a second, pixel-identical trigger
-              beside the braindump's own, writing canvasFilters while the list
-              below reads braindumpFilters; on Chat it would configure a canvas
-              nobody is looking at.
-
-              `scope="day"` because this shell IS day-only — MobileViewRouter
-              reads `layout` and hardcodes data-view-scope="day". Without it a
-              stale `scope: 'week'` in the persisted blob reports Grouping as
-              unavailable on a surface that honours it, and nothing here can
-              correct it: the only writers of scope are the desktop capsule and
-              two palette commands hidden on mobile. */}
-          {activeTab === 'today' && <DisplayMenu surface="canvas" trigger="icon" scope="day" />}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="h-9 gap-1.5 px-2.5 text-sm font-medium text-foreground hover:bg-accent"
-                aria-label="Layout"
+                  rounded-sm, not rounded-lg: --radius is 1rem here, so
+                  `rounded-lg` on a 30px box is a circle — three round slots
+                  where the artboard sets these two at 8px against the one
+                  round avatar. */}
+              <button
+                type="button"
+                onClick={() => setLayout(nextLayout.value)}
+                data-testid="mobile-view-cycle"
+                data-layout={currentLayout.value}
+                aria-label={`View: ${currentLayout.label}. Tap for ${nextLayout.label}.`}
+                className="flex size-[30px] items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <LayoutIcon className="h-4 w-4 text-muted-foreground" />
-                {currentLayout.label}
-                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[150px]">
-              {LAYOUTS.map((l) => {
-                const Icon = l.icon;
-                return (
-                  <DropdownMenuItem key={l.value} onClick={() => setLayout(l.value)} className="gap-2 text-sm">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="flex-1">{l.label}</span>
-                    {/* Inherited colour — `text-primary-foreground` is --lime-ink,
-                        meant to sit ON a lime fill, not on the popover ground. */}
-                    {l.value === layout && <Check className="h-3.5 w-3.5" />}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <LayoutIcon className="size-4" />
+              </button>
+
+              {/* `scope="day"` because this shell IS day-only —
+                  MobileViewRouter reads `layout` and hardcodes
+                  data-view-scope="day". Without it a stale `scope: 'week'` in
+                  the persisted blob reports Grouping as unavailable on a
+                  surface that honours it, and nothing here can correct it:
+                  the only writers of scope are the desktop capsule and two
+                  palette commands hidden on mobile.
+
+                  The wrapper grows the shared 24px icon trigger to the 30px
+                  touch slot its neighbour uses, without changing what the
+                  braindump and the desktop capsule get. */}
+              <span className="flex [&>button]:size-[30px] [&>button]:rounded-sm">
+                <DisplayMenu surface="canvas" trigger="icon" scope="day" />
+              </span>
+            </div>
+
+            <UserProfileDropdown
+              onOpenSettings={onOpenSettings}
+              onOpenBugReport={onOpenBugReport}
+            />
+          </div>
         </div>
+
+        <WeekStrip />
       </div>
     </header>
   );

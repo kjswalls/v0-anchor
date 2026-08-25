@@ -7,7 +7,6 @@ import { MobileHeader } from '@/components/mobile/mobile-header';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
-import { MiniWeekNav } from '@/components/mobile/mini-week-nav';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { ScopeRail } from '@/components/sidebar/scope-rail';
@@ -17,8 +16,8 @@ import { useUIStore } from '@/lib/ui-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
 /**
- * Mobile layout: slim header + (Today-only) day strip, the active tab's
- * surface, and a bottom tab bar — Braindump · Today · Chat. Tabs reuse the
+ * Mobile layout: the header card (date row, plus the week strip on Today), the
+ * active tab's surface, and a bottom tab bar — Braindump · Today · Chat. Tabs reuse the
  * desktop primitives (shared Braindump, DayBuckets/DayList via
  * MobileViewRouter, ChatConversation) rather than the old bespoke panels.
  * Rendered under the shell's single DndContext, so items stay draggable.
@@ -51,12 +50,12 @@ export function MobileShell() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-background md:hidden">
+      {/* One card, not two: the week strip is a row inside the header now, so
+          the shell no longer mounts a day-strip beside it. */}
       <MobileHeader
         onOpenSettings={() => router.push('/settings')}
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
-
-      {activeTab === 'today' && <MiniWeekNav />}
 
       {/* The past-due pill used to sit here, mounted on Today only — which is
           also what made it a per-tab surface with a single global open flag, and
