@@ -134,6 +134,7 @@ describe('command registry', () => {
       'system_shortcuts',
       'system_search',
       'system_command',
+      'system_capture',
       'report_bug',
       'toggle_view_scope',
       'focus_item_panel',

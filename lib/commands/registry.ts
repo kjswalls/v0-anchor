@@ -848,6 +848,29 @@ export const STATIC_COMMANDS: Command[] = [
     },
   },
   {
+    id: 'workspace.focusCapture',
+    label: 'Quick add',
+    description: 'Focus the sidebar capture bar',
+    group: 'workspace',
+    icon: Plus,
+    keywords: 'quick add capture omnibar sidebar new task',
+    shortcut: { id: 'system_capture', keys: ['meta', 'i'], allowInInput: true },
+    hidden: true,
+    // The reveal+focus path ⌘K used before the launcher took ⌘K over. Reveal the
+    // sidebar BEFORE focusing: focusing a clipped zero-width input in a collapsed
+    // sidebar swallows every binding without allowInInput (n / e / Backspace / ⌘Z)
+    // until you blur. Mobile switches off the Chat tab, which unmounts the omnibar.
+    run: (ctx) => {
+      if (ctx.isMobile) {
+        const nav = useMobileNavStore.getState();
+        if (nav.activeTab === 'chat') nav.setActiveTab('today');
+      } else {
+        useSidebarStore.getState().setLeftSidebarOpen(true);
+      }
+      useUIStore.getState().focusOmnibar();
+    },
+  },
+  {
     id: 'workspace.selectAll',
     label: 'Select all items',
     description: 'Select every item currently on screen',

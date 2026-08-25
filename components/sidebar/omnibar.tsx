@@ -918,7 +918,12 @@ export function Omnibar({
               placeholder={
                 activeCommand
                   ? (activeCommand.argument?.placeholder ?? '')
-                  : 'Search, add a task, start a chat, run a command...'
+                  : isLauncher
+                    ? 'Search, add a task, run a command, or ask Beacon…'
+                    : // Dock leans capture: lead with the everyday action. Search
+                      // and commands still work here (and live under ⌘K); the
+                      // hint row below still advertises the + / command / ? prefixes.
+                      'Add a task…'
               }
               aria-label="Omnibar"
               // cmdk gives this input role="combobox", and Playwright's
