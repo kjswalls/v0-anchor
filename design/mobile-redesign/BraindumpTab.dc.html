@@ -24,6 +24,7 @@
       --coral: oklch(0.72 0.14 30);
       --input: oklch(0.86 0.012 272);
       --hairline: oklch(0.9 0.008 272 / 45%);
+      --sh-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
       --sh-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
       --sh-soft-lg: 0 4px 8px oklch(0.3 0.02 80 / 6%), 0 16px 48px oklch(0.3 0.02 80 / 10%);
     }
@@ -31,9 +32,9 @@
 </helmet>
 <div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; font-family: 'Inter', system-ui, sans-serif;">
 
-  <!-- Braindump tab: same shell, no week strip (this surface is dateless).
+  <!-- Braindump tab: carded header, no week strip (this surface is dateless).
        Display filter keeps its ghost icon; the view cycler doesn't apply here. -->
-  <div style="padding: 16px 20px 0; display: flex; align-items: center; justify-content: space-between;">
+  <div style="margin: 10px 10px 0; background: var(--pill); border: 1px solid var(--well); border-radius: 20px; box-shadow: var(--sh-elev-sm); padding: 8px 12px; display: flex; align-items: center; justify-content: space-between;">
     <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Braindump</span>
     <div style="display: flex; align-items: center; gap: 10px;">
       <div style="width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--ink-2);">
@@ -43,11 +44,8 @@
     </div>
   </div>
 
-  <!-- Small divider between chrome and content -->
-  <div style="height: 1px; background: var(--hairline); margin: 14px 14px 0;"></div>
-
   <!-- Loose items straight on the paper -->
-  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 12px 20px 0; display: flex; flex-direction: column;">
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 14px 20px 0; display: flex; flex-direction: column;">
     <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
       <div style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--input); background: var(--pill); flex-shrink: 0;"></div>
       <span style="flex: 1; font-size: 14px; font-weight: 500;">Book flights for October trip</span>

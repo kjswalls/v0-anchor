@@ -25,6 +25,7 @@
       --coral: oklch(0.72 0.14 30);
       --input: oklch(0.86 0.012 272);
       --hairline: oklch(0.9 0.008 272 / 45%);
+      --sh-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
       --sh-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
       --sh-soft-lg: 0 4px 8px oklch(0.3 0.02 80 / 6%), 0 16px 48px oklch(0.3 0.02 80 / 10%);
     }
@@ -32,8 +33,9 @@
 </helmet>
 <div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; font-family: 'Inter', system-ui, sans-serif;">
 
-  <!-- Same shell; the cycle button shows the List glyph (current view) -->
-  <div style="padding: 16px 20px 0; display: flex; align-items: center; justify-content: space-between;">
+  <!-- Carded header: header + strip share one white card -->
+  <div style="margin: 10px 10px 0; background: var(--pill); border: 1px solid var(--well); border-radius: 20px; box-shadow: var(--sh-elev-sm); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 8px;">
+  <div style="display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center; gap: 8px;">
       <div style="display: flex; align-items: baseline; gap: 7px;">
         <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Today</span>
@@ -54,7 +56,7 @@
     </div>
   </div>
 
-  <div style="padding: 10px 20px 8px; display: flex; justify-content: space-between;">
+  <div style="display: flex; justify-content: space-between; padding: 0 4px;">
     <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
       <span style="font-size: 9px; font-weight: 500; color: var(--ink-2);">S</span>
       <span style="height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--ink-1);">23</span>
@@ -91,12 +93,10 @@
       <span style="width: 16px; height: 3px; border-radius: 2px; background: transparent;"></span>
     </div>
   </div>
-
-  <!-- Small divider between chrome and content -->
-  <div style="height: 1px; background: var(--hairline); margin: 0 14px;"></div>
+  </div>
 
   <!-- Flat list straight on the paper, desktop-style slash-label groups -->
-  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 12px 20px 0; display: flex; flex-direction: column;">
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 14px 20px 0; display: flex; flex-direction: column;">
     <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); padding-bottom: 2px;">Habits</span>
     <div style="display: flex; align-items: center; gap: 10px; padding: 7px 0; min-height: 42px;">
       <div style="width: 20px; height: 20px; border-radius: 6px; background: var(--lime); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">

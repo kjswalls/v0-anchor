@@ -33,6 +33,7 @@
       --afternoon: oklch(0.76 0.11 55);
       --evening: oklch(0.62 0.1 285);
       --anytime: oklch(0.7 0.06 160);
+      --sh-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
       --sh-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
       --sh-soft-sm: 0 1px 2px oklch(0.3 0.02 80 / 5%), 0 2px 8px oklch(0.3 0.02 80 / 5%);
       --sh-soft-lg: 0 4px 8px oklch(0.3 0.02 80 / 6%), 0 16px 48px oklch(0.3 0.02 80 / 10%);
@@ -41,9 +42,10 @@
 </helmet>
 <div class="anchor" style="width: 390px; height: 844px; background: var(--paper-0); color: var(--ink-0); display: flex; flex-direction: column; overflow: hidden; font-family: 'Inter', system-ui, sans-serif;">
 
-  <!-- Flat header, one row: date on the left, view toggle + the K menu on the
-       right. No count row — the toggle lives up here now. -->
-  <div style="padding: 16px 20px 0; display: flex; align-items: center; justify-content: space-between;">
+  <!-- Carded header: date row + week strip share one white card. The K avatar
+       is the ONE menu; the two ghost icons are the view cycler + display menu. -->
+  <div style="margin: 10px 10px 0; background: var(--pill); border: 1px solid var(--well); border-radius: 20px; box-shadow: var(--sh-elev-sm); padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 8px;">
+  <div style="display: flex; align-items: center; justify-content: space-between;">
     <div style="display: flex; align-items: center; gap: 8px;">
       <div style="display: flex; align-items: baseline; gap: 7px;">
         <span style="font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Today</span>
@@ -64,8 +66,8 @@
     </div>
   </div>
 
-  <!-- Bare week strip; a lime underline marks the selected day -->
-  <div style="padding: 10px 20px 8px; display: flex; justify-content: space-between;">
+  <!-- Week strip; a lime underline marks the selected day -->
+  <div style="display: flex; justify-content: space-between; padding: 0 4px;">
     <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
       <span style="font-size: 9px; font-weight: 500; color: var(--ink-2);">S</span>
       <span style="height: 20px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; color: var(--ink-1);">23</span>
@@ -103,8 +105,10 @@
     </div>
   </div>
 
+  </div>
+
   <!-- Buckets from C: cards floating directly on paper -->
-  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 14px; display: flex; flex-direction: column; gap: 10px;">
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 14px 14px 0; display: flex; flex-direction: column; gap: 10px;">
 
     <div style="background: var(--pill); border: 1px solid var(--well); border-radius: 16px; box-shadow: var(--sh-soft-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px;">
       <div style="display: flex; align-items: center; gap: 6px; padding-bottom: 4px;">
