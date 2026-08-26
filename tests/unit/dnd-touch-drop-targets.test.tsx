@@ -4,34 +4,42 @@ import { DndContext } from '@dnd-kit/core';
 import type { DragStartEvent } from '@dnd-kit/core';
 
 /**
- * The one drop target a finger is not offered (lib/dnd/CONTRACT.md § Input).
+ * The one drop target a finger is not offered, and what it gets instead
+ * (lib/dnd/CONTRACT.md § Not every target is offered to every input).
  *
  * `scheduled:{bucket}:{before|after}:{ref}` is an 8px sliver between two timed
- * rows. Mechanically it is a MOVE like every other drop — `inferDropTime`
- * resolves it as ±30 min from the reference row's own time — so it is not the
- * drag-to-reorder `dnd-no-reorder.test.ts` forbids, and by the letter of that
- * ticket's scope it survived. Kirby then looked at it and removed it for touch
- * anyway: unaimable with a thumb, and the target sitting directly in the scroll
- * path between rows, so it is the one most likely to eat a gesture that meant
- * to scroll. The accepted cost: on a phone there is no "put this just before
- * that one" — you move the row to the bucket and set a time.
+ * rows — a third of WCAG 2.5.8's 24px minimum target size, on the input with
+ * the coarsest pointer. Mechanically it is a MOVE like every other drop
+ * (`inferDropTime` resolves it as ±30 min from the reference row's own time), so
+ * it is not the drag-to-reorder `dnd-no-reorder.test.ts` forbids and it survived
+ * that sweep. Kirby then removed it for touch anyway, with the cost accepted: on
+ * a phone there is no "put this just before that one" — you drop the row in the
+ * bucket and set a time.
+ *
+ * It is a SUBSTITUTION, not a deletion. The same box mounts for a finger
+ * carrying `spine:{bucket}:{above|below}:{id}`, which assigns the bucket with no
+ * time. Deleting it outright moves where drops LAND — `closestCenter` compares
+ * centres, so the bottom of a tall card starts resolving to the next bucket.
+ * That is `dnd-touch-drop-geometry.test.tsx`'s subject; this file is about which
+ * target is offered and what each one means.
  *
  * ## What has to be true, and why each half needs its own test
  *
- * 1. The rule exists once (`OFFERED_TO`, lib/dnd/drop-targets.ts).
- * 2. The VIEW does not mount the sliver for a touch drag. This is the half that
- *    changes behaviour: with no node there is no rect, `closestCenter` cannot
- *    pick it, and the finger's drop lands on the bucket instead — so the row
- *    still moves, untimed. A mount test is the only thing that can see it.
- * 3. `resolveDrop` refuses it too, as the backstop for a target that comes back.
+ * 1. The rule exists once (`OFFERED_TO`, lib/dnd/drop-targets.ts), and exactly
+ *    one of the pair is offered to any given input.
+ * 2. The VIEW mounts the right one of the two. This is the view-level rule:
+ *    what should this user be OFFERED? Only the view knows what it renders, so
+ *    only a mount test can see it.
+ * 3. `resolveDrop` answers the grammar-level question — what does this id MEAN
+ *    for this input? — over every id shape, for every view that will ever emit
+ *    one. Not a backstop for (2): a different question, at a different level.
  * 4. The SHELL actually feeds the real input type in. Without this one, a shell
  *    hard-coding `'pointer'` leaves 1–3 green and ships the sliver to phones —
  *    the exact "load-bearing claim no test held" this repo keeps getting burned
  *    by. Hence `beginDrag` is imported from app-shell rather than rebuilt.
- * 5. Nothing else moved: every OTHER target in the grammar still resolves for a
- *    finger, and every one still resolves for a cursor.
+ * 5. Nothing else moved: every OTHER target in the grammar still resolves
+ *    identically for a finger and for a cursor.
  */
-
 beforeAll(() => {
   if (!window.matchMedia) {
     window.matchMedia = ((q: string) => ({
@@ -93,6 +101,8 @@ import type { Habit, Task } from '@/lib/planner-types';
 const EVERY_DROP_TARGET = [
   'scheduled:morning:before:task:t2',
   'scheduled:morning:after:habit:h2',
+  'spine:morning:above:t2',
+  'spine:morning:below:h2',
   'scheduled:afternoon:empty',
   'anytime',
   'morning',
@@ -107,10 +117,17 @@ const EVERY_DROP_TARGET = [
   'sidebar',
 ] as const;
 
-const RELATIVE_TIME_TARGETS = [
-  'scheduled:morning:before:task:t2',
-  'scheduled:morning:after:habit:h2',
+/** The pair that swaps: one box in the gap, two ids, one per input type. */
+const GAP_PAIRS = [
+  { sliver: 'scheduled:morning:before:task:t2', spine: 'spine:morning:above:t2' },
+  { sliver: 'scheduled:morning:after:habit:h2', spine: 'spine:morning:below:h2' },
 ] as const;
+
+const RELATIVE_TIME_TARGETS = GAP_PAIRS.map((p) => p.sliver);
+const SPINE_TARGETS = GAP_PAIRS.map((p) => p.spine);
+/** Every id that is NOT input-restricted — the moves Kirby kept, untouched. */
+const RESTRICTED: readonly string[] = [...RELATIVE_TIME_TARGETS, ...SPINE_TARGETS];
+const SHARED_TARGETS = EVERY_DROP_TARGET.filter((t) => !RESTRICTED.includes(t));
 
 describe('the offered-to table', () => {
   it('classifies every id in the grammar (an unclassified target would be offered to all)', () => {
@@ -130,15 +147,40 @@ describe('the offered-to table', () => {
     expect(withheld).toEqual(['relative-time']);
   });
 
-  it('offers every kind to a cursor — desktop loses nothing', () => {
+  it('withholds the spine stand-in from a cursor and nothing else', () => {
+    // The other half of the swap. Desktop must not gain a second droppable in
+    // the same 8px box: two centres in one gap is a different geometry from the
+    // one every desktop drag has today.
+    const withheld = Object.entries(OFFERED_TO)
+      .filter(([, inputs]) => !inputs.includes('pointer'))
+      .map(([kind]) => kind);
+    expect(withheld).toEqual(['bucket-spine']);
+  });
+
+  it.each(GAP_PAIRS)('offers exactly one of the pair to each input ($sliver)', ({ sliver, spine }) => {
+    // The invariant the mount site relies on: never both (double centres),
+    // never neither (the wrong-bucket band — see dnd-touch-drop-geometry).
+    for (const input of ['pointer', 'touch'] as const) {
+      const offered = [sliver, spine].filter((id) => isDropTargetOffered(id, input));
+      expect(offered, input).toHaveLength(1);
+    }
+    expect(isDropTargetOffered(sliver, 'pointer')).toBe(true);
+    expect(isDropTargetOffered(spine, 'touch')).toBe(true);
+  });
+
+  it('offers every unrestricted kind to both inputs', () => {
     for (const [kind, inputs] of Object.entries(OFFERED_TO)) {
-      expect(inputs, kind).toContain('pointer');
+      if (kind === 'relative-time' || kind === 'bucket-spine') continue;
+      expect(inputs, kind).toEqual(expect.arrayContaining(['pointer', 'touch']));
     }
   });
 
   it('reads the sliver ids as relative-time and the empty tray as its own kind', () => {
     for (const target of RELATIVE_TIME_TARGETS) {
       expect(dropTargetKind(target)).toBe('relative-time');
+    }
+    for (const target of SPINE_TARGETS) {
+      expect(dropTargetKind(target)).toBe('bucket-spine');
     }
     // The labelled 40px "Drop here to schedule with time" tray is a different
     // target and stays: it is aimable, and it is not between two rows.
@@ -214,7 +256,7 @@ describe('the shell records the real input type', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * 3. resolveDrop — the backstop half
+ * 3. resolveDrop — the grammar-level rule
  * ------------------------------------------------------------------ */
 
 function ctx(input: DragInput, overrides: Partial<DropContext> = {}): DropContext {
@@ -230,7 +272,7 @@ function ctx(input: DragInput, overrides: Partial<DropContext> = {}): DropContex
   };
 }
 
-describe('resolveDrop refuses a withheld target', () => {
+describe('resolveDrop answers per input', () => {
   it.each(RELATIVE_TIME_TARGETS)('a touch drop on %s resolves to nothing', (target) => {
     expect(resolveDrop('t1', target, ctx('touch'))).toBeNull();
     expect(resolveDrop('h1', target, ctx('touch', { itemType: 'habit' }))).toBeNull();
@@ -253,11 +295,32 @@ describe('resolveDrop refuses a withheld target', () => {
     });
   });
 
-  const OTHER_TARGETS = EVERY_DROP_TARGET.filter(
-    (t) => !(RELATIVE_TIME_TARGETS as readonly string[]).includes(t)
-  );
+  it.each(SPINE_TARGETS)('a touch drop on %s assigns the bucket with no time', (target) => {
+    // The substitution's other half: what the finger gets in that same 8px box.
+    // A bucket, not a clock — identical to `unscheduled:{bucket}`, which is the
+    // fallback Kirby named when he accepted the cost.
+    expect(resolveDrop('t1', target, ctx('touch'))).toEqual({
+      kind: 'schedule-task',
+      taskId: 't1',
+      bucket: 'morning',
+      dateStr: '2026-07-04',
+    });
+    expect(resolveDrop('h1', target, ctx('touch', { itemType: 'habit' }))).toEqual({
+      kind: 'assign-habit-bucket',
+      habitId: 'h1',
+      bucket: 'morning',
+    });
+    // Whatever else it is, it is not a time write.
+    expect(resolveDrop('t1', target, ctx('touch'))).not.toHaveProperty('time');
+  });
 
-  it.each(OTHER_TARGETS)('%s is untouched for a finger — every other move still works', (target) => {
+  it.each(SPINE_TARGETS)('a mouse drop on %s resolves to nothing', (target) => {
+    // Desktop never sees this id — the view does not mount it for a cursor —
+    // and the grammar says so independently of the view.
+    expect(resolveDrop('t1', target, ctx('pointer'))).toBeNull();
+  });
+
+  it.each(SHARED_TARGETS)('%s is untouched for a finger — every other move still works', (target) => {
     // Row → bucket, row → day, row → hour slot, row → project block, braindump,
     // and the empty-bucket tray. All of these are moves Kirby explicitly kept on
     // mobile; this is the boundary of the change, asserted rather than assumed.
@@ -347,24 +410,41 @@ afterEach(() => {
 });
 beforeEach(() => seed('pointer'));
 
-describe('Day × Buckets mounts the sliver for a cursor only', () => {
+describe('Day × Buckets swaps the gap box by input type', () => {
   const SLIVERS = ['scheduled:morning:before:task:nine', 'scheduled:morning:after:task:eleven'];
+  const SPINES = ['spine:morning:above:nine', 'spine:morning:below:eleven'];
 
-  it('renders the before/after zones during a mouse drag', () => {
+  it('renders the timed before/after zones during a mouse drag', () => {
     renderBuckets();
-    // Guards the guard: if the fixtures stopped producing slivers at all, the
-    // touch assertion below would pass vacuously.
+    // Guards the guard: if the fixtures stopped producing gap boxes at all, the
+    // touch assertions below would pass vacuously.
     expect(mountedDropIds()).toEqual(expect.arrayContaining(SLIVERS));
+    expect(mountedDropIds().filter((id) => dropTargetKind(id) === 'bucket-spine')).toEqual([]);
   });
 
   it('renders NONE of them during a touch drag', () => {
     seed('touch');
     renderBuckets();
 
-    const relative = mountedDropIds().filter(
-      (id) => dropTargetKind(id) === 'relative-time'
-    );
-    expect(relative).toEqual([]);
+    expect(mountedDropIds().filter((id) => dropTargetKind(id) === 'relative-time')).toEqual([]);
+  });
+
+  it('renders a spine box in each of those same gaps instead', () => {
+    // The substitution, in the DOM. Not decoration: these are the droppable
+    // centres that keep a drop at the bottom of a tall card inside its own
+    // bucket — dnd-touch-drop-geometry.test.tsx is where that is measured.
+    seed('touch');
+    renderBuckets();
+
+    expect(mountedDropIds()).toEqual(expect.arrayContaining(SPINES));
+    // One box per gap, either way — same count, same places, same rects.
+    const gaps = (ids: string[]) =>
+      ids.filter((id) => ['relative-time', 'bucket-spine'].includes(dropTargetKind(id) ?? ''));
+    const touchGaps = gaps(mountedDropIds());
+    cleanup();
+    seed('pointer');
+    renderBuckets();
+    expect(touchGaps).toHaveLength(gaps(mountedDropIds()).length);
   });
 
   it('keeps every other drop target in the card for touch', () => {
@@ -373,9 +453,8 @@ describe('Day × Buckets mounts the sliver for a cursor only', () => {
     const ids = mountedDropIds();
 
     // The bucket itself, its untimed section, and the labelled empty-timed tray
-    // in the buckets that have no timed rows. This is what makes the touch
-    // outcome a MOVE rather than a dead drag: the finger's drop still resolves
-    // on the bucket, and the row lands there untimed.
+    // in the buckets that have no timed rows: none of them is input-restricted,
+    // and all of them still mount.
     expect(ids).toEqual(
       expect.arrayContaining([
         'morning',
@@ -387,11 +466,21 @@ describe('Day × Buckets mounts the sliver for a cursor only', () => {
     );
   });
 
-  it('still renders the timed rows themselves — only the drop zones went', () => {
+  it('still renders the timed rows themselves — only the gap box\'s meaning changed', () => {
     seed('touch');
     renderBuckets();
     const morning = document.querySelector('[data-dnd-bucket="morning"]') as HTMLElement;
     expect(morning.textContent).toContain('Nine');
     expect(morning.textContent).toContain('Eleven');
+  });
+
+  it('gives the spine box the DOM markers the contract requires of every droppable', () => {
+    // CONTRACT.md § DOM markers: data-dnd-id + data-dnd-over on every droppable.
+    // `dnd.spec.ts` asserts no droppable is missing them, and a new id that
+    // shipped without them would be invisible to every e2e helper.
+    seed('touch');
+    renderBuckets();
+    const box = document.querySelector('[data-dnd-id="spine:morning:above:nine"]')!;
+    expect(box.getAttribute('data-dnd-over')).toBe('false');
   });
 });

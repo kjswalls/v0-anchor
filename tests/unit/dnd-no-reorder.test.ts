@@ -66,13 +66,12 @@ function ctx(overrides: Partial<DropContext> = {}): DropContext {
     itemType: 'task',
     selectedDate: new Date('2026-07-04T12:00:00Z'),
     userTimezone: 'UTC',
-    // Pointer, so EVERY target below still resolves and the sweep below stays a
-    // sweep: touch is offered a strict SUBSET of this grammar (the 8px
-    // `scheduled:*:before|after` sliver is withheld — lib/dnd/drop-targets.ts),
-    // and running the whole list as touch would turn the "resolves to a move"
-    // assertion into "resolves to nothing" for that row. What touch loses, and
-    // what it keeps, is pinned in dnd-touch-drop-targets.test.ts. Nothing about
-    // move-vs-reorder differs by input type.
+    // Overridden per target by the sweep below. Two ids in the grammar are
+    // input-restricted (lib/dnd/drop-targets.ts): the 8px timed sliver is
+    // offered to a cursor only, and the `spine:` box that replaces it in the
+    // same gap is offered to a finger only. Each is swept with the input it is
+    // offered, so this file keeps covering the WHOLE grammar — a touch-only
+    // target that started writing `order` must fail here too.
     input: 'pointer',
     draggedTaskProject: 'Work',
     getRefTime: () => '10:00',
@@ -87,27 +86,29 @@ function ctx(overrides: Partial<DropContext> = {}): DropContext {
  * grammar moved and this file is as much a parity check as `handle-drag-end`'s.
  */
 const EVERY_DROP_TARGET = [
-  'scheduled:morning:before:task:t2',
-  'scheduled:morning:after:habit:h2',
-  'scheduled:afternoon:empty',
-  'anytime',
-  'morning',
-  'afternoon',
-  'evening',
-  'unscheduled:evening',
-  'week:2026-07-06:morning',
-  'hour:9',
-  'weekhour:2026-07-06:14',
-  'week:2026-07-06:anytime',
-  'projectblock:Work',
-  'sidebar',
-] as const;
+  ['scheduled:morning:before:task:t2', 'pointer'],
+  ['scheduled:morning:after:habit:h2', 'pointer'],
+  ['spine:morning:above:t2', 'touch'],
+  ['spine:morning:below:h2', 'touch'],
+  ['scheduled:afternoon:empty', 'pointer'],
+  ['anytime', 'pointer'],
+  ['morning', 'pointer'],
+  ['afternoon', 'pointer'],
+  ['evening', 'pointer'],
+  ['unscheduled:evening', 'touch'],
+  ['week:2026-07-06:morning', 'touch'],
+  ['hour:9', 'touch'],
+  ['weekhour:2026-07-06:14', 'touch'],
+  ['week:2026-07-06:anytime', 'touch'],
+  ['projectblock:Work', 'touch'],
+  ['sidebar', 'touch'],
+] as const satisfies readonly (readonly [string, DropContext['input']])[];
 
 describe('no drop in the grammar reorders anything', () => {
-  it.each(EVERY_DROP_TARGET)('%s resolves to a move, for a task and for a habit', (target) => {
+  it.each(EVERY_DROP_TARGET)('%s resolves to a move, for a task and for a habit', (target, input) => {
     const commands = [
-      resolveDrop('t1', target, ctx({ itemType: 'task' })),
-      resolveDrop('h1', target, ctx({ itemType: 'habit' })),
+      resolveDrop('t1', target, ctx({ itemType: 'task', input })),
+      resolveDrop('h1', target, ctx({ itemType: 'habit', input })),
     ].filter((c): c is DropCommand => c !== null);
 
     // Guards the guard: a target that silently stopped resolving would pass an

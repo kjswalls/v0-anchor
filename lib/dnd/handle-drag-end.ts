@@ -62,15 +62,15 @@ export function resolveDrop(
   const { itemType } = ctx;
   if (!itemType) return null;
   /**
-   * The input gate, before the grammar — a target this input is not offered
-   * resolves to no command at all.
+   * The GRAMMAR-LEVEL input rule: what does this id mean for this input?
    *
-   * This is the BACKSTOP half of the rule, not its primary enforcement: the
-   * view already declines to mount a withheld target (`ScheduledDropZone` in
-   * day-buckets.tsx), so in a healthy app `over` can never be one and this line
-   * never fires. It earns its place the day something re-mounts one — a new
-   * view copying the id grammar, a revert of the mount gate — because then the
-   * drop stops writing a time instead of quietly resuming.
+   * Not a backstop for the view's mount gate — a different question, asked at a
+   * different level. The view decides what to OFFER, which is per-view and about
+   * geometry (day-buckets.tsx swaps the sliver for a `spine:` box on touch, so
+   * the finger still gets a target in that gap). This is a total function over
+   * every id shape in lib/dnd/CONTRACT.md and every view that will ever emit
+   * one: an id a view should not have offered resolves to nothing here, rather
+   * than to a time the user cannot see themselves having asked for.
    *
    * An id the grammar does not classify passes, so this can only ever subtract
    * the targets lib/dnd/drop-targets.ts names.
@@ -100,6 +100,20 @@ export function resolveDrop(
   // Bare bucket id (outer bucket droppable) — assign without a time
   if ((BUCKET_IDS as readonly string[]).includes(targetId)) {
     const bucket = targetId as TimeBucket;
+    return itemType === 'task'
+      ? { kind: 'schedule-task', taskId: itemId, bucket, dateStr: selectedDateStr }
+      : { kind: 'assign-habit-bucket', habitId: itemId, bucket };
+  }
+
+  // spine:{bucket}:{above|below}:{itemId} — the touch-only stand-in for the
+  // sliver above. Same box, same centre; the COMMAND is the difference. It
+  // assigns the bucket with no time, which is exactly the untimed section's
+  // action — the `{above|below}:{itemId}` tail is there to keep the ids unique
+  // per gap (dnd-kit keys its registry by id) and is deliberately not read.
+  // See lib/dnd/drop-targets.ts for why deleting the sliver instead of
+  // substituting for it re-routes the bottom of a tall card to the next bucket.
+  if (targetId.startsWith('spine:')) {
+    const bucket = targetId.split(':')[1] as TimeBucket;
     return itemType === 'task'
       ? { kind: 'schedule-task', taskId: itemId, bucket, dateStr: selectedDateStr }
       : { kind: 'assign-habit-bucket', habitId: itemId, bucket };

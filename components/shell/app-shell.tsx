@@ -540,6 +540,14 @@ export function AppShell() {
       collisionDetection={closestCenter}
       onDragStart={beginDrag}
       onDragEnd={handleDragEnd}
+      // dnd-kit dispatches CANCEL, not end, on Escape / `touchcancel` /
+      // `cancelDrop` — so without this the store kept `activeId` (and now
+      // `input`) set after an abandoned drag, leaving every drop slot in the
+      // canvas open until the next one. Pre-existing: `setActiveId(null)` only
+      // ever lived in the end handler. Both fields clear together, here as
+      // there, so a cancelled drag can never leave one gesture's input beside
+      // another's id.
+      onDragCancel={() => useDragStore.getState().endDrag()}
       measuring={{
         droppable: {
           strategy: MeasuringStrategy.Always,

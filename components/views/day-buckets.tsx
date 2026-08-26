@@ -28,27 +28,62 @@ import { cn } from '@/lib/utils';
  *   {bucket}                      whole-card highlight + fallback drop
  *   unscheduled:{bucket}          untimed section (drop → no time)
  *   scheduled:{bucket}:{pos}:{refType}:{refId} + scheduled:{bucket}:empty
+ *   spine:{bucket}:{above|below}:{itemId}   the same gap box, for a finger:
+ *                                 assigns the bucket, no time (drop-targets.ts)
  */
 
-function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boolean }) {
-  const { isOver, setNodeRef } = useDroppable({ id: dropId });
-  /**
-   * Offered to a cursor, withheld from a finger — the rule itself lives in
-   * lib/dnd/drop-targets.ts, this is the mount site asking it.
-   *
-   * Withholding it here rather than refusing the drop later is what keeps the
-   * touch outcome USEFUL: with no node attached the sliver has no rect, so
-   * `closestCenter` never picks it, and the finger's drop resolves on the
-   * bucket's own droppable instead — the row still lands in the bucket, untimed,
-   * which is the move that replaces this one on a phone. (`resolveDrop` refuses
-   * it too, as a backstop for a target that comes back by accident.)
-   *
-   * The input comes from the drag store, i.e. from the activator event of the
-   * gesture actually in progress — not from a media query. A touchscreen
-   * laptop's mouse keeps the sliver; the same machine's finger does not.
-   */
-  const offered = useDragStore((s) => s.input !== null && isDropTargetOffered(dropId, s.input));
-  if (!isActive || !offered) return null;
+/**
+ * The gap between two timed rows: ONE box, two meanings, chosen by input type.
+ *
+ * A cursor gets `scheduled:{bucket}:{before|after}:{ref}` — schedule at that
+ * row's time ±30 min, unchanged in every respect. A finger gets
+ * `spine:{bucket}:{above|below}:{id}` — assign this bucket, no time. Which of
+ * the two is offered is not decided here; it is `OFFERED_TO` in
+ * lib/dnd/drop-targets.ts, and this component just asks. The input comes from
+ * the drag store, i.e. from the activator event of the gesture actually in
+ * progress — never a media query, so a touchscreen laptop's mouse keeps the
+ * timed sliver while the same machine's finger does not.
+ *
+ * SUBSTITUTING rather than dropping the box is load-bearing, and the reason is
+ * geometric. Collision is `closestCenter`, which compares centres and not
+ * containment, so these boxes are what give the timed spine a droppable centre
+ * every ~44px. Mount nothing for touch and the lowest centre a tall bucket card
+ * owns becomes the card's own middle — everything below the midpoint between
+ * that and the next card's centre then resolves to the NEXT BUCKET, which is a
+ * silent wrong-bucket write in the view whose whole job is bucket placement.
+ * Same box, same rect, same centre: touch geometry is main's, to the pixel, and
+ * only the command changes. `tests/unit/dnd-touch-drop-geometry.test.tsx` holds
+ * the band shut.
+ */
+function TimedGapDropZone({
+  bucket,
+  position,
+  refType,
+  refId,
+  isActive,
+}: {
+  bucket: TimeBucket;
+  position: 'before' | 'after';
+  refType: 'task' | 'habit';
+  refId: string;
+  isActive: boolean;
+}) {
+  const sliverId = `scheduled:${bucket}:${position}:${refType}:${refId}`;
+  const spineId = `spine:${bucket}:${position === 'before' ? 'above' : 'below'}:${refId}`;
+  // Both registered unconditionally — hooks cannot be conditional, and a
+  // droppable with no node attached has no rect, so the unused one cannot be
+  // collided with. Exactly one is offered to any given input; the table is what
+  // guarantees that, and a test asserts it.
+  const sliver = useDroppable({ id: sliverId });
+  const spine = useDroppable({ id: spineId });
+  const input = useDragStore((s) => s.input);
+
+  if (!isActive || !input) return null;
+  const timed = isDropTargetOffered(sliverId, input);
+  const zone = timed ? sliver : isDropTargetOffered(spineId, input) ? spine : null;
+  if (!zone) return null;
+  const { isOver, setNodeRef } = zone;
+
   return (
     <div
       ref={setNodeRef}
@@ -56,21 +91,37 @@ function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boo
       // which made it both untestable and invisible to a test aiming nearby —
       // collision is closestCenter, so a drop meant for unscheduled:{bucket}
       // can silently resolve here instead and assign a TIME.
-      data-dnd-id={dropId}
+      data-dnd-id={timed ? sliverId : spineId}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // Identical geometry either way, hover included. That is deliberate: the
+      // touch path must keep main's rects exactly, or the spine's centres move.
       className={cn('-my-0.5 flex h-2 items-center transition-all', isOver && 'my-1 h-6')}
     >
-      {/* A solid 2px rule, not a dashed box. The dashed rectangle was the only
-          drop affordance in the view that looked nothing like the view; a rule
-          where the row will land is the same gesture the schedule grid uses.
-          Lime never takes alpha — see the NowMarker. */}
-      <span
-        aria-hidden
-        className={cn(
-          'h-[2px] w-full rounded-[1px] transition-colors',
-          isOver ? 'bg-primary' : 'bg-transparent'
-        )}
-      />
+      {timed ? (
+        /* A solid 2px rule, not a dashed box. The dashed rectangle was the only
+           drop affordance in the view that looked nothing like the view; a rule
+           where the row will land is the same gesture the schedule grid uses.
+           Lime never takes alpha — see the NowMarker. */
+        <span
+          aria-hidden
+          className={cn(
+            'h-[2px] w-full rounded-[1px] transition-colors',
+            isOver ? 'bg-primary' : 'bg-transparent'
+          )}
+        />
+      ) : (
+        /* Not a rule: this drop sets no time, so a line drawn between two rows
+           would promise a position the row will not take. The armed tray fill
+           is the affordance the empty-bucket tray already uses for "this bucket
+           takes it, untimed". */
+        <span
+          aria-hidden
+          className={cn(
+            'h-full w-full rounded-md transition-colors',
+            isOver ? 'bg-[var(--bkt-tray-armed)]' : 'bg-transparent'
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -280,14 +331,20 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 
             {timedRows.map((entry, idx) => (
               <div key={entry.item.id}>
-                <ScheduledDropZone
-                  dropId={`scheduled:${bucket}:before:${entry.type}:${entry.item.id}`}
+                <TimedGapDropZone
+                  bucket={bucket}
+                  position="before"
+                  refType={entry.type}
+                  refId={entry.item.id}
                   isActive={dragging}
                 />
                 <TaskRow row={{ itemType: entry.type, item: entry.item } as never} />
                 {idx === timedRows.length - 1 && (
-                  <ScheduledDropZone
-                    dropId={`scheduled:${bucket}:after:${entry.type}:${entry.item.id}`}
+                  <TimedGapDropZone
+                    bucket={bucket}
+                    position="after"
+                    refType={entry.type}
+                    refId={entry.item.id}
                     isActive={dragging}
                   />
                 )}
