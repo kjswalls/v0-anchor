@@ -155,6 +155,34 @@ Covered by `tests/unit/schedule-resize-pointer.test.tsx`, which presses a handle
 input type — every other resize test in the suite sends a blank `pointerType`, which reads
 as non-touch and so exercises the mouse path.
 
+### Every drop is a MOVE. No drop reorders.
+
+Read the action column above as a set: it assigns a bucket, a day, a time, a project
+block, or it unschedules. Not one of the five `DropCommand` kinds writes `items.order`.
+Anchor has no drag-to-reorder — on touch, on a mouse, anywhere. `planner-store.reorderTasks`
+exists with zero call sites, `@dnd-kit/sortable` is a dependency imported nowhere, and the
+only reorder UI in the product is the Organize console's up/down buttons
+(`components/planner/organize/member-list.tsx`, "Buttons, not drag").
+
+This is load-bearing for a decision, not trivia. Asked whether rows should be
+drag-reorderable on a phone, Kirby said no. That answer is already in force — and it is in
+force for the strongest possible reason, that there is nothing for a finger to reach — so
+there is no `isMobile` gate anywhere, and there must not be one: a branch guarding a
+capability nobody has is a branch that rots.
+
+What makes it fragile is that it is free by accident. `lib/sort-rows.ts` names the
+follow-up ("Wire drag-to-reorder into the untimed section…"), `orderable: true` on the task
+type is standing permission to build it, and dnd-kit sensors do not distinguish drop
+targets — so the day one lands, touch inherits it silently and the decision reverses with
+nobody deciding to reverse it. `tests/unit/dnd-no-reorder.test.ts` is the tripwire: it
+classifies every `DropCommand` kind through a `Record` keyed by the union (so a new kind
+fails `tsc` until someone answers move-or-reorder), and it fails if any file that imports
+dnd-kit calls a `reorder*` action or if `@dnd-kit/sortable` is ever imported.
+
+A reorder driven by BUTTONS is deliberately still allowed, and is the shape any mobile
+reorder should take: it is what the Organize console already does, and it is the
+single-pointer alternative WCAG 2.5.7 asks for.
+
 ## Helpers
 
 - `inferDropTime(bucket, pos, refTime?)` — `lib/dnd/infer-drop-time.ts`. Derives a `HH:mm`
