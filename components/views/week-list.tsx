@@ -21,7 +21,8 @@ import { cn } from '@/lib/utils';
 
 function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
-  const { selectedDate, setSelectedDate, routines, programs, userTimezone } = usePlannerStore();
+  const { selectedDate, setSelectedDate, routines, programs, goals, userTimezone } =
+    usePlannerStore();
   const groupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
@@ -54,7 +55,7 @@ function DaySection({ date }: { date: Date }) {
     () => toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
     [date, userTimezone]
   );
-  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
+  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs, goals }).map((g) => ({
     ...g,
     rows: orderRows(g.rows, sortBy, dateStr),
   }));

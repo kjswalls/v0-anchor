@@ -666,6 +666,80 @@ trigger → `menuitem` section → `menuitemradio` value — is a verbatim descr
   30px inside a row of 30px slots, deliberately and with its own comment; growing it to
   44 is a header-layout decision, not this component's.
 
+## Addendum (2026-08-26): the aspire axis — a goal FILTER and a goal grouping
+
+Both group-by vocabularies gained **Goal**, and the Filter region gained a **Goal**
+section. This is the first container filter since projects and habit groups, and the
+first time anything outside the classify axis narrows a view — so it is worth stating
+exactly what it does and does not borrow.
+
+**It is a filter, unlike the gates, because the "deliberately not offered" rule was never
+about many-to-many.** A routine filter is refused because the SCOPE RAIL already answers
+"is this on today" per-date, through the DB, with a resume date; a client-side checkbox
+would be a second, weaker answer to a question that already has one. Nothing anywhere
+narrows a view to one goal, and a goal has no resume date, so that argument does not
+transfer. What does transfer is the shape: a goal is many-to-many, so the clause UNIONS
+the selected goals' members rather than choosing between them.
+
+**Grouping is first-claim-wins, borrowed verbatim from `routineGroups`.** An item may
+serve three goals; rendering it under each is two checkboxes for one obligation and a
+second copy that shift-range and ⌘A skip. The row lands in the first ACTIVE goal that
+claims it, in store order, and everything else falls into a trailing "No goal". A goal
+section carries no `gate` — the header has no switch, because a goal switches nothing —
+and the Schedule grid refuses to divide by it for the same reason it refuses routines and
+programs: a lane cannot express insert-into-B versus move-to-B when membership is not a
+partition. Focus-only, on every variant and width.
+
+**Three decisions worth keeping:**
+
+- **All three ROLES filter and group as members.** A role says what an item does FOR the
+  goal, not whether it serves it; dropping milestones would hide exactly the checkpoints
+  the goal is measured by. A milestone's `startDate` is its target date, so it appears on
+  the day it is aimed at, and an undated one stays in the braindump — both are rows those
+  surfaces already showed, now narrowed rather than moved.
+- **The clause holds goal IDS, not refs.** `containerRef` is a NAME grammar for the
+  classify axis; goal names are not unique and rename shipped with the feature. The
+  registry already refuses goals a ref, so `filters.goals` is its own field and
+  `passesContainerFilter` can never see a goal.
+- **An unresolvable selection goes INERT, never empty.** A goal achieved (or deleted)
+  while it was filtering resolves to `null` and narrows nothing, rather than blanking the
+  surface with only a filter chip to explain it — the stale-container-ref failure
+  `renameContainerRef` exists to prevent.
+
+Membership lives in `goal_items`, so the pure predicate cannot ask an item row for it:
+each surface resolves the selection ONCE (`goalFilterItemIds`) and hands the id set down,
+the same bargain `inactiveItemIds` makes. One set serves all seven week columns, because
+membership is dateless.
+
+**The section is a `Section` in `filterSections`, which is what puts it on a phone.**
+The addendum above made the menu's body DATA, and the touch sheet renders
+`filterSections` and nothing else — so a Goal section written as inline `SubRow`/
+`ValueRow` JSX would have existed on the desktop dropdown only, and a phone would have
+had no goal filter at all. (Group-by Goal reached both shells for free, because it is
+already data in `lib/view-options.ts`.) It carries `scroll: true` for the same reason
+`container` does — its length is the user's own data — and its two footer strings are
+`{kind:'note'}` entries rather than a bare `<div>`, because only Entries survive the
+crossing.
+
+**A selected goal ALWAYS has a row, whatever became of it.** The menu's own rule is
+that hiding a row strands the clause: `activeFilterCount` keeps counting the id, and the
+panel that set it has nothing to unset it with. A goal can leave the active list three
+ways, and all three are answered by a row rather than by a store-side sweep:
+
+| what happened | the row |
+| --- | --- |
+| achieved / abandoned while filtering | still in the store — listed by name, ticked |
+| **deleted** — gone from the store entirely | an **"Unknown goal · not found"** row |
+| the goals table never loaded (`goalsAvailable: false`) | the section renders anyway, on the selection alone |
+
+Dropping the id inside `removeGoal` was the other candidate, following
+`renameContainerRef`'s precedent. It loses on that precedent's own argument: the remap is
+DRIVEN BY THE STORE because the call-site version had no inverse, and a delete-time sweep
+has the mirror of that bug — undo restores the goal and the cleared clause does not come
+back. It also cannot reach the third row above at all, since a table that never loaded
+fires no delete to subscribe to. One untickable row answers all three and reverses
+nothing.
+
 ## Related
 
 `unified-items.md` (the registry this extends), `organize-console.md` (shares Phase B),

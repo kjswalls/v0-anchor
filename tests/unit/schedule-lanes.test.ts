@@ -3,7 +3,7 @@ import { planLanes, resolveFocus, isReceded, laneBudget, NO_LANES } from '@/lib/
 import { bandOnly, layoutOverlaps } from '@/lib/schedule-overlap';
 import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
 import type { GroupableRow } from '@/lib/grouping';
-import type { Habit, Program, Task } from '@/lib/planner-types';
+import type { Goal, Habit, Program, Task } from '@/lib/planner-types';
 
 /**
  * Lanes and focus — how a Schedule grid answers a grouping (Phase 5b).
@@ -130,6 +130,28 @@ describe('planLanes — which answer the grid gets', () => {
 
     expect(plan.mode).toBe('focus');
     expect(plan.lanes.map((l) => l.label)).toEqual(['Summer', 'No program']);
+  });
+
+  it('never divides by GOAL — many-to-many, first-claim-wins, same as the gates', () => {
+    // The lane geometry only ever asked whether the grouping is a PARTITION,
+    // and a goal is not one: an item claimed by goal A may also serve B, so a
+    // band cannot say what dragging into it would mean. That the gates suppress
+    // and a goal does not is irrelevant here.
+    const rows = [t('a'), t('b')];
+    const goals: Goal[] = [
+      {
+        id: 'g',
+        name: 'Learn Chinese',
+        state: 'active',
+        memberIds: ['a'],
+        milestoneIds: [],
+        checkinIds: [],
+      },
+    ];
+    const plan = planLanes(rows, 'goal', { variant: 'day', fieldWidth: 4000, goals });
+
+    expect(plan.mode).toBe('focus');
+    expect(plan.lanes.map((l) => l.label)).toEqual(['Learn Chinese', 'No goal']);
   });
 
   it('falls back to focus past the lane budget rather than folding an "Other" lane', () => {

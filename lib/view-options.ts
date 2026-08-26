@@ -14,6 +14,7 @@ import {
   Shapes,
   ArrowDownAZ,
   CalendarRange,
+  Target,
   type LucideIcon,
 } from 'lucide-react';
 import type { GroupBy } from './planner-types';
@@ -60,6 +61,9 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<GroupBy>[] = [
   { value: 'bucket', label: 'Time bucket', icon: Hourglass },
   { value: 'routine', label: 'Routine', icon: Repeat },
   { value: 'program', label: 'Program', icon: CalendarRange },
+  // Target, matching the Goal chip in the item dialog and the console rail —
+  // one glyph for the container wherever it is named.
+  { value: 'goal', label: 'Goal', icon: Target },
 ];
 
 /**
@@ -159,4 +163,5 @@ export const BRAINDUMP_GROUP_BY_OPTIONS: ViewOption<BraindumpGroupBy>[] = [
   { value: 'project', label: 'Project', icon: Folder },
   { value: 'routine', label: 'Routine', icon: Repeat },
   { value: 'program', label: 'Program', icon: CalendarRange },
+  { value: 'goal', label: 'Goal', icon: Target },
 ];

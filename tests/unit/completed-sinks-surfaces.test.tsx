@@ -384,6 +384,78 @@ describe('Week × Buckets', () => {
 
 /* ── the two existing controls still win ────────────────────────────────────*/
 
+/* ── the sink against the group-by that landed beside it ────────────────────*/
+
+describe('sinking composes with GROUP BY GOAL', () => {
+  /**
+   * These two shipped as separate branches that touched the same five call
+   * sites, and the merge resolved by hand. Goal is the group-by worth pinning
+   * against the sink because it is the only MANY-TO-MANY one: an item serving
+   * two goals lands in the first that claims it, in store order, and the
+   * claim is made while walking the goals — not while walking the rows.
+   *
+   * So the failure mode is specific. Sink the flat list before grouping and
+   * the claim order is untouched (unlike project, where the headings move) —
+   * what moves instead is nothing, and the bug hides. Sink per group and the
+   * rows fall correctly inside a section the claim already fixed. The test
+   * asserts BOTH halves: the claim, and the position within it.
+   */
+  const goal = (id: string, name: string, memberIds: string[]) => ({
+    id,
+    name,
+    state: 'active' as const,
+    memberIds,
+    milestoneIds: [],
+    checkinIds: [],
+  });
+
+  it('sinks inside each goal section, and the claim still decides the section', () => {
+    // Charlie serves BOTH goals; Chinese is first in store order, so Chinese
+    // claims it. Alpha (Chinese) is finished and must fall to Chinese's foot
+    // without Chinese and Fitness trading places.
+    const tasks = [
+      task({ id: 'a', title: 'Alpha', status: 'completed' }),
+      task({ id: 'c', title: 'Charlie' }),
+      task({ id: 'b', title: 'Bravo' }),
+    ];
+    seedStore({
+      tasks,
+      items: tasks,
+      goals: [goal('g-cn', 'Learn Chinese', ['a', 'c']), goal('g-fit', 'Get Fit', ['c', 'b'])],
+    });
+    useViewStore.setState({ canvasGroupBy: 'goal' });
+
+    mount(<DayBuckets activeId={null} />);
+
+    const card = document.querySelector('[data-dnd-bucket="morning"]') as HTMLElement;
+    const headings = [...card.querySelectorAll('button[aria-expanded]')]
+      .filter((el) => el.className.includes('group/heading'))
+      .map((el) => el.textContent?.trim());
+
+    expect(headings).toEqual(['Learn Chinese', 'Get Fit']);
+    // Chinese holds Charlie then Alpha (sunk); Fitness holds only Bravo,
+    // because Charlie was already claimed.
+    expect(rowTitles(card, NAMES)).toEqual(['Charlie', 'Alpha', 'Bravo']);
+  });
+
+  it('sinks inside "No goal" too — a goal heading is not what makes rows sink', () => {
+    // The aspire kind suppresses nothing and carries no gate, so there is no
+    // per-section switch that could be doing this. The loose bucket gets the
+    // same pass as a claimed one.
+    const tasks = [
+      task({ id: 'a', title: 'Alpha', status: 'completed' }),
+      task({ id: 'b', title: 'Bravo' }),
+    ];
+    seedStore({ tasks, items: tasks, goals: [goal('g-cn', 'Learn Chinese', [])] });
+    useViewStore.setState({ canvasGroupBy: 'goal' });
+
+    mount(<DayBuckets activeId={null} />);
+
+    const card = document.querySelector('[data-dnd-bucket="morning"]') as HTMLElement;
+    expect(rowTitles(card, NAMES)).toEqual(['Bravo', 'Alpha']);
+  });
+});
+
 describe('the sink is always on, and composes with the controls that hide', () => {
   it('has nothing to move once showCompletedTasks removes the rows', () => {
     // Why this is not a fourth setting: `showCompletedTasks` and the Display

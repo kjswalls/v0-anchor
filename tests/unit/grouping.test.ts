@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
-import type { GroupBy, Habit, Task } from '@/lib/planner-types';
+import type { Goal, GroupBy, Habit, Task } from '@/lib/planner-types';
 
 /**
  * The shared grouping core (Phase 5a).
@@ -45,6 +45,16 @@ const t = (id: string, over: Partial<Task> = {}): GroupableRow => ({
 const h = (id: string, over: Partial<Habit> = {}): GroupableRow => ({
   itemType: 'habit',
   item: habit(id, over),
+});
+
+const goal = (id: string, over: Partial<Goal> = {}): Goal => ({
+  id,
+  name: `Goal ${id}`,
+  state: 'active',
+  memberIds: [],
+  milestoneIds: [],
+  checkinIds: [],
+  ...over,
 });
 
 const labels = (gs: { label: string }[]) => gs.map((g) => g.label);
@@ -177,6 +187,98 @@ describe('groupRows — the bucket axis', () => {
   });
 });
 
+describe('groupRows — the aspire axis', () => {
+  /**
+   * A goal is many-to-many, so it is NOT a partition — the same shape routines
+   * and programs have, and these cases are deliberately the routine cases with
+   * a goal in them. The rule is first-claim-wins, borrowed rather than invented:
+   * rendering a row under each of its goals is two checkboxes for one
+   * obligation, and the second copy is a row shift-range and ⌘A silently skip.
+   */
+  it('claims a row for ONE goal — the first, in store order', () => {
+    const health = goal('g1', { memberIds: ['run'] });
+    const marathon = goal('g2', { memberIds: ['run'] });
+
+    const out = groupRows([t('run')], 'goal', { goals: [health, marathon] });
+
+    expect(labels(out)).toEqual(['Goal g1']);
+    expect(out.flatMap(ids)).toEqual(['run']);
+  });
+
+  it('follows STORE ORDER for the claim, so reordering the goals moves the row', () => {
+    const health = goal('g1', { memberIds: ['run'] });
+    const marathon = goal('g2', { memberIds: ['run'] });
+
+    const out = groupRows([t('run')], 'goal', { goals: [marathon, health] });
+
+    expect(labels(out)).toEqual(['Goal g2']);
+  });
+
+  it('holds habits and tasks together — a goal is the one container that spans both', () => {
+    const g = goal('g1', { memberIds: ['practice', 'book-exam'] });
+
+    const out = groupRows([t('book-exam'), h('practice')], 'goal', { goals: [g] });
+
+    expect(labels(out)).toEqual(['Goal g1']);
+    expect(ids(out[0])).toEqual(['practice', 'book-exam']);
+  });
+
+  it("orders a section by the GOAL's own sequence — milestones, check-ins, members", () => {
+    // Not the row order it was handed. The checkpoints lead, which is the one
+    // place the goal's timeline order is visible outside its own surface.
+    const g = goal('g1', { memberIds: ['m1'], milestoneIds: ['ms1'], checkinIds: ['c1'] });
+
+    const out = groupRows([t('m1'), t('c1'), t('ms1')], 'goal', { goals: [g] });
+
+    expect(ids(out[0])).toEqual(['ms1', 'c1', 'm1']);
+  });
+
+  it('keys on the goal ID, so two goals sharing a NAME stay two sections', () => {
+    // `goals.name` is `text not null` with no UNIQUE and rename shipped with the
+    // feature, exactly as for routines — keying on the name would merge two
+    // goals into one heading holding both their work.
+    const a = goal('g1', { name: 'Fitness', memberIds: ['x'] });
+    const b = goal('g2', { name: 'Fitness', memberIds: ['y'] });
+
+    const out = groupRows([t('x'), t('y')], 'goal', { goals: [a, b] });
+
+    expect(out.map((g) => g.key)).toEqual(['g1', 'g2']);
+    expect(labels(out)).toEqual(['Fitness', 'Fitness']);
+  });
+
+  it('files everything else under a trailing "No goal", and never drops it', () => {
+    const g = goal('g1', { memberIds: ['served'] });
+
+    const out = groupRows([t('loose'), t('served')], 'goal', { goals: [g] });
+
+    expect(labels(out)).toEqual(['Goal g1', 'No goal']);
+    expect(out.map((g) => g.key)).toEqual(['g1', 'goal:none']);
+    expect(ids(out[1])).toEqual(['loose']);
+  });
+
+  it('sections by ACTIVE goals only, and lets an ended goal\'s work fall loose', () => {
+    // The same cut the role glyph makes: an achieved goal's milestone is
+    // history. The row is not hidden — nothing an aspire container does may
+    // remove a row from a surface.
+    const done = goal('g1', { state: 'achieved', memberIds: ['x'] });
+
+    const out = groupRows([t('x')], 'goal', { goals: [done] });
+
+    expect(labels(out)).toEqual(['No goal']);
+    expect(ids(out[0])).toEqual(['x']);
+  });
+
+  it('carries no `gate`, so a goal heading has no pause switch', () => {
+    const out = groupRows([t('x')], 'goal', { goals: [goal('g1', { memberIds: ['x'] })] });
+
+    expect(out[0].gate).toBeUndefined();
+  });
+
+  it('answers with one loose section when the caller passes no goals at all', () => {
+    expect(labels(groupRows([t('x')], 'goal'))).toEqual(['No goal']);
+  });
+});
+
 describe('groupRows — the contract every caller depends on', () => {
   const rows = [
     h('h1', { group: 'Health' }),
@@ -185,11 +287,14 @@ describe('groupRows — the contract every caller depends on', () => {
     t('t2', { priority: 'high' }),
     t('t3', { project: 'Work' }),
   ];
-  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine', 'program'];
+  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine', 'program', 'goal'];
+  // A goal that claims SOME of the rows, so the 'goal' sweep exercises both a
+  // real section and the loose bucket rather than one trivial group.
+  const ctx = { routines: [], programs: [], goals: [goal('g1', { memberIds: ['h1', 't2'] })] };
 
   it('never loses a row and never renders one twice', () => {
     for (const value of values) {
-      const out = groupRows(rows, value, { routines: [], programs: [] });
+      const out = groupRows(rows, value, ctx);
       const seen = out.flatMap(ids);
       expect([...seen].sort()).toEqual(['h1', 'h2', 't1', 't2', 't3']);
     }
@@ -197,7 +302,7 @@ describe('groupRows — the contract every caller depends on', () => {
 
   it('never emits an empty section', () => {
     for (const value of values) {
-      const out = groupRows(rows, value, { routines: [], programs: [] });
+      const out = groupRows(rows, value, ctx);
       expect(out.every((g) => g.rows.length > 0)).toBe(true);
     }
   });

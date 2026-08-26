@@ -116,6 +116,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
   const dragging = !!activeId;
 
   // Whole-card droppable: highlight + fallback drop target (bare bucket id)
@@ -175,7 +176,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
    */
   const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
-      ? groupRows(untimedRows, canvasGroupBy, { routines, programs })
+      ? groupRows(untimedRows, canvasGroupBy, { routines, programs, goals })
       : defaultBucketGroups(untimedRows)
   ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr) }));
 

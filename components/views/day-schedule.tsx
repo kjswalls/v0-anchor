@@ -1383,12 +1383,13 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
   const untimedGroups = useMemo(
     () =>
       groupBySupport('day', 'schedule', canvasGroupBy).honoured
-        ? groupRows(untimed, canvasGroupBy, { routines, programs })
+        ? groupRows(untimed, canvasGroupBy, { routines, programs, goals })
         : [{ key: '', label: '', rows: untimed }],
-    [untimed, canvasGroupBy, routines, programs]
+    [untimed, canvasGroupBy, routines, programs, goals]
   );
   /** True when the strip renders real sections rather than one flat list. */
   const grouped = untimedGroups.some((g) => g.label);
@@ -1448,9 +1449,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         timed.map((e) => ({ itemType: e.itemType, item: e.item })),
         canvasGroupBy,
-        { variant: 'day', fieldWidth, routines, programs }
+        { variant: 'day', fieldWidth, routines, programs, goals }
       ),
-    [timed, canvasGroupBy, fieldWidth, routines, programs]
+    [timed, canvasGroupBy, fieldWidth, routines, programs, goals]
   );
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
 

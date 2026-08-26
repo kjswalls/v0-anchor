@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Rows3,
   SlidersHorizontal,
+  Target,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -47,6 +48,8 @@ import {
   type ViewFilters,
 } from '@/lib/filters';
 import { NO_CONTAINER, containerRef, namesOfKind } from '@/lib/container-registry';
+import { displayGoals } from '@/lib/goals';
+import { accentColorForName } from '@/lib/accent-colors';
 import { buildScopeRows } from '@/lib/scope-rail';
 import { setGateOn } from '@/lib/gate-toggle';
 import { toDateStr } from '@/lib/recurrence';
@@ -59,7 +62,7 @@ import {
   sortByBlockedBy,
   SORT_BY_OPTIONS,
 } from '@/lib/view-options';
-import type { GroupBy, Priority } from '@/lib/planner-types';
+import type { Goal, GroupBy, Priority } from '@/lib/planner-types';
 import type { BraindumpGroupBy, ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
@@ -435,6 +438,8 @@ export function DisplayMenu({
   const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
+  const goals = usePlannerStore((s) => s.goals);
+  const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
 
   const view = useViewStore();
   const isCanvas = surface === 'canvas';
@@ -458,6 +463,61 @@ export function DisplayMenu({
 
   const selectedProjects = namesOfKind(filters.containers, 'project');
   const selectedGroups = namesOfKind(filters.containers, 'group');
+
+  /**
+   * The Goal clause's rows, described as DATA before anything draws them.
+   *
+   * ACTIVE goals (lib/goals.ts `displayGoals`), plus any SELECTED goal that is
+   * no longer active, plus a placeholder row for any selected id the store can
+   * no longer name at all. None of the three halves is tidiness: this menu's
+   * rule is that hiding a row STRANDS the clause — the trigger keeps counting
+   * something the panel has nothing to account for — and a goal can leave the
+   * active list three ways. It can be achieved or abandoned while it filters
+   * (still in the store, `state !== 'active'`); it can be DELETED, which drops
+   * it from the store outright; or the goals table can be unreachable this
+   * session while a selection sits in the persisted blob. Every one of those
+   * leaves an id in `filters.goals` and `activeFilterCount` counting it.
+   *
+   * A row rather than a store-side sweep, and that is the deliberate half. The
+   * `renameContainerRef` precedent (view-store.ts) is DRIVEN BY THE STORE for a
+   * reason its own docblock gives: the call-site version had no inverse, so undo
+   * restored the container and the clause kept the stale value. Dropping the id
+   * on `removeGoal` has the mirror of that bug — undo restores the goal and the
+   * clause does not come back — and it cannot reach the third case at all, since
+   * a goals table that never loaded fires no delete to subscribe to. An
+   * untickable row answers all three with one mechanism and reverses nothing.
+   *
+   * (The clause degrades to INERT in every one of these states rather than
+   * emptying the surface; see `goalFilterItemIds`.)
+   *
+   * Ids, not names: goal names are not unique and rename shipped with the
+   * feature, which is why the container ref grammar excludes goals outright.
+   */
+  const unknownGoalIds = filters.goals.filter((id) => !goals.some((g) => g.id === id));
+  const goalRows: RowSpec[] = [
+    ...[
+      ...displayGoals(goals),
+      ...goals.filter((g) => filters.goals.includes(g.id) && g.state !== 'active'),
+    ].map((goal: Goal) => ({
+      key: goal.id,
+      label: goal.name,
+      leading: <ContainerSquare color={goal.color ?? accentColorForName(goal.name)} />,
+      checked: filters.goals.includes(goal.id),
+      keepOpen: true,
+      onToggle: () => patch({ goals: toggle(filters.goals, goal.id) }),
+    })),
+    ...unknownGoalIds.map((id) => ({
+      key: id,
+      label: 'Unknown goal',
+      // The rail says what the row cannot: this id names nothing the store
+      // holds. It narrows nothing either way, so the only thing left to do with
+      // it is untick it, which this row exists to allow.
+      rail: 'not found',
+      checked: true,
+      keepOpen: true,
+      onToggle: () => patch({ goals: toggle(filters.goals, id) }),
+    })),
+  ];
 
   /**
    * The count behind the trigger dot and the Reset badge.
@@ -724,6 +784,62 @@ export function DisplayMenu({
         }),
       ],
     },
+    // GOAL — the aspire axis, and the one filter here that is not a partition.
+    // An item can serve three goals at once, so this narrows by MEMBERSHIP
+    // rather than by an answer the item carries: every selected goal's members,
+    // milestones and check-ins, unioned.
+    //
+    // No "No goal" value, unlike Project / Group. The classify axis has an unset
+    // state (an item carries `project`, possibly empty); the aspire axis has
+    // none — `unsetLabel` is null in the container registry because an item
+    // serves a goal or it does not — and a checkbox for "everything that serves
+    // nothing" is a different question from the one this section asks. Grouping
+    // still mints a loose "No goal" section, because grouping may never drop a
+    // row.
+    //
+    // Gated on `goalsAvailable`, not on `goals.length`: the flag is the
+    // table-unreachable signal, and the item dialog's chip renders from zero for
+    // a reason this section does not share — it is a DOOR to the manager, and a
+    // filter is not. With zero goals the panel says so. The `||` is the stranded
+    // clause again: an unreachable table must not take the only row that can
+    // clear a selection down with it.
+    ...(goalsAvailable || filters.goals.length > 0
+      ? [
+          {
+            id: 'goal',
+            icon: Target,
+            label: 'Goal',
+            rail: goalRail(filters.goals, goals),
+            set: filters.goals.length > 0,
+            // Like `container`, and for the same reason: its length is the
+            // user's own data. The dropdown scrolls it; the sheet drills into it.
+            scroll: true,
+            entries: [
+              ...goalRows.map(rowEntry),
+              // A `note` entry, not a bare <div> under the rows — the sheet
+              // renders `Section.entries` and nothing else, so anything that is
+              // not an Entry simply does not exist on a phone.
+              {
+                kind: 'note',
+                key: 'goal-note',
+                text:
+                  goalRows.length === 0
+                    ? 'No goals yet — make one in Organize.'
+                    : 'Milestones and check-ins count as members.',
+              } satisfies Entry,
+              ...(unknownGoalIds.length > 0
+                ? [
+                    {
+                      kind: 'note',
+                      key: 'goal-unknown-note',
+                      text: 'A goal that is gone narrows nothing — untick it to clear the clause.',
+                    } satisfies Entry,
+                  ]
+                : []),
+            ],
+          } satisfies Section,
+        ]
+      : []),
   ];
 
   /** Everything below the Filter sections, which is flat in both shells. */
@@ -1139,6 +1255,20 @@ function priorityRail(values: PriorityFilterValue[]): string {
     return v === NO_PRIORITY ? 'None' : v[0].toUpperCase() + v.slice(1);
   }
   return String(values.length);
+}
+
+/**
+ * "Any" · the single goal's NAME · the count.
+ *
+ * Resolved against the store because the clause holds ids. A selected id that
+ * names no goal at all (deleted, or a goals table that never loaded) falls back
+ * to the count, which is the honest answer — the rail cannot name what is gone,
+ * and the section's "Unknown goal" row is what clears it.
+ */
+function goalRail(ids: string[], goals: readonly Goal[]): string {
+  if (ids.length === 0) return 'Any';
+  if (ids.length === 1) return goals.find((g) => g.id === ids[0])?.name ?? '1';
+  return String(ids.length);
 }
 
 function containerRail(values: string[]): string {
