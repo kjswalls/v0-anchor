@@ -3,7 +3,7 @@ import { planLanes, resolveFocus, isReceded, laneBudget, NO_LANES } from '@/lib/
 import { bandOnly, layoutOverlaps } from '@/lib/schedule-overlap';
 import { MIN_CHANNEL_PX } from '@/lib/schedule-constants';
 import type { GroupableRow } from '@/lib/grouping';
-import type { Goal, Habit, Program, Task } from '@/lib/planner-types';
+import type { Goal, HabitItem, Program, Task } from '@/lib/planner-types';
 
 /**
  * Lanes and focus — how a Schedule grid answers a grouping (Phase 5b).
@@ -27,12 +27,12 @@ const t = (id: string, over: Partial<Task> = {}): GroupableRow => ({
   } as Task,
 });
 
-const h = (id: string, over: Partial<Habit> = {}): GroupableRow => ({
+const h = (id: string, over: Partial<HabitItem> = {}): GroupableRow => ({
   itemType: 'habit',
   item: {
     id,
-    title: `Habit ${id}`,
-    group: 'Health',
+    title: `HabitItem ${id}`,
+    project: 'Health',
     streak: 0,
     status: 'pending',
     completedDates: [],
@@ -40,7 +40,7 @@ const h = (id: string, over: Partial<Habit> = {}): GroupableRow => ({
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  } as Habit,
+  } as HabitItem,
 });
 
 /** Three projects — enough to divide, small enough to fit any realistic field. */
@@ -186,15 +186,16 @@ describe('planLanes — which answer the grid gets', () => {
   });
 
   it('files every row in exactly one lane, habits included', () => {
-    // The container axis resolves through the registry, so a habit answers with
-    // its GROUP and gets a lane of its own rather than being hoisted out.
-    const plan = planLanes([h('h1', { group: 'Health' }), ...THREE], 'project', {
+    // The container axis resolves through the registry, so a habit answers on
+    // it like any other type and gets a lane of its own rather than being
+    // hoisted out.
+    const plan = planLanes([h('h1', { project: 'Health' }), ...THREE], 'project', {
       variant: 'day',
       fieldWidth: WIDE,
     });
 
     expect([...plan.laneOf.keys()].sort()).toEqual(['a', 'b', 'c', 'h1']);
-    expect(plan.laneOf.get('h1')).toBe('group:health');
+    expect(plan.laneOf.get('h1')).toBe('project:health');
     expect(plan.lanes.reduce((n, l) => n + l.count, 0)).toBe(4);
   });
 });
@@ -203,8 +204,13 @@ describe('focus — the half that costs no pixels', () => {
   const plan = planLanes(THREE, 'project', { variant: 'day', fieldWidth: WIDE });
 
   it('recedes every lane but the focused one', () => {
-    expect(isReceded(plan, 'project:Work', 'a')).toBe(false);
-    expect(isReceded(plan, 'project:Work', 'b')).toBe(true);
+    // FOLDED key. A lane key is `foldRef`'s output, and the merged classify
+    // kind folds case (039) — so `project:Work` is not a lane key any more,
+    // `project:work` is. A focus key held over from before the collapse
+    // therefore answers no lane and recedes nothing, which is the behaviour the
+    // stale-key case below already relies on.
+    expect(isReceded(plan, 'project:work', 'a')).toBe(false);
+    expect(isReceded(plan, 'project:work', 'b')).toBe(true);
   });
 
   it('recedes nothing while no lane is focused', () => {

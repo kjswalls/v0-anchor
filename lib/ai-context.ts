@@ -3,7 +3,7 @@ import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-reg
 import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
 import { goalProgress, goalRolesByItem, nextMilestoneVisible } from './goals'
-import type { Item, Project, HabitGroupType, Routine, Program, Goal } from './planner-types'
+import type { Item, Project, Routine, Program, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
 const MAX_PAUSED_TITLES = 5
@@ -20,7 +20,6 @@ const MAX_PAUSED_TITLES = 5
 export function buildAnchorContext(state: {
   items: Item[]
   projects: Project[]
-  habitGroups: HabitGroupType[]
   focusItemId?: string
   /** Optional: the five test call sites pass bare literals, and the store's value is nullable. */
   userTimezone?: string | null

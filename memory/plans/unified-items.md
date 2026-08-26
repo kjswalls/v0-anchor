@@ -4,6 +4,9 @@
 (`task`, `habit`, and later user-defined types like `goal`), with per-type behavior driven
 by a **type-capability registry** instead of parallel code paths.
 
+**Status (2026-08-26):** decision 4 superseded — the container unification it deferred
+shipped as migration 039 (see below). Everything under it still stands.
+
 **Status (2026-07-27):** Phases 0–5 shipped. Migrations 019 + 020 are APPLIED to the
 live Supabase DB (backfill verified: 1,466 tasks + 231 habits); store rewritten on
 `items[]` with `tasks`/`habits` projections (commit `3afc527`); Phase 4 replaced the
@@ -32,9 +35,38 @@ types should appear there). Next: Phase 6.
 3. **Habits stay un-anchored** (`start_date` stays NULL for migrated habits). Tasks gate
    recurring occurrences by `startDate <= date`; habits render on every matching day.
    `dateAnchored` is a registry capability, not inferred from code path.
-4. **Containers stay split in v1.** `projects` and `habit_groups` tables remain; the
-   registry declares which container kind a type resolves against (`containerKind`).
-   Container unification is its own follow-up refactor.
+4. **Containers stay split in v1 — SUPERSEDED 2026-08-26 by migration 039.** The
+   follow-up refactor this decision deferred has landed: the two CLASSIFY kinds
+   (`project`, `group`) are ONE kind, `project`. `habit_groups` and `items."group"` are
+   frozen rollback ballast like `tasks`/`habits`; nothing reads them. The registry still
+   declares `containerKind` per type — it is just that every type now answers
+   `'projects'`, and `containerRequired` is what still distinguishes a habit.
+
+   The three container ROLES are untouched: one classify kind, two gates (routine,
+   program), one aspire (goal). Collapsing a kind is not collapsing a role, and
+   `ClassifyKind` stays a union so `containerRef`/`foldRef`/`containerRefOf` keep
+   refusing a gate or a goal.
+
+   Three things about it are load-bearing and not obvious from the diff:
+
+   - **The noun is provisional and has one home.** 'Project' won because it is already
+     the DB column, the agent field and every shipped string — renaming would buy a
+     synonym and cost a migration plus a contract change. It lives in
+     `CONTAINER_KINDS.project.label` / `labelPlural` / `unsetLabel` / `newLabel`, and
+     every surface reads it from there, so moving it later is a string edit.
+   - **The merged kind FOLDS CASE.** It inherited the habit-group half's policy, not the
+     project half's: `makeAddDraft` writes a lowercase `'personal'` against a seeded
+     `'Personal'` whenever the container list has not loaded, so taking the exact half
+     would have re-opened that bug on the day the kinds merged. The cost, accepted and
+     tested: an account holding both `Work` and `work` as containers now resolves both
+     to one row. 039 rewrites `items.project` to its container's canonical spelling so
+     the fold is a backstop rather than the only thing holding a reference together.
+   - **The collision rule is MERGE, project wins.** A user holding a project and a habit
+     group whose names fold equal ends with one container: the project row survives with
+     its own id, glyph and colour, and the group's members adopt it.
+     `projects_user_id_name_key` is `UNIQUE (user_id, name)` and the ref grammar has no
+     way to tell two same-named containers apart, so the alternative was renaming one
+     without being asked.
 5. **Projects-as-item-type is deferred** (edit-project has a quasi-item time-block form;
    candidate future type, out of scope).
 6. **External API projections live indefinitely.** `/api/agent/context` keeps serving

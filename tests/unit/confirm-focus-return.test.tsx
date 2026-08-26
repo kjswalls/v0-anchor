@@ -52,7 +52,6 @@ beforeEach(() => {
     routines: [{ id: 'r1', name: 'Morning', itemIds: [] }],
     programs: [],
     projects: [],
-    habitGroups: [],
     itemTypes: [],
     collectionsAvailable: true,
     itemTypesAvailable: true,

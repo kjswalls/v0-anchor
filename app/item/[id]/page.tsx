@@ -100,7 +100,6 @@ export default function ItemPage() {
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
-  const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
@@ -158,13 +157,9 @@ export default function ItemPage() {
     routines,
     programs,
   });
-  const container = item.type === 'habit' ? item.group : item.project;
-  const containerColor =
-    item.type === 'habit'
-      ? getHabitGroupColor(item.group)
-      : item.project
-        ? getProjectColor(item.project)
-        : undefined;
+  // One CLASSIFY axis (039) — no type test, one getter.
+  const container = item.project;
+  const containerColor = container ? getProjectColor(container) : undefined;
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">

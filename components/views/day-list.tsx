@@ -12,7 +12,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { ProgramNotice } from '@/components/views/program-notice';
-import type { Task, Habit } from '@/lib/planner-types';
+import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
  * are no in-canvas drop targets in list layout (drops go to the Braindump).
  */
 
-export type ListRow = { itemType: 'task' | 'habit'; item: Task | Habit };
+export type ListRow = { itemType: 'task' | 'habit'; item: Task | HabitItem };
 
 /**
  * This view's no-grouping look: HABITS / TASKS / PROJECTS.

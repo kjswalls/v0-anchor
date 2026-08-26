@@ -15,7 +15,6 @@ import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-li
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -29,10 +28,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -117,11 +112,14 @@ function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
     userId: 'user-1',
     userTimezone: 'UTC',
     items: [],
+    // ONE container list since 039. 'Health' used to be a habit group and is
+    // kept in the fixtures so the assertions that used to prove the two
+    // namespaces stayed apart now prove they are one.
     projects: [
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
+      { id: 'g1', name: 'Health', emoji: '🌱' },
     ],
-    habitGroups: [{ id: 'g1', name: 'Health', emoji: '🌱' }],
     // Reset the gate containers each test so a Paused-scopes fixture can't leak
     // into the next case's menu.
     routines: [],
@@ -181,22 +179,23 @@ describe('what the Display menu writes', () => {
     expect(view().braindumpFilters.priorities).toEqual([]);
   });
 
-  it('writes a habit group as a prefixed container ref, not a bare name', async () => {
+  it('writes a container as a prefixed ref, not a bare name', async () => {
     render(<DisplayMenu surface="canvas" />);
 
-    await openSub('Project / Group');
+    await openSub('Project');
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Health/ }));
 
-    // Prefixed because the seeds collide: DEFAULT_PROJECTS and
-    // DEFAULT_HABIT_GROUPS both ship Work, so a bare name cannot say which.
-    expect(view().canvasFilters.containers).toEqual(['group:Health']);
+    // Still prefixed after 039, and no longer because a second namespace
+    // exists: these keys share a keyspace with `priority:high` and `goal:none`,
+    // and a bare name would collide with them.
+    expect(view().canvasFilters.containers).toEqual(['project:Health']);
   });
 
-  it('offers the unset value on both halves of the container axis', async () => {
+  it('offers the unset value, from the registry unsetLabel', async () => {
     render(<DisplayMenu surface="canvas" />);
 
-    await openSub('Project / Group');
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /No project or group/ }));
+    await openSub('Project');
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /No project/ }));
 
     expect(view().canvasFilters.containers).toEqual(['none:']);
   });
@@ -206,13 +205,15 @@ describe('multi-select keeps the menu open; single-select closes it', () => {
   it('lets three container picks be three clicks rather than three re-opens', async () => {
     render(<DisplayMenu surface="canvas" />);
 
-    await openSub('Project / Group');
+    await openSub('Project');
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Work/ }));
     // Still open — no re-opening between clicks.
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Home/ }));
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Health/ }));
 
-    expect(view().canvasFilters.containers).toEqual(['project:Work', 'project:Home', 'group:Health']);
+    expect(view().canvasFilters.containers).toEqual([
+      'project:Work', 'project:Home', 'project:Health',
+    ]);
   });
 
   it('closes on a grouping pick, because the choice is complete', async () => {
@@ -377,7 +378,7 @@ describe('each surface renders only what it can honour', () => {
     expect(within(menu).queryByRole('menuitemcheckbox', { name: /Show paused/ })).toBeNull();
     // But the two axes it CAN answer are both there.
     expect(within(menu).getByRole('menuitem', { name: /Priority/ })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: /Project \/ Group/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /Project/ })).toBeInTheDocument();
   });
 
   it('honours Schedule outright, and keeps Time bucket to the Anytime strip', async () => {
@@ -686,7 +687,7 @@ describe('the Goal clause', () => {
   });
 
   it('offers no unset value, because the aspire axis has none', async () => {
-    // Project / Group carries "No project or group" — an item answers that axis
+    // The Project section carries "No project" — an item answers that axis
     // with a value that may be empty. An item does not answer the goal axis at
     // all: it serves a goal or it does not (CONTAINER_KINDS.goal.unsetLabel is
     // null). Grouping still mints a loose "No goal" section, because grouping
@@ -1077,7 +1078,7 @@ describe('the touch shell', () => {
     expect(view().canvasFilters.containers).toEqual([
       'project:Work',
       'project:Home',
-      'group:Health',
+      'project:Health',
     ]);
     expect(pane()).toHaveAttribute('data-pane', 'container');
     expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'open');

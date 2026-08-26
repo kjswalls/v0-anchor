@@ -20,7 +20,6 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -35,10 +34,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -61,7 +56,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
-import type { Habit, Item, Task, TaskItem, HabitItem } from '@/lib/planner-types';
+import type { HabitItem, Item, Task, TaskItem } from '@/lib/planner-types';
 
 const USER = 'user-1';
 /** Tuesday — the day the user has SELECTED. */
@@ -105,7 +100,7 @@ const fixtures = (): Item[] => [
     type: 'habit',
     id: 'habit-1',
     title: 'Stretch',
-    group: 'Wellness',
+    project: 'Wellness',
     streak: 2,
     status: 'pending',
     completedDates: [],
@@ -117,7 +112,7 @@ const fixtures = (): Item[] => [
     type: 'habit',
     id: 'habit-3x',
     title: 'Drink water',
-    group: 'Wellness',
+    project: 'Wellness',
     streak: 0,
     status: 'pending',
     timesPerDay: 3,
@@ -169,7 +164,7 @@ function LiveRow({ id, date }: { id: string; date?: Date }) {
   const item = usePlannerStore((s) => s.items.find((i) => i.id === id))!;
   const row: RowItem =
     item.type === 'habit'
-      ? { itemType: 'habit', item: item as unknown as Habit }
+      ? { itemType: 'habit', item: item as unknown as HabitItem }
       : { itemType: 'task', item: item as unknown as Task };
   return <TaskRow row={row} date={date} />;
 }

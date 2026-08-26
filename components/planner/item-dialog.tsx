@@ -66,7 +66,6 @@ import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
-  Habit,
   HabitItem,
   Item,
   Priority,
@@ -83,6 +82,7 @@ import {
   isCollectible,
   isRemindable,
 } from '@/lib/item-registry';
+import { CONTAINER_KINDS } from '@/lib/container-registry';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
@@ -284,7 +284,7 @@ export interface ItemDraft {
   /** Free text the user and the agents both read. '' saves as `undefined`. */
   notes: string;
   priority: Priority | 'none';
-  /** Project or group NAME (containers are name-referenced pre-Phase-6). */
+  /** Container NAME (containers are name-referenced pre-Phase-6). */
   container: string;
   startDate: Date | undefined;
   timeBucket: TimeBucket | 'none';
@@ -380,12 +380,13 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   return updates;
 }
 
-export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<Habit> {
+export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<HabitItem> {
   const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
-  const updates: Partial<Habit> = {};
+  const updates: Partial<HabitItem> = {};
   if (wants('title')) updates.title = d.title.trim();
   if (wants('notes')) updates.notes = d.notes.trim() || undefined;
-  if (wants('container')) updates.group = d.container;
+  // `project`, not `group` — one CLASSIFY kind since 039.
+  if (wants('container')) updates.project = d.container;
   if (wants('timesPerDay')) updates.timesPerDay = parseInt(d.timesPerDay) || 1;
   if (wants('startTime')) updates.startTime = d.startTime || undefined;
   if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
@@ -408,7 +409,8 @@ interface AddSeed {
   bucket?: TimeBucket;
   date?: Date;
   defaultTimeBucket: TimeBucket;
-  habitGroups: { name: string }[];
+  /** The one container list, since 039 collapsed the two CLASSIFY kinds. */
+  containers: { name: string }[];
 }
 
 function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
@@ -417,11 +419,13 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     title: '',
     notes: '',
     priority: 'none',
-    // Required containers fall back like the old add dialog: first group, else
-    // legacy lowercase 'personal' (NOT orphanContainerFallback — changing this
-    // changes which group a fresh account's habits land in).
+    // Required containers fall back like the old add dialog: first container,
+    // else legacy lowercase 'personal' (NOT orphanContainerFallback — changing
+    // this changes where a fresh account's habits land). The lowercase spelling
+    // is exactly why `CONTAINER_KINDS.project.caseFold` is true: this value is
+    // written against a seeded 'Personal' whenever the list has not loaded.
     container: config.containerRequired
-      ? seed.habitGroups[0]?.name || 'personal'
+      ? seed.containers[0]?.name || 'personal'
       : 'none',
     startDate: config.dateAnchored ? seed.date : undefined,
     timeBucket: seed.bucket ?? seed.defaultTimeBucket ?? 'anytime',
@@ -469,7 +473,7 @@ function draftFromItem(item: Item): ItemDraft {
     title: item.title,
     notes: item.notes || '',
     priority: item.type !== 'habit' ? item.priority || 'none' : 'none',
-    container: item.type === 'habit' ? item.group : item.project || 'none',
+    container: item.project || (config.containerRequired ? '' : 'none'),
     startDate,
     timeBucket: item.timeBucket || 'none',
     startTime: item.startTime || '',
@@ -520,11 +524,8 @@ export function ItemDialog({
     scheduleHabit,
     resetHabitStreak,
     projects,
-    habitGroups,
     getProjectColor,
-    getHabitGroupColor,
     addProject,
-    addHabitGroup,
     itemTypesAvailable,
     defaultTimeBucket,
     itemTypes,
@@ -629,7 +630,7 @@ export function ItemDialog({
 
   const [activeType, setActiveType] = useState<string>('task');
   const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
-    buildAddDrafts({ defaultTimeBucket, habitGroups })
+    buildAddDrafts({ defaultTimeBucket, containers: projects })
   );
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
 
@@ -691,11 +692,11 @@ export function ItemDialog({
     const bucket = addPayload.bucket ?? defaultTimeBucket ?? 'anytime';
     setAddDrafts((drafts) => {
       const next = { ...drafts };
-      // typeNames/habitGroups are read fresh here, which is safe now that this
+      // typeNames/projects are read fresh here, which is safe now that this
       // runs on a new payload identity rather than on an effect's dep list.
       for (const t of typeNames) {
         // Custom types hydrate after mount — seed a fresh draft on first sight.
-        const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, habitGroups });
+        const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, containers: projects });
         next[t] = {
           ...base,
           // A quick-add hand-off seeds the title; a plain open keeps whatever
@@ -715,10 +716,12 @@ export function ItemDialog({
    * two parallel forms; with one form and a type switcher, losing the title you
    * just typed reads as a bug.
    *
-   * Container is deliberately NOT carried — projects and habit groups are
-   * different namespaces — and the target's own default (first group, for a
-   * type that requires one) is kept. Fields the target type has no use for ride
-   * along harmlessly: its save adapter never reads them.
+   * Container is STILL not carried, and the reason changed with 039 rather than
+   * disappearing: it is one namespace now, but the target's own default (the
+   * first container, for a type that requires one) is what a type that requires
+   * a container must land on — carrying 'none' across from a task would produce
+   * a habit filed nowhere. Fields the target type has no use for ride along
+   * harmlessly: its save adapter never reads them.
    */
   const switchType = (next: string) => {
     if (next === activeType) return;
@@ -739,7 +742,7 @@ export function ItemDialog({
       (config.allowedFrequencies as readonly string[]).includes(from.repeatFrequency);
 
     setAddDrafts((drafts) => {
-      const base = drafts[next] ?? makeAddDraft(next, { defaultTimeBucket, habitGroups });
+      const base = drafts[next] ?? makeAddDraft(next, { defaultTimeBucket, containers: projects });
       return {
         ...drafts,
         [next]: {
@@ -777,7 +780,7 @@ export function ItemDialog({
 
   /** Draft for a type, with a default for custom types not yet seeded. */
   const draftFor = (type: string): ItemDraft =>
-    addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups });
+    addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, containers: projects });
 
   const patchDraft = (type: string, updates: Partial<ItemDraft>) => {
     if (last?.mode === 'edit') {
@@ -788,13 +791,13 @@ export function ItemDialog({
     } else {
       setAddDrafts((d) => ({
         ...d,
-        [type]: { ...(d[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups })), ...updates },
+        [type]: { ...(d[type] ?? makeAddDraft(type, { defaultTimeBucket, containers: projects })), ...updates },
       }));
     }
   };
 
   const resetAddDrafts = () => {
-    const seed = { bucket: addPayload?.bucket, defaultTimeBucket, habitGroups };
+    const seed = { bucket: addPayload?.bucket, defaultTimeBucket, containers: projects };
     setAddDrafts(
       Object.fromEntries(typeNames.map((t) => [t, makeAddDraft(t, seed)]))
     );
@@ -839,7 +842,7 @@ export function ItemDialog({
       addHabit({
         title: d.title.trim(),
         notes: d.notes.trim() || undefined,
-        group: d.container,
+        project: d.container,
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
         duration: d.duration ? parseInt(d.duration) : undefined,
@@ -996,11 +999,12 @@ export function ItemDialog({
   const renderChips = (type: string, d: ItemDraft) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
-    const containers = config.containerKind === 'projects' ? projects : habitGroups;
+    // ONE list and ONE colour resolver since 039 — the two-way pick here was
+    // the last place the dialog had to know which classify kind a type used.
+    const containers = projects;
     // The same color the rows' TagDot and the schedule rail resolve for this
     // container — the dialog joins that vocabulary instead of the gray icon.
-    const containerColor =
-      config.containerKind === 'projects' ? getProjectColor : getHabitGroupColor;
+    const containerColor = getProjectColor;
 
     const toggleDay = (day: number) => {
       patch({
@@ -1156,18 +1160,16 @@ export function ItemDialog({
     const createContainer = (): boolean => {
       const name = d.newContainer.name.trim();
       if (!name) return false;
-      const projects = config.containerKind === 'projects';
       const held = heldByTrash(
-        projects ? trashedNames.projects : trashedNames.groups,
+        trashedNames.projects,
         name,
-        projects ? 'project' : 'habit group'
+        CONTAINER_KINDS.project.label.toLowerCase(),
       );
       if (held) {
         toast.error(held);
         return false;
       }
-      if (projects) addProject(name, d.newContainer.icon);
-      else addHabitGroup(name, d.newContainer.icon);
+      addProject(name, d.newContainer.icon);
       patch({
         container: name,
         newContainer: {
@@ -1252,7 +1254,12 @@ export function ItemDialog({
             swatchShape="square"
             label={config.form.containerLabel}
             value={d.container === 'none' ? undefined : d.container}
-            className={config.containerKind === 'habitGroups' ? 'capitalize' : undefined}
+            // NO `capitalize`. The habit-group side of the axis carried it,
+            // because `makeAddDraft`'s fallback writes a lowercase 'personal';
+            // one kind means one rule, and applying it to every container is
+            // the worse half — Tailwind's `capitalize` upper-cases EVERY word,
+            // so a project called "e2e tests" renders as "E2e Tests". A stray
+            // lowercase name reading as typed is only untidy.
             contentClassName="w-64"
           >
             {(close) =>
@@ -1312,14 +1319,7 @@ export function ItemDialog({
                       }}
                     >
                       <ColorSquare color={containerColor(c.name)} />
-                      <span
-                        className={cn(
-                          'truncate',
-                          config.containerKind === 'habitGroups' && 'capitalize'
-                        )}
-                      >
-                        {c.name}
-                      </span>
+                      <span className="truncate">{c.name}</span>
                       {d.container === c.name && <Check className="ml-auto size-3.5 shrink-0" />}
                     </ChipOption>
                   ))}

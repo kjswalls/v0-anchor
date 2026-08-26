@@ -9,7 +9,6 @@ import { persist } from 'zustand/middleware';
 import { toast } from 'sonner';
 import type {
   Task,
-  Habit,
   Item,
   TaskItem,
   HabitItem,
@@ -21,7 +20,6 @@ import type {
   TaskStatus,
   HabitStatus,
   Project,
-  HabitGroupType,
   ItemTypeDef,
   Routine,
   Program,
@@ -38,7 +36,6 @@ import {
 import {
   fetchItems,
   fetchProjects,
-  fetchHabitGroups,
   fetchItemTypes,
   createItemType as dbCreateItemType,
   updateItemType as dbUpdateItemType,
@@ -54,10 +51,6 @@ import {
   updateProject as dbUpdateProject,
   deleteProject as dbDeleteProject,
   restoreProject as dbRestoreProject,
-  createHabitGroup as dbCreateHabitGroup,
-  updateHabitGroup as dbUpdateHabitGroup,
-  deleteHabitGroup as dbDeleteHabitGroup,
-  restoreHabitGroup as dbRestoreHabitGroup,
   renameContainerMembers as dbRenameContainerMembers,
   fetchRoutines,
   createRoutine as dbCreateRoutine,
@@ -94,7 +87,6 @@ import { programStateForSwitch } from './scope-rail';
 import { recordReleased } from './sweep-grace';
 import {
   PROJECT_FIELDS,
-  HABIT_GROUP_FIELDS,
   ROUTINE_FIELDS,
   PROGRAM_FIELDS,
   GOAL_FIELDS,
@@ -102,7 +94,7 @@ import {
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
-import { foldContainerName, sameContainerName } from './container-registry';
+import { CONTAINER_KINDS, foldContainerName, sameContainerName } from './container-registry';
 
 interface PlannerStore {
   /**
@@ -112,13 +104,24 @@ interface PlannerStore {
    */
   items: Item[];
   tasks: Task[];
-  habits: Habit[];
+  /**
+   * `HabitItem[]`, not `Habit[]`, since 039.
+   *
+   * The two shapes were interchangeable until the CLASSIFY collapse; now the
+   * item answers with `project` and the LEGACY `Habit` answers with `group`.
+   * The store is app-side, so it holds the item shape and every UI consumer
+   * reads `habit.project` like it reads `task.project`. `toLegacyHabit` in
+   * lib/db.ts is the only place the other spelling exists.
+   *
+   * `tasks` stays `Task[]` because that projection did not move: a `TaskItem`
+   * minus its discriminant IS a `Task`.
+   */
+  habits: HabitItem[];
   selectedDate: Date;
   viewMode: ViewMode;
   groupBy: GroupBy;
   filters: FilterState;
   projects: Project[];
-  habitGroups: HabitGroupType[];
   timelineItemFilter: 'all' | 'tasks' | 'habits';
   compactMode: boolean;
   setCompactMode: (compact: boolean) => void;
@@ -285,8 +288,8 @@ interface PlannerStore {
   setItemPaused: (id: string, paused: boolean, until?: string) => void;
 
   // Habit actions
-  addHabit: (habit: Omit<Habit, 'id' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => void;
-  updateHabit: (id: string, updates: Partial<Habit>) => void;
+  addHabit: (habit: Omit<HabitItem, 'id' | 'type' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => void;
+  updateHabit: (id: string, updates: Partial<HabitItem>) => void;
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus, count?: number, date?: Date) => void;
   scheduleHabit: (id: string, bucket: TimeBucket, time?: string) => void;
@@ -388,10 +391,6 @@ interface PlannerStore {
    */
   setGoalState: (id: string, state: Goal['state']) => void;
 
-  // Habit group actions
-  addHabitGroup: (name: string, emoji: string, color?: string) => void;
-  updateHabitGroup: (id: string, updates: Partial<HabitGroupType>) => void;
-  removeHabitGroup: (id: string) => void;
 
   /**
    * Put one row of the Trash back (Organize console, Phase 4).
@@ -406,8 +405,6 @@ interface PlannerStore {
    * never enters the store, so this is the only way the entity reaches it.
    */
   restoreFromTrash: (entry: TrashEntry) => void;
-  getHabitGroupEmoji: (name: string) => string;
-  getHabitGroupColor: (name: string) => string;
 
   // Cleanup orphaned references
   cleanupOrphanedReferences: () => void;
@@ -460,22 +457,52 @@ const projectItems = (items: Item[]) => ({
  * database name a project called "Housework" — and inventing a link for those
  * would file them under whatever container is created with that name next.
  */
-const projectIdFor = (name: string | undefined, projects: Project[]) =>
-  name ? projects.find((p) => p.name === name)?.id : undefined;
-
 /**
- * The habit-group twin, with the case-insensitive fallback the group surfaces
- * already use — getHabitGroupEmoji and getHabitGroupColor both normalise, and
- * addHabitGroup de-dupes case-insensitively, so an exact-only match here would
- * strand a habit that says "personal" against a group row named "Personal".
+ * EXACT FIRST, THEN FOLDED, and both halves are load-bearing.
+ *
+ * The fold was the habit-group half's rule before 039 collapsed the two classify
+ * kinds — `makeAddDraft` writes a lowercase 'personal' against a seeded
+ * 'Personal' whenever the container list has not loaded yet, so an exact-only
+ * match strands exactly those items. `CONTAINER_KINDS.project.caseFold` is now
+ * true for the one kind, so the same rule applies to every container, and
+ * `sameContainerName` is the single expression of it.
+ *
+ * The exact pass still runs first: an account legitimately holding both `Work`
+ * and `work` as rows should resolve `Work` to the row actually called that,
+ * rather than to whichever comes first in store order.
  */
-const groupIdFor = (name: string | undefined, groups: HabitGroupType[]) =>
+const projectIdFor = (name: string | undefined, projects: Project[]) =>
   name
     ? (
-        groups.find((g) => g.name === name) ??
-        groups.find((g) => g.name.toLowerCase() === name.toLowerCase())
+        projects.find((p) => p.name === name) ??
+        projects.find((p) => sameContainerName('project', p.name, name))
       )?.id
     : undefined;
+
+/**
+ * Where an item goes when the container it named is deleted.
+ *
+ * A CAPABILITY QUESTION, not a type branch, and it is the one place the two old
+ * delete actions actually disagreed. `removeProject` unfiled its members;
+ * `removeHabitGroup` REASSIGNED them, because a habit must answer with
+ * something — its confirm copy names the destination. The registry already says
+ * which is which (`containerRequired`, `orphanContainerFallback`), so the merged
+ * action asks it instead of asking whether the item is a habit.
+ *
+ * The fallback name resolves to no id when no such row exists, which is the
+ * honest answer for an account whose default containers were never persisted —
+ * a text-only reference, exactly what 027 documents for most of them.
+ */
+const unfiled = (item: Item, projects: Project[], removedId: string): Item => {
+  const config = getItemTypeConfig(itemTypeName(item));
+  if (!config.containerRequired) return { ...item, project: undefined, projectId: undefined };
+  const dest = projects.find((p) => p.id !== removedId);
+  return {
+    ...item,
+    project: dest?.name || config.orphanContainerFallback || '',
+    projectId: dest?.id,
+  };
+};
 
 // History management for undo/redo
 /**
@@ -710,7 +737,6 @@ function suppressedNow(
 interface HistoryState {
   items: Item[];
   projects: Project[];
-  habitGroups: HabitGroupType[];
   // Explicit, because the subscriber snapshots only what it is told. Omitting
   // either container would make every membership edit and every pause/state
   // change un-undoable AND would let an unrelated undo silently revert them,
@@ -754,7 +780,6 @@ let pendingActionReceipt: string | undefined;
 const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
   item: 'item',
   project: 'project',
-  group: 'habit group',
   routine: 'routine',
   program: 'program',
   goal: 'goal',
@@ -797,7 +822,6 @@ const saveToHistory = (state: HistoryState) => {
   const snapshot: HistoryState = {
     items: JSON.parse(JSON.stringify(state.items)),
     projects: JSON.parse(JSON.stringify(state.projects)),
-    habitGroups: JSON.parse(JSON.stringify(state.habitGroups)),
     routines: JSON.parse(JSON.stringify(state.routines)),
     programs: JSON.parse(JSON.stringify(state.programs)),
     goals: JSON.parse(JSON.stringify(state.goals)),
@@ -904,7 +928,6 @@ export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
  * been the third time.
  */
 const removeRefusedContainer = (
-  kind: 'project' | 'group',
   id: string,
   entryId: string | null,
   label: string,
@@ -927,40 +950,26 @@ const removeRefusedContainer = (
   const wasSuppressed = isUpdatingUndoRedo;
   isUpdatingUndoRedo = true;
   try {
-    usePlannerStore.setState((state) => {
-      if (kind === 'project') {
-        return {
-          projects: state.projects.filter((p) => p.id !== id),
-          // Items filed into it in the meantime lose the reference too, or the
-          // next save re-sends an id no row will ever match.
-          ...projectItems(
-            state.items.map((item) =>
-              item.type !== 'habit' && item.projectId === id
-                ? { ...item, project: undefined, projectId: undefined }
-                : item
-            )
-          ),
-        };
-      }
-      return {
-        habitGroups: state.habitGroups.filter((g) => g.id !== id),
-        ...projectItems(
-          state.items.map((item) =>
-            item.type === 'habit' && item.groupId === id
-              ? { ...item, group: '', groupId: undefined }
-              : item
-          )
-        ),
-      };
-    });
-    forgetFailedContainer(kind, id, entryId, label);
+    usePlannerStore.setState((state) => ({
+      projects: state.projects.filter((p) => p.id !== id),
+      // Items filed into it in the meantime lose the reference too, or the
+      // next save re-sends an id no row will ever match. One branch since 039 —
+      // there is one container array and one pair of item fields.
+      ...projectItems(
+        state.items.map((item) =>
+          item.projectId === id
+            ? { ...item, project: undefined, projectId: undefined }
+            : item
+        )
+      ),
+    }));
+    forgetFailedContainer(id, entryId, label);
     // The baseline has to follow the rollback, or the next real change is
     // diffed against a snapshot that still holds the phantom.
     const s = usePlannerStore.getState();
     updatePrevStateBaseline({
       items: s.items,
       projects: s.projects,
-      habitGroups: s.habitGroups,
       routines: s.routines,
       programs: s.programs,
       goals: s.goals,
@@ -1005,27 +1014,24 @@ const removeRefusedContainer = (
  * there is nothing to relabel, and `forgetFailedContainer` still strips the id
  * from every snapshot, which is the half that matters.
  */
-const rollbackSeedContainer = (
-  error: unknown,
-  kind: 'project' | 'group',
-  id: string,
-  name: string,
-) => {
-  console.error(`seed ${kind} failed`, name, error);
-  removeRefusedContainer(kind, id, null, '');
+const rollbackSeedContainer = (error: unknown, id: string, name: string) => {
+  console.error('seed container failed', name, error);
+  removeRefusedContainer(id, null, '');
 };
 
 const undoFailedCreate = (
   error: unknown,
   entryId: string | null,
-  kind: 'project' | 'group',
   id: string,
   name: string,
 ) => {
-  const noun = kind === 'project' ? 'project' : 'habit group';
+  // The noun comes from the container registry, not from a literal here — it is
+  // provisional (see CONTAINER_KINDS.project.label) and this string is user-
+  // facing twice over, in the history entry and in the toast below.
+  const noun = CONTAINER_KINDS.project.label.toLowerCase();
   console.error(`create ${noun} failed`, error);
 
-  removeRefusedContainer(kind, id, entryId, `Couldn’t add ${noun}: ${name}`);
+  removeRefusedContainer(id, entryId, `Couldn’t add ${noun}: ${name}`);
 
   // SAID OUT LOUD. Every other way this can go wrong is silent, which is how it
   // survived: the container looks created for the rest of the session. 23505 is
@@ -1067,27 +1073,17 @@ const isUniqueViolation = (error: unknown): boolean => {
  * re-file the item against a container that does not exist.
  */
 const forgetFailedContainer = (
-  kind: 'project' | 'group',
   id: string,
   entryId: string | null,
   label: string,
 ) => {
   for (const snapshot of historyStack) {
-    if (kind === 'project') {
-      snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
-      snapshot.items = snapshot.items.map((item) =>
-        item.type !== 'habit' && item.projectId === id
-          ? { ...item, project: undefined, projectId: undefined }
-          : item
-      );
-    } else {
-      snapshot.habitGroups = snapshot.habitGroups.filter((g) => g.id !== id);
-      snapshot.items = snapshot.items.map((item) =>
-        item.type === 'habit' && item.groupId === id
-          ? { ...item, group: '', groupId: undefined }
-          : item
-      );
-    }
+    snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
+    snapshot.items = snapshot.items.map((item) =>
+      item.projectId === id
+        ? { ...item, project: undefined, projectId: undefined }
+        : item
+    );
   }
 
   // The entry STAYS — removing it is what forced the index arithmetic — but it
@@ -1450,7 +1446,7 @@ export const usePlannerStore = create<PlannerStore>()(
         });
       };
 
-      const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<Habit>) => {
+      const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<HabitItem>) => {
         const found = type === 'habit' ? findItem(id, 'habit') : findTaskLike(id);
         if (!found) return;
         // Only recurrence can invalidate a role, so only a patch that touches it
@@ -1499,7 +1495,6 @@ export const usePlannerStore = create<PlannerStore>()(
       groupBy: 'none',
       filters: {},
       projects: [],
-      habitGroups: [],
       timelineItemFilter: 'all' as const,
       actionLog: [] as ActionLogEntry[],
       historyIndex: -1,
@@ -1935,7 +1930,6 @@ export const usePlannerStore = create<PlannerStore>()(
           const [
             items,
             projects,
-            habitGroups,
             itemTypesResult,
             routinesResult,
             programsResult,
@@ -1944,7 +1938,6 @@ export const usePlannerStore = create<PlannerStore>()(
             await Promise.all([
               fetchItems(userId),
               fetchProjects(userId),
-              fetchHabitGroups(userId),
               fetchItemTypes(userId),
               fetchRoutines(userId),
               // Rides the SAME Promise.all as items, deliberately: the overdue
@@ -1973,7 +1966,7 @@ export const usePlannerStore = create<PlannerStore>()(
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, habitGroups, routines, programs, goals };
+          const snapshot = { items, projects, routines, programs, goals };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -1991,7 +1984,6 @@ export const usePlannerStore = create<PlannerStore>()(
           set({
             ...projectItems(items),
             projects,
-            habitGroups,
             itemTypes,
             itemTypesAvailable: itemTypesResult !== null,
             routines,
@@ -2030,7 +2022,6 @@ export const usePlannerStore = create<PlannerStore>()(
           userId: null,
           ...projectItems([]),
           projects: [],
-          habitGroups: [],
           itemTypes: [],
           routines: [],
           programs: [],
@@ -2779,7 +2770,7 @@ export const usePlannerStore = create<PlannerStore>()(
           previousStartTime: undefined,
           previousStartDate: undefined,
         };
-        const habitUpdates: Partial<Habit> = { timeBucket: bucket, startTime: undefined };
+        const habitUpdates: Partial<HabitItem> = { timeBucket: bucket, startTime: undefined };
 
         set((state) =>
           projectItems(
@@ -2838,11 +2829,11 @@ export const usePlannerStore = create<PlannerStore>()(
           previousStartTime: undefined,
           previousStartDate: undefined,
         };
-        const habitUpdates: Partial<Habit> = { timeBucket: corrected, startTime: time };
+        const habitUpdates: Partial<HabitItem> = { timeBucket: corrected, startTime: time };
         // ONE resolver for the optimistic set() and the DB write, deliberately:
         // Phase 1's unscheduleTasks bug was exactly two lists that had been
         // interchangeable until a milestone rule made them differ.
-        const updatesFor = (item: Item): Partial<Task> | Partial<Habit> =>
+        const updatesFor = (item: Item): Partial<Task> | Partial<HabitItem> =>
           item.type === 'habit'
             ? habitUpdates
             : dateStr && !milestones.has(item.id)
@@ -2975,7 +2966,7 @@ export const usePlannerStore = create<PlannerStore>()(
           skippedDates: [],
           dailyCounts: {},
           currentDayCount: 0,
-          groupId: groupIdFor(habitData.group, get().habitGroups),
+          projectId: projectIdFor(habitData.project, get().projects),
         };
         // No date argument: habits are date-blind, so the receipt resolves at
         // today — the same answer assignHabitToBucket takes, for the same
@@ -3007,8 +2998,8 @@ export const usePlannerStore = create<PlannerStore>()(
           if (corrected !== bucket) newUpdates.timeBucket = corrected;
         }
         // See updateTask — the id follows the name on every re-file.
-        if ('group' in updates) {
-          newUpdates.groupId = groupIdFor(updates.group, get().habitGroups);
+        if ('project' in updates) {
+          newUpdates.projectId = projectIdFor(updates.project, get().projects);
         }
 
         updateItemAction(id, 'habit', newUpdates);
@@ -3062,7 +3053,7 @@ export const usePlannerStore = create<PlannerStore>()(
           newDailyCounts[dateStr] = count;
         }
 
-        const optimistic: Partial<Habit> = {
+        const optimistic: Partial<HabitItem> = {
           status,
           completedDates: newCompletedDates,
           skippedDates: newSkippedDates,
@@ -3147,7 +3138,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (userId) {
           dbCreateProject(userId, project).catch((error) => {
-            undoFailedCreate(error, entryId, 'project', project.id, name);
+            undoFailedCreate(error, entryId, project.id, name);
           });
         }
       },
@@ -3163,7 +3154,7 @@ export const usePlannerStore = create<PlannerStore>()(
        *
        * GUARDS, ALL THREE. `userId` because a create without one writes nothing
        * and leaves an optimistic row that vanishes on reload. `isLoading`
-       * because `initializeStore` REPLACES `projects`, `habitGroups` and `items`
+       * because `initializeStore` REPLACES `projects` and `items`
        * wholesale when its fetch resolves — anything seeded inside that window
        * is silently discarded, which is the same trap `canCreate` guards in the
        * console and the one the e2e suite found the hard way. And the container
@@ -3189,25 +3180,19 @@ export const usePlannerStore = create<PlannerStore>()(
         // account's store, and with adoption in the mix that meant creating a
         // container named after someone else's data.
         if (!userId || userId !== forUserId || state.isLoading) return 'refused';
-        if (state.projects.length > 0 || state.habitGroups.length > 0) return 'refused';
+        if (state.projects.length > 0) return 'refused';
         // Distinguished from a refusal on purpose: this is a stable answer, and
         // the caller latches on it so the account stops being asked. A refusal
         // is "ask again next load".
-        if (plan.projects.length === 0 && plan.groups.length === 0) return 'nothing-to-do';
+        if (plan.projects.length === 0) return 'nothing-to-do';
 
         const projects: Project[] = plan.projects.map((p) => ({
           id: crypto.randomUUID(),
           name: p.name,
           emoji: p.emoji,
         }));
-        const groups: HabitGroupType[] = plan.groups.map((g) => ({
-          id: crypto.randomUUID(),
-          name: g.name,
-          emoji: g.emoji,
-        }));
 
         const projectByName = new Map(projects.map((p) => [p.name, p]));
-        const groupByName = new Map(groups.map((g) => [g.name, g]));
 
         /**
          * NO HISTORY ENTRY, and this is a change of mind the review earned.
@@ -3236,7 +3221,6 @@ export const usePlannerStore = create<PlannerStore>()(
         try {
           set((s) => ({
             projects: [...s.projects, ...projects],
-            habitGroups: [...s.habitGroups, ...groups],
             ...projectItems(
               s.items.map((item) => {
                 // Matched on the EXACT stored text, never a trimmed copy. The
@@ -3244,10 +3228,6 @@ export const usePlannerStore = create<PlannerStore>()(
                 // that links " Personal" while the database matches "Personal"
                 // produces a link that looks right until the next reload drops
                 // it. planSeed keeps names exact for the same reason.
-                if (item.type === 'habit') {
-                  const g = item.group ? groupByName.get(item.group) : undefined;
-                  return g && !item.groupId ? { ...item, groupId: g.id } : item;
-                }
                 const p = item.project ? projectByName.get(item.project) : undefined;
                 return p && !item.projectId ? { ...item, projectId: p.id } : item;
               })
@@ -3276,7 +3256,6 @@ export const usePlannerStore = create<PlannerStore>()(
           const seeded = {
             items: s.items,
             projects: s.projects,
-            habitGroups: s.habitGroups,
             routines: s.routines,
             programs: s.programs,
             goals: s.goals,
@@ -3300,13 +3279,8 @@ export const usePlannerStore = create<PlannerStore>()(
         // first item filed into one is rejected by the composite FK and lost.
         for (const project of projects) {
           dbCreateProject(userId, project)
-            .then(() => adoptContainerMembers(userId, 'project_id', project.id, project.name))
-            .catch((error) => rollbackSeedContainer(error, 'project', project.id, project.name));
-        }
-        for (const group of groups) {
-          dbCreateHabitGroup(userId, group)
-            .then(() => adoptContainerMembers(userId, 'group_id', group.id, group.name))
-            .catch((error) => rollbackSeedContainer(error, 'group', group.id, group.name));
+            .then(() => adoptContainerMembers(userId, project.id, project.name))
+            .catch((error) => rollbackSeedContainer(error, project.id, project.name));
         }
 
         return 'committed';
@@ -3331,10 +3305,10 @@ export const usePlannerStore = create<PlannerStore>()(
           ),
           ...(renamedTo
             ? projectItems(
+                // EVERY type follows the rename since 039 — one CLASSIFY axis
+                // means a habit is an ordinary member of the container it names.
                 state.items.map((i) =>
-                  i.type !== 'habit' && i.projectId === id
-                    ? { ...i, project: renamedTo }
-                    : i
+                  i.projectId === id ? { ...i, project: renamedTo } : i
                 )
               )
             : {}),
@@ -3366,7 +3340,7 @@ export const usePlannerStore = create<PlannerStore>()(
                 // member kept the name the user had just undone, and unlike an
                 // ordinary optimistic write that state survives a reload.
                 if (get().projects.find((p) => p.id === id)?.name !== renamedTo) return;
-                return dbRenameContainerMembers(userId, 'project_id', id, renamedTo);
+                return dbRenameContainerMembers(userId, id, renamedTo);
               })
             : write
           ).catch(console.error);
@@ -3379,34 +3353,35 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           ...projectItems(state.items.map((i) =>
-            // Custom types hold projects too, so this has to reach them: it is
-            // the ONLY live repair. cleanupOrphanedReferences below looks like
-            // a safety net and is not — it has no callers anywhere in the app.
+            // EVERY type, since 039. This is the one live repair for the whole
+            // CLASSIFY axis — cleanupOrphanedReferences below looks like a
+            // safety net and is not; it has no callers anywhere in the app.
             //
-            // In-session only, and that is pre-existing and symmetric with
-            // removeHabitGroup: dbDeleteProject stamps projects.deleted_at and
-            // items.project is plain text with no FK and no trigger, so a
-            // reload re-reads the dead name. Name-referenced containers are the
-            // documented parked limitation (migration 024).
-            // Both halves, or the store contradicts itself: an item reading
-            // unfiled while still carrying the id would follow the container's
-            // next rename straight back into a project it had left.
+            // In-session only, and that is pre-existing: dbDeleteProject stamps
+            // projects.deleted_at while items.project is plain text with no FK
+            // and no trigger, so a reload re-reads the dead name.
+            // Name-referenced containers are the documented parked limitation
+            // (migration 024).
             //
-            // The DB row keeps BOTH on purpose — deleteProject only stamps
-            // deleted_at, so the link survives for a Trash restore to reconnect
-            // (Phase 4). That in-session/persisted asymmetry is pre-existing and
-            // unchanged here; 027 makes fixing it possible, it does not fix it.
+            // The DB row keeps BOTH halves on purpose — deleteProject only
+            // stamps deleted_at, so the link survives for a Trash restore to
+            // reconnect (Phase 4). That in-session/persisted asymmetry is
+            // pre-existing and unchanged here.
             //
             // `project &&` guards the whole disjunction, not just the name half:
             // an id that is not in the store leaves `project` undefined, and
             // `i.projectId === project?.id` then reads `undefined === undefined`
             // and unfiles every item that never had an id — which is all of them
             // before 027's backfill reaches an account.
-            i.type !== 'habit' &&
+            //
+            // Folded, and that half arrived with the collapse: `makeAddDraft`
+            // writes a lowercase 'personal' against a seeded 'Personal' whenever
+            // the container list has not loaded, so an exact comparison left
+            // exactly those items pointing at a container that no longer exists.
             project &&
             (i.projectId === project.id ||
               (i.project && sameContainerName('project', i.project, project.name)))
-              ? { ...i, project: undefined, projectId: undefined }
+              ? unfiled(i, state.projects, id)
               : i
           )),
         }));
@@ -3425,12 +3400,29 @@ export const usePlannerStore = create<PlannerStore>()(
         return project?.emoji || '';
       },
 
-      // Stored color wins (same precedence as getHabitGroupColor); the
-      // name-hash ramp remains the no-choice default, so nothing changes for
-      // projects that never picked one.
+      /**
+       * Stored colour wins; then the three legacy theme tokens; then the
+       * name-hash ramp.
+       *
+       * THE TOKEN MAP CAME OVER FROM `getHabitGroupColor` (039). It is
+       * theme-aware (app/globals.css) and existed because Wellness / Work /
+       * Personal were the shipped habit-group names — dropping it would restyle
+       * those rows for every account that still has them. The cost of keeping it
+       * on the merged axis is that a PROJECT named "work" now draws
+       * `--habit-work` instead of its name-hash colour, which is a different
+       * colour and not a different meaning. Stored colours pass through
+       * untouched either way, so anything the user actually picked is unaffected.
+       */
       getProjectColor: (name) => {
         const project = get().projects.find((p) => sameContainerName('project', p.name, name));
-        return project?.color || accentColorForName(foldContainerName('project', name));
+        if (project?.color) return project.color;
+        const normalized = foldContainerName('project', name);
+        const legacyToken: Record<string, string> = {
+          wellness: 'var(--habit-wellness)',
+          work: 'var(--habit-work)',
+          personal: 'var(--habit-personal)',
+        };
+        return legacyToken[normalized] || accentColorForName(normalized);
       },
 
       getProject: (name) => {
@@ -3555,101 +3547,11 @@ export const usePlannerStore = create<PlannerStore>()(
         if (taskUpdates) dbUpdateItem(taskId, dbType, taskUpdates).catch(console.error);
       },
 
-      addHabitGroup: (name, emoji, color) => {
-        const alreadyExists = get().habitGroups.some((g) => sameContainerName('group', g.name, name));
-        if (alreadyExists) return;
-        // Labelled at last: this create has always logged as "Unknown action"
-        // while its own delete was named, so the history popover could show you
-        // a group being removed and never how it arrived. Not in
-        // SIGNIFICANT_ACTIONS, so no undo toast — same as `Add project:`.
-        setNextActionLabel(`Add habit group: ${name}`);
-
-        const group: HabitGroupType = { id: crypto.randomUUID(), name, emoji, color };
-        set((state) => ({ habitGroups: [...state.habitGroups, group] }));
-        const entryId = lastHistoryEntryId();
-
-        const userId = get().userId;
-        if (userId) {
-          dbCreateHabitGroup(userId, group).catch((error) => {
-            undoFailedCreate(error, entryId, 'group', group.id, name);
-          });
-        }
-      },
-
-      updateHabitGroup: (id, updates) => {
-        const group = get().habitGroups.find((g) => g.id === id);
-        // See updateProject — the same fan-out, for the same reason.
-        const renamedTo =
-          updates.name !== undefined && group && updates.name !== group.name
-            ? updates.name
-            : null;
-        set((state) => ({
-          habitGroups: state.habitGroups.map((g) =>
-            g.id === id ? { ...g, ...updates } : g
-          ),
-          ...(renamedTo
-            ? projectItems(
-                state.items.map((i) =>
-                  i.type === 'habit' && i.groupId === id ? { ...i, group: renamedTo } : i
-                )
-              )
-            : {}),
-        }));
-
-        const userId = get().userId;
-        if (userId) {
-          // Chained, and re-checked on resume, for the same two reasons as
-          // updateProject — see the notes there.
-          const write = dbUpdateHabitGroup(userId, id, updates);
-          (renamedTo
-            ? write.then(() => {
-                if (get().habitGroups.find((g) => g.id === id)?.name !== renamedTo) return;
-                return dbRenameContainerMembers(userId, 'group_id', id, renamedTo);
-              })
-            : write
-          ).catch(console.error);
-        }
-      },
-
-      removeHabitGroup: (id) => {
-        const group = get().habitGroups.find((g) => g.id === id);
-        // The sibling of removeProject's label, and now load-bearing: the delete
-        // confirm promises "⌘Z brings the group back", and without this the
-        // entry that undo offers is titled "Unknown action" — a correct
-        // operation the history cannot name.
-        setNextActionLabel(`Delete habit group: ${group?.name || 'Unknown'}`);
-        set((state) => ({
-          habitGroups: state.habitGroups.filter((g) => g.id !== id),
-          // Folded, unlike every version before A′. `makeAddDraft` writes a
-          // lowercase 'personal' against the seeded 'Personal' whenever the
-          // groups list has not loaded yet, so `i.group === group.name` left
-          // exactly those habits pointing at a group that no longer exists —
-          // the orphan this reassignment is here to prevent.
-          ...projectItems(state.items.map((i) =>
-            // Reassigns rather than unassigns — see the confirm copy, which
-            // names the destination. The id moves with the name (027): a
-            // destination that exists as a row hands over its id, and the
-            // 'Personal' fallback resolves to undefined when no such row exists,
-            // which is the honest answer for an account whose default groups
-            // were never persisted.
-            //
-            // `group &&` guards the whole disjunction for the same reason
-            // removeProject's does: without it an unknown id makes
-            // `i.groupId === group?.id` true for every habit not yet linked.
-            i.type === 'habit' &&
-            group &&
-            (i.groupId === group.id || sameContainerName('group', i.group, group.name))
-              ? (() => {
-                  const dest = state.habitGroups.find((g) => g.id !== id);
-                  return { ...i, group: dest?.name || 'Personal', groupId: dest?.id };
-                })()
-              : i
-          )),
-        }));
-
-        const userId = get().userId;
-        if (userId) dbDeleteHabitGroup(userId, id).catch(console.error);
-      },
+      // addHabitGroup / updateHabitGroup / removeHabitGroup lived here until
+      // migration 039 collapsed the two CLASSIFY kinds. addProject,
+      // updateProject and removeProject are the whole axis now — the
+      // reassignment that made the group delete different is a registry
+      // question (`containerRequired`), answered by `unfiled`.
 
       restoreFromTrash: (entry) => {
         const userId = get().userId;
@@ -3710,25 +3612,10 @@ export const usePlannerStore = create<PlannerStore>()(
                   members.size === 0
                     ? state.items
                     : state.items.map((i) =>
-                        members.has(i.id) && i.type !== 'habit'
+                        // No type test: one CLASSIFY axis means a restored
+                        // container re-files every kind of member it had.
+                        members.has(i.id)
                           ? { ...i, project: project.name, projectId: project.id }
-                          : i
-                      )
-                ),
-              };
-            }
-            case 'group': {
-              const group = entry.entity as HabitGroupType;
-              if (state.habitGroups.some((g) => g.id === group.id)) return null;
-              const members = new Set(entry.memberIds ?? []);
-              return {
-                habitGroups: [...state.habitGroups, group],
-                ...projectItems(
-                  members.size === 0
-                    ? state.items
-                    : state.items.map((i) =>
-                        members.has(i.id) && i.type === 'habit'
-                          ? { ...i, group: group.name, groupId: group.id }
                           : i
                       )
                 ),
@@ -3786,9 +3673,6 @@ export const usePlannerStore = create<PlannerStore>()(
           case 'project':
             dbRestoreProject(userId, entry.id).catch(console.error);
             break;
-          case 'group':
-            dbRestoreHabitGroup(userId, entry.id).catch(console.error);
-            break;
           case 'routine':
             dbRestoreRoutine(userId, entry.id).catch(console.error);
             break;
@@ -3804,27 +3688,9 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
-      getHabitGroupEmoji: (name) => {
-        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
-        return group?.emoji || '';
-      },
-
-      getHabitGroupColor: (name) => {
-        const normalized = foldContainerName('group', name);
-        const group = get().habitGroups.find((g) => sameContainerName('group', g.name, name));
-        if (group?.color) return group.color;
-
-        // Theme-aware tokens (app/globals.css). Stored group.color above passes
-        // through untouched — the DB column is free text, incl. legacy raw oklch.
-        const colorMap: Record<string, string> = {
-          wellness: 'var(--habit-wellness)',
-          work: 'var(--habit-work)',
-          personal: 'var(--habit-personal)',
-        };
-        if (colorMap[normalized]) return colorMap[normalized];
-
-        return accentColorForName(normalized);
-      },
+      // getHabitGroupEmoji / getHabitGroupColor lived here until 039 collapsed
+      // the two CLASSIFY kinds. getProjectEmoji and getProjectColor answer for
+      // the whole axis now, and the latter absorbed this one's theme tokens.
 
       cleanupOrphanedReferences: () => {
         const state = get();
@@ -3832,25 +3698,19 @@ export const usePlannerStore = create<PlannerStore>()(
         // rest of the app does: a habit stored as 'personal' is not an orphan
         // while a group called 'Personal' exists.
         const projectNames = new Set(state.projects.map((p) => foldContainerName('project', p.name)));
-        const groupNames = new Set(state.habitGroups.map((g) => foldContainerName('group', g.name)));
 
         set(projectItems(state.items.map((i) => {
-          // `!== 'habit'`, not `=== 'task'`: custom types are project-shaped
-          // (registry containerKind 'projects'), so this has to reach them.
-          //
           // NB this whole action currently has ZERO CALLERS — it is declared,
           // implemented, and wired to nothing. Kept correct rather than deleted
           // because the container work (memory/plans/display-menu.md, phase B)
           // wants exactly this sweep once containers move to ids. If you wire
           // it up, note that it only mutates state: persisting the repair needs
           // dbTypeOf, not a hardcoded 'task' — see moveTaskToProjectBlock.
-          if (i.type !== 'habit' && i.project && !projectNames.has(foldContainerName('project', i.project))) {
-            return { ...i, project: undefined };
-          }
-          if (i.type === 'habit' && !groupNames.has(foldContainerName('group', i.group))) {
-            return { ...i, group: state.habitGroups[0]?.name || 'Personal' };
-          }
-          return i;
+          if (!i.project || projectNames.has(foldContainerName('project', i.project))) return i;
+          // Where an orphan lands is the same registry question the delete path
+          // asks — `unfiled` reads `containerRequired` / `orphanContainerFallback`
+          // rather than testing for a habit.
+          return unfiled(i, state.projects, '');
         })));
       },
 
@@ -3946,7 +3806,6 @@ function applyHistoryState(
 ) {
   const restoredItems: Item[] = JSON.parse(JSON.stringify(target.items));
   const restoredProjects: Project[] = JSON.parse(JSON.stringify(target.projects));
-  const restoredGroups: HabitGroupType[] = JSON.parse(JSON.stringify(target.habitGroups));
   // The `?? []` here is a tolerance for snapshots that predate a field, NOT a
   // licence to omit one from saveToHistory: an absent slice reads downstream as
   // "every row deleted" and syncContainers will faithfully soft-delete them all.
@@ -3959,7 +3818,6 @@ function applyHistoryState(
   set({
     ...projectItems(restoredItems),
     projects: restoredProjects,
-    habitGroups: restoredGroups,
     routines: restoredRoutines,
     programs: restoredPrograms,
     goals: restoredGoals,
@@ -3972,7 +3830,6 @@ function applyHistoryState(
   updatePrevStateBaseline({
     items: restoredItems,
     projects: restoredProjects,
-    habitGroups: restoredGroups,
     routines: restoredRoutines,
     programs: restoredPrograms,
     goals: restoredGoals,
@@ -4042,12 +3899,6 @@ function applyHistoryState(
     (id) => dbRestoreProject(userId, id),
     (id, patch) => dbUpdateProject(userId, id, patch),
     (id) => dbDeleteProject(userId, id),
-  );
-  syncContainers(
-    currentState.habitGroups, restoredGroups, HABIT_GROUP_FIELDS,
-    (id) => dbRestoreHabitGroup(userId, id),
-    (id, patch) => dbUpdateHabitGroup(userId, id, patch),
-    (id) => dbDeleteHabitGroup(userId, id),
   );
   // Routines ride the same diff, but their update callback carries join-table
   // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
@@ -4135,7 +3986,6 @@ const initialStoreState = usePlannerStore.getState();
 const historySlice = (s: HistoryState): HistoryState => ({
   items: s.items,
   projects: s.projects,
-  habitGroups: s.habitGroups,
   routines: s.routines,
   programs: s.programs,
   goals: s.goals,

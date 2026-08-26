@@ -25,7 +25,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -39,10 +38,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -146,7 +141,7 @@ describe('moveTaskToProjectBlock', () => {
   });
 
   it('does not touch a habit', () => {
-    seed([{ ...item('h1'), type: 'habit', group: 'Health' } as Item]);
+    seed([{ ...item('h1'), type: 'habit', project: 'Health' } as Item]);
 
     store().moveTaskToProjectBlock('h1');
 
@@ -230,24 +225,21 @@ describe('removeProject clears the deleted name off every type that holds one', 
     expect(store().projects).toHaveLength(0);
   });
 
-  it('leaves a habit alone — its container is a group, and groups are not projects', () => {
-    // The fixture is deliberately a habit that ALSO carries a project, which is
-    // why it needs the cast: habitShape has `group` and no `project`
-    // (packages/types/src/schemas.ts:209), so the schema forbids this state.
-    // The `type !== 'habit'` guard at planner-store.ts:2030 is therefore
-    // insurance rather than load-bearing — but insurance you can delete without
-    // a test going red is insurance nobody will keep.
-    seed([{ ...item('h1'), type: 'habit', group: 'Health' } as Item]);
+  it('REASSIGNS a habit rather than unfiling it, because its container is required', () => {
+    // The inverse of what this asserted before migration 039. A habit used to
+    // answer with `group`, so `removeProject` skipped it outright; now there is
+    // one CLASSIFY axis and the habit is an ordinary member — but one whose type
+    // declares `containerRequired`, so it moves to the first surviving
+    // container instead of being left with nothing. `unfiled` in planner-store
+    // reads that capability rather than testing for a habit.
+    seed([{ ...item('h1'), type: 'habit' } as Item]);
 
     store().removeProject('p-work');
 
-    // `project`, not `group`. removeProject has one set() and writes exactly two
-    // things: the projects array, and `project: undefined` on the rows it
-    // reaches. It never touches `group` — that is removeHabitGroup's verb — so
-    // asserting `group` here was true under every possible implementation,
-    // including one with the guard deleted.
-    expect(byId('h1').project).toBe('Work');
-    expect(byId('h1').group).toBe('Health');
+    // No live container remains in this fixture, so the fallback name is the
+    // honest answer — a text-only reference with no id, exactly the state 027
+    // documents for most container references on the live database.
+    expect(byId('h1').project).toBe('Personal');
   });
 
   it('leaves an item in a different project alone', () => {

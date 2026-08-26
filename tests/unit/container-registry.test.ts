@@ -41,12 +41,19 @@ import type { Item } from '@/lib/planner-types';
  *
  * The second is the REF GRAMMAR, which moved out of lib/filters.ts unchanged.
  * Its cases are all real data: names with colons in them, both spellings of a
- * habit group, and the legacy unprefixed values a stored payload still holds.
+ * container, and the legacy unprefixed values a stored payload still holds.
+ *
+ * Migration 039 collapsed the two classify kinds into one. The seam assertions
+ * are unchanged in shape and are what pins that the ROLES survived it: one
+ * classify kind, two gates, one aspire, and nothing in two boxes.
  */
 
 describe('the role seam', () => {
-  it('sorts the five kinds into classify, gate and aspire, and nothing sits in two', () => {
-    expect([...CLASSIFY_KINDS]).toEqual(['project', 'group']);
+  it('sorts the four kinds into classify, gate and aspire, and nothing sits in two', () => {
+    // ONE classify kind since 039 - `group` was the same shape wearing a second
+    // name. The three ROLES are intact, which is the property this file exists
+    // to hold: collapsing a kind must not collapse a role.
+    expect([...CLASSIFY_KINDS]).toEqual(['project']);
     expect([...GATE_KINDS]).toEqual(['routine', 'program']);
     expect([...ASPIRE_KINDS]).toEqual(['goal']);
 
@@ -150,43 +157,50 @@ describe('the ref grammar', () => {
     expect(containerKindOf('Work')).toBeNull();
   });
 
-  it('keeps the two namespaces apart when they share a name', () => {
-    // DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seed Work.
-    const project = containerRef('project', 'Work');
-    const group = containerRef('group', 'Work');
-    expect(project).not.toBe(group);
-    expect(sameContainerRef(project, group)).toBe(false);
+  it('no longer has a second namespace to keep apart', () => {
+    // There WAS one: DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seeded
+    // Work, and `project:Work` had to be distinguishable from `group:Work`.
+    // 039 removed the ambiguity at the source, and the retired prefix must now
+    // read as no kind at all - which is exactly what makes `normalizeFilters`
+    // rewrite a stored `group:` ref instead of silently ignoring it.
+    expect(containerKindOf('group:Work')).toBeNull();
+    expect(CLASSIFY_KINDS).toHaveLength(1);
   });
 
   it('tags the unset key by kind, and cannot collide with a real ref', () => {
     expect(unsetContainerRef('project')).toBe(`${NO_CONTAINER}project`);
-    expect(unsetContainerRef('group')).toBe(`${NO_CONTAINER}group`);
     // 'none' is not a kind, so a heading key never reads as a container.
-    expect(containerKindOf(unsetContainerRef('group'))).toBeNull();
+    expect(containerKindOf(unsetContainerRef('project'))).toBeNull();
   });
 
-  it('splits a mixed selection by kind, ignoring the other half', () => {
+  it('splits a selection by kind, ignoring what is not a container ref', () => {
     const refs = [
       containerRef('project', 'Work'),
-      containerRef('group', 'Work'),
+      // A retired-kind ref and a bare legacy name are both dropped, which is
+      // why normalizeFilters rewrites the first before it can get this far.
+      'group:Work',
       containerRef('project', 'Q3: launch'),
       'legacy-bare-name',
     ];
     expect(namesOfKind(refs, 'project')).toEqual(['Work', 'Q3: launch']);
-    expect(namesOfKind(refs, 'group')).toEqual(['Work']);
   });
 });
 
 describe('the case policy', () => {
   /**
-   * Habit groups fold and projects do not. Not a preference: makeAddDraft writes
-   * a lowercase 'personal' against DEFAULT_HABIT_GROUPS' capitalised 'Personal'
-   * whenever the groups list has not loaded yet, so both spellings live in real
-   * data and the menu's single "Personal" checkbox has to select them together.
+   * THE MERGED KIND FOLDS. It inherited the habit-group half's policy rather
+   * than the project half's, and that direction is the whole decision:
+   * `makeAddDraft` writes a lowercase 'personal' against a capitalised
+   * 'Personal' whenever the container list has not loaded yet, so both
+   * spellings live in real data and the menu's single "Personal" checkbox has
+   * to select them together. Taking the exact half instead would have re-opened
+   * that bug on the day the kinds merged.
    */
-  it('folds habit-group refs and leaves project refs alone', () => {
-    expect(sameContainerRef('group:Personal', 'group:personal')).toBe(true);
-    expect(sameContainerRef('project:Work', 'project:work')).toBe(false);
+  it('folds container refs, whatever the spelling', () => {
+    expect(sameContainerRef('project:Personal', 'project:personal')).toBe(true);
+    expect(sameContainerRef('project:Work', 'project:work')).toBe(true);
+    // Different names still differ - folding is case-only.
+    expect(sameContainerRef('project:Work', 'project:Home')).toBe(false);
   });
 
   it('reads the policy off `caseFold` rather than off the prefix string', () => {
@@ -209,46 +223,47 @@ describe('the case policy', () => {
   });
 
   it('answers the same question for a bare name as for a ref', () => {
-    // The store holds bare names — `items.group` is 'personal',
-    // `habitGroups[i].name` is 'Personal' — so the name-level API is what every
+    // The store holds bare names - `items.project` is 'personal',
+    // `projects[i].name` is 'Personal' - so the name-level API is what every
     // identity lookup in planner-store.ts calls. It must not be a second policy.
     for (const kind of CLASSIFY_KINDS) {
       expect(sameContainerName(kind, 'Mixed Case', 'mixed case')).toBe(
         sameContainerRef(containerRef(kind, 'Mixed Case'), containerRef(kind, 'mixed case'))
       );
     }
-    expect(foldContainerName('group', 'Personal')).toBe('personal');
-    expect(foldContainerName('project', 'Work')).toBe('Work');
+    expect(foldContainerName('project', 'Personal')).toBe('personal');
   });
 
   it('does not fold a ref whose prefix is merely case-similar to a kind', () => {
-    // 'GROUP:a' names no kind, so it is not a group ref and must not match one.
-    expect(sameContainerRef('group:a', 'GROUP:a')).toBe(false);
+    // 'PROJECT:a' names no kind, so it is not a container ref and must not
+    // match one.
+    expect(sameContainerRef('project:a', 'PROJECT:a')).toBe(false);
   });
 });
 
 describe('containerRefOf reads the field the registry names', () => {
   const asItem = (partial: Record<string, unknown>) => partial as unknown as Item;
 
-  it('resolves each type through its kind, with no task/habit branch', () => {
+  it('resolves every type through the one kind, with no task/habit branch', () => {
     expect(containerRefOf(asItem({ type: 'task', project: 'Work' }))).toBe('project:Work');
-    expect(containerRefOf(asItem({ type: 'habit', group: 'health' }))).toBe('group:health');
-    // Custom types are project-shaped (registry containerKind 'projects').
+    expect(containerRefOf(asItem({ type: 'habit', project: 'health' }))).toBe('project:health');
     expect(containerRefOf(asItem({ type: 'custom', customType: 'goal', project: 'Work' }))).toBe(
       'project:Work'
     );
   });
 
-  it('reads the OTHER kind\'s column as unset, never as a container', () => {
-    // A habit carrying a stray `project` answers with its group, which is
-    // absent — the field is chosen by kind, not by whichever one is populated.
-    expect(containerRefOf(asItem({ type: 'habit', project: 'Work' }))).toBe(NO_CONTAINER);
+  it('reads the RETIRED column as nothing, never as a container', () => {
+    // `items."group"` survives as frozen ballast and `itemFromRow` no longer
+    // maps it onto the item. A row that somehow still carries one answers
+    // unset - the field is chosen by the registry, not by whichever one is
+    // populated.
+    expect(containerRefOf(asItem({ type: 'habit', group: 'health' }))).toBe(NO_CONTAINER);
     expect(containerRefOf(asItem({ type: 'task', group: 'health' }))).toBe(NO_CONTAINER);
   });
 
   it('treats an empty string as unset', () => {
-    // itemFromRow maps `group: row.group ?? ''` (db.ts:108), so '' is live data.
-    expect(containerRefOf(asItem({ type: 'habit', group: '' }))).toBe(NO_CONTAINER);
+    // itemFromRow maps an unset container to '', so '' is live data.
+    expect(containerRefOf(asItem({ type: 'habit', project: '' }))).toBe(NO_CONTAINER);
     expect(containerRefOf(asItem({ type: 'task' }))).toBe(NO_CONTAINER);
   });
 });
@@ -258,12 +273,17 @@ describe('classifyKindForItemType', () => {
     // The item registry names the TABLE (plural), the ref grammar names the
     // NAMESPACE (singular). This is the one function that knows both.
     expect(classifyKindForItemType('projects')).toBe('project');
-    expect(classifyKindForItemType('habitGroups')).toBe('group');
     expect(classifyKindForItemType(null)).toBeNull();
   });
 
   it('agrees with every shipped item type', () => {
-    expect(classifyKindForItemType(getItemTypeConfig('task').containerKind)).toBe('project');
-    expect(classifyKindForItemType(getItemTypeConfig('habit').containerKind)).toBe('group');
+    // Including the habit, which is the point of 039: a habit answers on the
+    // same axis as a task, and `containerRequired` is what still makes it
+    // different.
+    for (const typeName of getAllItemTypeNames()) {
+      expect(classifyKindForItemType(getItemTypeConfig(typeName).containerKind)).toBe('project');
+    }
+    expect(getItemTypeConfig('habit').containerRequired).toBe(true);
+    expect(getItemTypeConfig('task').containerRequired).toBe(false);
   });
 });

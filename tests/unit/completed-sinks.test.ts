@@ -5,7 +5,7 @@ import {
   sinkCompleted,
   type SortableRow,
 } from '@/lib/sort-rows';
-import type { Habit, Task } from '@/lib/planner-types';
+import type { HabitItem, Task } from '@/lib/planner-types';
 
 /**
  * Finished work sinks to the foot of its group.
@@ -43,14 +43,14 @@ const habit = (title: string, over: Record<string, unknown> = {}): SortableRow =
     type: 'habit',
     id: title,
     title,
-    group: 'Health',
+    project: 'Health',
     status: 'pending',
     streak: 0,
     completedDates: [],
     skippedDates: [],
     repeatFrequency: 'daily',
     ...over,
-  } as unknown as Habit,
+  } as unknown as HabitItem,
 });
 
 /** A task-shaped row of a user-defined type, under the closed custom envelope. */

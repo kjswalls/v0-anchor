@@ -32,7 +32,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -46,10 +45,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -114,7 +109,6 @@ function seed(braindumpSortBy: SortBy) {
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
-    habitGroups: [],
     routines: [],
     programs: [],
   });
@@ -209,7 +203,6 @@ describe('braindump: grouping by a gate', () => {
       tasks: [zebra] as never,
       habits: [],
       projects: [],
-      habitGroups: [],
       routines: [{ id: 'r', name: 'Mornings', itemIds: ['z'] }],
       programs: [],
     });
@@ -260,7 +253,6 @@ describe('braindump: the aspire axis', () => {
       tasks: [zebra, apple] as never,
       habits: [],
       projects: [],
-      habitGroups: [],
       routines: [],
       programs: [],
       goals: [

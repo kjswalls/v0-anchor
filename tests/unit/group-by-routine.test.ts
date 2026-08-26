@@ -3,7 +3,7 @@ import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 // manage-collections-dialog is gone — the Organize console replaced it, and
 // `swapMembers` moved to lib/collections on the way out.
 import { swapMembers } from '@/lib/collections';
-import type { Task, Habit, Routine } from '@/lib/planner-types';
+import type { Task, HabitItem, Routine } from '@/lib/planner-types';
 
 /**
  * Group-by-routine (Phase 5) and the routine ordering it makes visible.
@@ -19,13 +19,13 @@ import type { Task, Habit, Routine } from '@/lib/planner-types';
 const task = (id: string, over: Partial<Task> = {}): Task =>
   ({ id, title: `Task ${id}`, status: 'pending', isScheduled: true, order: 0, timeBucket: 'morning', ...over }) as Task;
 
-const habit = (id: string, over: Partial<Habit> = {}): Habit =>
-  ({ id, title: `Habit ${id}`, group: 'G', streak: 0, status: 'pending', completedDates: [], skippedDates: [], repeatFrequency: 'daily', timeBucket: 'morning', ...over }) as Habit;
+const habit = (id: string, over: Partial<HabitItem> = {}): HabitItem =>
+  ({ id, title: `HabitItem ${id}`, project: 'G', streak: 0, status: 'pending', completedDates: [], skippedDates: [], repeatFrequency: 'daily', timeBucket: 'morning', ...over }) as HabitItem;
 
 const routine = (id: string, name: string, itemIds: string[]): Routine => ({ id, name, itemIds });
 
 /** Habits then tasks — the row order `flattenDayRows` hands every surface. */
-function groups(tasks: Task[], habits: Habit[], routines: Routine[]): RowGroup<GroupableRow>[] {
+function groups(tasks: Task[], habits: HabitItem[], routines: Routine[]): RowGroup<GroupableRow>[] {
   const rows: GroupableRow[] = [
     ...habits.map((h) => ({ itemType: 'habit' as const, item: h })),
     ...tasks.map((t) => ({ itemType: 'task' as const, item: t })),

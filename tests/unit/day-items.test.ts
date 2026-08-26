@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { deriveDayItems, type DayItemsInput } from '@/lib/day-items';
-import type { Task, Habit, Project } from '@/lib/planner-types';
+import type { Task, HabitItem, Project } from '@/lib/planner-types';
 
 const TZ = 'America/New_York';
 const DATE_STR = '2026-07-08'; // a Wednesday
@@ -16,17 +16,17 @@ function task(overrides: Partial<Task>): Task {
   } as Task;
 }
 
-function habit(overrides: Partial<Habit>): Habit {
+function habit(overrides: Partial<HabitItem>): HabitItem {
   return {
     id: Math.random().toString(36).slice(2),
     title: 'habit',
-    group: 'wellness',
+    project: 'wellness',
     status: 'pending',
     streak: 0,
     completedDates: [],
     repeatFrequency: 'daily',
     ...overrides,
-  } as Habit;
+  } as HabitItem;
 }
 
 function input(overrides: Partial<DayItemsInput>): DayItemsInput {

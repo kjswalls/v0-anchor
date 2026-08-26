@@ -47,7 +47,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
@@ -70,7 +69,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import { toDateStr } from '@/lib/recurrence';
-import type { Habit, Task } from '@/lib/planner-types';
+import type { HabitItem, Task } from '@/lib/planner-types';
 
 const TZ = 'UTC';
 /** A Thursday; the default week runs Sun 2026-08-09 → Sat 2026-08-15. */
@@ -88,9 +87,9 @@ const task = (over: Partial<Task>): Task =>
     ...over,
   }) as Task;
 
-const habit = (over: Partial<Habit>): Habit =>
+const habit = (over: Partial<HabitItem>): HabitItem =>
   ({
-    group: 'Health',
+    project: 'Health',
     streak: 0,
     status: 'pending',
     completedDates: [],
@@ -98,7 +97,7 @@ const habit = (over: Partial<Habit>): Habit =>
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  }) as Habit;
+  }) as HabitItem;
 
 function seedStore(over: Record<string, unknown>) {
   usePlannerStore.setState({
@@ -114,7 +113,6 @@ function seedStore(over: Record<string, unknown>) {
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
-    habitGroups: [{ id: 'g1', name: 'Health', emoji: '💚' }],
     routines: [],
     programs: [],
     goals: [],

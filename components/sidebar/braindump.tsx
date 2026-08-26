@@ -21,7 +21,7 @@ import { orderRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
-import type { Task, Habit } from '@/lib/planner-types';
+import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -380,7 +380,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             : `paused:${reason.until ?? ''}`;
       const row: RowItem =
         item.type === 'habit'
-          ? { itemType: 'habit' as const, item: item as unknown as Habit }
+          ? { itemType: 'habit' as const, item: item as unknown as HabitItem }
           : { itemType: 'task' as const, item: item as unknown as Task };
       const group = groups.get(key);
       if (group) group.rows.push(row);

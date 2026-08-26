@@ -1,10 +1,10 @@
 'use client';
 
 import { create } from 'zustand';
-import type { Task, Habit } from '@/lib/planner-types';
+import type { Task, HabitItem } from '@/lib/planner-types';
 
 /** A row the mobile schedule sheet acts on (mirror of TaskRow's RowItem). */
-export type SheetRow = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: Habit };
+export type SheetRow = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: HabitItem };
 
 /**
  * Drives the mobile tap-to-schedule sheet: a row's ellipsis opens it, the sheet

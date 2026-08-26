@@ -12,6 +12,10 @@
 
 import { format } from 'date-fns'
 import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
+// The noun for the CLASSIFY axis lives there, not here. Value import in this
+// direction only — container-registry takes `ItemTypeConfig` as a TYPE, which
+// erases, so the runtime module graph stays acyclic.
+import { CONTAINER_KINDS } from './container-registry'
 import { accentColorForName } from './accent-colors'
 import { selectOverdue, toDateOnly } from './overdue'
 
@@ -128,8 +132,16 @@ export interface ItemTypeConfig {
   milestoneEligible: boolean
   /** Participates in manual ordering (the "order" column + reorder actions). */
   orderable: boolean
-  /** Which container table names this type resolves against. */
-  containerKind: 'projects' | 'habitGroups' | null
+  /**
+   * Which container table names this type resolves against.
+   *
+   * One value since migration 039 collapsed the two CLASSIFY kinds — but still
+   * a field rather than a boolean, because `null` (this type carries no
+   * container axis at all) is a real answer `containerRefOf` depends on, and
+   * because `classifyKindForItemType` translates it into the ref grammar's
+   * singular spelling.
+   */
+  containerKind: 'projects' | null
   containerRequired: boolean
   /** Fallback container when the referenced one is deleted (null → clear the ref). */
   orphanContainerFallback: string | null
@@ -183,9 +195,15 @@ export interface ItemTypeConfig {
     titlePlaceholder: string
     /** sr-only description for the edit dialog. */
     editDescription: string
-    /** Label over the container select ("Project" / "Group"). */
+    /**
+     * Label over the container select.
+     *
+     * MIRRORED, not authored: every type spells this `CONTAINER_KINDS.project.label`
+     * so the axis has one home. The noun is provisional (see that record's note),
+     * and moving it must not mean grepping for a word.
+     */
     containerLabel: string
-    /** Label of the create-new option inside the container select. */
+    /** Label of the create-new option — likewise `CONTAINER_KINDS.project.newLabel`. */
     newContainerLabel: string
     /** Lucide icon name seeding the inline container creator (via makeIconToken). */
     newContainerIcon: string
@@ -249,8 +267,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
       titlePlaceholder: 'What needs to be done?',
       editDescription:
         'Edit the details of your task including title, priority, project, and schedule.',
-      containerLabel: 'Project',
-      newContainerLabel: 'New Project',
+      containerLabel: CONTAINER_KINDS.project.label,
+      newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Briefcase',
       deleteDescription: (title) =>
         `This will permanently delete "${title}". This action cannot be undone.`,
@@ -367,7 +385,10 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     // when the goal wants a recurring review.
     milestoneEligible: false,
     orderable: false,
-    containerKind: 'habitGroups',
+    // 'projects' since 039 — a habit answers on the same one CLASSIFY axis as
+    // everything else. `containerRequired` is what still makes a habit
+    // different, and it is a capability, not a kind.
+    containerKind: 'projects',
     containerRequired: true,
     orphanContainerFallback: 'Personal',
     counters: { streak: true, dailyCounts: true },
@@ -389,9 +410,9 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     form: {
       titlePlaceholder: 'What habit to track?',
       editDescription:
-        'Edit the details of your habit including title, group, and repeat schedule.',
-      containerLabel: 'Group',
-      newContainerLabel: 'New Group',
+        'Edit the details of your habit including title, project, and repeat schedule.',
+      containerLabel: CONTAINER_KINDS.project.label,
+      newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
         `This will permanently delete "${title}" and all its history. This action cannot be undone.`,
@@ -475,11 +496,12 @@ export function buildCustomTypeConfig(
     // types sort by created_at until reordering becomes a real need.
     orderable: false,
     // Project-shaped, because the rest of this config already is: `fields` is
-    // TASK_FIELDS (which carries `project`), containerLabel is 'Project', and
-    // itemFromRow/itemToRow read and write row.project for custom items
-    // unconditionally. Left null, a custom item carried a real project value
-    // that no container question could see — the dialog never rendered the
-    // picker, and buildListGroups filed every custom item under "No project".
+    // TASK_FIELDS (which carries `project`), and itemFromRow/itemToRow read and
+    // write row.project for custom items unconditionally. Left null, a custom
+    // item carried a real project value that no container question could see —
+    // the dialog never rendered the picker, and buildListGroups filed every
+    // custom item under "No project". Since 039 there is nothing else it could
+    // have been: one CLASSIFY kind means a custom type no longer picks a side.
     containerKind: 'projects',
     containerRequired: false,
     orphanContainerFallback: null,
@@ -503,8 +525,8 @@ export function buildCustomTypeConfig(
     form: {
       titlePlaceholder: `Add a ${label.toLowerCase()}…`,
       editDescription: `Edit the details of your ${label.toLowerCase()}.`,
-      containerLabel: 'Project',
-      newContainerLabel: 'New Project',
+      containerLabel: CONTAINER_KINDS.project.label,
+      newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
         `This will permanently delete "${title}". This action cannot be undone.`,

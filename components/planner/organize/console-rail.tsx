@@ -3,6 +3,7 @@
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { Eyebrow } from './primitives';
 import { cn } from '@/lib/utils';
+import { CONTAINER_KINDS } from '@/lib/container-registry';
 
 /**
  * The Organize console's navigation: a grouped VERTICAL rail, never a tab strip.
@@ -30,7 +31,6 @@ export type ConsoleSection =
   | 'goals'
   | 'projects'
   | 'types'
-  | 'groups'
   | 'trash';
 
 export const CONSOLE_SECTIONS = [
@@ -40,12 +40,17 @@ export const CONSOLE_SECTIONS = [
   // programs answer "is this on today", goals answer "why is any of it here".
   // The daily questions sit above the long one.
   { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS' },
-  { id: 'projects', label: 'Projects', group: 'LABELS', eyebrow: 'PROJECTS' },
-  // Item types sits ABOVE Habit groups (Kirby, 2026-08-11 decision 7). Folding
-  // habit groups into routines is a recorded deferral; putting types between
-  // them now is free and makes that fold cheap later.
+  // The whole CLASSIFY axis in one row since migration 039. 'Habit groups' sat
+  // below 'Item types' until then (Kirby, 2026-08-11 decision 7); the fold that
+  // ordering was making cheap is this one, and it went to projects rather than
+  // to routines — a habit group described what a habit is ABOUT, which is what
+  // a project is, not when it counts.
+  //
+  // The section ID is NOT the noun. `CONTAINER_KINDS.project.label` is, and it
+  // supplies both strings below.
+  { id: 'projects', label: CONTAINER_KINDS.project.labelPlural, group: 'LABELS',
+    eyebrow: CONTAINER_KINDS.project.labelPlural.toUpperCase() },
   { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES' },
-  { id: 'groups', label: 'Habit groups', group: null, eyebrow: 'HABIT GROUPS' },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
   // dock. Trash is a lifecycle surface, not a peer of either group.
   { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH' },

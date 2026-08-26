@@ -83,11 +83,23 @@ Custom types travel under a closed `{type:'custom', customType}` envelope app-si
 discriminated-union narrowing keeps working, but the DB stores the bare slug in
 `items.type`. `itemDbType()` in [lib/db.ts](lib/db.ts) is the boundary.
 
+**One CLASSIFY kind.** [lib/container-registry.ts](lib/container-registry.ts) sorts the
+container tables into three ROLES — classify (project), gate (routine, program), aspire
+(goal) — and there is exactly ONE classify kind since migration 039 folded habit groups
+into projects. Every type answers with `items.project`; `containerRequired` is what still
+makes a habit different. `habit_groups` and `items."group"` are frozen ballast — never
+read them. The user-facing noun lives only in `CONTAINER_KINDS.project.label`, so moving
+it is a string edit. The kind folds case (`caseFold: true`), which is why `Work` and
+`work` are one container to every lookup.
+
 **Legacy projections are permanent.** `/api/agent/context` still serves `tasks[]` and
 `habits[]` as exact-legacy-schema views over items, and webhooks still emit
 `tasks.updated`/`habits.updated`. The OpenClaw plugin `safeParse`s these and *throws* on
 drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 `pending|done|skipped` for habits) are external contracts — don't merge or translate them.
+`habits[].group` and the required `habitGroups[]` array are the same kind of contract: a
+habit answers with `project` internally and `toLegacyHabit` renames it on the way out
+(lib/db.ts), while `habitGroups[]` is a projection of the one container list.
 
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
 habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended

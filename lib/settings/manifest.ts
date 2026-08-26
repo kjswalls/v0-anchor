@@ -1136,17 +1136,18 @@ export const DESTINATIONS: DestinationRecord[] = [
     // Names the real surface. "Planner" was true of a dialog reachable from two
     // unrelated places; these five now live in one console with a name.
     where: 'Organize',
-    keywords: ['project', 'folder', 'colour', 'color', 'container', 'manage'],
+    // ONE DESTINATION since migration 039. `dest.groups` pointed at a
+    // 'groups' console section that no longer exists — and a destination
+    // naming a dead section does not fail, it falls through `sectionMeta` to
+    // the FIRST section, so searching "habit group" would have opened Routines.
+    // Its keywords are folded in here so the search still answers, which is the
+    // whole point of a destination record.
+    keywords: [
+      'project', 'folder', 'colour', 'color', 'container', 'manage',
+      'group', 'habit', 'category', 'wellness', 'work',
+    ],
     action: 'organize',
     section: 'projects',
-  },
-  {
-    id: 'dest.groups',
-    label: 'Habit groups',
-    where: 'Organize',
-    keywords: ['group', 'habit', 'category', 'wellness', 'work'],
-    action: 'organize',
-    section: 'groups',
   },
   {
     id: 'dest.types',

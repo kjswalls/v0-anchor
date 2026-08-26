@@ -16,7 +16,7 @@ import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { sinkCompleted } from '@/lib/sort-rows';
 import { toDateStr } from '@/lib/recurrence';
-import type { Task, Habit, Project, TimeBucket } from '@/lib/planner-types';
+import type { Task, HabitItem, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -84,7 +84,7 @@ function EmptyBucketDropZone({ bucket }: { bucket: TimeBucket }) {
 interface DayBucketProps {
   bucket: TimeBucket;
   tasks: Task[];
-  habits: Habit[];
+  habits: HabitItem[];
   recurringProjects: Project[];
   activeId: string | null;
   isCurrent: boolean;

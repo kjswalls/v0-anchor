@@ -7,7 +7,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -24,10 +23,6 @@ vi.mock('@/lib/db', () => ({
   // The rename fan-out (migration 027) — updateProject/updateHabitGroup call it
   // whenever the name actually changes.
   renameContainerMembers: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -66,7 +61,7 @@ const fixtures = (): Item[] => [
     type: 'habit',
     id: 'habit-1',
     title: 'Stretch',
-    group: 'Wellness',
+    project: 'Wellness',
     streak: 2,
     status: 'pending',
     completedDates: [],

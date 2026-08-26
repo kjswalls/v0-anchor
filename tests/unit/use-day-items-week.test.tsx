@@ -28,7 +28,6 @@ import { renderHook, cleanup } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -42,10 +41,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -90,7 +85,7 @@ const HABIT: Item = {
   type: 'habit',
   id: 'h-stretch',
   title: 'Stretch',
-  group: 'Health',
+  project: 'Health',
   status: 'pending',
   streak: 0,
   completedDates: [],
@@ -203,8 +198,10 @@ describe('useDayItemsForDates', () => {
     expect(days.flatMap(idsOf)).toEqual(['t-wed']);
   });
 
-  it('keeps a habit that answers the container axis with its group', () => {
-    seed({ filters: { ...EMPTY_VIEW_FILTERS, containers: ['group:Health'] } });
+  it('keeps a habit that answers the container axis like everything else', () => {
+    // `project:`, not the retired `group:` prefix — 039. A stored blob still
+    // holding the old one is rewritten by `normalizeFilters` on read.
+    seed({ filters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Health'] } });
     const days = week();
 
     // Live columns keep the habit; both tasks go (neither is in a group).

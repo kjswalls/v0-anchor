@@ -22,7 +22,7 @@ import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
 import { ProgramsSection } from './sections/programs';
 import { GoalsSection } from './sections/goals';
-import { GroupsSection, ProjectsSection, TypesSection } from './sections/labels';
+import { ProjectsSection, TypesSection } from './sections/labels';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
@@ -186,7 +186,7 @@ export function OrganizeConsole({
             Organize
           </ResponsiveModalTitle>
           <ResponsiveModalDescription className="sr-only">
-            Your routines, programs, projects, item types and habit groups — and anything
+            Your routines, programs, projects and item types — and anything
             you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
           {/* Ours, on the header band's baseline, rather than the stock close
@@ -320,9 +320,6 @@ function SectionBody({
   }
   if (section === 'types') {
     return <TypesSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
-  }
-  if (section === 'groups') {
-    return <GroupsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
   }
 
   // Trash takes no selection props: it is the one section with nothing to
