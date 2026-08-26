@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ArrowUp, Check, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Check, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -14,6 +14,9 @@ import {
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useProposalStore } from '@/lib/proposal-store';
+import { resolveAICapabilities } from '@/lib/ai-registry';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -46,6 +49,10 @@ function SubtasksSection({ item }: { item: Item }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
 
+  const provider = useAISettingsStore((s) => s.provider);
+  const requestProposal = useProposalStore((s) => s.request);
+  const proposalStatus = useProposalStore((s) => s.status);
+
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
   const children = items.filter(
@@ -61,11 +68,40 @@ function SubtasksSection({ item }: { item: Item }) {
 
   const done = children.filter((c) => c.status === 'completed').length;
 
+  /**
+   * "This is too big" is the moment the assistant is most useful and the moment
+   * the user is least able to phrase a request — so it is a button, not a
+   * prompt. The card answers HERE rather than in the sidebar: this section
+   * often renders inside a dialog, and a suggestion delivered behind it would
+   * be invisible.
+   *
+   * Nesting is excluded because one level is all this panel renders; the
+   * validator and lib/db.ts both refuse a grandchild anyway, so a button here
+   * would only produce a rejected operation.
+   */
+  const canBreakDown =
+    resolveAICapabilities(provider).canPropose && !('parentItemId' in item && item.parentItemId);
+
   return (
     <div className="flex flex-col gap-1.5">
-      <SectionLabel>
-        Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
-      </SectionLabel>
+      <div className="flex items-center justify-between gap-2">
+        <SectionLabel>
+          Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
+        </SectionLabel>
+        {canBreakDown && (
+          <button
+            onClick={() => requestProposal('breakdown', undefined, item.id)}
+            disabled={proposalStatus === 'loading'}
+            data-testid="break-it-down"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
+          >
+            <Split className="h-2.5 w-2.5 text-ai" />
+            Break it down
+          </button>
+        )}
+      </div>
+
+      <ProposalCard surface={`item:${item.id}`} className="mb-0.5" />
       {children.map((child) => (
         <div key={child.id} className="group flex items-center gap-2" data-testid="subtask-row">
           <button

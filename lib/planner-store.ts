@@ -2412,6 +2412,11 @@ export const usePlannerStore = create<PlannerStore>()(
               startDate: op.startDate,
               startTime: op.startTime,
               timeBucket,
+              // Validation has already checked the parent exists, allows
+              // children, and is not itself a child — and stripped the
+              // scheduling fields, since nothing outside the parent's panel
+              // renders a subtask.
+              parentItemId: op.parentItemId,
               id: crypto.randomUUID(),
               status: 'pending' as const,
               isScheduled: !!timeBucket,

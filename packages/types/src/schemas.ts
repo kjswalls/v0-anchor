@@ -1047,6 +1047,17 @@ export const ProposalCreateOpSchema = z.object({
   /** Required on create — the one field a new item cannot be missing. */
   title: z.string().min(1),
   project: z.string().optional(),
+  /**
+   * Create this as a child of an existing item (the panel's Subtasks section).
+   *
+   * The breakdown verb: "this is too big" → a handful of steps under it. Only
+   * valid on create — an EXISTING subtask may never be the target of an update
+   * operation, because no view outside its parent's panel shows it, so a
+   * change to one has no visible effect and no way to undo from where the user
+   * is looking. Validation additionally requires that the parent's type allows
+   * children and is not itself a child; nesting has no UI.
+   */
+  parentItemId: z.string().optional(),
 })
 
 export const ProposalUpdateOpSchema = z.object({

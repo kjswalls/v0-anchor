@@ -20,7 +20,18 @@ import type { Proposal } from './planner-types';
  * memory/plans/ai-vision.md.
  */
 
-export type ProposalIntent = 'catch-up' | 'ask';
+export type ProposalIntent = 'catch-up' | 'ask' | 'breakdown';
+
+/**
+ * Where a card belongs.
+ *
+ * One store, several mounts. A breakdown asked for inside an item's detail
+ * dialog must not answer into the sidebar behind it — the card would be
+ * literally invisible, and the user would be looking at the button they just
+ * pressed with nothing happening. So each request records the surface it came
+ * from and each `<ProposalCard>` renders only its own.
+ */
+export type ProposalSurface = 'chat' | `item:${string}`;
 export type ProposalStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 interface ProposalStore {
@@ -34,11 +45,17 @@ interface ProposalStore {
    * What produced the current card, so it can be asked again — the ORIGINAL
    * ask, never the retry-decorated one, or each retry would compound the last.
    */
-  lastRequest: { intent: ProposalIntent; prompt?: string } | null;
+  lastRequest: {
+    intent: ProposalIntent;
+    prompt?: string;
+    /** The item being broken down; absent on every other intent. */
+    itemId?: string;
+    surface: ProposalSurface;
+  } | null;
   /** Summaries offered and turned down this round, newest last. */
   rejected: string[];
 
-  request: (intent: ProposalIntent, prompt?: string) => Promise<void>;
+  request: (intent: ProposalIntent, prompt?: string, itemId?: string) => Promise<void>;
   /**
    * Ask again, telling the model what it already offered.
    *
@@ -58,12 +75,53 @@ interface ProposalStore {
   dismiss: () => void;
 }
 
+/**
+ * The context a breakdown needs: the one item, in full.
+ *
+ * Deliberately NOT `buildProposalContext` — sixty other items is noise when the
+ * question is "what are the steps inside this one", and the model would use
+ * them, proposing subtasks that duplicate work already sitting elsewhere in the
+ * planner. Existing children ARE included: asked twice, the second answer
+ * should continue the list rather than repeat it.
+ */
+function describeForBreakdown(ctx: ReturnType<typeof plannerContext>, itemId: string): string {
+  const item = ctx.items.find((i) => i.id === itemId);
+  if (!item) return '(that item no longer exists)';
+
+  const lines = [
+    '## The item to break down',
+    `- id: ${itemId}`,
+    `- title: ${item.title}`,
+  ];
+  if (item.notes) lines.push(`- notes: ${item.notes}`);
+  if ('startDate' in item && item.startDate) lines.push(`- due: ${item.startDate}`);
+
+  const children = ctx.items.filter(
+    (i) => 'parentItemId' in i && i.parentItemId === itemId
+  );
+  if (children.length > 0) {
+    lines.push('', 'Steps it already has — do not repeat these:');
+    for (const child of children) lines.push(`- ${child.title}`);
+  }
+  return lines.join('\n');
+}
+
 /** Enough for the model to see the pattern; not enough to crowd out the ask. */
 const MAX_REJECTED_CARRIED = 3;
 
+/** What each intent asks for when the user did not phrase the question. */
+const DEFAULT_ASK = {
+  plan: 'Suggest a realistic plan for today.',
+  breakdown: 'Break this into a few concrete steps.',
+} as const;
+
 /** The ask, plus whatever has already been turned down. */
-function withRejections(prompt: string | undefined, rejected: string[]): string {
-  const base = prompt?.trim() || 'Suggest a realistic plan for today.';
+function withRejections(
+  prompt: string | undefined,
+  rejected: string[],
+  fallback: string = DEFAULT_ASK.plan
+): string {
+  const base = prompt?.trim() || fallback;
   if (rejected.length === 0) return base;
   return [
     base,
@@ -120,7 +178,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * retry is genuinely the same call with a different prompt, rather than a
    * second copy of the fetch that will one day be updated alone.
    */
-  async function askModel(promptForModel: string): Promise<void> {
+  async function askModel(promptForModel: string, itemId?: string): Promise<void> {
     const { provider } = useAISettingsStore.getState();
     if (!resolveAICapabilities(provider).canPropose) {
       set({ status: 'error', error: 'Connect an AI assistant in Settings to ask for a plan.' });
@@ -138,7 +196,11 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
           provider,
           apiKey: useAISettingsStore.getState().apiKey,
           model: useAISettingsStore.getState().model,
-          itemContext: buildProposalContext(ctx),
+          // Breakdown gets its own system prompt: "propose a plan across the
+          // week" and "propose the steps inside this one thing" want opposite
+          // instincts, and one prompt trying to do both does neither well.
+          mode: itemId ? 'breakdown' : 'plan',
+          itemContext: itemId ? describeForBreakdown(ctx, itemId) : buildProposalContext(ctx),
           todayStr: ctx.todayStr,
         }),
       });
@@ -173,7 +235,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     lastRequest: null,
     rejected: [],
 
-    request: async (intent, prompt) => {
+    request: async (intent, prompt, itemId) => {
       set({
         status: 'loading',
         error: null,
@@ -181,7 +243,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         proposal: null,
         // The original ask, kept verbatim so retries decorate it rather than
         // stacking on each other's decoration.
-        lastRequest: { intent, prompt },
+        lastRequest: { intent, prompt, itemId, surface: itemId ? `item:${itemId}` : 'chat' },
         rejected: [],
       });
 
@@ -200,7 +262,10 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         return;
       }
 
-      await askModel(withRejections(prompt, []));
+      await askModel(
+        withRejections(prompt, [], itemId ? DEFAULT_ASK.breakdown : DEFAULT_ASK.plan),
+        itemId
+      );
     },
 
     retry: async () => {
@@ -208,7 +273,10 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // Catch-up is a pure function of the planner: asking it again returns the
       // same items in the same order. Only a model-backed ask has a different
       // answer in it, so only that one may offer a retry.
-      if (!lastRequest || lastRequest.intent !== 'ask') return;
+      // Catch-up is the one intent with nothing to gain: it is a pure function
+      // of the planner, so a second call returns the same items in the same
+      // order. Ask and breakdown both go to a model and can genuinely differ.
+      if (!lastRequest || lastRequest.intent === 'catch-up') return;
 
       const summary = proposal?.summary?.trim();
       const nextRejected = summary ? [...rejected, summary] : rejected;
@@ -220,7 +288,14 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         proposal: null,
         rejected: nextRejected,
       });
-      await askModel(withRejections(lastRequest.prompt, nextRejected));
+      await askModel(
+        withRejections(
+          lastRequest.prompt,
+          nextRejected,
+          lastRequest.itemId ? DEFAULT_ASK.breakdown : DEFAULT_ASK.plan
+        ),
+        lastRequest.itemId
+      );
     },
 
     accept: (operations) => {

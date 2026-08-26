@@ -21,6 +21,7 @@ const dismiss = vi.fn();
 let proposal: Proposal | null = null;
 let status = 'ready';
 let intent: string | null = 'ask';
+let surface = 'chat';
 
 vi.mock('@/lib/proposal-store', () => ({
   useProposalStore: (sel: (s: unknown) => unknown) =>
@@ -32,7 +33,7 @@ vi.mock('@/lib/proposal-store', () => ({
       accept,
       retry,
       dismiss,
-      lastRequest: intent ? { intent } : null,
+      lastRequest: intent ? { intent, surface } : null,
     }),
 }));
 
@@ -65,6 +66,7 @@ beforeEach(() => {
   dismiss.mockClear();
   status = 'ready';
   intent = 'ask';
+  surface = 'chat';
   proposal = makeProposal('one', 'two', 'three');
 });
 
@@ -160,5 +162,45 @@ describe('asking for something else', () => {
     render(<ProposalCard />);
     fireEvent.click(screen.getByText('Not now'));
     expect(dismiss).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('which mount answers', () => {
+  /**
+   * One store, several mounts. A breakdown asked for inside an item's dialog
+   * must not answer into the sidebar behind it — the user would be looking at
+   * the button they just pressed with nothing visibly happening.
+   */
+  it('renders the card on the surface that asked for it', () => {
+    surface = 'item:abc';
+    render(<ProposalCard surface="item:abc" />);
+    expect(screen.getByTestId('proposal-card')).toBeTruthy();
+  });
+
+  it('stays silent on every other surface', () => {
+    surface = 'item:abc';
+    render(<ProposalCard surface="chat" />);
+    expect(screen.queryByTestId('proposal-card')).toBeNull();
+  });
+
+  it('defaults to the chat surface, so existing mounts are unchanged', () => {
+    surface = 'chat';
+    render(<ProposalCard />);
+    expect(screen.getByTestId('proposal-card')).toBeTruthy();
+  });
+
+  it('hides the loading state on the wrong surface too', () => {
+    // Otherwise a spinner appears in the sidebar for work asked for elsewhere.
+    surface = 'item:abc';
+    status = 'loading';
+    render(<ProposalCard surface="chat" />);
+    expect(screen.queryByTestId('proposal-card')).toBeNull();
+  });
+
+  it('offers a retry on a breakdown, which can genuinely differ', () => {
+    intent = 'breakdown';
+    surface = 'item:abc';
+    render(<ProposalCard surface="item:abc" />);
+    expect(screen.getByTestId('proposal-retry')).toBeTruthy();
   });
 });

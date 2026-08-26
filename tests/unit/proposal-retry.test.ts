@@ -11,10 +11,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const applyProposal = vi.fn(() => 1);
 
+const parent = {
+  type: 'task',
+  id: 'parent-1',
+  title: 'Write the quarterly report',
+  notes: 'due before the board meeting',
+  status: 'pending',
+  isScheduled: false,
+  order: 0,
+  completedDates: [],
+};
+const existingChild = { ...parent, id: 'child-1', title: 'Pull the numbers', parentItemId: 'parent-1' };
+const unrelated = { ...parent, id: 'other-1', title: 'Book the dentist', notes: undefined };
+
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
-      items: [],
+      items: [parent, existingChild, unrelated],
       itemTypes: [],
       routines: [],
       programs: [],
@@ -187,5 +200,68 @@ describe('accepting part of a plan', () => {
     useProposalStore.getState().dismiss();
     expect(useProposalStore.getState().lastRequest).toBeNull();
     expect(useProposalStore.getState().rejected).toEqual([]);
+  });
+});
+
+describe('breakdown', () => {
+  it('asks in breakdown mode, so the route picks the steps prompt', async () => {
+    const bodies = mockPropose(draft('Four steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+    expect(bodies[0].mode).toBe('breakdown');
+  });
+
+  it('sends the one item, not the whole planner', async () => {
+    // Sixty other items is noise when the question is "what are the steps
+    // inside this one" — and the model uses them, proposing steps that
+    // duplicate work already sitting elsewhere.
+    const bodies = mockPropose(draft('Four steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+
+    const context = bodies[0].itemContext as string;
+    expect(context).toContain('parent-1');
+    expect(context).toContain('Write the quarterly report');
+    expect(context).toContain('due before the board meeting');
+    expect(context).not.toContain('Book the dentist');
+  });
+
+  it('lists the steps it already has, so a second ask continues the list', async () => {
+    const bodies = mockPropose(draft('More steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+    expect(bodies[0].itemContext as string).toContain('Pull the numbers');
+  });
+
+  it('asks for steps by default, not for a plan for today', async () => {
+    const bodies = mockPropose(draft('Four steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+    expect(bodies[0].prompt).toBe('Break this into a few concrete steps.');
+  });
+
+  it('routes the answer back to the item that asked', async () => {
+    mockPropose(draft('Four steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+    expect(useProposalStore.getState().lastRequest?.surface).toBe('item:parent-1');
+  });
+
+  it('sends chat asks to the chat surface', async () => {
+    mockPropose(draft('A plan'));
+    await useProposalStore.getState().request('ask', 'sort out my week');
+    expect(useProposalStore.getState().lastRequest?.surface).toBe('chat');
+  });
+
+  it('can be retried, staying in breakdown mode and on the same item', async () => {
+    const bodies = mockPropose(draft('Four steps'), draft('Different steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+    await useProposalStore.getState().retry();
+
+    expect(bodies[1].mode).toBe('breakdown');
+    expect(bodies[1].itemContext as string).toContain('parent-1');
+    expect(bodies[1].prompt).toContain('Four steps');
+    expect(useProposalStore.getState().lastRequest?.surface).toBe('item:parent-1');
+  });
+
+  it('says so plainly when the item has gone', async () => {
+    const bodies = mockPropose(draft('Four steps'));
+    await useProposalStore.getState().request('breakdown', undefined, 'vanished');
+    expect(bodies[0].itemContext).toContain('no longer exists');
   });
 });

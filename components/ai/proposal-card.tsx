@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useProposalStore } from '@/lib/proposal-store';
+import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { describeOperation } from '@/lib/proposal';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,18 @@ import { cn } from '@/lib/utils';
 /** Shared empty selection — every card starts here, so it need not be rebuilt. */
 const NONE_DROPPED: ReadonlySet<number> = new Set();
 
-export function ProposalCard({ className }: { className?: string }) {
+export function ProposalCard({
+  className,
+  surface = 'chat',
+}: {
+  className?: string;
+  /**
+   * Which mount this is. One store, several places a card can appear — a
+   * breakdown asked for inside an item's dialog must not answer into the
+   * sidebar behind it, where the user cannot see it.
+   */
+  surface?: ProposalSurface;
+}) {
   const proposal = useProposalStore((s) => s.proposal);
   const status = useProposalStore((s) => s.status);
   const error = useProposalStore((s) => s.error);
@@ -30,7 +41,12 @@ export function ProposalCard({ className }: { className?: string }) {
   const dismiss = useProposalStore((s) => s.dismiss);
   // Only a model-backed ask has a different answer in it; catch-up is a pure
   // function of the planner and would return the same five items.
-  const canRetry = useProposalStore((s) => s.lastRequest?.intent === 'ask');
+  // Catch-up is a pure function of the planner and would return the same items;
+  // the model-backed intents can genuinely differ.
+  const canRetry = useProposalStore(
+    (s) => s.lastRequest != null && s.lastRequest.intent !== 'catch-up'
+  );
+  const requestSurface = useProposalStore((s) => s.lastRequest?.surface);
 
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
@@ -72,6 +88,9 @@ export function ProposalCard({ className }: { className?: string }) {
   }, [proposal, items, itemTypes]);
 
   if (status === 'idle') return null;
+  // Not this mount's card. Checked after the hooks and before every visual
+  // state, so a loading spinner does not appear in the wrong place either.
+  if (requestSurface !== undefined && requestSurface !== surface) return null;
 
   const shell = cn(
     'rounded-xl border border-border bg-surface-2 p-3 shadow-soft-sm',

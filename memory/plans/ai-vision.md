@@ -396,6 +396,37 @@ common failure is not a wrong plan, it is a plan with one wrong line in it.
   `send`'s `finally` clears `isLoading` on either transport; there was simply no way to ask.
   It takes the slot the send button occupies while disabled during a stream.
 
+**Phase 2e — "Break it down". SHIPPED.** Second on the locked proposal roadmap (decision 3:
+unschedule → subtasks → habits), and the verb the ADHD-planner market research found every
+competitor stopping at.
+
+`ProposalCreateOpSchema` gains `parentItemId`. Everything else follows from one fact — *a
+subtask has no independent presence*, since nothing outside its parent's detail panel
+renders one:
+
+- Validation refuses a parent whose type says `subtasks: false` (registry-derived, so a
+  future type opts out by config), and refuses a parent that is itself a child — one level
+  is all the panel draws, and `lib/db.ts:1026` already refused a grandchild independently.
+- Scheduling fields on a step are **dropped, not rejected**: they would be written and never
+  read, and the step is the useful part of the operation. The pre-existing rule that an
+  *existing* subtask may never be the target of an `update` is untouched, and for the same
+  reason.
+- `applyProposal` carries the link through, so a whole breakdown is still ONE `set()` and
+  one Cmd+Z.
+
+**Two surfaces, one store.** A breakdown is asked for inside the item's detail dialog, so
+answering into the sidebar behind it would put the suggestion where the user cannot see it.
+Each request records a `surface` (`'chat'` | `` `item:${id}` ``) and each `<ProposalCard>`
+renders only its own — checked before the loading state too, or a spinner appears in the
+wrong place.
+
+**A second system prompt**, selected by `mode`, rather than a paragraph bolted onto the
+planning one: planning moves existing work and must not invent, breakdown invents and must
+not touch anything else. The size guidance is load-bearing — three to six steps, first one
+startable in five minutes. A fifteen-step decomposition of a task someone is already
+avoiding is a fresh source of dread, which is exactly the failure the audience section
+warns about.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

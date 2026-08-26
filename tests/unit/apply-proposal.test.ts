@@ -240,3 +240,67 @@ describe('applyProposal', () => {
     expect(store().habits[0].status).toBe('pending');
   });
 });
+
+describe('applyProposal — breakdown', () => {
+  const stepsUnder = (parentItemId: string, ...titles: string[]) =>
+    proposalOf(
+      ...titles.map(
+        (title) =>
+          ({ kind: 'create', itemType: 'task', title, parentItemId }) as ProposalOperation
+      )
+    );
+
+  it('creates the steps parented to the item', () => {
+    const applied = store().applyProposal(
+      stepsUnder('task-1', 'Draft the outline', 'Send it to Dana')
+    );
+    expect(applied).toBe(2);
+
+    const children = store().items.filter(
+      (i) => 'parentItemId' in i && i.parentItemId === 'task-1'
+    );
+    expect(children.map((c) => c.title)).toEqual(['Draft the outline', 'Send it to Dana']);
+  });
+
+  it('keeps the steps out of the grid', () => {
+    // The tasks projection excludes subtasks, which is the whole reason they
+    // may not be scheduled — nothing outside the parent's panel renders one.
+    const before = store().tasks.length;
+    store().applyProposal(stepsUnder('task-1', 'Draft the outline'));
+    expect(store().tasks).toHaveLength(before);
+  });
+
+  it('persists the parent link', () => {
+    store().applyProposal(stepsUnder('task-1', 'Draft the outline'));
+    const created = vi.mocked(db.createItem).mock.calls.at(-1)?.[1] as { parentItemId?: string };
+    expect(created.parentItemId).toBe('task-1');
+  });
+
+  it('undoes the whole breakdown in one step', () => {
+    // Accepting a proposal is one gesture and must reverse like one — the same
+    // contract every other batched verb holds.
+    const before = store().items.length;
+    store().applyProposal(stepsUnder('task-1', 'one', 'two', 'three'));
+    expect(store().items).toHaveLength(before + 3);
+
+    store().undo();
+    expect(store().items).toHaveLength(before);
+  });
+
+  it('leaves ordinary creates unparented', () => {
+    store().applyProposal(
+      proposalOf({ kind: 'create', itemType: 'task', title: 'A normal task' } as ProposalOperation)
+    );
+    const created = store().items.find((i) => i.title === 'A normal task')!;
+    expect('parentItemId' in created ? created.parentItemId : undefined).toBeUndefined();
+  });
+
+  it('refuses to nest, so a step of a step is never written', () => {
+    store().applyProposal(stepsUnder('task-1', 'Draft the outline'));
+    const child = store().items.find((i) => i.title === 'Draft the outline')!;
+
+    const applied = store().applyProposal(stepsUnder(child.id, 'A sub-step'));
+    expect(applied).toBe(0);
+    expect(store().items.find((i) => i.title === 'A sub-step')).toBeUndefined();
+  });
+});

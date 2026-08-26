@@ -57,6 +57,40 @@ Rules:
 - Tone: warm, specific, never judgmental. Never mention how late anything is.
 - If you have nothing useful to propose, return {"summary":"","operations":[]}.`
 
+/**
+ * The steps-inside-one-thing prompt.
+ *
+ * A separate prompt rather than a paragraph bolted onto the planning one,
+ * because the two want opposite instincts: planning moves existing work around
+ * a week and must not invent; breakdown invents and must not touch anything
+ * else. The size guidance is the load-bearing part — a fifteen-step decomposition
+ * of a task someone is already avoiding is a fresh source of dread, not help.
+ */
+const BREAKDOWN_PROMPT = `You are Beacon, the planning assistant inside Anchor — a daily planner for neurodivergent people.
+
+The user has one thing that feels too big. Break it into the few concrete steps that would actually get it moving.
+
+Reply with a JSON object and nothing else — no prose before or after it, no markdown fences.
+
+The shape, exactly:
+{
+  "summary": "short headline, max ~8 words",
+  "rationale": "one warm sentence explaining the thinking",
+  "operations": [
+    { "kind": "create", "itemType": "task", "title": "the step", "parentItemId": "<the id you were given>" }
+  ]
+}
+
+Rules:
+- EVERY operation must be a create with "parentItemId" set to the id you were given, copied exactly.
+- Propose no changes to anything else. No updates, no other parents, no dates.
+- Three to six steps. Fewer, larger steps beat a long checklist — this is for someone who is already avoiding the task, and a fifteen-item list is a new thing to dread.
+- The first step must be small enough to start in under five minutes.
+- Each step names a concrete action ("Draft the three bullet points", not "Think about structure").
+- Do not repeat steps the item already has.
+- Tone: warm, plain, never judgmental. Never mention how late anything is.
+- If the item is already small enough to just do, return {"summary":"","operations":[]}.`
+
 export async function POST(req: NextRequest) {
   // Authenticated, always. This route can fall back to the deployment's own
   // OPENAI_API_KEY, so leaving it open would let anyone on the internet spend
@@ -82,6 +116,7 @@ export async function POST(req: NextRequest) {
     provider?: string
     apiKey?: string
     model?: string
+    mode?: string
     itemContext?: string
     todayStr?: string
   }
@@ -91,7 +126,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { prompt, provider, apiKey, model, itemContext, todayStr } = body
+  const { prompt, provider, apiKey, model, mode, itemContext, todayStr } = body
+
+  // Unknown modes fall back to planning rather than erroring: an older client
+  // sending nothing is the normal case, and this is not a security boundary —
+  // both prompts are ours, and both outputs go through the same validation.
+  const systemPrompt = mode === 'breakdown' ? BREAKDOWN_PROMPT : SYSTEM_PROMPT
 
   if (provider === 'anthropic') {
     return NextResponse.json(
@@ -104,7 +144,10 @@ export async function POST(req: NextRequest) {
     `Today is ${todayStr ?? new Date().toISOString().slice(0, 10)}.`,
     itemContext ?? '',
     '',
-    prompt?.trim() || 'Suggest a realistic plan for today.',
+    prompt?.trim() ||
+      (mode === 'breakdown'
+        ? 'Break this into a few concrete steps.'
+        : 'Suggest a realistic plan for today.'),
   ].join('\n')
 
   // The agent tier proposes through the user's OWN gateway. Falling through to
@@ -133,7 +176,7 @@ export async function POST(req: NextRequest) {
         sessionKey: proposeSessionKey(userId),
         signal: timeout,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: userTurn },
         ],
       })
@@ -178,7 +221,7 @@ export async function POST(req: NextRequest) {
       // individual bad operations anyway, so tolerance beats brittleness here.
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userTurn },
       ],
     })

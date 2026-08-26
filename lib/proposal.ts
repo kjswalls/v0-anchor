@@ -75,6 +75,38 @@ export function validateProposalOperations(
       }
       const config = getItemTypeConfig(operation.itemType)
       const next = { ...operation }
+
+      if (next.parentItemId) {
+        const parent = ctx.items.find((i) => i.id === next.parentItemId)
+        if (!parent) {
+          reject(operation, 'the item to break down no longer exists')
+          continue
+        }
+        if (!getItemTypeConfig(itemTypeName(parent)).subtasks) {
+          // Registry-derived, never a type check: habits set `subtasks: false`
+          // because a recurring commitment has no defined pieces, and any
+          // future type that says the same is excluded for the same reason.
+          reject(operation, `${itemTypeName(parent)} items cannot have subtasks`)
+          continue
+        }
+        if ('parentItemId' in parent && parent.parentItemId) {
+          // One level, because one level is all the panel renders. A grandchild
+          // would be written to a row nothing displays and nothing can reach.
+          reject(operation, 'subtasks cannot themselves be broken down')
+          continue
+        }
+        // A subtask is invisible outside its parent's panel — the same fact
+        // that stops an update operation from touching one. Scheduling fields
+        // on it would be written and then never shown, so they are dropped
+        // rather than rejected: the SUBTASK is the useful part of the
+        // operation, and one stray date should not cost it.
+        delete next.startDate
+        delete next.startTime
+        delete next.timeBucket
+        accepted.push(next)
+        continue
+      }
+
       // A date on a date-blind type would be silently ignored by the grid.
       if (!config.dateAnchored) delete next.startDate
       accepted.push(next)
@@ -230,6 +262,12 @@ function friendlyDate(dateStr: string): string {
  */
 export function describeOperation(operation: ProposalOperation, ctx: ProposalContext): string {
   if (operation.kind === 'create') {
+    if (operation.parentItemId) {
+      const parent = ctx.items.find((i) => i.id === operation.parentItemId)
+      // Naming the parent matters when a breakdown card sits beside a plan
+      // card: "Step: x" alone does not say what it is a step of.
+      return parent ? `${operation.title} — under ${parent.title}` : `Step: ${operation.title}`
+    }
     const label = getItemTypeConfig(operation.itemType).label.toLowerCase()
     const when = operation.startDate ? ` for ${friendlyDate(operation.startDate)}` : ''
     return `New ${label}: ${operation.title}${when}`
