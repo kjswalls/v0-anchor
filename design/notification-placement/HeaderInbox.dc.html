@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.01 272); }
+    .anchor {
+      --surface-0: oklch(0.986 0.0012 90);
+      --surface-1: oklch(0.99 0.001 90);
+      --canvas: oklch(0.996 0 0);
+      --pill: oklch(1 0 0);
+      --well: oklch(0.945 0.0015 90);
+      --ink-0: oklch(0.24 0.01 272);
+      --ink-1: oklch(0.5 0.02 272);
+      --ink-2: oklch(0.66 0.03 272);
+      --lime: oklch(0.86 0.17 125);
+      --lime-ink: oklch(0.32 0.07 130);
+      --lime-tint: oklch(0.95 0.05 125);
+      --honey: oklch(0.84 0.11 85);
+      --honey-ink: oklch(0.38 0.08 75);
+      --honey-tint: oklch(0.96 0.035 85);
+      --coral: oklch(0.72 0.14 30);
+      --coral-ink: oklch(0.34 0.09 30);
+      --coral-tint: oklch(0.95 0.03 30);
+      --border: oklch(0.9 0.008 272);
+      --input: oklch(0.86 0.012 272);
+      --accent: oklch(0.22 0.012 272 / 4%);
+      --morning: oklch(0.78 0.11 85);
+      --evening: oklch(0.62 0.1 285);
+      --sh-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
+      --sh-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+      --sh-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+      --sh-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
+      --sh-panel: 0 1px 2px oklch(0 0 0 / 6%), -8px 4px 24px -6px oklch(0 0 0 / 10%);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--ink-0);
+    }
+    .app { width: 900px; height: 720px; background: var(--surface-0); display: flex; gap: 12px; padding: 12px; overflow: hidden; }
+    .side { width: 406px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+    .bdhead { background: var(--well); border-radius: 10px; padding: 6px; box-shadow: var(--sh-bar); }
+    .bdpill { height: 37px; background: var(--pill); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 12px; box-shadow: var(--sh-sm); font-size: 13px; font-weight: 500; }
+    .rows { flex: 1; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; min-height: 0; overflow: hidden; }
+    .row { height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 8px; font-size: 13px; color: var(--ink-0); }
+    .cb { width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--input); flex: none; }
+    .slash { font-size: 11px; font-weight: 500; color: var(--ink-2); padding: 10px 12px 4px; letter-spacing: 0.01em; }
+    .dock { background: var(--well); border-radius: 10px; box-shadow: var(--sh-bar); padding: 10px; display: flex; flex-direction: column; }
+    .userrow { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; }
+    .avatar { width: 26px; height: 26px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+    .omni { height: 48px; background: var(--pill); border-radius: 10px; box-shadow: var(--sh-sm); display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 13px; color: var(--ink-2); }
+    .canvas { flex: 1; min-width: 0; background: var(--canvas); border: 1px solid var(--border); border-radius: 30px; box-shadow: var(--sh-panel); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+    .caphead { background: var(--well); border-radius: 10px; padding: 5px; display: flex; align-items: center; justify-content: space-between; }
+    .capinner { height: 34px; background: var(--pill); border-radius: 8px; box-shadow: var(--sh-sm); display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+    .bucket { background: var(--pill); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sh-sm); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+    .bhead { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--ink-1); padding: 2px 2px 4px; letter-spacing: 0.02em; text-transform: uppercase; }
+    .spine { width: 3px; height: 12px; border-radius: 2px; }
+    .crow { height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 4px; font-size: 12.5px; }
+    .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; }
+  </style>
+</helmet>
+
+<div class="anchor">
+  <div class="app">
+    <div class="side">
+    <div class="bdhead">
+      <div class="bdpill">
+        <span>Braindump</span>
+        <span style="display: flex; align-items: center; gap: 2px; color: var(--ink-2);">
+          <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg></span>
+          <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span>
+        </span>
+      </div>
+    </div>
+    <div class="rows">
+      <div class="slash">No date</div>
+      <div class="row"><span class="cb"></span><span>Draft the Q3 letter</span></div>
+      <div class="row" style="background: var(--accent);"><span class="cb"></span><span>Call the vet about Juno</span></div>
+      <div class="row"><span class="cb"></span><span>Renew passport</span></div>
+      <div class="row"><span class="cb"></span><span>Read Kleppmann ch. 6</span></div>
+      <div class="row"><span class="cb"></span><span>Fix the porch light</span></div>
+      <div class="row"><span class="cb"></span><span>Book the dentist</span></div>
+      <div class="slash">Paused</div>
+      <div class="row" style="color: var(--ink-2);"><span class="cb"></span><span>Summer reading list</span></div>
+    </div>
+
+
+    <div style="position: relative;">
+      <div style="position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); background: var(--pill); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--sh-lg); padding: 11px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px;">
+        <span style="color: var(--ink-2); display: flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <span style="flex: 1;">Completed: Morning pages</span>
+        <span style="display: flex; align-items: center; gap: 5px; font-weight: 500; color: var(--lime-ink); background: var(--lime-tint); padding: 4px 9px; border-radius: 6px; font-size: 12px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>Undo</span>
+      </div>
+      <div class="dock">
+
+      <div class="userrow">
+        <span style="display: flex; align-items: center; gap: 8px;"><span class="avatar">K</span><span style="font-size: 13px; font-weight: 500;">Kirby</span></span>
+        <span style="display: flex; align-items: center; gap: 2px; color: var(--ink-2);"><span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span><span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span></span>
+      </div>
+
+      <div class="omni"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><span>Add a task&hellip;</span></div>
+      </div>
+    </div>
+    </div>
+  <div class="canvas">
+    <div class="caphead">
+      <div class="capinner"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ink-2);"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg><span>Tue &middot; Aug 26</span></div>
+      <div style="display: flex; align-items: center; gap: 4px; color: var(--ink-2); padding-right: 4px;">
+        <span style="position: relative; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--pill); border-radius: 8px; box-shadow: var(--sh-sm); color: var(--ink-0);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span style="position: absolute; top: -3px; right: -3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); font-size: 9.5px; font-weight: 700; display: flex; align-items: center; justify-content: center;">3</span></span>
+        <span style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg></span>
+        <span style="display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; font-size: 13px; font-weight: 500; color: var(--ink-0);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ink-2);"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M21 9H3"/><path d="M21 15H3"/></svg>Buckets</span>
+      </div>
+    </div>
+    
+    <div style="background: var(--pill); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sh-lg); padding: 8px; display: flex; flex-direction: column; gap: 2px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 2px 6px 6px;">
+          <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2);">Needs you</span>
+          <span style="font-size: 11px; color: var(--ink-1); font-weight: 500;">Clear all</span>
+        </div>
+        <div style="height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--ink-0);">
+          <span style="color: var(--honey); display: flex; flex: none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10V2"/><path d="m4.93 10.93 1.41-1.41"/><path d="M2 18h20"/><path d="m19.07 10.93-1.41-1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg></span>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">4 items waiting from yesterday</span>
+          <span style="flex: none; font-size: 12px; font-weight: 500; color: var(--ink-1);">Review</span>
+          <span style="flex: none; color: var(--ink-2); display: flex;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
+        </div>
+        <div style="height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--ink-0);">
+          <span style="color: var(--evening); display: flex; flex: none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg></span>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Close out Tuesday</span>
+          <span style="flex: none; font-size: 12px; font-weight: 500; color: var(--ink-1);">Review</span>
+          <span style="flex: none; color: var(--ink-2); display: flex;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
+        </div>
+        <div style="height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--ink-0);">
+          <span style="color: var(--ink-2); display: flex; flex: none;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10V2"/><path d="m4.93 10.93 1.41-1.41"/><path d="M2 18h20"/><path d="m19.07 10.93-1.41-1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg></span>
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Moved 3 overdue items to today</span>
+          <span style="flex: none; font-size: 12px; font-weight: 500; color: var(--ink-1);">Undo</span>
+          <span style="flex: none; color: var(--ink-2); display: flex;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>
+        </div>
+    </div>
+    <div class="bucket">
+      <div class="bhead"><span class="spine" style="background: var(--morning);"></span>Morning</div>
+      <div class="crow"><span class="cb"></span><span>Morning pages</span></div>
+      <div class="crow"><span class="cb"></span><span>Standup</span></div>
+      <div class="crow"><span class="cb"></span><span>Review the migration PR</span></div>
+    </div>
+    <div class="bucket">
+      <div class="bhead"><span class="spine" style="background: var(--evening);"></span>Evening</div>
+      <div class="crow"><span class="cb"></span><span>Walk Juno</span></div>
+      <div class="crow"><span class="cb"></span><span>Guitar &mdash; 20 min</span></div>
+    </div>
+  </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

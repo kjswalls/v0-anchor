@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.01 272); }
+    .anchor {
+      --surface-0: oklch(0.986 0.0012 90);
+      --surface-1: oklch(0.99 0.001 90);
+      --canvas: oklch(0.996 0 0);
+      --pill: oklch(1 0 0);
+      --well: oklch(0.945 0.0015 90);
+      --ink-0: oklch(0.24 0.01 272);
+      --ink-1: oklch(0.5 0.02 272);
+      --ink-2: oklch(0.66 0.03 272);
+      --lime: oklch(0.86 0.17 125);
+      --lime-ink: oklch(0.32 0.07 130);
+      --lime-tint: oklch(0.95 0.05 125);
+      --honey: oklch(0.84 0.11 85);
+      --honey-ink: oklch(0.38 0.08 75);
+      --honey-tint: oklch(0.96 0.035 85);
+      --coral: oklch(0.72 0.14 30);
+      --coral-ink: oklch(0.34 0.09 30);
+      --coral-tint: oklch(0.95 0.03 30);
+      --border: oklch(0.9 0.008 272);
+      --input: oklch(0.86 0.012 272);
+      --accent: oklch(0.22 0.012 272 / 4%);
+      --morning: oklch(0.78 0.11 85);
+      --evening: oklch(0.62 0.1 285);
+      --sh-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
+      --sh-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+      --sh-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+      --sh-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
+      --sh-panel: 0 1px 2px oklch(0 0 0 / 6%), -8px 4px 24px -6px oklch(0 0 0 / 10%);
+      font-family: 'Inter', system-ui, sans-serif;
+      color: var(--ink-0);
+    }
+    .app { width: 900px; height: 720px; background: var(--surface-0); display: flex; gap: 12px; padding: 12px; overflow: hidden; }
+    .side { width: 406px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+    .bdhead { background: var(--well); border-radius: 10px; padding: 6px; box-shadow: var(--sh-bar); }
+    .bdpill { height: 37px; background: var(--pill); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 12px; box-shadow: var(--sh-sm); font-size: 13px; font-weight: 500; }
+    .rows { flex: 1; display: flex; flex-direction: column; gap: 1px; padding: 2px 0; min-height: 0; overflow: hidden; }
+    .row { height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 8px; font-size: 13px; color: var(--ink-0); }
+    .cb { width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--input); flex: none; }
+    .slash { font-size: 11px; font-weight: 500; color: var(--ink-2); padding: 10px 12px 4px; letter-spacing: 0.01em; }
+    .dock { background: var(--well); border-radius: 10px; box-shadow: var(--sh-bar); padding: 10px; display: flex; flex-direction: column; }
+    .userrow { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; }
+    .avatar { width: 26px; height: 26px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+    .omni { height: 48px; background: var(--pill); border-radius: 10px; box-shadow: var(--sh-sm); display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 13px; color: var(--ink-2); }
+    .canvas { flex: 1; min-width: 0; background: var(--canvas); border: 1px solid var(--border); border-radius: 30px; box-shadow: var(--sh-panel); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+    .caphead { background: var(--well); border-radius: 10px; padding: 5px; display: flex; align-items: center; justify-content: space-between; }
+    .capinner { height: 34px; background: var(--pill); border-radius: 8px; box-shadow: var(--sh-sm); display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+    .bucket { background: var(--pill); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sh-sm); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+    .bhead { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; color: var(--ink-1); padding: 2px 2px 4px; letter-spacing: 0.02em; text-transform: uppercase; }
+    .spine { width: 3px; height: 12px; border-radius: 2px; }
+    .crow { height: 30px; display: flex; align-items: center; gap: 9px; padding: 0 4px; font-size: 12.5px; }
+    .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; }
+  </style>
+</helmet>
+
+<div class="anchor">
+  <div style="width: 760px; height: 620px; background: var(--surface-0); padding: 30px 32px; display: flex; flex-direction: column; gap: 18px;">
+    <div>
+      <div style="font-size: 19px; font-weight: 600; letter-spacing: -0.01em;">What speaks today</div>
+      <div style="font-size: 13px; color: var(--ink-1); margin-top: 5px; max-width: 640px; text-wrap: pretty;">Two systems, both anchored to the bottom of the sidebar, 8px apart &mdash; a persistent stack inside the dock capsule and a transient toast floating above it.</div>
+    </div>
+
+    <div>
+      <div style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); padding-bottom: 4px;">The dock stack &mdash; persists until answered</div>
+      <div style="background: var(--pill); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--sh-sm); padding: 2px 12px;">
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border);">
+        <span style="color: var(--coral); display: flex; flex: none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"/><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></svg></span>
+        <span style="flex: 1; min-width: 0; font-size: 13px;">Couldn't reach your items</span>
+        <span class="tag" style="background: var(--coral-tint); color: var(--ink-1); flex: none;">BLOCKED 90</span>
+        <span style="flex: none; width: 92px; text-align: right; font-size: 11px; color: var(--ink-2);">until retried</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border);">
+        <span style="color: var(--honey); display: flex; flex: none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10V2"/><path d="m4.93 10.93 1.41-1.41"/><path d="M2 18h20"/><path d="m19.07 10.93-1.41-1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg></span>
+        <span style="flex: 1; min-width: 0; font-size: 13px;">4 items waiting from yesterday</span>
+        <span class="tag" style="background: var(--honey-tint); color: var(--ink-1); flex: none;">DECISION 50</span>
+        <span style="flex: none; width: 92px; text-align: right; font-size: 11px; color: var(--ink-2);">until triaged</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border);">
+        <span style="color: var(--evening); display: flex; flex: none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg></span>
+        <span style="flex: 1; min-width: 0; font-size: 13px;">Close out Tuesday</span>
+        <span class="tag" style="background: var(--honey-tint); color: var(--ink-1); flex: none;">DECISION 50</span>
+        <span style="flex: none; width: 92px; text-align: right; font-size: 11px; color: var(--ink-2);">until closed</span>
+      </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 9px 4px;">
+          <span style="color: var(--ink-2); display: flex; flex: none;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10V2"/><path d="m4.93 10.93 1.41-1.41"/><path d="M2 18h20"/><path d="m19.07 10.93-1.41-1.41"/><path d="M22 22H2"/><path d="m16 6-4 4-4-4"/><path d="M16 18a4 4 0 0 0-8 0"/></svg></span>
+          <span style="flex: 1; min-width: 0; font-size: 13px;">Moved 3 overdue items to today</span>
+          <span class="tag" style="background: var(--well); color: var(--ink-1); flex: none;">RECEIPT 30</span>
+          <span style="flex: none; width: 92px; text-align: right; font-size: 11px; color: var(--ink-2);">until dismissed</span>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; color: var(--ink-2); padding: 6px 4px 0;">Capped at 2 rows, then folds into &ldquo;+N more&rdquo;. Every row that arrives or leaves moves the omnibar underneath it.</div>
+    </div>
+
+    <div>
+      <div style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); padding-bottom: 4px;">The toast &mdash; five seconds, then gone</div>
+      <div style="background: var(--pill); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--sh-sm); padding: 12px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Complete</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Uncomplete</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Delete task</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Delete habit</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Delete project</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Skip habit</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Reset habit</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Reset streak</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Schedule</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Unschedule</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Move to&hellip;</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Move all tasks</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Add to&hellip;</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Remove from&hellip;</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Role changed</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Bulk paste</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Bulk complete</span>
+          <span style="font-size: 11.5px; color: var(--ink-1); background: var(--well); border-radius: 5px; padding: 4px 8px;">Bulk delete</span>
+        </div>
+        <div style="font-size: 11.5px; color: var(--ink-2); padding-top: 9px;">Eighteen action families, all carrying the same one-press Undo &mdash; the app&rsquo;s single largest source of speech, and the one place it says nothing twice.</div>
+      </div>
+    </div>
+
+    <div style="margin-top: auto; display: flex; align-items: flex-start; gap: 10px; background: var(--honey-tint); border-radius: 9px; padding: 11px 13px;">
+      <span style="color: var(--honey-ink); display: flex; flex: none; padding-top: 1px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span>
+      <span style="font-size: 12.5px; color: var(--ink-0); text-wrap: pretty;"><strong style="font-weight: 600;">The overlap.</strong> A receipt notice (&ldquo;Moved 3 overdue items &middot; Undo&rdquo;) and an undo toast (&ldquo;Completed: Morning pages &middot; Undo&rdquo;) are the same sentence in two different chrome treatments, rendered 8px apart, with different lifetimes and different dismiss gestures.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
