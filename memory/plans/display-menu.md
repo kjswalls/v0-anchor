@@ -537,6 +537,135 @@ below the Structure/Filter line because turning a scope on reveals work — a Sh
 action, not a Structure one — and is app-wide (like Show paused), so Reset display leaves it
 alone.
 
+## Addendum (2026-08-26): the touch shell — one sheet, two levels
+
+**The menu ships in two shells now.** Pointer keeps the Radix `DropdownMenu` this
+plan built, unchanged. Touch (`useIsMobile`, the 768px `matchMedia` listener) gets a
+vaul bottom `Drawer` that **drills in**: the root lists the sections with their current
+value on the rail, tapping one replaces the sheet's body with that section — titled,
+with a back affordance — and picking a value writes exactly what its pointer twin
+writes.
+
+**What was wrong.** Five of the eight sections open a second tier, all of them
+`DropdownMenuSub` + `DropdownMenuSubTrigger` + `DropdownMenuSubContent`: Grouping,
+Ordering, Type, Priority and Project / Group. (Hide finished, Show paused and the
+Paused scopes rows are flat, and the two "Switch to List" escapes live *inside* the
+first two tiers.) A Radix submenu is a hover-and-aim pattern — it opens on
+pointer-enter, aims at a 240px panel beside its trigger, and has no dismissal of its
+own. On a phone that panel lands off-screen or under the thumb that opened it, and
+there is no way back to the tier it came from short of closing the whole menu.
+
+**Drill-in, not one flattened sheet, and the deciding number is that one section is
+unbounded.** Grouping is 6 values, Ordering 3, Type 3, Priority 4 — all of which
+would flatten comfortably. Project / Group is every project plus every habit group
+plus the unset value, which is why it is the one section carrying a scroller on the
+desktop panel too (`scroll: true`, `max-h-64`). Flattened, the seeded account already
+stands ~22 rows tall at the 44px touch floor — ~970px, past an 80vh sheet on most
+phones — and it grows with the user's own data, burying Hide finished, Show paused,
+Paused scopes and Reset under a list of their projects. Drilled, no pane but that one
+exceeds six rows. **If a later pass reduces the section count, this trade should be
+re-derived rather than assumed**: flattening wins the moment the container filter is
+the only long list left and it is gone.
+
+**One body, two shells — and the body is now DATA.** The sections are described once,
+as `Section` → `Entry` → `RowSpec` (label, state, what it writes, whether picking it
+completes the choice), and each shell renders that description in its own idiom:
+`MenuEntries`/`SubRow`/`ValueRow` for pointer, `SheetEntries`/`SheetSectionRow`/
+`SheetRow` for touch. This is deliberate and it is the lesson of problem 3 above —
+two popovers with one body drifted apart field by field until one of them was wrong.
+**Adding, removing or reordering a section is an edit to `structure` / `filterSections`
+/ `showEntries`, not to either renderer.**
+
+**The ITEM roles are shared with the model, not with the shell.** A row's role says
+what the row MEANS — a value in a set, an independent toggle, an action — and the
+input device does not change that. So the sheet's rows carry the same
+`menuitemradio` / `menuitemcheckbox` / `menuitem` the dropdown does, `roleOf()`
+is the single answer both renderers ask, and the ruling above ("don't derive an ARIA
+role from close-behaviour") holds in both. The CONTAINER is the shell's own business
+and is `role="group"` here — see the gotcha below. It pays for itself twice: the escape row is
+still an action on touch, and `pickDisplay` in `tests/e2e/view-matrix.spec.ts` —
+trigger → `menuitem` section → `menuitemradio` value — is a verbatim description of
+*both* shells, so no @mobile spec needed changing.
+
+### Gotchas from the split
+
+- **`keepOpen` means the same thing in both shells, and that is what makes single-
+  select close the SHEET.** Multi-select stays on the pane so three container picks
+  are three taps; single-select dismisses the whole sheet, exactly as it closes the
+  dropdown — the choice is complete and the surface behind it has just changed shape.
+  Returning to the root instead would leave the phone holding a sheet over a view it
+  can no longer see.
+- **The drilled pane is not a preference, and it is reset on the OPENING edge.** It
+  is where you are standing inside a control that is currently open, so it lives in
+  the sheet's own `useState` — but the reset belongs to the *next* opening, not to
+  this one's close. Both spellings of "clear it on close" are wrong, and the branch
+  shipped one of them for a commit. `open` is a controlled prop here, so vaul's
+  `onOpenChange` fires for its OWN dismissals only (Escape, backdrop, swipe) —
+  `useControllableState` calls `onChange` from vaul's setter and never from a prop
+  change — so every close the component performs itself (`setOpen(false)`: a
+  single-select pick, "Switch to List", Reset) skipped it. Picking a grouping value,
+  the primary interaction this shell exists for, re-opened on the Grouping pane with
+  Filter, Show, Paused scopes and Reset all behind a back chevron. And the close edge
+  is the wrong edge anyway: `onOpenChange(false)` fires at the *start* of the exit, so
+  the body flips to the root while the sheet is still sliding out. `if (next)
+  setPaneId(null)` is one site, on one path (vaul's own trigger), batched with
+  `setOpen(true)` so the first frame of the new sheet is already the root — whichever
+  way the last one closed. `onAnimationEnd` is not the alternative: vaul schedules it
+  off the same controlled `onChange`, so it is unreachable from a self-close, and a
+  500ms timer that lands after a quick re-open would yank the user back to the root
+  mid-interaction.
+- **Focus does not follow an unmounting button.** Drilling in and coming back each
+  unmount the row that was pressed, and the sheet had nothing to catch it: measured
+  `document.activeElement === BODY` after both. Radix gives the desktop submenu this
+  for free. The sheet does it in an effect keyed on `paneId` — the element to focus
+  does not exist until the new level has rendered — landing on the pane's first
+  enabled row going in and on the section row you came from coming back. It is not a
+  touch-only nicety: `useIsMobile` is viewport-based, so any desktop window under
+  768px reaches this shell with a physical keyboard. The first open is skipped; vaul's
+  `autoFocus` owns that one, and the effect's `lastPane` ref is cleared alongside the
+  pane so a stale pane from the previous opening cannot steal focus behind it.
+- **The sheet's pane is `role="group"`, not `role="menu"` — item roles are shared,
+  the container is not.** The ruling above (a row's role says what the row MEANS) is
+  unchanged and still governs `roleOf()`. A `menu` CONTAINER is a different promise:
+  roving tabindex, ArrowUp/Down, Home/End and typeahead, which Radix implements for
+  the dropdown and this shell does not. Claiming it flips a screen reader into
+  application mode, where the arrows it has just told the user to press do nothing;
+  `group` keeps browse mode, where they work, and every row is a real button in the
+  tab order. If roving focus ever lands here, it becomes `menu` again in the same
+  commit.
+- **A swipe-down cannot be simulated in jsdom.** vaul measures a drag through
+  `getComputedStyle(el).transform`, which jsdom leaves undefined and `getTranslate`
+  throws on. It is not unpinned: a swipe resolves through vaul's own `closeDrawer()`,
+  the same controlled `onOpenChange(false)` that Escape and a backdrop tap take, and
+  the close-path table in `tests/unit/display-menu.test.tsx` covers both of those.
+- **A 44px sweep that walks only the root measures none of the radios.** The root
+  draws sections, two checkboxes and Reset — no `menuitemradio` at all — so a sweep
+  written against it stayed green with `SheetRow` mutated to `min-h-7` for exactly the
+  rows a phone presses most: every Grouping / Ordering / Type value. The floor was
+  genuinely met; the test just did not earn it. It walks all five panes now, and
+  counts the radios it saw.
+- **vaul's trigger opens on CLICK; Radix's `DropdownMenuTrigger` opens on
+  POINTERDOWN.** The same gesture does not drive both, which is why
+  `tests/unit/display-menu.test.tsx` carries two openers. Getting it wrong leaves the
+  surface shut and every query beneath it failing for the wrong reason.
+- **vaul holds its content through the exit transition and jsdom fires no
+  `transitionend`, so a closed sheet never leaves the tree in a unit test.** Assert
+  `data-state="closed"`, never absence — the same reading `tests/unit/mobile-dock.test.tsx`
+  takes.
+- **`useIsMobile` reports false until its first effect**, so a phone renders the
+  pointer trigger for one frame. That costs nothing here only because both shells wrap
+  the *same* trigger button — the mounts size it from outside (`mobile-header.tsx`
+  grows the 24px icon trigger to its 30px row slot), so it must not change shape with
+  the input device either.
+- **44px is a floor with exactly two spellings, and a test enforces that.** Every
+  pressable thing in the sheet carries `min-h-11` or `size-11` (the back affordance),
+  asserted on the CLASS because jsdom lays nothing out. 44 rather than the mode
+  sheet's 48 for the same reason this shell drills instead of flattening: the
+  Project / Group pane is as long as the user's data.
+- **The trigger itself is still the mount's business.** `mobile-header.tsx` draws it at
+  30px inside a row of 30px slots, deliberately and with its own comment; growing it to
+  44 is a header-layout decision, not this component's.
+
 ## Related
 
 `unified-items.md` (the registry this extends), `organize-console.md` (shares Phase B),

@@ -10,6 +10,7 @@ import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/comp
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
+import { isTouchPointer } from '@/lib/dnd/sensors';
 import {
   HOUR_PX,
   HOVER_Z,
@@ -712,6 +713,19 @@ export function ScheduleBlock({
   };
 
   const onResizeDown = (edge: 'top' | 'bottom', e: React.PointerEvent) => {
+    // A finger never resizes. The hit zone is 12px tall (9px out, 3px in) and
+    // its grip is smaller still — a target no fingertip can aim at, but that a
+    // scrolling thumb crosses constantly, and every crossing captures the
+    // pointer and commits a new duration on release. So on touch this is not a
+    // feature with a poor hit area, it is a silent edit dispatched by the scroll
+    // gesture. Declining leaves the touch to the browser (nothing is captured
+    // and nothing is preventDefaulted), so the grid scrolls as it should; the
+    // duration field in the item dialog is the touch path to the same edit.
+    //
+    // Gated on pointerType, like the drag sensors in lib/dnd/sensors.ts, and for
+    // the same reason: a touchscreen laptop must keep mouse resize on the very
+    // same element.
+    if (isTouchPointer(e.nativeEvent)) return;
     e.stopPropagation();
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
