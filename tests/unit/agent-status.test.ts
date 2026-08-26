@@ -256,3 +256,41 @@ describe('a run that has gone quiet', () => {
     expect(quiet().detail).not.toMatch(forbidden);
   });
 });
+
+describe('recoverable — what the user can usefully do', () => {
+  /**
+   * ONE definition, because the panel had grown its own
+   * `stalled || aiStatus === 'failed'` — so the row's marker and the panel's
+   * recovery button disagreed about a failed item, and the next consumer would
+   * have disagreed again.
+   */
+  const quiet = (aiStatus: string) =>
+    view({ aiStatus, aiStatusAt: ago(AGENT_QUIET_AFTER_MS + MINUTE) })!;
+
+  it('offers recovery on a working run that has gone quiet', () => {
+    expect(quiet('working').recoverable).toBe(true);
+  });
+
+  it('offers it on a failed run, however long ago', () => {
+    expect(view({ aiStatus: 'failed', aiStatusAt: ago(3 * DAY) })!.recoverable).toBe(true);
+  });
+
+  it('does NOT offer it on a queued item, where the button would be a placebo', () => {
+    /**
+     * Re-queueing something already queued changes nothing except refreshing
+     * the stamp — which hides the very warning the user was responding to. A
+     * queued item going quiet means nothing is picking work up AT ALL, and no
+     * button on this item fixes that.
+     */
+    expect(quiet('queued').stalled).toBe(true);
+    expect(quiet('queued').recoverable).toBe(false);
+  });
+
+  it('does not offer it while a run is healthy', () => {
+    expect(view()!.recoverable).toBe(false);
+  });
+
+  it('does not offer it on a blocked item — that is waiting on the user', () => {
+    expect(view({ aiStatus: 'blocked', aiStatusAt: ago(3 * DAY) })!.recoverable).toBe(false);
+  });
+});

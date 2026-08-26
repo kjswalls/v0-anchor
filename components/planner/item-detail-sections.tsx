@@ -20,7 +20,7 @@ import { ProposalCard } from '@/components/ai/proposal-card';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { AGENT_QUIET_AFTER_MS, agentStatusView } from '@/lib/agent-status';
+import { agentStatusView } from '@/lib/agent-status';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
@@ -205,13 +205,14 @@ function AgentSection({ item }: { item: Item }) {
    */
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), AGENT_QUIET_AFTER_MS / 6);
+    // A minute, matching the row's pill. A ten-minute tick meant the row could
+    // flip to "Gone quiet" while the panel two inches away still showed a plain
+    // "working" and no recovery — the same item, disagreeing with itself.
+    const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  // One evaluation, read twice below — and the two must agree, or the layout
-  // anchor and the button that needs it disagree about whether it is there.
-  const stalled = agentStatusView(live, now)?.stalled || live.aiStatus === 'failed';
+  const view = agentStatusView(live, now);
 
   // No type test here on purpose: the call site gates on the registry's
   // `agentAssignable`, which is the single answer to "may this be delegated"
@@ -219,6 +220,15 @@ function AgentSection({ item }: { item: Item }) {
   // second, hardcoded check in here is how the two drift apart.
 
   if (!live.assignee) {
+    // Can this tier actually DO background work? `ai-registry.ts` says the
+    // assistant tier cannot — it is a request/response completions API with no
+    // worker behind it — and nothing in the app, the agent API or any cron
+    // consumes a `beacon` assignment. Offering the button anyway queues work
+    // that sits untouched forever, and the registry's own header names this
+    // exact failure: "a delegate button that silently does nothing on the
+    // assistant tier is worse than no button".
+    if (!resolveAICapabilities(provider).canDelegate) return null;
+
     return (
       <button
         type="button"
@@ -243,7 +253,7 @@ function AgentSection({ item }: { item: Item }) {
       <div className="flex items-center gap-2">
         <Sparkles className="text-warning-text size-3.5 shrink-0" />
         <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
-        {live.aiStatus && (
+        {view && (
           <span
             className={cn(
               'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
@@ -254,8 +264,14 @@ function AgentSection({ item }: { item: Item }) {
                 ? 'bg-destructive text-destructive-foreground'
                 : 'bg-warning text-warning-foreground'
             )}
+            title={view.detail}
           >
-            {live.aiStatus}
+            {/* The VIEW's label, not the raw status. This panel used to print
+                "WORKING" beside a Try again button that appeared from nowhere —
+                so the evidence the button's safety depends on was the one thing
+                the surface offering it never showed. On /item/[id] there is no
+                row pill either, so this was the only place it could come from. */}
+            {view.label}
           </span>
         )}
         {/* The LIGHT recovery, offered only once a run has actually gone quiet
@@ -268,7 +284,7 @@ function AgentSection({ item }: { item: Item }) {
             which was merely slow would put two workers on one task and let the
             second overwrite the first's report. The user seeing "Gone quiet" is
             the evidence that makes it safe. */}
-        {stalled && (
+        {view?.recoverable && (
           <button
             type="button"
             onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
@@ -286,12 +302,16 @@ function AgentSection({ item }: { item: Item }) {
           className={cn(
             'text-muted-foreground hover:text-foreground text-[10px]',
             // Keeps its right-hand anchor when it is the only control.
-            !stalled && 'ml-auto'
+            !view?.recoverable && 'ml-auto'
           )}
         >
           Unassign
         </button>
       </div>
+      {/* Why the button is there, in words. */}
+      {view?.stalled && (
+        <p className="text-warning-text text-xs leading-relaxed">{view.detail}</p>
+      )}
       {live.aiResult && (
         <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
       )}

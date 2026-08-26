@@ -10,6 +10,7 @@ import {
 import { GET as getContext } from '@/app/api/agent/context/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
+import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
@@ -77,15 +78,21 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
 
-  // /api/agent/items/:id/{events,ask} — their own handlers, not CRUD sets.
-  if (collection === 'items' && (segments[2] === 'events' || segments[2] === 'ask')) {
+  // /api/agent/items/:id/{events,ask,progress} — the delegation verbs, each
+  // with its own handler rather than a CRUD set: they carry preconditions and
+  // an assignee check that must not be bolted onto every agent write.
+  const ITEM_VERBS: Record<string, (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>> = {
+    events: getItemEvents,
+    ask: askUser,
+    progress: reportProgress,
+  }
+  if (collection === 'items' && segments[2] && ITEM_VERBS[segments[2]]) {
     if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {
       return NextResponse.json({ error: 'id must be a single path segment' }, { status: 400 })
     }
-    const params = Promise.resolve({ id })
-    return segments[2] === 'ask'
-      ? askUser(proxyRequest(original, plan), { params })
-      : getItemEvents(proxyRequest(original, plan), { params })
+    return ITEM_VERBS[segments[2]](proxyRequest(original, plan), {
+      params: Promise.resolve({ id }),
+    })
   }
 
   const entry = COLLECTION[collection]

@@ -200,9 +200,12 @@ describe('collections', () => {
 
 describe('delegation — the pull loop', () => {
   it('reports progress against the item, with the pinned status vocabulary', () => {
+    // Its own route rather than the generic task PATCH: that one verified only
+    // account ownership, so a late report from a superseded run overwrote the
+    // work that had replaced it. See the compare-and-set block at the foot.
     expect(plan('anchor_report_progress', { id: 't1', status: 'working' })).toEqual({
-      method: 'PATCH',
-      path: '/api/agent/tasks/t1',
+      method: 'POST',
+      path: '/api/agent/items/t1/progress',
       body: { aiStatus: 'working' },
     });
   });
@@ -511,12 +514,50 @@ describe('resuming a run that died', () => {
     expect(assigned[0]).not.toHaveProperty('aiStatusAt');
   });
 
-  it('tells the worker what a working item means and what to do about it', () => {
-    // A rule the model cannot see is a rule it cannot follow — the mistake
-    // already made once with "not available for repeating items".
+  it('tells the worker to leave a live run alone, and names a threshold', () => {
+    /**
+     * An earlier version of this text said "hours old means that run died —
+     * pick it up and finish it". `anchor_report_progress` instructed reports
+     * only at START, FINISH and STUCK, so a HEALTHY two-hour job has a
+     * two-hour-old stamp by construction — that sentence was an instruction to
+     * double-run every long job, issued to a runtime with no user in the loop.
+     * It also named no boundary, so the model picked a different one each run.
+     */
     const description = toolByName('anchor_my_work')!.description;
-    expect(description).toContain('aiStatusAt');
-    expect(description).toContain('fetchedAt');
-    expect(description).toMatch(/died without/i);
+    expect(description).toMatch(/leave it alone/i);
+    expect(description).toMatch(/not a heartbeat/i);
+    expect(description).toMatch(/\d+ hours/);
+    expect(description).toMatch(/assigned to you/i);
+    expect(description).toMatch(/never touch an item assigned to someone else/i);
+    // And the taking must go through the refusable call, not just be asserted.
+    expect(description).toMatch(/anchor_report_progress/);
+  });
+
+  it('tells the worker to report periodically, which is what makes the stamp mean anything', () => {
+    const description = toolByName('anchor_report_progress')!.description;
+    expect(description).toMatch(/periodically/i);
+    expect(description).toMatch(/lastSeenAt/);
+    expect(description).toMatch(/refused/i);
+  });
+
+  it('sends a progress report to the route that can refuse it', () => {
+    // The generic task PATCH verified only account ownership: no assignee
+    // check, no precondition, so a late report from a superseded run landed
+    // unconditionally over the work that replaced it.
+    expect(
+      plan('anchor_report_progress', { id: 'i1', status: 'done', lastSeenAt: '2026-08-26T10:00:00.000Z' })
+    ).toEqual({
+      method: 'POST',
+      path: '/api/agent/items/i1/progress',
+      body: { aiStatus: 'done', lastSeenAt: '2026-08-26T10:00:00.000Z' },
+    });
+  });
+
+  it('omits the precondition when the worker has no stamp to send', () => {
+    expect(plan('anchor_report_progress', { id: 'i1', status: 'working' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/items/i1/progress',
+      body: { aiStatus: 'working' },
+    });
   });
 });

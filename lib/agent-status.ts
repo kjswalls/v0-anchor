@@ -36,6 +36,13 @@ export interface AgentStatusView {
    * one task, and the second would overwrite the first's report.
    */
   stalled: boolean
+  /**
+   * The user could usefully step in — the run has gone quiet, or it reported a
+   * failure. ONE definition, because the panel had grown its own
+   * `stalled || aiStatus === 'failed'`, which meant the row's marker and the
+   * panel's recovery button disagreed about a failed item.
+   */
+  recoverable: boolean
   /** "4m", "3h", "2d" — absent when the item carries no stamp. */
   elapsed?: string
   /** Full sentence for the tooltip and for screen readers. */
@@ -151,6 +158,11 @@ export function agentStatusView(
     needsUser: state === 'blocked',
     active,
     stalled,
+    // `queued` is excluded even when stalled: re-queueing something already
+    // queued changes nothing except refreshing the stamp, which would hide the
+    // very warning the user was responding to. A queued item going quiet means
+    // nothing is picking work up at all, and no button on this item fixes that.
+    recoverable: (stalled && state === 'working') || state === 'failed',
     elapsed,
     detail,
   }

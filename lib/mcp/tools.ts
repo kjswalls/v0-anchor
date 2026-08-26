@@ -1,5 +1,6 @@
 import { AiStatusSchema } from '@anchor-app/types'
 import { isItemActiveOn, isOpenLoopOn } from '../active'
+import { AGENT_QUIET_AFTER_MS } from '../agent-status'
 import { getItemTypeConfig } from '../item-registry'
 import type { Item, Routine, Program } from '../planner-types'
 import type { McpToolDescriptor } from './protocol'
@@ -154,6 +155,16 @@ function planCollection(
  */
 const AI_STATUSES = AiStatusSchema.options
 
+/**
+ * The staleness line, shared with the UI's `AGENT_QUIET_AFTER_MS` rather than
+ * described in prose.
+ *
+ * An earlier version of the `anchor_my_work` text said "minutes old" versus
+ * "hours old" and named no boundary, so the model picked its own and picked a
+ * different one each run.
+ */
+const QUIET_HOURS = Math.round(AGENT_QUIET_AFTER_MS / 3_600_000)
+
 /** Statuses that still want something to happen. */
 const OPEN_AI_STATUSES = new Set(['queued', 'working', 'blocked'])
 
@@ -295,12 +306,15 @@ export const MCP_TOOLS: McpTool[] = [
       'do the work, then report with anchor_report_progress. An item already sitting at ' +
       "'blocked' may have been answered — read anchor_item_activity before assuming it is " +
       'still stuck. ' +
-      "An item sitting at 'working' is NOT necessarily someone else's: compare its " +
-      "aiStatusAt against the response's fetchedAt. Minutes old means a run is genuinely " +
-      'in flight and you should leave it alone. Hours old means that run died without ' +
-      'reporting — nothing cleans those up, so pick it up and finish it, saying so in your ' +
-      'first progress report. An item nobody resumes is one the user handed over and never ' +
-      'got back. ' +
+      "An item at 'working' belongs to a run that is probably still going: LEAVE IT ALONE. " +
+      'Its aiStatusAt is when that status was last written, not a heartbeat, so an ' +
+      'old stamp on a long job is normal and proves nothing. ' +
+      `Only if the stamp is more than ${QUIET_HOURS} hours older than this response's fetchedAt AND the ` +
+      'item is assigned to you may you treat that run as gone. Even then, take it by calling ' +
+      "anchor_report_progress with 'working' FIRST and continuing only if that call succeeds " +
+      '— it refuses when someone else has touched the item, which is what stops two of you ' +
+      'working the same task and overwriting each other. ' +
+      'Never touch an item assigned to someone else. ' +
       'If nothing comes back, there is nothing to do — stop, do not go looking ' +
       'for work in the rest of the planner.',
     inputSchema: obj({
@@ -385,7 +399,16 @@ export const MCP_TOOLS: McpTool[] = [
       "when you are STUCK (status 'blocked', with the question you need answered in result — " +
       'the user sees that text and it is the only way to ask them something). ' +
       'The result text is shown to a human on the item, so write it for them: what you did, ' +
-      'what you found, what you need. Not a log line.',
+      'what you found, what you need. Not a log line. ' +
+      'ALSO call it periodically on anything long — at least every ' +
+      `${QUIET_HOURS} hour(s), status 'working', with a line about where you are. ` +
+      'That is the only thing that tells the user you are alive: the item shows how long it ' +
+      'has been since your last report, and silence past that point is what makes them think ' +
+      'the run died and start it again. ' +
+      'Pass lastSeenAt with the aiStatusAt you last read for the item. The call is REFUSED ' +
+      'if it no longer matches — meaning the user or another run changed the item while you ' +
+      'were working, and your report would have overwritten theirs. Re-read it with ' +
+      'anchor_my_work and decide again rather than retrying blindly.',
     inputSchema: obj(
       {
         id: ID,
@@ -395,6 +418,12 @@ export const MCP_TOOLS: McpTool[] = [
           description: "Where the work stands now.",
         },
         result: str('What to show the user: the outcome, the finding, or the question you are stuck on.'),
+        lastSeenAt: str(
+          "The aiStatusAt you last read for this item, from anchor_my_work. The write is " +
+            'refused if it no longer matches, which is what stops your report overwriting ' +
+            'one from a run that took over while you were working. Omit only for the very ' +
+            'first report on an item that had no status yet.'
+        ),
       },
       ['id', 'status']
     ),
@@ -407,11 +436,15 @@ export const MCP_TOOLS: McpTool[] = [
         return { error: `status must be one of: ${AI_STATUSES.join(', ')}` }
       }
       return {
-        method: 'PATCH',
-        path: `/api/agent/tasks/${id}`,
+        // Its own route, not the generic task PATCH, for the reason the `ask`
+        // route gives: the delegation verbs need a precondition and an
+        // assignee check that must not be bolted onto every agent write.
+        method: 'POST',
+        path: `/api/agent/items/${id}/progress`,
         body: {
           aiStatus: status,
           ...(typeof args.result === 'string' ? { aiResult: args.result } : {}),
+          ...(typeof args.lastSeenAt === 'string' ? { lastSeenAt: args.lastSeenAt } : {}),
         },
       }
     },

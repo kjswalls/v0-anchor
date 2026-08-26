@@ -41,6 +41,21 @@ vi.mock('@/lib/agent-api', () => ({
   makeGoalCreateHandler: () => fake('create:goal'),
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
 }));
+vi.mock('@/app/api/agent/items/[id]/progress/route', () => ({
+  POST: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
+    const { id } = await ctx.params;
+    const body = await req.json();
+    calls.push({
+      handler: 'progress',
+      url: req.url,
+      method: req.method,
+      auth: req.headers.get('authorization'),
+      id,
+      body,
+    });
+    return Response.json({ itemId: id, ...body });
+  },
+}));
 vi.mock('@/app/api/agent/items/[id]/ask/route', () => ({
   POST: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
     const { id } = await ctx.params;
@@ -295,14 +310,36 @@ describe('the delegation loop, end to end through the route', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('reports progress as a PATCH on the item', async () => {
+  it('reports progress to the route that can refuse it', async () => {
+    // The generic task PATCH verified only account ownership — no assignee
+    // check and no precondition — so a late report from a run the user had
+    // already superseded landed on top of the work that replaced it.
     await POST(call('anchor_report_progress', { id: 'a', status: 'working' }));
     expect(calls[0]).toMatchObject({
-      handler: 'patch:task',
-      method: 'PATCH',
+      handler: 'progress',
+      method: 'POST',
       id: 'a',
       body: { aiStatus: 'working' },
     });
+  });
+
+  it('carries the precondition through to the handler', async () => {
+    await POST(
+      call('anchor_report_progress', {
+        id: 'a',
+        status: 'done',
+        lastSeenAt: '2026-08-26T10:00:00.000Z',
+      })
+    );
+    expect(calls[0].body).toMatchObject({ lastSeenAt: '2026-08-26T10:00:00.000Z' });
+  });
+
+  it('refuses a traversal in a progress id', async () => {
+    const res = await POST(
+      call('anchor_report_progress', { id: '../../context', status: 'done' })
+    );
+    expect((await res.json()).result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
   });
 
   it('routes a question with options to its own handler', async () => {

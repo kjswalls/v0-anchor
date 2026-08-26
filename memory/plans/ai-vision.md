@@ -695,6 +695,50 @@ that makes the manual button safe. An atomic claim is still the real fix and is 
 `blocked` is never stalled however long it waits — it is waiting on the USER, exactly as
 designed, and calling that a malfunction would blame them for it.
 
+*Adversarial review — it found the feature's PREMISE wrong, not its details.*
+
+The claim was: "nothing automatic reads `stalled`, so the manual gate makes Try again safe."
+That argument had three holes and the review found all of them.
+
+- **The double run it claimed to prevent was not prevented, and the loser's write won.** The
+  agent PATCH verified only that the row belonged to the caller's ACCOUNT — no assignee
+  check, no precondition. So a slow-but-alive worker's late `done` landed on top of the
+  replacement run's result: the user reads a report written against a premise they discarded,
+  with the real result gone from the panel. Reporting `blocked` was worse — the item flips
+  back from finished to "needs you", asking a question from the run they killed. Fixed
+  properly rather than argued away: `anchor_report_progress` now goes to its own route
+  carrying `lastSeenAt`, a **compare-and-set on `ai_status_at`**, and a stale report is
+  refused with the current value so the worker can re-read. The button is now safe by
+  construction rather than by being rare.
+- **The MCP instruction told workers to steal live work.** `anchor_report_progress` instructs
+  reports at START, FINISH and STUCK only — there is no heartbeat — so a HEALTHY two-hour job
+  has a two-hour-old stamp *by construction*. The text I added said hours-old means dead,
+  pick it up and finish it: an instruction to double-run every long job, issued to a runtime
+  with no user in the loop, and the exact failure the UI half was carefully gated to avoid.
+  It also named no threshold, so the model chose a different one each run, and
+  `selectAssignedWork` returns items assigned to ANYONE, so it applied to other workers' items
+  too. Rewritten: leave a `working` item alone; the stamp is not a heartbeat; only past
+  `QUIET_HOURS` **and** assigned to you may you take it, and then only by reporting `working`
+  first and continuing if that call succeeds. `anchor_report_progress` now asks for periodic
+  reports, which is what makes the stamp mean anything at all.
+- **The surface offering the button never showed the evidence the argument rested on.**
+  `AgentSection` printed the raw `WORKING` badge and then a Try again from nowhere — and
+  `/item/[id]` has no row pill, so a deep link showed "WORKING" beside "Try again" with no
+  hint anything was wrong. It now renders the view's label and its explanation.
+- **On a `queued` item Try again was a placebo that hid the warning** — re-queueing something
+  already queued only refreshes the stamp. `recoverable` (one definition, replacing the
+  panel's private `stalled || failed`) excludes it: a queued item going quiet means nothing is
+  picking work up at all, which no button on that item can fix.
+- **The assistant tier offered delegation it cannot do.** Nothing consumes a `beacon`
+  assignment, so the button queued work forever. Now gated on the registry's `canDelegate` —
+  whose own header says a delegate button that silently does nothing is worse than no button.
+- The panel's clock ticked every ten minutes against the row's sixty seconds, so the same
+  item disagreed with itself for up to ten minutes. Both are a minute now.
+
+Known and not fixed: the browser stamps `aiStatusAt` optimistically, so a badly wrong client
+clock persists a wrong stamp. The compare-and-set makes the consequence a refused write rather
+than a lost result, which is the right failure.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:
