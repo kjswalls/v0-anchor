@@ -1,11 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpDown,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   Flag,
   Folder,
@@ -26,6 +28,15 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import {
@@ -69,6 +80,38 @@ import { cn } from '@/lib/utils';
  * honour them. Hiding the row instead strands the clause — nothing clears
  * `canvasGroupBy` or `canvasSortBy` on a scope or layout change, so the trigger
  * would keep counting something with no row to account for it.
+ *
+ * ## One body, two shells
+ *
+ * Pointer gets the nested dropdown described above. Touch gets a bottom Drawer
+ * that DRILLS IN: the root lists the sections with their current value on the
+ * rail, tapping one slides that section into the sheet, and a back affordance
+ * returns. Radix submenus are a hover-and-aim pattern — on a phone the second
+ * tier opens off-screen or under the thumb, with nothing to dismiss it back to
+ * the tier it came from, which is the bug this split fixes.
+ *
+ * **Drill-in rather than one flattened sheet, because one section is
+ * unbounded.** Grouping is 6 values, Ordering 3, Type 3, Priority 4 — but
+ * Project / Group is every project plus every habit group plus the unset value,
+ * which is why it carries a scroller on the desktop panel too. Flattened, a
+ * fresh seed already stands ~22 rows tall at the 44px touch floor (~970px, past
+ * an 80vh sheet on most phones) and it grows with the user's own data, burying
+ * every section below it. Drilled, no pane but that one exceeds six rows.
+ *
+ * The two shells share the ROW MODEL below rather than their markup, which is
+ * the lesson of what this menu replaced: two popovers with one body drifted
+ * apart field by field until one of them was wrong. A row is described once —
+ * label, state, what it writes, whether picking it completes the choice — and
+ * each shell renders that description in its own idiom.
+ *
+ * The ITEM roles are shared with it deliberately. A row's role says what the
+ * row MEANS (a value in a set, an independent toggle, an action), and that does
+ * not change with the input device — so the sheet's rows carry the same
+ * `menuitemradio` / `menuitemcheckbox` / `menuitem` the dropdown does, and the
+ * ruling that an ACTION row must not be announced as a sixth unselected radio
+ * holds in both. The CONTAINER is not shared, and must not be: `role="menu"`
+ * promises a keyboard contract Radix implements and this shell does not. See
+ * the pane below.
  */
 
 export type DisplaySurface = 'canvas' | 'braindump';
@@ -84,6 +127,20 @@ const CAP = 'px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.1em] t
 /** 240px. Today's popover is 208px, the narrowest menu in the app. */
 const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
 
+/**
+ * The touch idiom: 44px floor, 14px type, full-bleed rows.
+ *
+ * 44 and not the mode sheet's 48 for the same reason this shell drills instead
+ * of flattening — the Project / Group pane is as long as the user's data, and
+ * the floor is what the row has to clear, not what it should aim past. Every
+ * pressable thing in this sheet is at least this tall, the back affordance
+ * included.
+ */
+const SHEET_ROW =
+  'flex w-full min-h-11 items-center gap-3 rounded-[10px] px-3 text-left text-sm text-foreground';
+const SHEET_CAP =
+  'px-3 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground';
+
 function Cap({ children }: { children: React.ReactNode }) {
   return <div className={CAP}>{children}</div>;
 }
@@ -98,8 +155,8 @@ function Cap({ children }: { children: React.ReactNode }) {
  * ON a lime fill, and it is very nearly invisible on the popover ground. See the
  * same bug at header-capsule.tsx:75.
  */
-function Tick({ on }: { on: boolean }) {
-  return on ? <Check className="size-3.5" /> : null;
+function Tick({ on, className }: { on: boolean; className?: string }) {
+  return on ? <Check className={cn('size-3.5', className)} /> : null;
 }
 
 /** 8px dot in the real priority token, or a hollow ring for "no priority". */
@@ -133,18 +190,18 @@ function ContainerSquare({ color }: { color: string }) {
   );
 }
 
-/** A value row inside a submenu. Multi-select rows keep the menu open. */
-function ValueRow({
-  label,
-  checked,
-  onToggle,
-  keepOpen,
-  leading,
-  icon: Icon,
-  rail,
-  disabled,
-  role,
-}: {
+/* ── what the menu contains, described once ─────────────────────────────────*/
+
+/**
+ * One row, in either shell.
+ *
+ * `keepOpen` is the multi-select flag and it means the same thing on both: a
+ * three-project selection is three taps, not three re-opens. Single-select
+ * dismisses — the dropdown closes, the sheet closes with the drilled pane it
+ * was in, because in both cases the choice is complete.
+ */
+type RowSpec = {
+  key: string;
   label: string;
   checked: boolean;
   onToggle: () => void;
@@ -154,33 +211,90 @@ function ValueRow({
   rail?: string;
   disabled?: boolean;
   /**
-   * Overrides the checkbox/radio default for rows that are ACTIONS rather than
-   * values — "Switch to List" sits among the grouping options but selects
-   * nothing, and deriving its role from close-behaviour announced it to a screen
-   * reader as a sixth, unselected radio option in the set.
+   * Marks a row that DOES something rather than holding a value — "Switch to
+   * List" sits among the grouping options but selects none of them, and
+   * deriving its role from close-behaviour announced it to a screen reader as a
+   * sixth, unselected radio in the set.
    */
-  role?: 'menuitem';
-}) {
-  const resolvedRole = role ?? (keepOpen ? 'menuitemcheckbox' : 'menuitemradio');
+  action?: boolean;
+};
+
+/** A section's body is rows plus the furniture between them. */
+type Entry =
+  | ({ kind: 'row' } & RowSpec)
+  | { kind: 'sep'; key: string }
+  | { kind: 'cap'; key: string; label: string }
+  | { kind: 'note'; key: string; text: string };
+
+const rowEntry = (spec: RowSpec): Entry => ({ kind: 'row', ...spec });
+
+/** A second tier: a dropdown submenu on pointer, a drilled pane on touch. */
+type Section = {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+  rail: string;
+  set: boolean;
+  entries: Entry[];
+  /** Desktop submenu width. The sheet is always full-bleed. */
+  width?: string;
+  /** The body outgrows the panel; the dropdown scrolls it in place. */
+  scroll?: boolean;
+};
+
+/**
+ * The role is a property of the row, not of the shell it is drawn in — see the
+ * header. Both renderers ask this so neither can answer it differently.
+ */
+function roleOf(spec: RowSpec): 'menuitem' | 'menuitemcheckbox' | 'menuitemradio' {
+  if (spec.action) return 'menuitem';
+  return spec.keepOpen ? 'menuitemcheckbox' : 'menuitemradio';
+}
+
+/* ── the pointer shell ──────────────────────────────────────────────────────*/
+
+/** A value row inside a submenu. Multi-select rows keep the menu open. */
+function ValueRow({ spec }: { spec: RowSpec }) {
+  const Icon = spec.icon;
+  const role = roleOf(spec);
   return (
     <DropdownMenuItem
-      className={cn(ROW, checked && 'font-semibold')}
-      role={resolvedRole}
-      aria-checked={resolvedRole === 'menuitem' ? undefined : checked}
-      disabled={disabled}
+      className={cn(ROW, spec.checked && 'font-semibold')}
+      role={role}
+      aria-checked={role === 'menuitem' ? undefined : spec.checked}
+      disabled={spec.disabled}
       onSelect={(e) => {
         // Multi-select stays open so a three-project selection is three clicks,
         // not three re-opens. Single-select closes — the choice is complete.
-        if (keepOpen) e.preventDefault();
-        if (!disabled) onToggle();
+        if (spec.keepOpen) e.preventDefault();
+        if (!spec.disabled) spec.onToggle();
       }}
     >
-      {leading}
+      {spec.leading}
       {Icon && <Icon className="size-4" />}
-      <span className="flex-1 truncate">{label}</span>
-      {rail && <span className="shrink-0 text-[11px] text-muted-foreground">{rail}</span>}
-      <Tick on={checked} />
+      <span className="flex-1 truncate">{spec.label}</span>
+      {spec.rail && <span className="shrink-0 text-[11px] text-muted-foreground">{spec.rail}</span>}
+      <Tick on={spec.checked} />
     </DropdownMenuItem>
+  );
+}
+
+function MenuEntries({ entries }: { entries: Entry[] }) {
+  return (
+    <>
+      {entries.map((e) => {
+        if (e.kind === 'sep') return <DropdownMenuSeparator key={e.key} />;
+        if (e.kind === 'cap') return <Cap key={e.key}>{e.label}</Cap>;
+        if (e.kind === 'note') {
+          return (
+            <div key={e.key} className="px-2 pb-1.5 pt-2 text-[11px] leading-snug text-muted-foreground">
+              {e.text}
+            </div>
+          );
+        }
+        return <ValueRow key={e.key} spec={e} />;
+      })}
+    </>
   );
 }
 
@@ -190,32 +304,102 @@ function ValueRow({
  * shadcn's SubTrigger appends its own `ChevronRightIcon` with `ml-auto`, so the
  * label takes `flex-1` and the rail lands between them.
  */
-function SubRow({
-  icon: Icon,
-  label,
-  rail,
-  set,
-  children,
-  width = PANEL,
-}: {
-  icon: LucideIcon;
-  label: string;
-  rail: string;
-  set: boolean;
-  children: React.ReactNode;
-  width?: string;
-}) {
+function SubRow({ section }: { section: Section }) {
+  const Icon = section.icon;
+  const body = <MenuEntries entries={section.entries} />;
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')}>
         <Icon className="size-4" />
-        <span className={cn('flex-1 truncate', set && 'font-semibold')}>{label}</span>
-        <span className="shrink-0 text-muted-foreground tabular-nums">{rail}</span>
+        <span className={cn('flex-1 truncate', section.set && 'font-semibold')}>{section.label}</span>
+        <span className="shrink-0 text-muted-foreground tabular-nums">{section.rail}</span>
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className={cn(width, 'shadow-[var(--shadow-elev-md)]')}>
-        {children}
+      <DropdownMenuSubContent className={cn(section.width ?? PANEL, 'shadow-[var(--shadow-elev-md)]')}>
+        {section.scroll ? <div className="max-h-64 overflow-y-auto">{body}</div> : body}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
+  );
+}
+
+/* ── the touch shell ────────────────────────────────────────────────────────*/
+
+function SheetRow({ spec, onDismiss }: { spec: RowSpec; onDismiss: () => void }) {
+  const Icon = spec.icon;
+  const role = roleOf(spec);
+  return (
+    <button
+      type="button"
+      role={role}
+      aria-checked={role === 'menuitem' ? undefined : spec.checked}
+      disabled={spec.disabled}
+      // Mirrors what Radix stamps on a disabled menu item, so one assertion
+      // vocabulary reads both shells.
+      data-disabled={spec.disabled ? '' : undefined}
+      onClick={() => {
+        if (spec.disabled) return;
+        spec.onToggle();
+        if (!spec.keepOpen) onDismiss();
+      }}
+      className={cn(
+        SHEET_ROW,
+        spec.checked && 'font-semibold',
+        // --row-selected, not a lime fill: the lime budget is one mark per
+        // surface and it is spent on the trigger dot. See mode-switcher-sheet
+        // for why this token and not bg-surface-3 (dark mode orders the hover
+        // wash above it otherwise).
+        spec.checked && !spec.disabled && 'bg-[var(--row-selected)]',
+        spec.disabled ? 'opacity-50' : 'hover-wash'
+      )}
+    >
+      {spec.leading}
+      {Icon && <Icon className="size-4 shrink-0" />}
+      <span className="flex-1 truncate">{spec.label}</span>
+      {spec.rail && <span className="shrink-0 text-xs text-muted-foreground">{spec.rail}</span>}
+      {/* The sheet's rows are flex children that must not squeeze the check; the
+          dropdown's own item already carries `[&_svg]:shrink-0`, so asking for it
+          in the shared Tick would put a class in the desktop DOM that this branch
+          has no business changing. */}
+      <Tick on={spec.checked} className="shrink-0" />
+    </button>
+  );
+}
+
+function SheetEntries({ entries, onDismiss }: { entries: Entry[]; onDismiss: () => void }) {
+  return (
+    <>
+      {entries.map((e) => {
+        if (e.kind === 'sep') return <div key={e.key} role="separator" className="my-1 h-px bg-border" />;
+        if (e.kind === 'cap') return <div key={e.key} className={SHEET_CAP}>{e.label}</div>;
+        if (e.kind === 'note') {
+          return (
+            <div key={e.key} className="px-3 pb-1 pt-2 text-xs leading-snug text-muted-foreground">
+              {e.text}
+            </div>
+          );
+        }
+        return <SheetRow key={e.key} spec={e} onDismiss={onDismiss} />;
+      })}
+    </>
+  );
+}
+
+/** The drill-in row: the section, its current value, and where tapping goes. */
+function SheetSectionRow({ section, onOpen }: { section: Section; onOpen: () => void }) {
+  const Icon = section.icon;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      aria-haspopup="menu"
+      data-testid={`display-section-${section.id}`}
+      onClick={onOpen}
+      className={cn(SHEET_ROW, 'hover-wash')}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className={cn('flex-1 truncate', section.set && 'font-semibold')}>{section.label}</span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{section.rail}</span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+    </button>
   );
 }
 
@@ -254,6 +438,12 @@ export function DisplayMenu({
 
   const view = useViewStore();
   const isCanvas = surface === 'canvas';
+  /**
+   * Which shell. `useIsMobile` is a live matchMedia listener that reports false
+   * until its first effect, and both shells wrap the SAME trigger button — so
+   * the swap costs no visible flash, only which primitive the trigger opens.
+   */
+  const isTouch = useIsMobile();
 
   const filters = isCanvas ? view.canvasFilters : view.braindumpFilters;
   const setFilters = isCanvas ? view.setCanvasFilters : view.setBraindumpFilters;
@@ -329,6 +519,241 @@ export function DisplayMenu({
   const sortLabel = SORT_BY_OPTIONS.find((o) => o.value === sortBy)?.label ?? 'Default';
   const sortBlocked = isCanvas ? sortByBlockedBy(view.layout, sortBy) : null;
 
+  /** The one-tier-down escape offered while the current value is inert. */
+  const switchToList = (key: string): Entry[] => [
+    { kind: 'sep', key: `${key}-sep` },
+    rowEntry({
+      key: `${key}-switch`,
+      icon: ArrowRight,
+      label: 'Switch to List',
+      checked: false,
+      keepOpen: false,
+      action: true,
+      onToggle: () => view.setLayout('list'),
+    }),
+  ];
+
+  /* ── the sections, in render order ────────────────────────────────────── */
+
+  const structure: Section[] = [
+    {
+      id: 'grouping',
+      icon: Rows3,
+      label: 'Grouping',
+      // The rail carries the note whether the value is partly honoured or not
+      // at all, so the row always accounts for the clause the trigger is
+      // counting.
+      rail: groupReach.note ? `${groupLabel} · ${groupReach.note}` : groupLabel,
+      set: groupSet,
+      entries: [
+        ...groupOptions.map((o) => {
+          // Three states: honoured silently, honoured with the part it reaches
+          // on the rail, or inert — visible and disabled with the reason.
+          const reach = isCanvas
+            ? groupBySupport(scope, view.layout, o.value as GroupBy)
+            : { honoured: true, note: null };
+          return rowEntry({
+            key: o.value,
+            icon: o.icon,
+            label: o.label,
+            rail: reach.note ?? undefined,
+            disabled: !reach.honoured,
+            checked: groupBy === o.value,
+            keepOpen: false,
+            onToggle: () =>
+              isCanvas
+                ? view.setCanvasGroupBy(o.value as GroupBy)
+                : view.setBraindumpGroupBy(o.value as BraindumpGroupBy),
+          });
+        }),
+        // The escape hatch, offered only while the CURRENT value is inert —
+        // which since Phase 5a is one combination, Time bucket on Buckets. It
+        // used to ride every non-List layout, i.e. most of the time, where it
+        // resolved nothing because nothing was blocked.
+        ...(isCanvas && !groupReach.honoured && view.layout !== 'list'
+          ? switchToList('grouping')
+          : []),
+      ],
+    },
+    {
+      id: 'ordering',
+      icon: ArrowUpDown,
+      label: 'Ordering',
+      rail: sortBlocked ? `${sortLabel} · ${sortBlocked}` : sortLabel,
+      set: sortSet,
+      entries: [
+        ...SORT_BY_OPTIONS.map((o) => {
+          const blocked = isCanvas ? sortByBlockedBy(view.layout, o.value) : null;
+          return rowEntry({
+            key: o.value,
+            icon: o.icon,
+            label: o.label,
+            rail: blocked ?? undefined,
+            disabled: !!blocked,
+            checked: sortBy === o.value,
+            keepOpen: false,
+            onToggle: () =>
+              isCanvas ? view.setCanvasSortBy(o.value) : view.setBraindumpSortBy(o.value),
+          });
+        }),
+        ...(isCanvas && view.layout !== 'list' ? switchToList('ordering') : []),
+      ],
+    },
+  ];
+
+  const filterSections: Section[] = [
+    // Type is canvas-only: the braindump's corpus is single-type today, and
+    // grouping by Type already answers "what is in here" at that size.
+    ...(isCanvas
+      ? [
+          {
+            id: 'type',
+            icon: Hash,
+            label: 'Type',
+            rail: TYPE_OPTIONS.find((o) => o.value === view.typeFilter)?.label ?? 'All',
+            set: typeSet,
+            entries: TYPE_OPTIONS.map((o) =>
+              rowEntry({
+                key: o.value,
+                icon: o.icon,
+                label: o.label,
+                checked: view.typeFilter === o.value,
+                keepOpen: false,
+                onToggle: () => view.setTypeFilter(o.value),
+              })
+            ),
+          } satisfies Section,
+        ]
+      : []),
+    {
+      id: 'priority',
+      icon: Flag,
+      label: 'Priority',
+      rail: priorityRail(filters.priorities),
+      set: filters.priorities.length > 0,
+      width: 'w-56',
+      entries: [
+        ...(['high', 'medium', 'low'] as Priority[]).map((p) =>
+          rowEntry({
+            key: p,
+            leading: <PriorityDot value={p} />,
+            label: p[0].toUpperCase() + p.slice(1),
+            checked: filters.priorities.includes(p),
+            keepOpen: true,
+            onToggle: () => patch({ priorities: toggle(filters.priorities, p) }),
+          })
+        ),
+        { kind: 'sep', key: 'priority-sep' },
+        // An item carrying the field with the value UNSET belongs in an
+        // explicit value, not in oblivion. Most items have no priority.
+        rowEntry({
+          key: NO_PRIORITY,
+          leading: <PriorityDot value={NO_PRIORITY} />,
+          label: 'No priority',
+          checked: filters.priorities.includes(NO_PRIORITY),
+          keepOpen: true,
+          onToggle: () => patch({ priorities: toggle(filters.priorities, NO_PRIORITY) }),
+        }),
+        {
+          kind: 'note',
+          key: 'priority-note',
+          text: 'Habits carry no priority — they are unaffected.',
+        },
+      ],
+    },
+    {
+      id: 'container',
+      icon: Folder,
+      label: 'Project / Group',
+      rail: containerRail(filters.containers),
+      set: filters.containers.length > 0,
+      // One axis, two namespaces. A habit is not container-less: it answers
+      // with its GROUP. Values are stored prefixed so a project and a habit
+      // group sharing a name cannot collide — and the seeds do collide,
+      // DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both ship Work.
+      //
+      // The only section whose length is the user's own data, which is what
+      // decides the touch shell for the whole menu — see the header.
+      scroll: true,
+      entries: [
+        ...(projects.length > 0
+          ? [
+              { kind: 'cap', key: 'projects-cap', label: 'Projects' } satisfies Entry,
+              ...projects.map((p) => {
+                const ref = containerRef('project', p.name);
+                return rowEntry({
+                  key: ref,
+                  leading: <ContainerSquare color={getProjectColor(p.name)} />,
+                  label: p.name,
+                  checked: selectedProjects.includes(p.name),
+                  keepOpen: true,
+                  onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
+                });
+              }),
+            ]
+          : []),
+        ...(habitGroups.length > 0
+          ? [
+              ...(projects.length > 0
+                ? [{ kind: 'sep', key: 'groups-sep' } satisfies Entry]
+                : []),
+              { kind: 'cap', key: 'groups-cap', label: 'Habit groups' } satisfies Entry,
+              ...habitGroups.map((g) => {
+                const ref = containerRef('group', g.name);
+                return rowEntry({
+                  key: ref,
+                  leading: <ContainerSquare color={getHabitGroupColor(g.name)} />,
+                  label: g.name,
+                  checked: selectedGroups.some((n) => n.toLowerCase() === g.name.toLowerCase()),
+                  keepOpen: true,
+                  onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
+                });
+              }),
+            ]
+          : []),
+        { kind: 'sep', key: 'none-sep' },
+        // itemFromRow maps `group: row.group ?? ''` (db.ts:108), so unset is a
+        // real reachable value on both sides of the axis.
+        rowEntry({
+          key: NO_CONTAINER,
+          leading: <PriorityDot value={NO_PRIORITY} />,
+          label: 'No project or group',
+          checked: filters.containers.includes(NO_CONTAINER),
+          keepOpen: true,
+          onToggle: () => patch({ containers: toggle(filters.containers, NO_CONTAINER) }),
+        }),
+      ],
+    },
+  ];
+
+  /** Everything below the Filter sections, which is flat in both shells. */
+  const showEntries: Entry[] = [
+    { kind: 'cap', key: 'show-cap', label: 'Show' },
+    rowEntry({
+      key: 'hide-finished',
+      icon: Eye,
+      label: 'Hide finished',
+      checked: filters.hideFinished,
+      keepOpen: true,
+      onToggle: () => patch({ hideFinished: !filters.hideFinished }),
+    }),
+    // Captioned "Everywhere" because it is exactly that: a planner-store
+    // setting every canvas surface reads, not a preference of this one.
+    ...(isCanvas
+      ? [
+          { kind: 'cap', key: 'everywhere-cap', label: 'Everywhere' } satisfies Entry,
+          rowEntry({
+            key: 'show-paused',
+            icon: Moon,
+            label: 'Show paused',
+            checked: showPausedOnGrid,
+            keepOpen: true,
+            onToggle: () => setShowPausedOnGrid(!showPausedOnGrid),
+          }),
+        ]
+      : []),
+  ];
+
   /* ── trigger ──────────────────────────────────────────────────────────── */
 
   const dot = activeCount > 0 && (
@@ -339,276 +764,77 @@ export function DisplayMenu({
 
   const ariaLabel = activeCount > 0 ? `Display (${activeCount} active)` : 'Display';
 
+  // One button, whichever shell opens around it — the mounts size it from
+  // outside (mobile-header grows the icon trigger to its 30px row slot), so it
+  // must not change shape with the input device either.
+  const triggerButton =
+    trigger === 'label' ? (
+      <button
+        aria-label={ariaLabel}
+        data-testid={`display-trigger-${surface}`}
+        data-active={activeCount > 0 ? 'true' : 'false'}
+        className={cn(
+          'relative inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent',
+          activeCount > 0 && 'bg-accent/60'
+        )}
+      >
+        <SlidersHorizontal className="size-4" />
+        Display
+        <ChevronDown className="size-3.5 text-muted-foreground" />
+        {dot}
+      </button>
+    ) : (
+      <button
+        aria-label={ariaLabel}
+        data-testid={`display-trigger-${surface}`}
+        data-active={activeCount > 0 ? 'true' : 'false'}
+        className={cn(
+          'relative inline-flex size-6 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+          activeCount > 0 && 'text-foreground'
+        )}
+      >
+        <SlidersHorizontal className="size-4" />
+        {dot}
+      </button>
+    );
+
+  if (isTouch) {
+    return (
+      <DisplaySheet
+        trigger={triggerButton}
+        structure={structure}
+        filterSections={filterSections}
+        showEntries={showEntries}
+        activeCount={activeCount}
+        reset={reset}
+      />
+    );
+  }
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {trigger === 'label' ? (
-          <button
-            aria-label={ariaLabel}
-            data-testid={`display-trigger-${surface}`}
-            data-active={activeCount > 0 ? 'true' : 'false'}
-            className={cn(
-              'relative inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent',
-              activeCount > 0 && 'bg-accent/60'
-            )}
-          >
-            <SlidersHorizontal className="size-4" />
-            Display
-            <ChevronDown className="size-3.5 text-muted-foreground" />
-            {dot}
-          </button>
-        ) : (
-          <button
-            aria-label={ariaLabel}
-            data-testid={`display-trigger-${surface}`}
-            data-active={activeCount > 0 ? 'true' : 'false'}
-            className={cn(
-              'relative inline-flex size-6 items-center justify-center rounded-[5px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-              activeCount > 0 && 'text-foreground'
-            )}
-          >
-            <SlidersHorizontal className="size-4" />
-            {dot}
-          </button>
-        )}
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
 
-      <DropdownMenuContent align={align} className={PANEL} data-testid="display-menu">
+      <DropdownMenuContent
+        align={align}
+        className={PANEL}
+        data-testid="display-menu"
+        data-display-variant="menu"
+      >
         <Cap>Structure</Cap>
-        <SubRow
-          icon={Rows3}
-          label="Grouping"
-          // The rail carries the note whether the value is partly honoured or
-          // not at all, so the row always accounts for the clause the trigger is
-          // counting.
-          rail={groupReach.note ? `${groupLabel} · ${groupReach.note}` : groupLabel}
-          set={groupSet}
-        >
-          {groupOptions.map((o) => {
-            // Three states: honoured silently, honoured with the part it reaches
-            // on the rail, or inert — visible and disabled with the reason.
-            const reach = isCanvas
-              ? groupBySupport(scope, view.layout, o.value as GroupBy)
-              : { honoured: true, note: null };
-            return (
-              <ValueRow
-                key={o.value}
-                icon={o.icon}
-                label={o.label}
-                rail={reach.note ?? undefined}
-                disabled={!reach.honoured}
-                checked={groupBy === o.value}
-                keepOpen={false}
-                onToggle={() =>
-                  isCanvas
-                    ? view.setCanvasGroupBy(o.value as GroupBy)
-                    : view.setBraindumpGroupBy(o.value as BraindumpGroupBy)
-                }
-              />
-            );
-          })}
-          {/* The escape hatch, offered only while the CURRENT value is inert —
-              which since Phase 5a is one combination, Time bucket on Buckets.
-              It used to ride every non-List layout, i.e. most of the time, where
-              it resolved nothing because nothing was blocked. */}
-          {isCanvas && !groupReach.honoured && view.layout !== 'list' && (
-            <>
-              <DropdownMenuSeparator />
-              <ValueRow
-                icon={ArrowRight}
-                label="Switch to List"
-                checked={false}
-                keepOpen={false}
-                role="menuitem"
-                onToggle={() => view.setLayout('list')}
-              />
-            </>
-          )}
-        </SubRow>
-
-        <SubRow
-          icon={ArrowUpDown}
-          label="Ordering"
-          rail={sortBlocked ? `${sortLabel} · ${sortBlocked}` : sortLabel}
-          set={sortSet}
-        >
-          {SORT_BY_OPTIONS.map((o) => {
-            const blocked = isCanvas ? sortByBlockedBy(view.layout, o.value) : null;
-            return (
-              <ValueRow
-                key={o.value}
-                icon={o.icon}
-                label={o.label}
-                rail={blocked ?? undefined}
-                disabled={!!blocked}
-                checked={sortBy === o.value}
-                keepOpen={false}
-                onToggle={() =>
-                  isCanvas ? view.setCanvasSortBy(o.value) : view.setBraindumpSortBy(o.value)
-                }
-              />
-            );
-          })}
-          {isCanvas && view.layout !== 'list' && (
-            <>
-              <DropdownMenuSeparator />
-              <ValueRow
-                icon={ArrowRight}
-                label="Switch to List"
-                checked={false}
-                keepOpen={false}
-                role="menuitem"
-                onToggle={() => view.setLayout('list')}
-              />
-            </>
-          )}
-        </SubRow>
+        {structure.map((s) => (
+          <SubRow key={s.id} section={s} />
+        ))}
         <DropdownMenuSeparator />
 
         <Cap>Filter</Cap>
+        {filterSections.map((s) => (
+          <SubRow key={s.id} section={s} />
+        ))}
 
-        {/* Type is canvas-only: the braindump's corpus is single-type today, and
-            grouping by Type already answers "what is in here" at that size. */}
-        {isCanvas && (
-          <SubRow
-            icon={Hash}
-            label="Type"
-            rail={TYPE_OPTIONS.find((o) => o.value === view.typeFilter)?.label ?? 'All'}
-            set={typeSet}
-          >
-            {TYPE_OPTIONS.map((o) => (
-              <ValueRow
-                key={o.value}
-                icon={o.icon}
-                label={o.label}
-                checked={view.typeFilter === o.value}
-                keepOpen={false}
-                onToggle={() => view.setTypeFilter(o.value)}
-              />
-            ))}
-          </SubRow>
-        )}
+        <MenuEntries entries={showEntries} />
 
-        <SubRow
-          icon={Flag}
-          label="Priority"
-          rail={priorityRail(filters.priorities)}
-          set={filters.priorities.length > 0}
-          width="w-56"
-        >
-          {(['high', 'medium', 'low'] as Priority[]).map((p) => (
-            <ValueRow
-              key={p}
-              leading={<PriorityDot value={p} />}
-              label={p[0].toUpperCase() + p.slice(1)}
-              checked={filters.priorities.includes(p)}
-              keepOpen
-              onToggle={() => patch({ priorities: toggle(filters.priorities, p) })}
-            />
-          ))}
-          <DropdownMenuSeparator />
-          {/* An item carrying the field with the value UNSET belongs in an
-              explicit value, not in oblivion. Most items have no priority. */}
-          <ValueRow
-            leading={<PriorityDot value={NO_PRIORITY} />}
-            label="No priority"
-            checked={filters.priorities.includes(NO_PRIORITY)}
-            keepOpen
-            onToggle={() => patch({ priorities: toggle(filters.priorities, NO_PRIORITY) })}
-          />
-          <div className="px-2 pb-1.5 pt-2 text-[11px] leading-snug text-muted-foreground">
-            Habits carry no priority — they are unaffected.
-          </div>
-        </SubRow>
-
-        <SubRow
-          icon={Folder}
-          label="Project / Group"
-          rail={containerRail(filters.containers)}
-          set={filters.containers.length > 0}
-        >
-          {/* One axis, two namespaces. A habit is not container-less: it answers
-              with its GROUP. Values are stored prefixed so a project and a habit
-              group sharing a name cannot collide — and the seeds do collide,
-              DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both ship Work. */}
-          <div className="max-h-64 overflow-y-auto">
-            {projects.length > 0 && (
-              <>
-                <Cap>Projects</Cap>
-                {projects.map((p) => {
-                  const ref = containerRef('project', p.name);
-                  return (
-                    <ValueRow
-                      key={ref}
-                      leading={<ContainerSquare color={getProjectColor(p.name)} />}
-                      label={p.name}
-                      checked={selectedProjects.includes(p.name)}
-                      keepOpen
-                      onToggle={() => patch({ containers: toggle(filters.containers, ref) })}
-                    />
-                  );
-                })}
-              </>
-            )}
-            {habitGroups.length > 0 && (
-              <>
-                {projects.length > 0 && <DropdownMenuSeparator />}
-                <Cap>Habit groups</Cap>
-                {habitGroups.map((g) => {
-                  const ref = containerRef('group', g.name);
-                  return (
-                    <ValueRow
-                      key={ref}
-                      leading={<ContainerSquare color={getHabitGroupColor(g.name)} />}
-                      label={g.name}
-                      checked={selectedGroups.some(
-                        (n) => n.toLowerCase() === g.name.toLowerCase()
-                      )}
-                      keepOpen
-                      onToggle={() => patch({ containers: toggle(filters.containers, ref) })}
-                    />
-                  );
-                })}
-              </>
-            )}
-            <DropdownMenuSeparator />
-            {/* itemFromRow maps `group: row.group ?? ''` (db.ts:108), so unset is
-                a real reachable value on both sides of the axis. */}
-            <ValueRow
-              leading={<PriorityDot value={NO_PRIORITY} />}
-              label="No project or group"
-              checked={filters.containers.includes(NO_CONTAINER)}
-              keepOpen
-              onToggle={() => patch({ containers: toggle(filters.containers, NO_CONTAINER) })}
-            />
-          </div>
-        </SubRow>
-
-        <Cap>Show</Cap>
-        <ValueRow
-          icon={Eye}
-          label="Hide finished"
-          checked={filters.hideFinished}
-          keepOpen
-          onToggle={() => patch({ hideFinished: !filters.hideFinished })}
-        />
-
-        {/* Captioned "Everywhere" because it is exactly that: a planner-store
-            setting every canvas surface reads, not a preference of this one. */}
-        {isCanvas && (
-          <>
-            <Cap>Everywhere</Cap>
-            <ValueRow
-              icon={Moon}
-              label="Show paused"
-              checked={showPausedOnGrid}
-              keepOpen
-              onToggle={() => setShowPausedOnGrid(!showPausedOnGrid)}
-            />
-          </>
-        )}
-
-        <PausedScopesSection />
+        <PausedScopesSection variant="menu" />
 
         <DropdownMenuSeparator />
         {/* Permanently mounted, disabled when nothing is set. That is what stops
@@ -633,6 +859,206 @@ export function DisplayMenu({
 }
 
 /**
+ * The touch shell: one bottom sheet, two levels.
+ *
+ * The root is the dropdown's own top level — the same sections in the same
+ * order, each showing what it is currently set to — and tapping one replaces
+ * the sheet's body with that section, titled, with a back affordance where a
+ * submenu would have had nothing. Nothing about WHAT a row does changes here;
+ * only how you reach it.
+ *
+ * Pane state lives in the sheet rather than in a store: it is not a preference,
+ * it is where you are standing inside a control that is currently open, and it
+ * must not survive the sheet being dismissed. A drilled pane belongs to ONE
+ * opening, and it is reset when the NEXT one begins — see the handler below for
+ * why the close edge is the wrong one on both counts.
+ */
+function DisplaySheet({
+  trigger,
+  structure,
+  filterSections,
+  showEntries,
+  activeCount,
+  reset,
+}: {
+  trigger: React.ReactNode;
+  structure: Section[];
+  filterSections: Section[];
+  showEntries: Entry[];
+  activeCount: number;
+  reset: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [paneId, setPaneId] = useState<string | null>(null);
+  const dismiss = () => setOpen(false);
+
+  const paneRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  /** What the focus effect below compares against; see it for why. */
+  const lastPane = useRef<string | null>(null);
+
+  const pane =
+    [...structure, ...filterSections].find((s) => s.id === paneId) ?? null;
+
+  /**
+   * Focus follows the drill, in both directions.
+   *
+   * Every one of these transitions unmounts the button that was pressed, and a
+   * focused element that unmounts leaves focus on `<body>` — arrows, tab order
+   * and a screen reader's reading cursor all restart from the top of the
+   * document. The desktop submenu gets this from Radix; the sheet has to do it
+   * by hand. It is not a touch-only nicety: `useIsMobile` is viewport-based, so
+   * any window under 768px reaches this shell with a physical keyboard.
+   *
+   * In an effect rather than in the handlers because the element to focus does
+   * not exist until the new level has rendered. The first open is skipped —
+   * vaul's `autoFocus` owns that one.
+   */
+  useEffect(() => {
+    const previous = lastPane.current;
+    lastPane.current = paneId;
+    if (!open || previous === paneId) return;
+    if (paneId) {
+      // The pane's first row, or the way back if it somehow has none.
+      const first = paneRef.current?.querySelector<HTMLElement>(
+        '[role="menuitem"]:not([disabled]),[role="menuitemcheckbox"]:not([disabled]),[role="menuitemradio"]:not([disabled])'
+      );
+      (first ?? backRef.current)?.focus();
+    } else if (previous) {
+      // Back lands on the row you came from, not on the top of the list.
+      paneRef.current
+        ?.querySelector<HTMLElement>(`[data-testid="display-section-${previous}"]`)
+        ?.focus();
+    }
+  }, [paneId, open]);
+
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Reset on the OPENING edge, not the closing one. Two reasons, and the
+        // close edge fails both. `open` is controlled here, so vaul calls this
+        // back only for its OWN dismissals — escape, backdrop, swipe — and every
+        // close the sheet performs itself (a single-select pick, "Switch to
+        // List", Reset) goes through setOpen and would skip a reset written
+        // here. And the close edge is the wrong edge anyway: the sheet is still
+        // sliding out, so clearing there swaps the body under the exit
+        // animation. Opening is one path, vaul's own trigger, and this lands in
+        // the same batch as `setOpen(true)` — the first frame of the new sheet
+        // is already the root, whichever way the last one closed.
+        if (next) {
+          setPaneId(null);
+          // The focus effect would otherwise read the last opening's pane as a
+          // change and pull focus onto a section row behind vaul's own.
+          lastPane.current = null;
+        }
+      }}
+      // vaul defaults autoFocus to false, which leaves focus on the trigger
+      // while the app root is aria-hidden around it — the same trap
+      // mode-switcher-sheet documents. This sheet is the only route to grouping
+      // and filtering on a phone.
+      autoFocus
+    >
+      <DrawerTrigger asChild>{trigger}</DrawerTrigger>
+
+      <DrawerContent data-testid="display-menu" data-display-variant="sheet">
+        <DrawerHeader className="pb-1">
+          <div className="flex items-center gap-1">
+            {pane && (
+              <button
+                type="button"
+                ref={backRef}
+                data-testid="display-back"
+                aria-label="Back to Display"
+                onClick={() => setPaneId(null)}
+                className="hover-wash -ml-1 flex size-11 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+            )}
+            <DrawerTitle className="text-left text-base">{pane ? pane.label : 'Display'}</DrawerTitle>
+          </div>
+          <DrawerDescription className="sr-only">
+            {pane
+              ? `Choose a value for ${pane.label}.`
+              : 'Grouping, ordering and filters for this surface.'}
+          </DrawerDescription>
+        </DrawerHeader>
+
+        {/* A plain overflow container, never <ScrollArea> — the Radix wrapper
+            silently drops a height cap (CLAUDE.md), and this is the one box in
+            the sheet that has to honour one: DrawerContent caps at 80vh and the
+            Project / Group pane is as long as the user's data. */}
+        {/* `group`, not `menu`. A row's ROLE says what the row means and is shared
+            with the model (see the header), but a `menu` CONTAINER also promises a
+            keyboard contract — roving tabindex, arrow wrap, Home/End, typeahead —
+            that Radix implements for the dropdown and this shell does not. Claiming
+            it flips a screen reader into application mode, where the arrows it has
+            just been told to use do nothing. `group` is the honest container for a
+            set of rows whose item roles still carry their meaning: browse mode
+            stays on, the arrows keep working, and every row is a real button in the
+            tab order. If this shell ever grows roving focus, this becomes `menu`
+            again in the same commit. */}
+        <div
+          role="group"
+          aria-label={pane ? pane.label : 'Display'}
+          ref={paneRef}
+          data-testid="display-sheet-pane"
+          data-pane={pane ? pane.id : 'root'}
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]"
+        >
+          {pane ? (
+            <SheetEntries entries={pane.entries} onDismiss={dismiss} />
+          ) : (
+            <>
+              <div className={SHEET_CAP}>Structure</div>
+              {structure.map((s) => (
+                <SheetSectionRow key={s.id} section={s} onOpen={() => setPaneId(s.id)} />
+              ))}
+              <div role="separator" className="my-1 h-px bg-border" />
+
+              <div className={SHEET_CAP}>Filter</div>
+              {filterSections.map((s) => (
+                <SheetSectionRow key={s.id} section={s} onOpen={() => setPaneId(s.id)} />
+              ))}
+
+              <SheetEntries entries={showEntries} onDismiss={dismiss} />
+
+              <PausedScopesSection variant="sheet" onDismiss={dismiss} />
+
+              <div role="separator" className="my-1 h-px bg-border" />
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="display-reset"
+                data-disabled={activeCount === 0 ? '' : undefined}
+                disabled={activeCount === 0}
+                onClick={() => {
+                  reset();
+                  dismiss();
+                }}
+                className={cn(
+                  SHEET_ROW,
+                  'text-muted-foreground',
+                  activeCount === 0 ? 'opacity-50' : 'hover-wash'
+                )}
+              >
+                <RotateCcw className="size-4 shrink-0" />
+                <span className="flex-1">Reset display</span>
+                {activeCount > 0 && (
+                  <span className="shrink-0 font-mono text-xs tabular-nums">{activeCount}</span>
+                )}
+              </button>
+            </>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+/**
  * The recovery half of "group by scope, flip the header": the scopes that are
  * OFF right now, each one click from back on.
  *
@@ -645,9 +1071,15 @@ export function DisplayMenu({
  * "Off" means the container's OWN switch is off (`!localOn`): a routine a program
  * is merely holding down keeps its own switch on and is not listed here — the
  * blocking PROGRAM is, and turning it on brings the routine back. Mounted inside
- * the menu content, so buildScopeRows only runs while the menu is open.
+ * the open menu or sheet, so buildScopeRows only runs while one is on screen.
  */
-function PausedScopesSection() {
+function PausedScopesSection({
+  variant,
+  onDismiss,
+}: {
+  variant: 'menu' | 'sheet';
+  onDismiss?: () => void;
+}) {
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
@@ -663,35 +1095,39 @@ function PausedScopesSection() {
 
   if (offRows.length === 0) return null;
 
-  return (
-    <>
-      <Cap>Paused scopes</Cap>
-      {offRows.map((row) => (
-        <ValueRow
-          key={`${row.kind}:${row.id}`}
-          leading={
-            <CategoryIcon
-              glyph={row.icon}
-              name={row.name}
-              className="size-3.5 shrink-0 text-muted-foreground"
-            />
-          }
-          label={row.name}
-          // The rail's own line — "back Sep 8", "you turned it off", "ended Jul 31".
-          rail={row.state}
-          // An ACTION, not a value: role=menuitem so a screen reader announces
-          // "turn on <name>" rather than a check box that can never read checked
-          // (turning it on drops the row from the !localOn list). keepOpen keeps
-          // the menu up so a POINTER user can bring several back without reopening
-          // — keyboard focus still resets as each row unmounts, so it is not a
-          // keyboard "several in a row" affordance.
-          checked={false}
-          role="menuitem"
-          keepOpen
-          onToggle={() => setGateOn(row.kind, row.id, true)}
-        />
-      ))}
-    </>
+  const entries: Entry[] = [
+    { kind: 'cap', key: 'paused-cap', label: 'Paused scopes' },
+    ...offRows.map((row) =>
+      rowEntry({
+        key: `${row.kind}:${row.id}`,
+        leading: (
+          <CategoryIcon
+            glyph={row.icon}
+            name={row.name}
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
+        ),
+        label: row.name,
+        // The rail's own line — "back Sep 8", "you turned it off", "ended Jul 31".
+        rail: row.state,
+        // An ACTION, not a value: role=menuitem so a screen reader announces
+        // "turn on <name>" rather than a check box that can never read checked
+        // (turning it on drops the row from the !localOn list). keepOpen keeps
+        // the surface up so a POINTER user can bring several back without
+        // reopening — keyboard focus still resets as each row unmounts, so it is
+        // not a keyboard "several in a row" affordance.
+        checked: false,
+        action: true,
+        keepOpen: true,
+        onToggle: () => setGateOn(row.kind, row.id, true),
+      })
+    ),
+  ];
+
+  return variant === 'menu' ? (
+    <MenuEntries entries={entries} />
+  ) : (
+    <SheetEntries entries={entries} onDismiss={onDismiss ?? (() => {})} />
   );
 }
 
