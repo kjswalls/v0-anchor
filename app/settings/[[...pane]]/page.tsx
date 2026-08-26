@@ -113,14 +113,20 @@ export default function SettingsPage() {
      A path that names no pane is corrected in the URL too, rather than left
      pointing at something that isn't what rendered. An unknown extension slug
      lands on the extensions index — the list it was probably reached from, and
-     the one page that can say which extensions exist. */
+     the one page that can say which extensions exist.
+
+     The ?focus= rides along. This replace is the ONLY navigation a bare
+     /settings?focus=<id> gets — the self-routing effect below fires only when
+     the record's home pane differs from the one rendering, so for every day.*
+     record (home === the 'day' fallback) it correctly does nothing. Dropping
+     the query here therefore dropped the deep link outright: on a cold load the
+     hydration gate means SettingsShell is not mounted yet, so nothing has
+     consumed focusId by the time this runs. */
   useEffect(() => {
-    if (!path) {
-      router.replace('/settings/day');
-      return;
-    }
-    if (!isPaneId(path)) router.replace(`/settings/${fallbackPane(path)}`);
-  }, [path, router]);
+    if (path && isPaneId(path)) return;
+    const query = focusId ? `?focus=${encodeURIComponent(focusId)}` : '';
+    router.replace(`/settings/${fallbackPane(path)}${query}`);
+  }, [path, focusId, router]);
 
   /* ── A ?focus= always lands on the pane that actually holds the row ───────
      The shell finds the row by querying the DOM, so a focus id belonging to
@@ -130,11 +136,16 @@ export default function SettingsPage() {
      before that into exactly that silent nothing. Sending the browser to the
      record's own pane keeps those links working and, more usefully, makes
      ?focus= self-routing: the id is enough, the pane no longer has to be
-     right. It settles in one hop — after the replace the panes agree. */
+     right. It settles in one hop — after the replace the panes agree.
+
+     `isPaneId(home)` is not belt-and-braces: PaneId is an open template literal
+     now, so `pane: extensionPaneId('beemindr')` type-checks. Without the gate a
+     single typo in a record would put this and the normalising effect above in
+     a two-replace-per-render argument over the URL. */
   useEffect(() => {
     if (!focusId) return;
     const home = settingById(focusId)?.pane;
-    if (!home || home === pane) return;
+    if (!home || home === pane || !isPaneId(home)) return;
     router.replace(`/settings/${home}?focus=${encodeURIComponent(focusId)}`);
   }, [focusId, pane, router]);
 

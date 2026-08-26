@@ -4,8 +4,15 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { subPanesOf, extensionSlugFromPane, settingsForPane } from '@/lib/settings/manifest';
+import {
+  subPanesOf,
+  extensionSlugFromPane,
+  settingsForPane,
+  type SettingCtx,
+  type SettingRecord,
+} from '@/lib/settings/manifest';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useReminderStore } from '@/lib/reminder-store';
 
 /**
  * /settings/extensions — the index, not the switches.
@@ -29,34 +36,80 @@ import { useExtensionsStore } from '@/lib/extensions-store';
  * others their row.
  */
 
-function stateOf(slug: string): { label: string; on: boolean } {
+/**
+ * The extension's own toggle record, found by SHAPE rather than by id.
+ *
+ * Two of the eight toggles predate the slug convention
+ * (`extensions.habitHeatmap`, not `extensions.habit-heatmap`) and an id is a
+ * permanent deep link, so an `extensions.${slug}` lookup would silently miss
+ * them. Every extension pane holds exactly one switch that depends on nothing —
+ * its own — which is asserted in tests/unit/settings-manifest.test.ts.
+ */
+function toggleOf(records: SettingRecord[]): SettingRecord | undefined {
+  return records.find((record) => record.control === 'switch' && !record.dependsOn);
+}
+
+/**
+ * What the row says, ASKED OF THE TOGGLE rather than re-derived here.
+ *
+ * An extension can be switched on and still be doing nothing, because a channel
+ * rides `remindersEnabled` and a stake adapter rides `stakesEnabled` — the
+ * master switches over in Rituals that `unavailable()` reports and that
+ * `isEnabled()` knows nothing about. Reading the store alone made this index say
+ * "On" for a Beeminder whose own pane was saying "Unavailable", and Beeminder is
+ * the extension where being wrong about that costs real money.
+ *
+ * So the rule keeps ONE home: the record's own `unavailable()`. A second copy
+ * here is how the index and the pane drift apart again.
+ */
+function stateOf(
+  toggle: SettingRecord | undefined,
+  ctx: SettingCtx
+): { label: string; on: boolean } {
   try {
-    const store = useExtensionsStore.getState();
-    if (!store.available) return { label: 'Unavailable', on: false };
-    return store.isEnabled(slug) ? { label: 'On', on: true } : { label: 'Off', on: false };
+    if (!toggle) return { label: 'Off', on: false };
+    if (toggle.unavailable?.(ctx)) return { label: 'Unavailable', on: false };
+    return toggle.read(ctx) ? { label: 'On', on: true } : { label: 'Off', on: false };
   } catch {
     return { label: 'Off', on: false };
   }
 }
 
-export function ExtensionIndex() {
+export function ExtensionIndex({ ctx }: { ctx: SettingCtx }) {
+  /* ── Subscriptions, stated rather than inherited ─────────────────────────
+     The records read through getState(), so nothing below re-renders on its
+     own. This component used to re-render only because the page rebuilds `ctx`
+     off its own store ticks and nothing here is memoised — incidental coupling
+     that a React.memo anywhere up the tree would quietly sever. These are the
+     two stores a row's state actually depends on now, named here so the
+     dependency survives that. */
+  useExtensionsStore((s) => `${s.available}|${JSON.stringify(s.enabled)}`);
+  useReminderStore((s) => `${s.remindersEnabled}|${s.stakesEnabled}`);
+
   const panes = subPanesOf('extensions');
 
   return (
     <div className="divide-border divide-y" data-testid="extension-index">
       {panes.map((pane) => {
         const slug = extensionSlugFromPane(pane.id)!;
-        const state = stateOf(slug);
+        const records = settingsForPane(pane.id);
+        const toggle = toggleOf(records);
+        const state = stateOf(toggle, ctx);
         const Icon = pane.icon;
         // The toggle is a record too, so "how much is in here" is just the row
-        // count — no second declaration to keep in step with the pane.
-        const fields = settingsForPane(pane.id).length - 1;
+        // count — no second declaration to keep in step with the pane. It is a
+        // SIZE, not a to-do count: it cannot decrease as fields are filled, and
+        // it used to read "3 to set", which promised a progress it never made.
+        const fields = records.length - (toggle ? 1 : 0);
 
         return (
           <Link
             key={pane.id}
             href={`/settings/${pane.id}`}
             data-extension-row={slug}
+            // The state as one word, so a test can assert the index and the
+            // pane agree without reading it back out of the styling.
+            data-extension-state={state.label}
             className={cn(
               'hover:bg-accent -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-[5px] px-3 py-3',
               'transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
@@ -70,7 +123,7 @@ export function ExtensionIndex() {
             <span className="flex shrink-0 items-center gap-2">
               {fields > 0 && (
                 <span className="text-muted-foreground font-num hidden text-[10px] sm:inline">
-                  {fields} to set
+                  {fields} {fields === 1 ? 'field' : 'fields'}
                 </span>
               )}
               {/* A dot marks a VALUE — the house rule the destination rows'

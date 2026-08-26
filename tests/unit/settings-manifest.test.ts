@@ -190,6 +190,20 @@ describe('settings manifest — one pane per extension', () => {
     }
   });
 
+  it('every extension pane has exactly ONE switch of its own', () => {
+    // The extension index finds the toggle by SHAPE — the one switch in the
+    // pane that depends on nothing — because two of the eight ids predate the
+    // slug convention and `extensions.${slug}` misses them. A second free
+    // switch in a pane would make that lookup ambiguous and the index's state
+    // chip arbitrary.
+    for (const extension of OFFICIAL_EXTENSIONS) {
+      const toggles = settingsForPane(extensionPaneId(extension.slug)).filter(
+        (r) => r.control === 'switch' && !r.dependsOn
+      );
+      expect(toggles.map((t) => t.id), `${extension.slug} toggles`).toHaveLength(1);
+    }
+  });
+
   it('an extension pane holds ONLY that extension — one broken config, one pane', () => {
     // Isolation is the standing rule for channels and stake adapters, and the
     // panes have to keep it: every record in a sub-pane is prefixed with that
@@ -327,6 +341,48 @@ describe('settings manifest — no drift with the command palette', () => {
   });
 });
 
+describe('the credential boundary', () => {
+  /* The generated secret records are the only ones whose displayed value is
+     never their stored value: user_secrets has its grants revoked from
+     `authenticated` and /api/reminders/secrets answers only WHICH keys are set.
+     The word "secret" did not appear in this file before, and the row test next
+     door builds its own hand-written record — so changing one of these `read`s
+     to return the token passed every existing test in both. */
+
+  const generatedSecrets = SETTINGS.filter(
+    (r) => r.textVariant === 'secret' && r.id.startsWith('extensions.')
+  );
+
+  it('covers every credential every extension declares', () => {
+    // Anchors the tests below to the catalog rather than to a number: a new
+    // channel with a new token is covered the day it is added.
+    const declared = EXTENSION_SETTINGS.flatMap((spec) =>
+      spec.secrets.map((field) => `extensions.${spec.slug}.${field.key}`)
+    );
+    expect(declared.length).toBeGreaterThan(0);
+    expect(generatedSecrets.map((r) => r.id).sort()).toEqual([...declared].sort());
+  });
+
+  it('never reads a value back — read() is empty whatever is stored', () => {
+    for (const record of generatedSecrets) {
+      expect(record.read(ctx), `${record.id} read() must be ''`).toBe('');
+      expect(record.defaultValue, `${record.id} default`).toBe('');
+    }
+  });
+
+  it('puts nothing indexable on a credential — the index cannot ingest a value', () => {
+    // scoreRecord scores label, valueLabels, keywords, description and aliases.
+    // valueLabels is derived from `options`, and a `text` control has none — so
+    // a credential is structurally unable to reach the search index through its
+    // value. Stated as a test so a stray `options` on one of these is caught.
+    for (const record of generatedSecrets) {
+      expect(record.control, record.id).toBe('text');
+      expect(record.options, `${record.id} declares options`).toBeUndefined();
+      expect(valueLabels(record), record.id).toEqual([]);
+    }
+  });
+});
+
 describe('settings search', () => {
   it('splits and lowercases the query — scoreText only lowercases the text', () => {
     expect(queryTerms('  Week  Start ')).toEqual(['week', 'start']);
@@ -386,13 +442,29 @@ describe('settings search', () => {
   it('the per-pane counts add up and name only panes that actually have hits', () => {
     // NOT `total === settings.length` — search.ts builds both from the same
     // array, so that assertion can never fail. `counts` is the field with a
-    // consumer: the rail renders `counts[p.id] ?? 0` and dims a pane at zero.
+    // consumer: the RESULTS LIST groups by exactly these keys, so a pane in
+    // `counts` with no hits, or hits under a key nothing groups on, is a row
+    // that is counted and never drawn. (The rail stopped reading `counts`
+    // directly when extensions got sub-panes — it goes through paneMatchCount
+    // now, whose own invariant is the next test.)
     const result = searchSettings('time', ctx);
     expect(result.settings.length).toBeGreaterThan(0);
     expect(Object.values(result.counts).reduce((a, b) => a + b, 0)).toBe(result.total);
     for (const [pane, n] of Object.entries(result.counts)) {
       expect(n, `${pane} is in counts with zero hits`).toBeGreaterThan(0);
       expect(result.settings.some((h) => h.record.pane === pane)).toBe(true);
+    }
+  });
+
+  it('the rail rollup accounts for every hit exactly once', () => {
+    // The rail is one level, so the number on Extensions has to be every hit
+    // in every extension's own pane and no hit twice. Over-count and the rail
+    // promises rows the list cannot produce; under-count (which is what
+    // reading `counts` directly did) and it dims the only route to a result.
+    for (const query of ['time', 'beeminder', 'token', 'week']) {
+      const result = searchSettings(query, ctx, { includeAdvanced: true });
+      const railed = PANES.reduce((sum, p) => sum + paneMatchCount(result, p.id), 0);
+      expect(railed, `${query}: rail total`).toBe(result.total);
     }
   });
 

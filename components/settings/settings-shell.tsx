@@ -616,7 +616,7 @@ export function SettingsShell({
                   no records of its own by design — every extension switch moved
                   into the extension's own pane, so a row here would be a second
                   copy of a control that already has a permanent home. */}
-              {pane === 'extensions' && <ExtensionIndex />}
+              {pane === 'extensions' && <ExtensionIndex ctx={ctx} />}
 
               <div className="divide-border divide-y">{rows.map((record) => rowFor(record))}</div>
 
