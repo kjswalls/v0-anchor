@@ -702,17 +702,77 @@ describe('the touch shell', () => {
     expect(screen.getByTestId('display-section-priority')).toBeInTheDocument();
   });
 
-  it('re-opens on the root, because a pane is where you stood, not a preference', async () => {
-    render(<DisplayMenu surface="canvas" />);
-    await drill('priority');
-    expect(pane()).toHaveAttribute('data-pane', 'priority');
+  /**
+   * One property, every close path: the next opening starts at the root.
+   *
+   * The first version of this closed with Escape alone — which is vaul's OWN
+   * dismissal, and the only kind that reaches a controlled `onOpenChange`. Every
+   * close the sheet performed itself skipped the reset, so a phone that picked a
+   * grouping value re-opened on the Grouping pane with Filter, Show, Paused
+   * scopes and Reset all behind a back chevron. Parameterised so that deleting
+   * the reset turns ALL of these red rather than none of them.
+   *
+   * A swipe-down is absent because jsdom cannot produce one, not because it goes
+   * unpinned: vaul measures a drag through `getComputedStyle(el).transform`,
+   * which jsdom leaves undefined and `getTranslate` throws on. It resolves
+   * through vaul's own `closeDrawer()` — the same controlled `onOpenChange(false)`
+   * the backdrop and Escape rows below take.
+   */
+  const closePaths: {
+    name: string;
+    prepare?: () => void;
+    section: string;
+    close: () => void;
+  }[] = [
+    {
+      name: 'Escape',
+      section: 'priority',
+      close: () => fireEvent.keyDown(screen.getByTestId('display-menu'), { key: 'Escape' }),
+    },
+    {
+      name: 'a backdrop tap',
+      section: 'container',
+      close: () => {
+        const overlay = document.querySelector('[data-slot="drawer-overlay"]')!;
+        fireEvent.pointerDown(overlay, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+        fireEvent.click(overlay);
+      },
+    },
+    {
+      // The primary interaction this shell exists for, and the one the Escape-
+      // only version missed: every Grouping / Ordering / Type pick closes here.
+      name: 'a single-select pick',
+      section: 'grouping',
+      close: () => fireEvent.click(screen.getByRole('menuitemradio', { name: /Priority/ })),
+    },
+    {
+      name: 'the Switch to List escape',
+      prepare: () => seed({ layout: 'buckets', canvasGroupBy: 'bucket' }),
+      section: 'grouping',
+      close: () => fireEvent.click(screen.getByRole('menuitem', { name: /Switch to List/ })),
+    },
+  ];
 
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /High/ }));
-    fireEvent.keyDown(screen.getByTestId('display-menu'), { key: 'Escape' });
-    openSheet();
+  it.each(closePaths)(
+    're-opens on the root after $name, because a pane is where you stood',
+    async ({ prepare, section, close }) => {
+      prepare?.();
+      render(<DisplayMenu surface="canvas" />);
+      await drill(section);
+      expect(pane()).toHaveAttribute('data-pane', section);
 
-    expect(pane()).toHaveAttribute('data-pane', 'root');
-  });
+      close();
+      await waitFor(() =>
+        expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'closed')
+      );
+      // Still showing what it was showing: the reset is on the OPENING edge, so
+      // the body cannot change under the exit animation.
+      expect(pane()).toHaveAttribute('data-pane', section);
+
+      openSheet();
+      expect(pane()).toHaveAttribute('data-pane', 'root');
+    }
+  );
 
   it('writes what its pointer twin writes, and dismisses on a completed choice', async () => {
     render(<DisplayMenu surface="canvas" />);
@@ -726,6 +786,86 @@ describe('the touch shell', () => {
     await waitFor(() =>
       expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'closed')
     );
+  });
+
+  it('writes the flat Show rows, which only the sheet root ever draws', async () => {
+    // These two live below the sections rather than inside one, so nothing above
+    // covers them: the pointer cases reach them through MenuEntries.
+    render(<DisplayMenu surface="canvas" />);
+    openSheet();
+
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Hide finished/ }));
+    expect(view().canvasFilters.hideFinished).toBe(true);
+
+    // Everywhere, not this surface — a planner-store setting reachable here.
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Show paused/ }));
+    expect(usePlannerStore.getState().showPausedOnGrid).toBe(true);
+
+    // Both are multi-select, so the sheet is still up and still on the root.
+    expect(pane()).toHaveAttribute('data-pane', 'root');
+    expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'open');
+  });
+
+  it('writes a priority value, and the unset one, from the drilled pane', async () => {
+    render(<DisplayMenu surface="canvas" />);
+    await drill('priority');
+
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^High/ }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /No priority/ }));
+
+    expect(view().canvasFilters.priorities).toEqual(['high', 'none']);
+    // The two surfaces share a SHAPE, never an object — see the pointer twin.
+    expect(view().braindumpFilters.priorities).toEqual([]);
+  });
+
+  it('turns a paused scope back on from the root, without closing the sheet', async () => {
+    const setProgramState = vi.fn();
+    usePlannerStore.setState({
+      programs: [
+        { id: 'off', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] },
+      ] as Program[],
+      setProgramState,
+    });
+    render(<DisplayMenu surface="canvas" />);
+    openSheet();
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Summer/ }));
+
+    // Rangeless → auto already yields on, so turning it on returns it to auto.
+    expect(setProgramState).toHaveBeenCalledWith('off', 'auto');
+    // keepOpen, exactly as on pointer: several scopes come back without re-opening.
+    expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'open');
+  });
+
+  it('moves focus with the drill, in both directions', async () => {
+    // The pressed button unmounts on every one of these transitions, and a
+    // focused element that unmounts leaves focus on <body> — where arrows, tab
+    // order and a screen reader's reading cursor all restart from the top of the
+    // document. Radix gives the desktop submenu this; the sheet does it by hand.
+    render(<DisplayMenu surface="canvas" />);
+    openSheet();
+    await screen.findByTestId('display-section-grouping');
+
+    fireEvent.click(screen.getByTestId('display-section-grouping'));
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /^None/ }));
+
+    fireEvent.click(screen.getByTestId('display-back'));
+    // Back lands on the row you came from, not the top of the list.
+    expect(document.activeElement).toBe(screen.getByTestId('display-section-grouping'));
+  });
+
+  it('does not claim a menu container it has no keyboard contract for', async () => {
+    // A row's ROLE is shared with the model and still says what the row means.
+    // The CONTAINER is not: role="menu" promises roving tabindex, arrow wrap,
+    // Home/End and typeahead — Radix's for the dropdown, nobody's here — and
+    // claiming it flips a screen reader into application mode where the arrows
+    // it was just told to use do nothing.
+    render(<DisplayMenu surface="canvas" />);
+    openSheet();
+
+    expect(await screen.findByTestId('display-sheet-pane')).toHaveAttribute('role', 'group');
+    expect(screen.getByTestId('display-section-grouping')).toHaveAttribute('role', 'menuitem');
+    expect(screen.getByRole('menuitemcheckbox', { name: /Hide finished/ })).toBeInTheDocument();
   });
 
   it('keeps the sheet on its pane for multi-select, so three picks are three taps', async () => {
@@ -801,26 +941,48 @@ describe('the touch shell', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: /Hide finished/ })).toBeInTheDocument();
   });
 
-  it('gives every pressable thing in the sheet a 44px floor', async () => {
-    // The one rule that is invisible until a thumb misses. Asserted on the
-    // CLASS because jsdom lays nothing out — `min-h-11` and `size-11` are both
-    // 44px, and no third spelling is allowed in here.
+  it('gives every pressable thing in every pane a 44px floor', async () => {
+    // The one rule that is invisible until a thumb misses. Asserted on the CLASS
+    // because jsdom lays nothing out — `min-h-11` and `size-11` are both 44px,
+    // and no third spelling is allowed in here.
+    //
+    // Walked pane by pane, radios included. The root-only version of this stayed
+    // green with SheetRow mutated to `min-h-7` for radio rows, because the root
+    // draws no menuitemradio at all: every Grouping / Ordering / Type value row —
+    // the majority of the rows a phone ever presses — sat outside what it counted.
+    const rows = (root: HTMLElement) =>
+      within(root)
+        .queryAllByRole('menuitem')
+        .concat(within(root).queryAllByRole('menuitemcheckbox'))
+        .concat(within(root).queryAllByRole('menuitemradio'));
+
     render(<DisplayMenu surface="canvas" />);
     openSheet();
     await screen.findByTestId('display-sheet-pane');
 
-    const inSheet = screen
-      .getAllByRole('menuitem')
-      .concat(screen.getAllByRole('menuitemcheckbox'))
-      .filter((el) => el.closest('[data-testid="display-menu"]'));
-    expect(inSheet.length).toBeGreaterThan(5);
-    for (const el of inSheet) {
-      expect(el.className).toMatch(/(^|\s)(min-h-11|size-11)(\s|$)/);
+    const measured: HTMLElement[] = [];
+    const measure = (found: HTMLElement[]) => {
+      expect(found.length).toBeGreaterThan(2);
+      for (const el of found) expect(el.className).toMatch(/(^|\s)(min-h-11|size-11)(\s|$)/);
+      measured.push(...found);
+    };
+
+    measure(rows(pane()));
+
+    for (const section of ['grouping', 'ordering', 'type', 'priority', 'container']) {
+      fireEvent.click(screen.getByTestId(`display-section-${section}`));
+      expect(pane()).toHaveAttribute('data-pane', section);
+      measure(rows(pane()));
+
+      // The back affordance is drawn only while drilled, so it is measured here.
+      expect(screen.getByTestId('display-back').className).toMatch(/(^|\s)size-11(\s|$)/);
+      fireEvent.click(screen.getByTestId('display-back'));
     }
 
-    // The back affordance is drawn only while drilled, so it is measured there.
-    fireEvent.click(screen.getByTestId('display-section-grouping'));
-    expect(screen.getByTestId('display-back').className).toMatch(/(^|\s)size-11(\s|$)/);
+    // Guards the walk itself. Grouping's 6 values, Ordering's 3 and Type's 3 are
+    // the rows the root-only version never saw; if the drill stopped opening,
+    // every assertion above would pass over an empty pane and this would not.
+    expect(measured.filter((el) => el.getAttribute('role') === 'menuitemradio')).toHaveLength(12);
   });
 });
 

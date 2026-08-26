@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -104,12 +104,14 @@ import { cn } from '@/lib/utils';
  * label, state, what it writes, whether picking it completes the choice — and
  * each shell renders that description in its own idiom.
  *
- * The ARIA roles are shared with it deliberately. A row's role says what the
+ * The ITEM roles are shared with it deliberately. A row's role says what the
  * row MEANS (a value in a set, an independent toggle, an action), and that does
- * not change with the input device — so the sheet's panes are `role="menu"`
- * carrying the same `menuitemradio` / `menuitemcheckbox` / `menuitem` the
- * dropdown does, and the ruling that an ACTION row must not be announced as a
- * sixth unselected radio holds in both.
+ * not change with the input device — so the sheet's rows carry the same
+ * `menuitemradio` / `menuitemcheckbox` / `menuitem` the dropdown does, and the
+ * ruling that an ACTION row must not be announced as a sixth unselected radio
+ * holds in both. The CONTAINER is not shared, and must not be: `role="menu"`
+ * promises a keyboard contract Radix implements and this shell does not. See
+ * the pane below.
  */
 
 export type DisplaySurface = 'canvas' | 'braindump';
@@ -153,8 +155,8 @@ function Cap({ children }: { children: React.ReactNode }) {
  * ON a lime fill, and it is very nearly invisible on the popover ground. See the
  * same bug at header-capsule.tsx:75.
  */
-function Tick({ on }: { on: boolean }) {
-  return on ? <Check className="size-3.5 shrink-0" /> : null;
+function Tick({ on, className }: { on: boolean; className?: string }) {
+  return on ? <Check className={cn('size-3.5', className)} /> : null;
 }
 
 /** 8px dot in the real priority token, or a hollow ring for "no priority". */
@@ -353,7 +355,11 @@ function SheetRow({ spec, onDismiss }: { spec: RowSpec; onDismiss: () => void })
       {Icon && <Icon className="size-4 shrink-0" />}
       <span className="flex-1 truncate">{spec.label}</span>
       {spec.rail && <span className="shrink-0 text-xs text-muted-foreground">{spec.rail}</span>}
-      <Tick on={spec.checked} />
+      {/* The sheet's rows are flex children that must not squeeze the check; the
+          dropdown's own item already carries `[&_svg]:shrink-0`, so asking for it
+          in the shared Tick would put a class in the desktop DOM that this branch
+          has no business changing. */}
+      <Tick on={spec.checked} className="shrink-0" />
     </button>
   );
 }
@@ -863,8 +869,9 @@ export function DisplayMenu({
  *
  * Pane state lives in the sheet rather than in a store: it is not a preference,
  * it is where you are standing inside a control that is currently open, and it
- * must not survive the sheet being dismissed. Clearing it on close is what
- * makes re-opening always land on the root.
+ * must not survive the sheet being dismissed. A drilled pane belongs to ONE
+ * opening, and it is reset when the NEXT one begins — see the handler below for
+ * why the close edge is the wrong one on both counts.
  */
 function DisplaySheet({
   trigger,
@@ -885,18 +892,67 @@ function DisplaySheet({
   const [paneId, setPaneId] = useState<string | null>(null);
   const dismiss = () => setOpen(false);
 
+  const paneRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  /** What the focus effect below compares against; see it for why. */
+  const lastPane = useRef<string | null>(null);
+
   const pane =
     [...structure, ...filterSections].find((s) => s.id === paneId) ?? null;
+
+  /**
+   * Focus follows the drill, in both directions.
+   *
+   * Every one of these transitions unmounts the button that was pressed, and a
+   * focused element that unmounts leaves focus on `<body>` — arrows, tab order
+   * and a screen reader's reading cursor all restart from the top of the
+   * document. The desktop submenu gets this from Radix; the sheet has to do it
+   * by hand. It is not a touch-only nicety: `useIsMobile` is viewport-based, so
+   * any window under 768px reaches this shell with a physical keyboard.
+   *
+   * In an effect rather than in the handlers because the element to focus does
+   * not exist until the new level has rendered. The first open is skipped —
+   * vaul's `autoFocus` owns that one.
+   */
+  useEffect(() => {
+    const previous = lastPane.current;
+    lastPane.current = paneId;
+    if (!open || previous === paneId) return;
+    if (paneId) {
+      // The pane's first row, or the way back if it somehow has none.
+      const first = paneRef.current?.querySelector<HTMLElement>(
+        '[role="menuitem"]:not([disabled]),[role="menuitemcheckbox"]:not([disabled]),[role="menuitemradio"]:not([disabled])'
+      );
+      (first ?? backRef.current)?.focus();
+    } else if (previous) {
+      // Back lands on the row you came from, not on the top of the list.
+      paneRef.current
+        ?.querySelector<HTMLElement>(`[data-testid="display-section-${previous}"]`)
+        ?.focus();
+    }
+  }, [paneId, open]);
 
   return (
     <Drawer
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        // Only on close, and not in an effect: re-opening must land on the root,
-        // and a pane cleared while the sheet is still sliding out would swap the
-        // body under the exit animation.
-        if (!next) setPaneId(null);
+        // Reset on the OPENING edge, not the closing one. Two reasons, and the
+        // close edge fails both. `open` is controlled here, so vaul calls this
+        // back only for its OWN dismissals — escape, backdrop, swipe — and every
+        // close the sheet performs itself (a single-select pick, "Switch to
+        // List", Reset) goes through setOpen and would skip a reset written
+        // here. And the close edge is the wrong edge anyway: the sheet is still
+        // sliding out, so clearing there swaps the body under the exit
+        // animation. Opening is one path, vaul's own trigger, and this lands in
+        // the same batch as `setOpen(true)` — the first frame of the new sheet
+        // is already the root, whichever way the last one closed.
+        if (next) {
+          setPaneId(null);
+          // The focus effect would otherwise read the last opening's pane as a
+          // change and pull focus onto a section row behind vaul's own.
+          lastPane.current = null;
+        }
       }}
       // vaul defaults autoFocus to false, which leaves focus on the trigger
       // while the app root is aria-hidden around it — the same trap
@@ -912,6 +968,7 @@ function DisplaySheet({
             {pane && (
               <button
                 type="button"
+                ref={backRef}
                 data-testid="display-back"
                 aria-label="Back to Display"
                 onClick={() => setPaneId(null)}
@@ -933,9 +990,20 @@ function DisplaySheet({
             silently drops a height cap (CLAUDE.md), and this is the one box in
             the sheet that has to honour one: DrawerContent caps at 80vh and the
             Project / Group pane is as long as the user's data. */}
+        {/* `group`, not `menu`. A row's ROLE says what the row means and is shared
+            with the model (see the header), but a `menu` CONTAINER also promises a
+            keyboard contract — roving tabindex, arrow wrap, Home/End, typeahead —
+            that Radix implements for the dropdown and this shell does not. Claiming
+            it flips a screen reader into application mode, where the arrows it has
+            just been told to use do nothing. `group` is the honest container for a
+            set of rows whose item roles still carry their meaning: browse mode
+            stays on, the arrows keep working, and every row is a real button in the
+            tab order. If this shell ever grows roving focus, this becomes `menu`
+            again in the same commit. */}
         <div
-          role="menu"
+          role="group"
           aria-label={pane ? pane.label : 'Display'}
+          ref={paneRef}
           data-testid="display-sheet-pane"
           data-pane={pane ? pane.id : 'root'}
           className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]"
