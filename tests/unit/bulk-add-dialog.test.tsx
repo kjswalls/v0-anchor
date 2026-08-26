@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 /**
  * The bulk-add dialog, rendered for real: the count must be the truth about
@@ -189,8 +189,12 @@ describe('BulkAddDialog', () => {
 
     // Raw, markers and all — the live parse strips them, and keeping the raw
     // text means the cap notice can derive from what is actually in the box.
-    const textarea = await screen.findByTestId('bulk-add-textarea');
-    expect(textarea).toHaveValue('already here\n- one\n- two');
+    // waitFor on the VALUE, not findBy on the element: the textarea is already
+    // on screen (it holds what was typed), so `findByTestId` resolves on the
+    // first tick and waits for nothing. The import lands a File read later, so
+    // the element's existence is not the signal — its contents are.
+    const textarea = screen.getByTestId('bulk-add-textarea');
+    await waitFor(() => expect(textarea).toHaveValue('already here\n- one\n- two'));
     expect(screen.getByTestId('bulk-add-count')).toHaveTextContent('3 items');
   });
 
@@ -209,8 +213,12 @@ describe('BulkAddDialog', () => {
     fireEvent.change(input, {
       target: { files: [new File(['walk dog'], 'b.txt', { type: 'text/plain' })] },
     });
-    const textarea = await screen.findByTestId('bulk-add-textarea');
-    expect(textarea).toHaveValue('Buy milk\nwalk dog');
+    // Here the textarea does NOT pre-exist — the CSV swapped it for the table
+    // preview — so this waits for it to come back AND to carry the merged text.
+    // waitFor around getBy covers both edges; findBy would only cover the first.
+    await waitFor(() =>
+      expect(screen.getByTestId('bulk-add-textarea')).toHaveValue('Buy milk\nwalk dog')
+    );
     expect(screen.getByTestId('bulk-add-count')).toHaveTextContent('2 items');
   });
 });
