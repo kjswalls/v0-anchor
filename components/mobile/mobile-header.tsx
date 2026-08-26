@@ -21,6 +21,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
 import { goToDate } from '@/lib/nav-commands';
+import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
@@ -323,6 +324,14 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
         </div>
 
         <WeekStrip />
+
+        {/* "Today's review is waiting", inside the date card — the same address
+            as the desktop's header row, which is the date this shell is showing.
+            `scope="day"` for the same reason DisplayMenu takes it above: this
+            shell is day-only and a stale `scope: 'week'` in the persisted blob
+            has no writer here to correct it. Renders nothing on any other date,
+            and nothing at all when the review is not owed. */}
+        <DayHeaderNotice scope="day" />
       </div>
     </header>
   );

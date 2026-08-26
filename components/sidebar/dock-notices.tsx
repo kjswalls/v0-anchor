@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, CloudOff, MoonStar, MoreHorizontal, Sunset, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, MoreHorizontal, X } from 'lucide-react';
 
 import {
   Drawer,
@@ -12,231 +12,93 @@ import {
 } from '@/components/ui/drawer';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useWaitingNotice } from '@/components/ai/morning-check';
-import { usePlannerStore } from '@/lib/planner-store';
-import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
-import { minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
+import {
+  useEodNotice,
+  useSweepNotice,
+  useSyncErrorNotice,
+} from '@/components/notices/notice-sources';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { toDateStr } from '@/lib/recurrence';
-import { capNotices, NOTICE_RANK, rankNotices, type DockNotice } from '@/lib/dock-notices';
+import { capNotices, placeNotices, type DockNotice } from '@/lib/dock-notices';
+import { useLiveNoticeAnchors } from '@/lib/notice-anchors';
 import { cn } from '@/lib/utils';
 
 /**
- * The app's voice, given one place to speak from.
+ * The dock's ONE line: the highest-ranked question with nowhere else to live.
  *
- * It sits inside the dock capsule directly above the UserCard, which puts it
- * directly above the omnibar — so the two directions of the conversation share
- * an edge. The omnibar's suggestion panel grows upward out of the pill and a
- * notice tray grows upward out of its row: the same airspace, one occupant at a
- * time, and the exclusion comes free because each closes on an outside
- * pointerdown that the other's opening gesture is.
+ * It used to be the app's only voice, a stack of up to two rows INSIDE the dock
+ * capsule. It is a strip ABOVE the capsule now, absorbed by the braindump's
+ * flex-1 (desktop) and by the content area's (mobile).
+ *
+ * BE CAREFUL WHAT YOU CLAIM FOR THAT MOVE. The story this change was first
+ * written under — "a notice arriving moved the omnibar" — was measured and is
+ * false: the capsule's bottom is pinned by the column and this stack sat ABOVE
+ * the UserCard, so a row grew the capsule upward into the braindump and the
+ * omnibar held still at every viewport height down to 360px. What actually
+ * jumped was the undo TOAST, which was position-fixed at `--toast-bottom`,
+ * measured off the capsule's top edge — so it moved by exactly the row's height.
+ * That is now a strip row of its own and no longer measures anything.
+ * The move itself is a placement decision (notices are not part of the dock);
+ * see memory/plans/notices-in-place.md for the numbers.
  *
  * WHY NOT THE CANVAS, which is where the waiting bar lived. lib/use-fit-hour-px.ts
  * derives the schedule grid's hour height from (viewport bottom − whatever sits
  * above the timeline), so anything in that column has to hold a fixed height
  * forever or it drives hourPx to its floor. The bar's famous 50px contract was
- * never a design decision — it was rent. The sidebar has no fit-to-height
- * consumer, so the cap here is discipline rather than obligation, and it is
- * kept anyway: this surface must never be the reason the braindump shrank.
+ * never a design decision — it was rent. This strip sits in the sidebar column,
+ * which nothing measures into.
+ *
+ * WHAT IS LEFT HERE, after direction E. Most notices now render on the thing
+ * they are about (components/notices/notice-slot.tsx). What reaches this line is
+ * what has no object on screen — plus the two categories `placeNotices` pins
+ * here whatever they claim: anything `blocked`, because a notice saying the app
+ * cannot proceed must never be somewhere you have to scroll to, and anything
+ * carrying a tray, because only the dock opens one. The membership rule is
+ * unchanged: a line is earned by a pending DECISION, not by importance.
  *
  * THE HEIGHT LADDER, and it is not a function of n:
- *   0 notices → 0      (nothing renders; the dock is byte-identical to before)
- *   1 notice  → 40     (26 row + 14 margin)
- *   2+        → 72     (26 + 6 + 26 + 14)
- * Past two the second row becomes a "+N more" that lifts the cap on demand, so
- * nothing is ever silently dropped — a surface that hides messages to protect
- * its own geometry is worse than one that grows.
+ *   0 notices → 0     (nothing renders at all)
+ *   1+        → 26    (one row; past one the row becomes a "+N more")
+ * The fold is a DEFAULT, not a ceiling — expanding lifts it — and because the
+ * strip is absorbed by a flex-1 neighbour, expanding it still does not move the
+ * omnibar.
  */
-
-/** Rows shown before the stack folds into a "+N more". */
-const MAX_ROWS = 2;
-
-/* ── sources ─────────────────────────────────────────────────────────── */
 
 /**
- * The one notice with no feature behind it.
+ * Rows shown before the stack folds into a "+N more". ONE, on both platforms.
  *
- * `planner-store.error` has been set on every failed load since the store was
- * written and read by precisely nothing — a silent failure mode that survived
- * because there was nowhere to put it that wasn't a modal or a toast, and
- * neither is right for a condition that persists until someone acts. That is
- * the argument for this surface in one bug.
+ * Two was the desktop's answer when this was the app's only voice and a second
+ * notice had nowhere else to go. Under E it does: the dock is the fallback, so
+ * a second line here means two homeless questions at once, which is rare enough
+ * to be worth a fold row and not worth a taller strip.
  */
-function useSyncErrorNotice(): DockNotice | null {
-  const error = usePlannerStore((s) => s.error);
-  const userId = usePlannerStore((s) => s.userId);
-  const initializeStore = usePlannerStore((s) => s.initializeStore);
-  // Keyed on the message, not a boolean: dismissing one failure must not
-  // suppress the next, different one.
-  const [dismissed, setDismissed] = useState<string | null>(null);
-
-  if (!error || error === dismissed) return null;
-
-  return {
-    id: 'sync-error',
-    rank: NOTICE_RANK.blocked,
-    icon: CloudOff,
-    iconClassName: 'text-destructive',
-    label: <span className="font-semibold">Couldn’t load your data</span>,
-    actionLabel: 'Retry',
-    onSelect: () => {
-      if (userId) void initializeStore(userId);
-    },
-    onDismiss: () => setDismissed(error),
-    dismissLabel: 'Dismiss this warning',
-  };
-}
-
-/** Today, in the user's SAVED timezone — the app-wide `toDateStr` convention. */
-function useToday(): { todayStr: string; tz: string } {
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return { todayStr: toDateStr(new Date(), tz), tz };
-}
-
-/**
- * "12 items were put aside this morning" — the app's only unattended write,
- * finally saying so.
- *
- * Ranked `receipt`, below anything asking for a decision: nothing is blocked on
- * this and the sweep was the user's own opt-in setting doing its job. It is
- * here so the work is not silently gone, not to ask forgiveness for it.
- *
- * "Put them back" is `restoreScheduling`, NOT undo. See the note on that verb
- * in lib/planner-store.ts — by the time this line is read the sweep is buried
- * in the history stack, and popping it would reverse whatever the user did
- * last.
- */
-function useSweepNotice(): DockNotice | null {
-  const userId = usePlannerStore((s) => s.userId);
-  const restoreScheduling = usePlannerStore((s) => s.restoreScheduling);
-  const receiptsByUser = useMorningStore((s) => s.morningAutoAgeReceiptByUser);
-  const clearAutoAgeReceipt = useMorningStore((s) => s.clearAutoAgeReceipt);
-  const { todayStr } = useToday();
-
-  // Date-checked here rather than through the store's getter so the component
-  // re-renders when the map changes — a getState() read would not subscribe.
-  const receipt = useMemo(() => {
-    if (!userId) return null;
-    const found = receiptsByUser[userId];
-    return found && found.date === todayStr && found.items.length > 0 ? found : null;
-  }, [receiptsByUser, userId, todayStr]);
-
-  if (!receipt || !userId) return null;
-
-  const n = receipt.items.length;
-
-  return {
-    id: 'auto-age-receipt',
-    rank: NOTICE_RANK.receipt,
-    icon: MoonStar,
-    label: (
-      <>
-        <span className="font-semibold">{n === 1 ? '1 item' : `${n} items`}</span> put aside this
-        morning
-      </>
-    ),
-    actionLabel: 'Put back',
-    onSelect: () => {
-      restoreScheduling(receipt.items);
-      clearAutoAgeReceipt(userId);
-    },
-    // Waving it away is not the same as putting them back — it drops the
-    // receipt only. The items stay where the sweep left them, in the braindump,
-    // which is where the setting the user turned on says they belong.
-    onDismiss: () => clearAutoAgeReceipt(userId),
-    dismissLabel: 'Dismiss this receipt',
-  };
-}
-
-/**
- * "Today's review is waiting" — the review's first in-app entry point.
- *
- * Ranked `decision` alongside the waiting pile: the review is a thing only the
- * user can do, and it is the one surface in the app that was reachable ONLY
- * through a push notification. Deny the permission or swipe the notification
- * away and, before this line, nothing on screen ever mentioned it again.
- *
- * Deliberately not a modal that opens itself. The review is a ritual, not an
- * interruption, and the case for putting it on the dock is precisely that it
- * can wait there instead of ambushing whatever the user was doing at 21:00.
- */
-function useEodNotice(): DockNotice | null {
-  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
-  const eodReviewTime = useEODStore((s) => s.eodReviewTime);
-  const lastEodReviewDate = useEODStore((s) => s.lastEodReviewDate);
-  const eodDeferredDate = useEODStore((s) => s.eodDeferredDate);
-  const hasHydrated = useEODStore((s) => s._hasHydrated);
-  const open = useEODStore((s) => s.open);
-  const deferToday = useEODStore((s) => s.deferToday);
-  const { todayStr, tz } = useToday();
-
-  const nowMinutes = nowMinutesIn(new Date(), tz);
-  const due = minutesOfDay(eodReviewTime);
-
-  /**
-   * Wake up ONCE, at the review hour.
-   *
-   * Everything else on this surface is driven by a store write, so it re-renders
-   * when its answer changes. This one is driven by a clock: sit with the app
-   * open from 20:00 and nothing at all happens at 21:00, so the line would only
-   * appear whenever some unrelated state next moved it. A single timeout for the
-   * exact crossing beats a minute-interval that re-renders the notice stack all
-   * day to catch one moment.
-   *
-   * Only the crossing. Midnight rollover is left alone deliberately — the
-   * waiting notice resolves `todayStr` at render for the same reason, and an app
-   * left open across midnight is a rarer case than an app left open all evening.
-   */
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!hasHydrated || !eodReviewEnabled || due === null) return;
-    if (nowMinutes >= due) return;
-    const ms = (due - nowMinutes) * 60_000;
-    const timer = setTimeout(() => setTick((n) => n + 1), ms);
-    return () => clearTimeout(timer);
-  }, [hasHydrated, eodReviewEnabled, due, nowMinutes]);
-
-  // Pre-hydration the store holds its defaults, and `eodReviewEnabled` defaults
-  // false — so this is belt and braces rather than load-bearing. It costs one
-  // boolean and it means the line can never flash in on a rehydrate that is
-  // about to say "already reviewed".
-  if (!hasHydrated) return null;
-
-  const owed = shouldShowEodNotice(
-    { eodReviewEnabled, eodReviewTime, lastEodReviewDate, eodDeferredDate },
-    todayStr,
-    nowMinutes
-  );
-  if (!owed) return null;
-
-  return {
-    id: 'eod-review',
-    rank: NOTICE_RANK.decision,
-    icon: Sunset,
-    iconClassName: 'text-sunrise-glyph',
-    label: <span className="font-semibold">Today’s review is waiting</span>,
-    actionLabel: 'Start',
-    onSelect: open,
-    onDismiss: () => deferToday(todayStr),
-    dismissLabel: 'Not tonight',
-  };
-}
+const MAX_ROWS = 1;
 
 /**
  * Every source, in one place. Adding a notice kind is adding a line here.
  *
  * Order in this array is irrelevant — `rankNotices` sorts by what is pending,
  * not by which module raised it, which is the whole reason the rank exists.
+ *
+ * The three that can live somewhere better come from
+ * components/notices/notice-sources.tsx, which the in-place slots also call. The
+ * waiting notice stays here because `useWaitingNotice` closes its tray on
+ * unmount, so it must be called from exactly one place in the tree.
  */
 function useDockNotices(): DockNotice[] {
   const waiting = useWaitingNotice();
   const eod = useEodNotice();
   const sweep = useSweepNotice();
   const syncError = useSyncErrorNotice();
-  return rankNotices(
-    [waiting, eod, sweep, syncError].filter((n): n is DockNotice => n !== null)
-  );
+  const live = useLiveNoticeAnchors();
+
+  // What is left after every notice with a mounted object has gone to it. The
+  // dock is the fallback, never the default: it holds the highest-ranked
+  // question with nowhere else to live, plus anything `blocked` (pinned) and
+  // anything carrying a tray (which only the dock can open).
+  return placeNotices(
+    [waiting, eod, sweep, syncError].filter((n): n is DockNotice => n !== null),
+    live
+  ).dock;
 }
 
 /* ── the row ─────────────────────────────────────────────────────────── */
@@ -426,7 +288,10 @@ function OverflowRow({
 }
 
 /**
- * Desktop mount: components/sidebar/sidebar-dock.tsx, above the UserCard.
+ * Desktop mount: components/sidebar/sidebar-dock.tsx, on the strip ABOVE the
+ * capsule — not inside it. The braindump above is flex-1 and gives up the row's
+ * height, so the capsule's top edge moves and its bottom edge does not, exactly
+ * as it did when the row was inside.
  *
  * Renders nothing while the sidebar is away. This is the accepted cost of the
  * placement and it is deliberately NOT patched with a force-open: a rule where
@@ -450,7 +315,9 @@ export function DockNotices() {
     <div
       data-testid="dock-notices"
       className={cn(
-        'relative z-10 mb-[14px] flex flex-col gap-1.5',
+        // mb rather than the old mb-[14px]: this is a strip row above the
+        // capsule now, not the top of the capsule's own stack of rows.
+        'mb-1.5 flex flex-col gap-1.5',
         // Only ever scrolls once the cap has been lifted by hand. A plain
         // overflow container, not <ScrollArea> — the Radix wrapper silently
         // drops max-h (CLAUDE.md).
@@ -474,12 +341,12 @@ export function DockNotices() {
 }
 
 /**
- * Mobile mount: components/mobile/mobile-bottom-dock.tsx, above the omnibar.
+ * Mobile mount: components/mobile/mobile-bottom-dock.tsx, above the well rather
+ * than inside it. A placement change, not a geometry one — this dock is the last
+ * child of a fixed-height flex column, so it grows upward and the well's bottom
+ * edge measured 0px of movement in every configuration either way.
  *
- * One row, never two: the dock already stands ~88px into a short viewport
- * before a notice is added, plus whatever the safe-area inset adds past its
- * 12px floor. Trays are Drawers rather than Popovers — a 420px tray does not
- * exist here.
+ * Trays are Drawers rather than Popovers — a 420px tray does not exist here.
  */
 export function DockNoticesMobile() {
   const notices = useDockNotices();
@@ -487,7 +354,7 @@ export function DockNoticesMobile() {
   // there is a second, and the single row becomes "2 to answer". That is the
   // right trade at this width: one row speaking for itself, or one row speaking
   // for the pile — never one row silently standing in for another.
-  const { visible, overflow, isExpanded, setExpanded } = useCappedStack(notices, 1);
+  const { visible, overflow, isExpanded, setExpanded } = useCappedStack(notices, MAX_ROWS);
 
   if (notices.length === 0) return null;
 
@@ -496,7 +363,7 @@ export function DockNoticesMobile() {
       <div
         data-testid="dock-notices"
         className={cn(
-          'flex flex-col gap-1 pb-2',
+          'mb-1.5 flex flex-col gap-1',
           isExpanded && 'max-h-[110px] overflow-y-auto'
         )}
       >
