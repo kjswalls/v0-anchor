@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.05 130); }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .note { font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272); text-wrap: pretty; }
+    .note b { color: oklch(0.24 0.01 272); font-weight: 600; }
+    .sec { font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272); }
+    .chipx { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272); }
+    .chips { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272); }
+  </style>
+</helmet>
+
+<div style="width: 960px; min-height: 1250px; background: oklch(0.986 0.0012 90); padding: 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 26px;">
+
+  <div style="display: flex; flex-direction: column; gap: 7px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="mono" style="font-size: 12px; font-weight: 700; color: oklch(0.72 0.14 30);">D</span>
+      <span style="font-size: 22px; line-height: 28px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.012em;">One surface, three densities</span>
+    </div>
+    <div class="note" style="font-size: 13px; line-height: 19px; max-width: 800px;">Finish what item-surface-growth started. There is no sidebar and no page — there is <b>the item surface</b>, at a density its container chooses. It opens in place on the grid as a peek, docks at 420px when you want to stay, fills the route when the item is the work. One prop, <span class="mono" style="font-size: 12px;">density</span>, replaces <span class="mono" style="font-size: 12px;">presentation</span>, <span class="mono" style="font-size: 12px;">flat</span> and <span class="mono" style="font-size: 12px;">withDetailSections</span>.</div>
+  </div>
+
+  <div style="display: flex; gap: 28px; align-items: flex-start;">
+
+    <!-- PEEK -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span class="lbl">peek · in the row, on the grid</span>
+      <div style="width: 280px; box-sizing: border-box; padding: 12px 14px; background: oklch(1 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 14px; display: flex; flex-direction: column; gap: 9px; box-shadow: 0 1px 2px oklch(0.32 0.005 272 / 6%), 0 6px 14px -6px oklch(0.32 0.005 272 / 10%);">
+        <div style="font-size: 12px; line-height: 17px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+          <span class="chips"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+          <span class="chips"><span style="width: 7px; height: 7px; border-radius: 2px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+          <span class="chips">09:30 · 30m</span>
+        </div>
+        <div style="font-size: 11px; line-height: 16px; color: oklch(0.5 0.02 272);">1 of 3 subtasks · OpenClaw working</div>
+        <div style="display: flex; gap: 8px; align-items: center; padding-top: 2px; border-top: 1px solid oklch(0.9 0.008 272); margin-top: 1px; padding-top: 8px;">
+          <span style="font-size: 10px; color: oklch(0.66 0.03 272);">Space to dock</span>
+          <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: oklch(0.66 0.03 272);">Open<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></span>
+        </div>
+      </div>
+      <div class="note" style="width: 280px;">Everything set, nothing unset. No headings, no empty affordances — at this density the surface is only allowed to state facts and take the two gestures the grid already offers.</div>
+    </div>
+
+    <!-- DOCKED -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span class="lbl">docked · 420px, beside the compressed canvas</span>
+      <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="flex: 1; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+          <div style="display: flex; align-items: center; gap: 3px; color: oklch(0.66 0.03 272);">
+            <span style="display: inline-flex; align-items: center; gap: 3px; height: 22px; padding: 0 7px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px;">
+              <span style="width: 8px; height: 3px; border-radius: 1px; background: oklch(0.66 0.03 272);"></span>
+              <span style="width: 8px; height: 8px; border-radius: 2px; background: oklch(0.24 0.01 272);"></span>
+              <span style="width: 8px; height: 12px; border-radius: 2px; background: oklch(0.66 0.03 272);"></span>
+            </span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="chip" style="font-weight: 500;"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task</span>
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Edit</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="chip"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+          <span class="chip"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+          <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Deep work</span>
+          <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ship v2 +1</span>
+          <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg>Aug 28</span>
+          <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Morning · 09:30 · 30 min</span>
+          <span class="chipx">Repeat</span>
+          <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>21:00</span>
+        </div>
+        <div style="font-size: 12px; line-height: 18px; color: oklch(0.24 0.01 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div class="sec">Subtasks · 1 of 3</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 12px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+        </div>
+        <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 10px; padding: 7px 10px; display: flex; align-items: baseline; gap: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: oklch(0.38 0.08 75);">OpenClaw · working</span>
+          <span style="font-size: 11px; color: oklch(0.5 0.02 272);">Reading the Q2 deck</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+          <span style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid oklch(0.86 0.012 272); font-size: 12px; font-weight: 500; color: oklch(0.24 0.01 272);">Done</span>
+        </div>
+      </div>
+      <div class="note" style="width: 420px;">The density control in the header is the whole navigation: three states, no route change between the first two. Today's ⤢ button becomes its third notch.</div>
+    </div>
+  </div>
+
+  <!-- FULL -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <span class="lbl">full · the route · same component, three columns</span>
+    <div style="box-sizing: border-box; padding: 18px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <div style="flex: 1;">
+          <div style="font-size: 20px; line-height: 26px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.01em;">Draft the Q3 handoff note</div>
+        </div>
+        <span style="display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90);">
+          <span style="width: 8px; height: 3px; border-radius: 1px; background: oklch(0.66 0.03 272);"></span>
+          <span style="width: 8px; height: 8px; border-radius: 2px; background: oklch(0.66 0.03 272);"></span>
+          <span style="width: 8px; height: 12px; border-radius: 2px; background: oklch(0.24 0.01 272);"></span>
+        </span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: start;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+            <span class="chips"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+            <span class="chips"><span style="width: 7px; height: 7px; border-radius: 2px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+            <span class="chips">Deep work</span>
+            <span class="chips">Ship v2 +1</span>
+            <span class="chips">Aug 28</span>
+            <span class="chips">Morning · 09:30 · 30m</span>
+            <span class="chips">Nudge 21:00</span>
+          </div>
+          <div style="font-size: 11px; line-height: 17px; color: oklch(0.24 0.01 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <div class="sec">Subtasks · 1 of 3</div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 14px; height: 14px; border-radius: 4px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 11px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 14px; height: 14px; border-radius: 4px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 11px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+            <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 14px; height: 14px; border-radius: 4px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 11px; color: oklch(0.24 0.01 272);">Send to Ana</span></div>
+          </div>
+          <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 10px; padding: 7px 9px;">
+            <div style="font-size: 10px; font-weight: 600; color: oklch(0.38 0.08 75);">OpenClaw · working</div>
+            <div style="font-size: 10px; color: oklch(0.5 0.02 272);">Reading the Q2 deck</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div class="sec">Activity</div>
+            <div style="display: flex; align-items: baseline; gap: 6px;"><span style="width: 3px; height: 3px; border-radius: 50%; background: oklch(0.66 0.03 272 / 60%);"></span><span style="font-size: 10px; color: oklch(0.5 0.02 272);">Assigned to OpenClaw</span></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px; border-left: 1px solid oklch(0.9 0.008 272); padding-left: 14px;">
+          <div class="sec">Thread</div>
+          <div style="background: oklch(0.945 0.0015 90); border-radius: 9px; padding: 6px 8px; font-size: 10px; line-height: 15px; color: oklch(0.24 0.01 272); align-self: flex-end;">What's the tone of the Q2 one?</div>
+          <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 9px; padding: 6px 8px; font-size: 10px; line-height: 15px; color: oklch(0.24 0.01 272);">Direct, three sections, no preamble.</div>
+          <div style="display: flex; align-items: center; gap: 5px; border: 1px solid oklch(0.86 0.012 272); border-radius: 10px; padding: 4px 7px; margin-top: 2px;">
+            <span style="flex: 1; font-size: 10px; color: oklch(0.66 0.03 272);">Ask OpenClaw…</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; padding-top: 6px; border-top: 1px solid oklch(0.9 0.008 272);">
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Why</div>
+      <div class="note">Because the ticket asks whether these are two things and the code has already answered <b>no</b> — one component, one draft, one set of save adapters, split only at the wrapper. This finishes the sentence instead of leaving it half-said, and it deletes the flag that exists purely to stop the page double-rendering. It also gives the grid the thing it does not have: a way to see an item's state without committing to a surface at all.</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Tradeoff</div>
+      <div class="note">A single component that must be correct at 280px, 420px and 1100px is <b>how a file reaches 2,635 lines</b>, not how it leaves. A density prop is the classic next step on that road: every section gains three variants, every test gains three cases, and the honest work of deciding what to cut is postponed by giving it somewhere to hide. It is also the only direction that makes the surface a <i>navigation</i> problem — three states with two transitions the user has to learn.</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; background: oklch(0.945 0.0015 90);">
+    <div class="lbl">Sidebar and full page: one thing, three sizes</div>
+    <div class="note">This is the merge, stated plainly. There is no /item route <i>and</i> a panel — the route is the surface at full density, deep-linkable as it is now, and Beacon's URL still works.</div>
+    <div style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 11px; background: oklch(0.996 0 0); border: 1px solid oklch(0.72 0.14 30 / 40%);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="oklch(0.72 0.14 30)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>
+      <div class="note" style="margin: 0;"><b>Flag.</b> Anchor persists a <span class="mono" style="font-size: 11px;">compact mode</span> setting that no view reads, and CLAUDE.md says leave it alone. This direction is one small step from wiring it up — "the user picked compact, so open at peek". It must not. <b>Density is derived from the container the surface is mounted in</b>, never from a stored preference; the moment it reads one, this direction has broken a rule the repo states outright.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

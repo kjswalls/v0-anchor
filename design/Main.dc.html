@@ -1,0 +1,376 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.05 130); }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .note { font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272); text-wrap: pretty; }
+    .note b { color: oklch(0.24 0.01 272); font-weight: 600; }
+    .mark { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; color: oklch(0.72 0.14 30); letter-spacing: 0.02em; }
+  </style>
+</helmet>
+
+<div style="width: 1424px; min-height: 1340px; background: oklch(0.986 0.0012 90); padding: 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 34px;">
+
+  <!-- ── Title band ────────────────────────────────────────────── -->
+  <div style="display: flex; flex-direction: column; gap: 8px; max-width: 900px;">
+    <div class="lbl">Reference · what exists today · measured on main @ 5e1e171</div>
+    <div style="font-size: 26px; line-height: 32px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.015em;">
+      The edit surface is one component wearing three costumes
+    </div>
+    <div class="note" style="font-size: 13px; line-height: 19px;">
+      <b>item-dialog.tsx</b> is 2,635 lines and renders all three: the top-anchored capture modal (add), the right-docked
+      420px panel (desktop edit), and the bottom drawer (mobile edit). <b>/item/[id]</b> is a fourth surface that renders the
+      same properties read-only, then opens the panel <i>on top of itself</i> to edit them. The audit called the dialog a
+      readout; two of its six upstream rows have since been gated off by default. This artboard is what is left.
+    </div>
+  </div>
+
+  <!-- ── Specimen row ──────────────────────────────────────────── -->
+  <div style="display: flex; gap: 32px; align-items: flex-start;">
+
+    <!-- Specimen 1: fresh account -->
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 420px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span class="lbl">Specimen 1</span>
+        <span style="font-size: 11px; color: oklch(0.24 0.01 272); font-weight: 500;">Fresh account · extensions off · no routines</span>
+      </div>
+
+      <div style="width: 420px; box-sizing: border-box; padding: 20px 20px 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 16px;">
+        <!-- header -->
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+            <div style="display: flex; align-items: center; gap: 2px; color: oklch(0.66 0.03 272);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; font-weight: 500; color: oklch(0.24 0.01 272);">
+              <span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task
+            </span>
+            <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Edit</span>
+          </div>
+        </div>
+
+        <!-- chips: 5 -->
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg>Priority
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Project
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg>Aug 28
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Morning · 30 min
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Repeat
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>Remind
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </div>
+
+        <div style="font-size: 12px; line-height: 17px; color: oklch(0.66 0.03 272);">Notes</div>
+
+        <!-- always-on empty scaffolding -->
+        <div style="display: flex; flex-direction: column; gap: 16px; padding: 10px; margin: -10px; border-radius: 12px; background: oklch(0.72 0.14 30 / 5%); outline: 1px dashed oklch(0.72 0.14 30 / 40%);">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Subtasks</div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span>
+              <span style="font-size: 12px; color: oklch(0.66 0.03 272);">Add a subtask</span>
+            </div>
+          </div>
+          <div>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>Assign to Beacon
+            </span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Thread</div>
+            <div style="display: flex; align-items: center; gap: 6px; border: 1px solid oklch(0.86 0.012 272); border-radius: 12px; padding: 5px 8px;">
+              <span style="flex: 1; font-size: 11px; color: oklch(0.66 0.03 272);">Ask Beacon about this item…</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+          <span style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid oklch(0.86 0.012 272); font-size: 12px; font-weight: 500; color: oklch(0.24 0.01 272);">Done</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 3px; padding-left: 2px;">
+        <div class="mark">5 chips · 1 of 5 unset chips will ever be used by most items</div>
+        <div class="mark">3 sections, 0 content — the dashed block is height spent on nothing</div>
+      </div>
+    </div>
+
+    <!-- Specimen 2: full account -->
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 420px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span class="lbl">Specimen 2</span>
+        <span style="font-size: 11px; color: oklch(0.24 0.01 272); font-weight: 500;">Everything on · routines, programs, Goals extension</span>
+      </div>
+
+      <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; min-width: 0; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+            <div style="display: flex; align-items: center; gap: 2px; color: oklch(0.66 0.03 272);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; font-weight: 500; color: oklch(0.24 0.01 272);">
+              <span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task
+            </span>
+            <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Edit</span>
+          </div>
+        </div>
+
+        <!-- chips: 9 -->
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; margin: -8px; border-radius: 12px; background: oklch(0.72 0.14 30 / 5%); outline: 1px dashed oklch(0.72 0.14 30 / 40%);">
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.62 0.11 265);"></span>Onboarding
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Deep work
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Program
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ship v2 +1
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg>Aug 28
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Morning · 09:30 · 30 min
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Repeat
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>21:00
+          </span>
+        </div>
+
+        <div style="font-size: 12px; line-height: 18px; color: oklch(0.24 0.01 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Subtasks · 1 of 3</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; background: oklch(0.86 0.17 125); border: 1px solid oklch(0.86 0.17 125);"></span><span style="font-size: 12px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Send to Ana</span></div>
+        </div>
+
+        <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;">
+          <div style="font-size: 11px; font-weight: 600; color: oklch(0.38 0.08 75);">OpenClaw · working</div>
+          <div style="font-size: 11px; color: oklch(0.5 0.02 272);">Reading the Q2 deck</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Activity</div>
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="width: 4px; height: 4px; border-radius: 50%; background: oklch(0.66 0.03 272 / 60%);"></span><span style="flex: 1; font-size: 11px; color: oklch(0.5 0.02 272);">Updated startTime</span><span class="mono" style="font-size: 10px; color: oklch(0.66 0.03 272 / 70%);">Aug 26 · 14:02</span></div>
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="width: 4px; height: 4px; border-radius: 50%; background: oklch(0.66 0.03 272 / 60%);"></span><span style="flex: 1; font-size: 11px; color: oklch(0.5 0.02 272);">Assigned to OpenClaw</span><span class="mono" style="font-size: 10px; color: oklch(0.66 0.03 272 / 70%);">Aug 26 · 13:47</span></div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Thread</div>
+          <div style="display: flex; align-items: center; gap: 6px; border: 1px solid oklch(0.86 0.012 272); border-radius: 12px; padding: 5px 8px;">
+            <span style="flex: 1; font-size: 11px; color: oklch(0.66 0.03 272);">Ask OpenClaw about this item…</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+          <span style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid oklch(0.86 0.012 272); font-size: 12px; font-weight: 500; color: oklch(0.24 0.01 272);">Done</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 3px; padding-left: 2px;">
+        <div class="mark">9 chips, one flat wrapping row, no grouping · source order only</div>
+        <div class="mark">Priority · Project · Routine · Program · Goal · Date · Time · Repeat · Remind</div>
+      </div>
+    </div>
+
+    <!-- Measurement column -->
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px; padding-left: 22px; border-left: 2px solid oklch(0.72 0.14 30 / 45%);">
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div class="lbl">Finding 1 · the chips are no longer the weight</div>
+        <div class="note">Ten chips exist in <b>renderChips</b>. <b>No item can show all ten</b> — Priority and Date are task-only,
+          Times&nbsp;per&nbsp;day is habit-only. Task tops out at 9, habit at 8. On a fresh account with Goals and Organize
+          off and no routines yet, a task shows <b>5</b> and a habit shows <b>5</b>. The gating worked. A direction premised
+          on a bloated chip row is designing against a problem that already left.</div>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: oklch(0.9 0.008 272); border: 1px solid oklch(0.9 0.008 272); border-radius: 10px; overflow: hidden; margin-top: 4px;">
+          <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">Type</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Task</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Habit</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Custom</div></div>
+          <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">Fresh</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div></div>
+          <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">All on</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">9</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">8</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">9</div></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div class="lbl">Finding 2 · the weight is empty scaffolding</div>
+        <div class="note"><b>Subtasks</b> renders its label and an add-row at zero subtasks. <b>Agent</b> renders "Assign to
+          Beacon" always. <b>Thread</b> renders a label and a composer always. Only Activity and the heatmap are
+          quiet-when-empty. On a brand-new task that is <b>three headings and four controls holding nothing</b> — taller
+          than the chip row above it.</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div class="lbl">Finding 3 · the registry drives fields, not layout</div>
+        <div class="note">Every chip asks the registry a capability question — the house rule is honoured, per control. But
+          nothing asks about <b>order, grouping or emphasis</b>. The registry says what a type <i>can</i> do; nothing says
+          what it <i>usually</i> does, so every live capability renders at equal weight, in source order, forever.
+          <b>container-registry.ts</b> already declares three roles — classify, gate, aspire — and the chip row expresses
+          none of them: Project (classify) sits beside Routine (gate) sits beside Goal (aspire) with nothing between.</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <div class="lbl">Finding 4 · file composition</div>
+        <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 2px;">
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">932</span><span style="height: 8px; border-radius: 3px; background: oklch(0.72 0.14 30 / 55%); width: 132px;"></span><span style="font-size: 11px; color: oklch(0.24 0.01 272);">renderChips</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">460</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 65px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">header + body render</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">335</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 47px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">save adapters + autosave</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">323</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 46px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">draft shape + seeding</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">585</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 83px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">imports, wrappers, confirms</span></div>
+        </div>
+        <div class="note" style="margin-top: 2px;">Inside renderChips, <b>702 lines are the ten chips</b> and ~230 are membership
+          plumbing — routine, program and goal read a live join and write through the store rather than the draft, because a
+          membership is a join row, not a column. That asymmetry is the real reason the function is long, and no visual
+          reorganisation touches it.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Lower band: the doubling + mobile ─────────────────────── -->
+  <div style="display: flex; gap: 32px; align-items: flex-start;">
+
+    <!-- /item page -->
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 620px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span class="lbl">Specimen 3</span>
+        <span style="font-size: 11px; color: oklch(0.24 0.01 272); font-weight: 500;">/item/[id] with Edit pressed — the two surfaces, visible at once</span>
+      </div>
+      <div style="position: relative; width: 620px; height: 300px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; padding: 18px; box-sizing: border-box; overflow: hidden;">
+        <div style="display: flex; flex-direction: column; gap: 10px; width: 420px;">
+          <div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Anchor <span>/</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; color: oklch(0.24 0.01 272); font-weight: 500;"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task</span>
+          </div>
+          <div style="font-size: 22px; line-height: 28px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.01em;">Draft the Q3 handoff note</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+            <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">2026-08-28</span>
+            <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);">Morning · 09:30 · 30m</span>
+          </div>
+          <div style="font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+          <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272); margin-top: 4px;">Subtasks · 1 of 3</div>
+        </div>
+        <!-- the panel over it -->
+        <div style="position: absolute; top: 12px; right: 12px; bottom: 12px; width: 250px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 16px; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);">
+          <div style="font-size: 13px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+            <span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+            <span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);"><span style="width: 7px; height: 7px; border-radius: 2px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+            <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Aug 28</span>
+            <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Morning · 30m</span>
+            <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px dashed oklch(0.86 0.012 272); font-size: 10px; color: oklch(0.66 0.03 272);">Repeat</span>
+            <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px dashed oklch(0.86 0.012 272); font-size: 10px; color: oklch(0.66 0.03 272);">Remind</span>
+          </div>
+          <div style="font-size: 11px; line-height: 16px; color: oklch(0.5 0.02 272);">Pull the metrics from the Q2 deck first…</div>
+          <div style="margin-top: auto; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 9px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 10px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+            <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 9px; border: 1px solid oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.24 0.01 272);">Done</span>
+          </div>
+        </div>
+      </div>
+      <div class="mark">The same six properties rendered twice, 12px apart — one static, one live. The page passes withDetailSections={false} so its sections don't double; nothing stops the chips doubling.</div>
+    </div>
+
+    <!-- mobile -->
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 250px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span class="lbl">Specimen 4</span>
+        <span style="font-size: 11px; color: oklch(0.24 0.01 272); font-weight: 500;">Mobile drawer</span>
+      </div>
+      <div style="width: 250px; height: 300px; overflow: hidden; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 16px 16px 4px 4px; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;">
+        <div style="width: 36px; height: 4px; border-radius: 2px; background: oklch(0.9 0.008 272); align-self: center;"></div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; font-weight: 500; color: oklch(0.24 0.01 272);"><span style="width: 8px; height: 8px; border-radius: 2px; background: oklch(0.86 0.17 125);"></span>Task</span>
+          <span style="font-size: 10px; color: oklch(0.66 0.03 272);">Edit</span>
+        </div>
+        <div style="font-size: 13px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+          <span style="display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Onboarding</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Deep work</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px dashed oklch(0.86 0.012 272); font-size: 10px; color: oklch(0.66 0.03 272);">Program</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Ship v2 +1</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Aug 28</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">Morning · 09:30 · 30 min</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; border: 1px dashed oklch(0.86 0.012 272); font-size: 10px; color: oklch(0.66 0.03 272);">Repeat</span>
+          <span style="display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 7px; background: oklch(0.945 0.0015 90); font-size: 10px; color: oklch(0.24 0.01 272);">21:00</span>
+        </div>
+        <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272);">Subtasks · 1 of 3</div>
+        <div style="display: flex; align-items: center; gap: 7px;"><span style="width: 14px; height: 14px; border-radius: 4px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 11px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+        <div style="height: 1px; background: linear-gradient(to bottom, oklch(0.9 0.008 272), transparent); margin-top: auto;"></div>
+      </div>
+      <div class="mark">80vh sheet, ~343px of content width. Nine chips wrap to four rows before Subtasks, Agent, Activity and Thread even start. The surface with the least room renders the most.</div>
+    </div>
+
+    <!-- verdict -->
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding-left: 22px; border-left: 2px solid oklch(0.72 0.14 30 / 45%);">
+      <div class="lbl">The question in the ticket title</div>
+      <div class="note">In the code the sidebar and the page are <b>already one component</b> — <b>item-surface-growth.md</b>
+        made growth a presentation, not a fork, and the split is only at the wrapper. What the user meets is still four
+        surfaces: capture modal, docked panel, mobile drawer, page. The page is the only one that is a genuinely different
+        job — two columns, deep-linkable so Beacon can answer with a URL — and it is also the one that most obviously
+        duplicates the panel, because it renders the properties read-only and then floats the editable copy over them.</div>
+      <div class="note">So the honest answer is neither "merge" nor "keep two". It is: <b>the panel and the page should stop
+        being two renderings of the same properties</b>. Every direction below has to say how.</div>
+      <div class="lbl" style="margin-top: 4px;">Constraint respected, not designed around</div>
+      <div class="note">CLAUDE.md: some settings persist and no view reads them, deliberately —
+        <span class="mono" style="font-size: 11px;">compact mode</span>, chill mode, morning check time, default view,
+        right_sidebar_hover, assistantName. Any direction that reaches for a density switch is one step from wiring
+        <span class="mono" style="font-size: 11px;">compact mode</span> up. Flagged where it applies.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

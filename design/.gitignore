@@ -1,0 +1,3 @@
+# The seeded canvas is 2.5MB of editor payload — regenerate it from the
+# .dc.html artboards + canvas.json with the design skill's seed-canvas.mjs.
+anchor-item-surfaces.html

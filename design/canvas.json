@@ -1,0 +1,27 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Reference — today", "x": 0, "y": 0, "w": 1424, "h": 1340 },
+    { "file": "DirectionA.dc.html", "title": "A — Essentials, and the rest is earned", "x": 0, "y": 1480, "w": 880, "h": 1180 },
+    { "file": "DirectionB.dc.html", "title": "B — The surface is a rendering of the registry", "x": 960, "y": 1480, "w": 960, "h": 1240 },
+    { "file": "DirectionC.dc.html", "title": "C — Inspector and workbench", "x": 2000, "y": 1480, "w": 960, "h": 1160 },
+    { "file": "DirectionD.dc.html", "title": "D — One surface, three densities", "x": 0, "y": 2860, "w": 960, "h": 1250 },
+    { "file": "DirectionE.dc.html", "title": "E — The item is a sentence", "x": 1040, "y": 2860, "w": 880, "h": 1140 }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -230,
+      "w": 620,
+      "text": "D4 — Edit item sidebar + item fullpage UI organization.\n\nA design study, not an implementation. Read the reference artboard first: two of the six rows the complexity audit named have already been gated off by default, so the weight has moved. Everything here is drawn against the real tokens in app/globals.css."
+    },
+    {
+      "id": "recommendation",
+      "x": 700,
+      "y": -230,
+      "w": 620,
+      "text": "Recommendation: B, with A's empty-band rule folded in.\n\nB is the only direction the codebase's own rule already demands — the layout should ask the registry a capability question the same way the chips do. A band with no live capability doesn't render, which is A's collapse without A's hidden +. And it is the direction that makes the panel/page doubling impossible to ship rather than merely unfortunate."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

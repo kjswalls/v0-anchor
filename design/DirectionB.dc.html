@@ -1,0 +1,193 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.05 130); }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .note { font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272); text-wrap: pretty; }
+    .note b { color: oklch(0.24 0.01 272); font-weight: 600; }
+    .sec { font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272); }
+    .chipx { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); font-size: 11px; color: oklch(0.66 0.03 272); }
+  </style>
+</helmet>
+
+<div style="width: 960px; min-height: 1240px; background: oklch(0.986 0.0012 90); padding: 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 26px;">
+
+  <div style="display: flex; flex-direction: column; gap: 7px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="mono" style="font-size: 12px; font-weight: 700; color: oklch(0.72 0.14 30);">B</span>
+      <span style="font-size: 22px; line-height: 28px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.012em;">The surface is a rendering of the registry</span>
+    </div>
+    <div class="note" style="font-size: 13px; line-height: 19px; max-width: 800px;">Stop rendering one flat row. Group the properties by the axes the registry already declares — <b>When</b>, <b>Belongs to</b>, <b>Work</b>, <b>History</b> — and inside <b>Belongs to</b>, keep container-registry's own three roles in order: what it is filed under, what can switch it off, what it is for. A band renders only if the type has a live capability on that axis, so the layout asks the same capability question the code already asks.</div>
+  </div>
+
+  <div style="display: flex; gap: 28px; align-items: flex-start;">
+
+    <!-- TASK -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span class="lbl">Task · four bands</span>
+      <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+            <div style="display: flex; gap: 2px; color: oklch(0.66 0.03 272);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="chip" style="font-weight: 500;"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task</span>
+            <span class="chip"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+          </div>
+          <div style="font-size: 12px; line-height: 18px; color: oklch(0.24 0.01 272); padding-top: 2px;">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div class="sec">When</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg>Aug 28</span>
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Morning · 09:30 · 30 min</span>
+            <span class="chipx"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Once</span>
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>21:00</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="sec">Belongs to</div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 2px solid oklch(0.9 0.008 272);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="width: 52px; font-size: 9px; color: oklch(0.66 0.03 272);">filed</span>
+              <span class="chip"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="width: 52px; font-size: 9px; color: oklch(0.66 0.03 272);">gated by</span>
+              <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Deep work</span>
+              <span class="chipx">Program</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="width: 52px; font-size: 9px; color: oklch(0.66 0.03 272);">serves</span>
+              <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Ship v2 +1</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div class="sec">Work · 1 of 3</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 12px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Send to Ana</span></div>
+          <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 10px; padding: 7px 10px; display: flex; align-items: baseline; gap: 8px; margin-top: 2px;">
+            <span style="font-size: 11px; font-weight: 600; color: oklch(0.38 0.08 75);">OpenClaw · working</span>
+            <span style="font-size: 11px; color: oklch(0.5 0.02 272);">Reading the Q2 deck</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div class="sec">History</div>
+          <div style="display: flex; align-items: baseline; gap: 8px;"><span style="width: 4px; height: 4px; border-radius: 50%; background: oklch(0.66 0.03 272 / 60%);"></span><span style="flex: 1; font-size: 11px; color: oklch(0.5 0.02 272);">Assigned to OpenClaw</span><span class="mono" style="font-size: 10px; color: oklch(0.66 0.03 272 / 70%);">Aug 26 · 13:47</span></div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid oklch(0.86 0.012 272); border-radius: 12px; padding: 5px 9px; font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Ask OpenClaw
+          </span>
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- HABIT -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span class="lbl">Habit · same code, two bands, no work band at all</span>
+      <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 18px;">
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Read before bed</div>
+            <div style="display: flex; gap: 2px; color: oklch(0.66 0.03 272);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="chip" style="font-weight: 500;"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.84 0.11 85);"></span>Habit</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+          <div class="sec">When</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Every day</span>
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Evening · 30 min</span>
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 9 3-3 3 3"/><path d="M13 18H7a2 2 0 0 1-2-2V6"/><path d="m22 15-3 3-3-3"/><path d="M11 6h6a2 2 0 0 1 2 2v10"/></svg>1×</span>
+            <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>21:00 · after I brush my teeth</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="sec">Belongs to</div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 2px solid oklch(0.9 0.008 272);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="width: 52px; font-size: 9px; color: oklch(0.66 0.03 272);">filed</span>
+              <span class="chip" style="text-transform: capitalize;"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.72 0.1 160);"></span>Wellness</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="mono" style="width: 52px; font-size: 9px; color: oklch(0.66 0.03 272);">gated by</span>
+              <span class="chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Evening wind-down</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="sec">History</div>
+          <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 10px; padding: 8px 10px; display: flex; align-items: center; gap: 10px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="oklch(0.84 0.11 85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+            <span style="font-size: 11px; font-weight: 600; color: oklch(0.38 0.08 75);">23 day streak</span>
+            <span style="margin-left: auto; display: flex; gap: 3px;">
+              <span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span><span style="width: 5px; height: 5px; border-radius: 50%; box-sizing: border-box; border: 1px solid oklch(0.66 0.03 272 / 72%);"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span><span style="width: 5px; height: 5px; border-radius: 50%; background: oklch(0.38 0.08 75);"></span>
+            </span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid oklch(0.86 0.012 272); border-radius: 12px; padding: 5px 9px; font-size: 11px; color: oklch(0.66 0.03 272);">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Ask Beacon
+          </span>
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+        </div>
+      </div>
+      <div class="mono" style="font-size: 10px; color: oklch(0.72 0.14 30); max-width: 420px; line-height: 15px;">No Work band: subtasks:false, agentAssignable:false. No Date chip: dateAnchored:false. Times&nbsp;per&nbsp;day appears: counters.dailyCounts. Nothing branches on 'habit' to make any of that true.</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; padding-top: 6px; border-top: 1px solid oklch(0.9 0.008 272);">
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Why</div>
+      <div class="note">Because CLAUDE.md already says it: <i>code that wants to branch on task vs habit should ask the registry a capability question</i>. Every chip obeys that; the <b>layout does not</b>, and the layout is what the user reads. Bands make adding a type free at the layout level too — a custom type declares <span class="mono" style="font-size: 11px;">subtasks: true</span> and gets a Work band with no design decision. And the three container roles stop being invisible: <b>filed / gated by / serves</b> is exactly what classify, gate and aspire mean, said in words a user can act on rather than as five identical chips in a row.</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Tradeoff</div>
+      <div class="note">Bands cost <b>vertical space and reading</b>. Four headings on a 420px column is four lines that carry no data, and on a fresh task with two live bands the headings outweigh what they label — this direction is worst exactly where A is best. It also asks the user to learn a vocabulary they never requested: <b>gated by</b> is a true and useful word, and it is also a new one. Finally the axes are a judgement, not a fact in the code — the registry has no "axis" field today, so this direction has to add one, and someone has to decide where Priority lives.</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 14px; background: oklch(0.945 0.0015 90);">
+    <div class="lbl">Sidebar and full page: two surfaces, one grammar</div>
+    <div class="note">Same bands both places; the page lays them in <b>two columns instead of one</b> and adds the thread beside them. That is a real difference in job — a column count, not a feature set — and it makes the doubling impossible to ship, because there is no longer a static rendering to go stale beside a live one: <b>the page's chips are the editable chips</b>, and Edit stops opening a panel over the page at all. That deletes <span class="mono" style="font-size: 11px;">withDetailSections</span> and the page's locally-mounted second ItemDialog.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

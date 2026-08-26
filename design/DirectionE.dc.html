@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.05 130); }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .note { font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272); text-wrap: pretty; }
+    .note b { color: oklch(0.24 0.01 272); font-weight: 600; }
+    .sec { font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .s { font-size: 13px; line-height: 26px; color: oklch(0.5 0.02 272); }
+    .v { color: oklch(0.24 0.01 272); font-weight: 500; border-bottom: 1px dotted oklch(0.86 0.012 272); padding-bottom: 1px; }
+    .ghost { color: oklch(0.66 0.03 272); border-bottom: 1px dotted oklch(0.86 0.012 272); padding-bottom: 1px; }
+  </style>
+</helmet>
+
+<div style="width: 880px; min-height: 1140px; background: oklch(0.986 0.0012 90); padding: 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+
+  <div style="display: flex; flex-direction: column; gap: 7px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="mono" style="font-size: 12px; font-weight: 700; color: oklch(0.72 0.14 30);">E</span>
+      <span style="font-size: 22px; line-height: 28px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.012em;">The item is a sentence</span>
+    </div>
+    <div class="note" style="font-size: 13px; line-height: 19px; max-width: 740px;">Anchor already speaks. "Still waiting." "Saves as you go." "Paused until Sep 1." "Nudge me at." So render the item's properties as an editable sentence: every underlined span is the same <b>PropertyChip</b> popover it is today, in a paragraph instead of a row. Reading the item and editing it become one act — which is the only thing that would make a separate read-only surface unnecessary.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <span class="lbl">Docked panel · at rest · only what is set is spoken</span>
+    <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 15px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="flex: 1; font-size: 15px; line-height: 21px; font-weight: 600; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+        <div style="display: flex; gap: 2px; color: oklch(0.66 0.03 272);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+        </div>
+      </div>
+
+      <p class="s" style="margin: 0;">A <span class="v"><span style="display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125); transform: translateY(0px);"></span> task</span> for <span class="v">Onboarding</span>, <span class="v">high</span> priority, on <span class="v">Thu Aug 28</span> in the <span class="v">morning at 09:30</span> for <span class="v">30 minutes</span>. It runs inside <span class="v">Deep work</span> and serves <span class="v">Ship v2</span> and <span class="v">Hire two</span>. Nudge me at <span class="v">21:00</span>.</p>
+
+      <div style="font-size: 12px; line-height: 18px; color: oklch(0.24 0.01 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div class="sec">Subtasks · 1 of 3</div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 12px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Send to Ana</span></div>
+      </div>
+
+      <div style="background: oklch(0.84 0.11 85 / 10%); border-radius: 10px; padding: 7px 10px; display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 11px; font-weight: 600; color: oklch(0.38 0.08 75);">OpenClaw · working</span>
+        <span style="font-size: 11px; color: oklch(0.5 0.02 272);">Reading the Q2 deck</span>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+        <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+        <span style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid oklch(0.86 0.012 272); font-size: 12px; font-weight: 500; color: oklch(0.24 0.01 272);">Done</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 28px; align-items: flex-start;">
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 420px;">
+      <span class="lbl">Focused · the unset clauses appear, in grey</span>
+      <div style="width: 420px; box-sizing: border-box; padding: 16px 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 16px;">
+        <p class="s" style="margin: 0;">A <span class="v"><span style="display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span> task</span> for <span class="v">Onboarding</span>, <span class="v">high</span> priority, on <span class="v">Thu Aug 28</span> in the <span class="v">morning at 09:30</span> for <span class="v">30 minutes</span>, <span style="background: oklch(0.945 0.0015 90); border-radius: 6px; padding: 2px 5px; color: oklch(0.24 0.01 272); font-weight: 500;">repeating never</span>. It runs inside <span class="v">Deep work</span>, <span class="ghost">no program</span>, and serves <span class="v">Ship v2</span> and <span class="v">Hire two</span>. Nudge me at <span class="v">21:00</span>, <span class="ghost">right after…</span></p>
+      </div>
+      <div style="width: 236px; margin-left: 148px; background: oklch(1 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 12px; padding: 4px; box-shadow: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); display: flex; flex-direction: column; gap: 1px;">
+        <div style="display: flex; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272); background: oklch(0.22 0.012 272 / 4%);">Never<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: auto;"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div style="padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);">Every day</div>
+        <div style="padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);">Weekdays</div>
+        <div style="padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);">Weekends</div>
+        <div style="padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);">Monthly</div>
+        <div style="padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);">Certain days…</div>
+      </div>
+      <div class="note" style="width: 420px;">Same popovers, same registry gates, same save adapters. Only the container changed — from a wrapping row of buttons to a run of text.</div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+      <span class="lbl">Two more types, to prove it generalises</span>
+      <div style="box-sizing: border-box; padding: 14px 16px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 14px; line-height: 20px; font-weight: 600; color: oklch(0.24 0.01 272);">Read before bed</div>
+        <p class="s" style="margin: 0;">A <span class="v"><span style="display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: oklch(0.84 0.11 85);"></span> habit</span> in <span class="v">Wellness</span>, <span class="v">every day</span>, <span class="v">once</span>, in the <span class="v">evening</span> for <span class="v">30 minutes</span>. It runs inside <span class="v">Evening wind-down</span>. Nudge me at <span class="v">21:00</span>, right after <span class="v">I brush my teeth</span>.</p>
+      </div>
+      <div style="box-sizing: border-box; padding: 14px 16px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 14px; line-height: 20px; font-weight: 600; color: oklch(0.24 0.01 272);">Cancel the gym membership</div>
+        <p class="s" style="margin: 0;">A <span class="v"><span style="display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span> task</span> in the braindump — <span class="ghost">no project</span>, <span class="ghost">no date</span>, <span class="ghost">no priority</span>.</p>
+      </div>
+      <div class="note">A fresh braindump item is <b>one line</b>, and it still says everything true about itself. Nine dashed chips said the same thing in five rows.</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; padding-top: 6px; border-top: 1px solid oklch(0.9 0.008 272);">
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Why</div>
+      <div class="note">Because it is the shape most like the rest of the app, and because it fixes the one thing a grouped row cannot: <b>a set of chips has no grammar</b>. "Onboarding · Deep work · Ship v2" are three identical pills for three completely different relationships — filed under, gated by, in service of. A sentence has to name the relationship to be a sentence at all, so the container-registry's three roles get expressed for free, in words the user already uses. It also collapses to almost nothing when the item is almost nothing, without hiding anything behind a <b>+</b>.</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Tradeoff</div>
+      <div class="note">Sentences <b>do not scan for absence</b>. A chip row lets your eye find the empty slot; a paragraph makes you read to the end to notice there is no date — the focused ghost clauses are a patch on that, not a fix. Prose is also brittle where a row is not: it reflows badly at 294px, it needs a real answer for a value that is a 40-character project name, and every clause needs an accessible name and role that a bare <b>&lt;button&gt;</b> chip got for free. And it is the least reversible of the five — half a sentence is nothing, so this cannot ship a section at a time.</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 14px; background: oklch(0.945 0.0015 90);">
+    <div class="lbl">Sidebar and full page: one, because the difference stops mattering</div>
+    <div class="note">The sentence <i>is</i> the summary, so there is nothing left for a read-only rendering to do — the page's StaticChips go, and with them the doubling. What remains is a route that shows the same sentence with the thread and the subtasks laid out <b>beside</b> it rather than under it, and a panel that stacks them. Different layout, identical content, one component. The one thing the page keeps that the panel cannot is the URL, which is the honest reason to keep the route at all.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

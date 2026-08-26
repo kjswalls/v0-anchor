@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(0.32 0.07 130); } a:hover { color: oklch(0.24 0.05 130); }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+    .note { font-size: 12px; line-height: 18px; color: oklch(0.5 0.02 272); text-wrap: pretty; }
+    .note b { color: oklch(0.24 0.01 272); font-weight: 600; }
+    .sec { font-size: 10px; line-height: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.66 0.03 272); }
+  </style>
+</helmet>
+
+<div style="width: 880px; min-height: 1180px; background: oklch(0.986 0.0012 90); padding: 36px; box-sizing: border-box; display: flex; flex-direction: column; gap: 26px;">
+
+  <div style="display: flex; flex-direction: column; gap: 7px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="mono" style="font-size: 12px; font-weight: 700; color: oklch(0.72 0.14 30);">A</span>
+      <span style="font-size: 22px; line-height: 28px; font-weight: 600; color: oklch(0.24 0.01 272); letter-spacing: -0.012em;">Essentials, and the rest is earned</span>
+    </div>
+    <div class="note" style="font-size: 13px; line-height: 19px; max-width: 720px;">Progressive disclosure. A chip appears when it carries a value; everything unset collapses behind one <b>+</b>. A section appears when it has content; empty ones collapse to a single quiet row of three verbs. The surface's height becomes a function of what the item <i>is</i>, not what its type <i>could</i> do.</div>
+  </div>
+
+  <div style="display: flex; gap: 28px; align-items: flex-start;">
+
+    <!-- Panel -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <span class="lbl">Docked panel · 420px · a working task</span>
+      <div style="width: 420px; box-sizing: border-box; padding: 20px; background: oklch(0.996 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 20px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1; font-size: 14px; line-height: 20px; font-weight: 500; color: oklch(0.24 0.01 272);">Draft the Q3 handoff note</div>
+            <div style="display: flex; gap: 2px; color: oklch(0.66 0.03 272);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin: 0 2px;"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; font-weight: 500; color: oklch(0.24 0.01 272);"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.86 0.17 125);"></span>Task</span>
+            <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Edit</span>
+          </div>
+        </div>
+
+        <!-- set chips only + the plus -->
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.72 0.14 30);"></span>High</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><span style="width: 9px; height: 9px; border-radius: 3px; background: oklch(0.62 0.11 265);"></span>Onboarding</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/></svg>Aug 28</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: oklch(0.945 0.0015 90); font-size: 11px; color: oklch(0.24 0.01 272);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Morning · 09:30 · 30 min</span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; border: 1px dashed oklch(0.86 0.012 272); color: oklch(0.66 0.03 272);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span>
+        </div>
+
+        <div style="font-size: 12px; line-height: 18px; color: oklch(0.24 0.01 272);">Pull the metrics from the Q2 deck first — Ana has the numbers.</div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div class="sec">Subtasks · 1 of 3</div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; background: oklch(0.86 0.17 125);"></span><span style="font-size: 12px; color: oklch(0.66 0.03 272); text-decoration: line-through;">Pull Q2 numbers</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Draft the summary</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1px solid oklch(0.66 0.03 272 / 45%);"></span><span style="font-size: 12px; color: oklch(0.24 0.01 272);">Send to Ana</span></div>
+        </div>
+
+        <!-- the collapsed verb row -->
+        <div style="display: flex; gap: 14px; align-items: center; color: oklch(0.66 0.03 272); font-size: 11px;">
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Subtask</span>
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.287 1.288L3 12l5.8 1.9a2 2 0 0 1 1.288 1.287L12 21l1.9-5.8a2 2 0 0 1 1.287-1.288L21 12l-5.8-1.9a2 2 0 0 1-1.288-1.287Z"/></svg>Assign</span>
+          <span style="display: inline-flex; align-items: center; gap: 5px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Ask Beacon</span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid oklch(0.9 0.008 272); padding-top: 12px;">
+          <span style="font-size: 11px; color: oklch(0.66 0.03 272);">Saves as you go</span>
+          <span style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 12px; border: 1px solid oklch(0.86 0.012 272); font-size: 12px; font-weight: 500; color: oklch(0.24 0.01 272);">Done</span>
+        </div>
+      </div>
+      <div class="mono" style="font-size: 10px; color: oklch(0.72 0.14 30);">4 chips + 1 affordance, down from 9. Three empty sections become one 15px row.</div>
+    </div>
+
+    <!-- the + popover -->
+    <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 24px;">
+      <span class="lbl">The + , open</span>
+      <div style="width: 240px; background: oklch(1 0 0); border: 1px solid oklch(0.9 0.008 272); border-radius: 12px; padding: 4px; box-shadow: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%); display: flex; flex-direction: column; gap: 1px;">
+        <div class="sec" style="padding: 7px 8px 3px;">Add to this task</div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272); background: oklch(0.22 0.012 272 / 4%);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Repeat</div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>Reminder</div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>Routine</div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M17 14h-6"/><path d="M13 18H7"/></svg>Program</div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 12px; color: oklch(0.24 0.01 272);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.66 0.03 272)" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>Goal</div>
+      </div>
+      <div class="note" style="width: 240px;">Ordered by what this account actually uses, not by source order. Everything the registry allows is in the list, so nothing is deleted — it is one keystroke away instead of always on screen.</div>
+    </div>
+  </div>
+
+  <!-- annotation -->
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; padding-top: 6px; border-top: 1px solid oklch(0.9 0.008 272);">
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Why</div>
+      <div class="note">Because the measured weight is not the chips, it is the <b>always-on empty scaffolding</b>: Subtasks, Agent and Thread each render a heading and a control for every item, used or not. A dashed unset chip and an empty section heading are both the app saying "you could" to someone who did not ask. This is the smallest change that removes the most pixels, and it needs no new concepts — the chip vocabulary, the popover and the registry gates all stay exactly as they are.</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div class="lbl">Tradeoff — and it is a real one</div>
+      <div class="note">The dashed unset chip is <b>how you discover Anchor's model</b>. Hide Repeat behind a <b>+</b> and a user who has never made a recurring task has no longer any reason to think one exists. That is the exact opposite of what the extension gating is for: gating removed concepts you have not <i>bought</i>; this removes concepts you already own. It also trades a one-click edit for a two-click one on every property you have not set yet, forever — worst on mobile, where the <b>+</b> menu is another sheet on top of a sheet.</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; padding: 14px 16px; border-radius: 14px; background: oklch(0.945 0.0015 90);">
+    <div class="lbl">Sidebar and full page: two, unchanged</div>
+    <div class="note">This direction does not touch the split. The panel earns its rows; the page shows every band expanded by default, because a page you navigated to is a place you meant to go — the disclosure rule inverts there rather than repeating. The <b>doubling on /item/[id] survives untouched</b>, which is this direction's honest limit: it makes the panel lighter and leaves the ticket's actual question unanswered.</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
