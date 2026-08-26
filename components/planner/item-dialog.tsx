@@ -65,6 +65,8 @@ import { nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_BULK_PASTE } from '@/lib/extension-registry';
 import type {
   Habit,
   HabitItem,
@@ -2035,6 +2037,7 @@ export function ItemDialog({
 
   // One form renders at a time now: the active tab in add mode, the item's own
   // type in edit mode (the registry NAME, not the envelope discriminant).
+  const bulkPasteOn = useExtensionOn(EXT_BULK_PASTE);
   const activeTypeName = mode === 'add' ? activeType : editItem ? itemTypeName(editItem) : 'task';
   const activeConfig = getItemTypeConfig(activeTypeName);
   const activeDraft = mode === 'add' ? draftFor(activeTypeName) : editDraft;
@@ -2241,8 +2244,11 @@ export function ItemDialog({
       // mode only (an edit's title is one item's name), and never for
       // habits: their config doesn't fit one-per-line, so the paste stays a
       // native paste there.
+      // Paste-a-list off: no handler at all, which is the strongest form of
+      // falling through — React attaches nothing and the field is an ordinary
+      // input again.
       onPaste={
-        mode === 'add' && activeTypeName !== 'habit'
+        bulkPasteOn && mode === 'add' && activeTypeName !== 'habit'
           ? (e) => {
               const pasted = e.clipboardData.getData('text/plain');
               if (isBulkPaste(pasted)) {

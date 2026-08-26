@@ -57,6 +57,8 @@ import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
+import { extensionOn } from '../extension-gate';
+import { EXT_BULK_PASTE, EXT_FEEDBACK } from '../extension-registry';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
@@ -124,6 +126,13 @@ import type { GroupBy, Priority, TimeBucket, Routine, Program, Goal } from '../p
 
 const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
+
+/**
+ * A command owned by an extension asks the gate twice — see the block on
+ * app.feedback for which question each answers.
+ */
+const extOn = (slug: string) => () => extensionOn(slug);
+const extOff = (slug: string) => () => !extensionOn(slug);
 
 /**
  * "Set priority" and "Move to bucket" want TWO values — an item and a level.
@@ -221,6 +230,11 @@ export const STATIC_COMMANDS: Command[] = [
     icon: ListPlus,
     keywords: 'bulk multiple paste import csv list batch many',
     aliases: ['bulk', 'import'],
+    // Gated by the Paste-a-list extension — see the note on app.feedback for
+    // why both `hidden` and `availableWhen`, and why neither may become a
+    // provider.
+    hidden: extOff(EXT_BULK_PASTE),
+    availableWhen: extOn(EXT_BULK_PASTE),
     run: () => openBulkAdd(),
   },
   {
@@ -1108,6 +1122,27 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'bug report feedback issue feature request',
     aliases: ['bug', 'feedback'],
     shortcut: { id: 'report_bug', keys: ['?'] },
+    /*
+     * BOTH gates, and they do different jobs.
+     *
+     * `hidden` takes the row out of the palette and out of Recently used, so a
+     * switched-off extension is not advertised as a dead row. `availableWhen`
+     * is what the KEYBOARD reads: hooks/use-command-shortcuts.ts returns on an
+     * unavailable command BEFORE preventDefault, so `?` stops being claimed and
+     * falls through to whatever the browser or the focused surface would have
+     * done with it. Neither alone is enough — `hidden` leaves the binding
+     * firing, `availableWhen` alone leaves a greyed row nobody can explain.
+     *
+     * Note what is NOT done here: this stays in STATIC_COMMANDS and keeps its
+     * `shortcut`. Moving it to a provider so it "disappears" would strand any
+     * user's rebinding of `report_bug`, which is persisted by that id
+     * (lib/keyboard-shortcuts-store.ts). DEFAULT_SHORTCUTS is derived from
+     * STATIC_COMMANDS statically, so the binding stays listed and rebindable in
+     * the shortcuts modal while the extension is off — which is the same
+     * catalogue-stays / behaviour-stops split the extension pane makes.
+     */
+    hidden: extOff(EXT_FEEDBACK),
+    availableWhen: extOn(EXT_FEEDBACK),
     run: () => useUIStore.getState().openDialog({ type: 'bug-report' }),
   },
 ];

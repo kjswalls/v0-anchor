@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { setOnboardingComplete } from '@/lib/user-profile';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_GUIDED_TOUR } from '@/lib/extension-registry';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
 import Image from 'next/image';
@@ -207,7 +209,30 @@ function BackButton({ onBack }: { onBack: () => void }) {
   );
 }
 
-export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandChat, onCollapseChat, onSetActiveTab }: OnboardingTourProps) {
+/**
+ * The Guided-tour extension's gate, as a WRAPPER rather than an early return
+ * inside the tour body.
+ *
+ * The body below is several hundred lines of hooks whose effects reach out and
+ * move the app the moment they run — they expand the chat panel, switch the
+ * mobile tab, measure a spotlight target and paint a `fixed inset-0` overlay
+ * across everything. React runs every hook in a component before it reaches any
+ * `return`, so an early return placed after them would have already fired all of
+ * that: the user would watch the sidebar open and the tab change on a tour they
+ * switched off. Not mounting the body at all is the only version of "the tour
+ * does nothing" that is actually true.
+ *
+ * AppShell gates its own auto-open effect too, so the common case never gets
+ * this far. This is the gate that holds when it does — a replay link, a future
+ * caller, or the hydration window resolving to OFF after the effect already ran.
+ */
+export function OnboardingTour(props: OnboardingTourProps) {
+  const on = useExtensionOn(EXT_GUIDED_TOUR);
+  if (!on) return null;
+  return <OnboardingTourBody {...props} />;
+}
+
+function OnboardingTourBody({ userId, onComplete, onOpenSettings, onExpandChat, onCollapseChat, onSetActiveTab }: OnboardingTourProps) {
   const [step, setStep] = useState<Step>(1);
   const [taskInput, setTaskInput] = useState('');
   const [isVisible, setIsVisible] = useState(true);

@@ -16,6 +16,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_FEEDBACK } from '@/lib/extension-registry';
 
 interface UserProfileDropdownProps {
   onOpenSettings: () => void;
@@ -40,6 +42,12 @@ function getInitials(email: string, name?: string | null): string {
 
 export function UserProfileDropdown({ onOpenSettings, onOpenBugReport }: UserProfileDropdownProps) {
   const router = useRouter();
+  // Gated HERE rather than at the two mounts (mobile-shell's avatar and the
+  // mobile header's), so switching Send feedback off cannot leave one of them
+  // still offering the row. The prop stays optional for the reason it always
+  // was — a mount that never wanted the row — and the gate is a second,
+  // independent reason it can be absent.
+  const feedbackOn = useExtensionOn(EXT_FEEDBACK);
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -106,7 +114,7 @@ export function UserProfileDropdown({ onOpenSettings, onOpenBugReport }: UserPro
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
           </DropdownMenuItem>
-          {onOpenBugReport && (
+          {onOpenBugReport && feedbackOn && (
             <DropdownMenuItem
               onClick={onOpenBugReport}
               data-testid="user-menu-bug-report"

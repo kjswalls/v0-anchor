@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { serverExtensionOn } from '@/lib/extension-gate-server';
+import { EXT_FEEDBACK } from '@/lib/extension-registry';
 
 // TODO: Set GITHUB_TOKEN as an environment variable in Vercel dashboard before deploying.
 // GITHUB_TOKEN is loaded from ~/.openclaw/.env on this machine.
@@ -32,6 +34,26 @@ export async function POST(req: NextRequest) {
   // Get current user — optional, no auth required
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  /*
+   * The Send-feedback extension, enforced where it actually costs something.
+   *
+   * Only for a SIGNED-IN author: an anonymous report carries no account whose
+   * switch could be read, and the extension is a per-user setting, not a site
+   * mode. Refusing anonymous reports because some other user switched their own
+   * copy off would be an extension reaching outside its own account — which is
+   * the one thing every gate in this app is built not to do.
+   *
+   * 403 rather than a silent 200: the client gates mean nothing should ever
+   * reach here with the extension off, so this firing is a bug worth seeing
+   * rather than a state worth pretending succeeded.
+   */
+  if (user?.id && !(await serverExtensionOn(supabase, user.id, EXT_FEEDBACK))) {
+    return NextResponse.json(
+      { error: 'Send feedback is switched off for this account.' },
+      { status: 403 },
+    );
+  }
 
   const isKirby = !!user?.id && user.id === process.env.KIRBY_USER_ID;
 

@@ -12,8 +12,8 @@ import {
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_BULK_PASTE, EXT_HABIT_HEATMAP } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { toast } from 'sonner';
@@ -43,6 +43,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function SubtasksSection({ item }: { item: Item }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
+  const bulkPasteOn = useExtensionOn(EXT_BULK_PASTE);
 
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
@@ -118,7 +119,11 @@ function SubtasksSection({ item }: { item: Item }) {
           // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
           // the dialog knows nothing of parents, and the rows land visibly in
           // the list right below the field.
+          // Paste-a-list off: fall through to the browser. This surface commits
+          // inline rather than hopping to the dialog, so there is no openBulkAdd
+          // backstop underneath it — the gate here IS the gate.
           onPaste={(e) => {
+            if (!bulkPasteOn) return;
             const pasted = e.clipboardData.getData('text/plain');
             if (!isBulkPaste(pasted)) return;
             e.preventDefault();
@@ -436,7 +441,7 @@ export function ItemDetailSections({ item, withThread }: { item: Item; withThrea
   const config = getItemTypeConfig(itemTypeName(item));
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
   // Extensions) and only meaningful where the registry says a streak exists.
-  const heatmapOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_HABIT_HEATMAP));
+  const heatmapOn = useExtensionOn(EXT_HABIT_HEATMAP);
   return (
     // data-sub-input on the CONTAINER: the dialog's Enter-submit guard checks
     // closest('[data-sub-input]'), and everything in here — inputs AND buttons

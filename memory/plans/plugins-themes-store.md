@@ -517,6 +517,56 @@ extensions), built together on `feat/programs-routines`:**
   (the gate before any community pipeline), and a palette-aware login/relay
   surface.
 
+**2026-08-26 — Project B, Tier 0: "off means inert, not hidden":**
+
+- **The list was RECONSTRUCTED, not found.** The audit this implements ("The
+  Weight of Anchor") is not committed anywhere — not in `memory/plans/`, not in
+  `git log`, not in a doc under any name. The three features below were arrived
+  at by re-auditing the app against the same question (which surfaces carry
+  their weight for *every* user), so treat the list as a proposal Kirby's
+  agreement was given to in the abstract, and check it against the original if
+  that ever resurfaces.
+- **The three, all `category: 'workspace'`, all `defaultEnabled: true`:**
+  `feedback` (the `?` bug/idea form), `guided-tour` (the first-run walkthrough),
+  `bulk-paste` (multi-line paste → one item per line). Default ON is the whole
+  difference from Tiers 2–3: those reach a phone or a wallet and must be asked
+  for, these are already in every existing user's hands and a deploy that
+  silently switched them off would be indistinguishable from a bug report.
+- **Inert, not hidden.** A switched-off extension keeps its catalogue row, its
+  own settings pane and its search hits; only its BEHAVIOUR stops. Each manifest
+  entry now carries an `inert: string[]` — one line per place its behaviour
+  reaches — and that list is the checklist
+  `tests/unit/extension-inertness.test.tsx` is written from. The field is a
+  review artifact, not an enforcement mechanism: a test can check it is
+  non-empty, never that a sentence describes the code.
+- **One gate module.** `lib/extension-gate.ts` (`useExtensionOn` reactive,
+  `extensionOn` non-reactive) replaces every ad-hoc
+  `useExtensionsStore(resolveEnabled(...))`, and `lib/extension-gate-server.ts`
+  is its route-handler twin. Both go through `resolveEnabled`, which is
+  load-bearing: `user_extensions` rows are SPARSE, so a bare `enabled[slug]`
+  reads every untouched default-ON extension as off.
+- **Commands take BOTH `hidden` and `availableWhen`.** They answer different
+  questions: `hidden` removes the palette row, `availableWhen` is what
+  `hooks/use-command-shortcuts.ts` reads, and it returns BEFORE
+  `preventDefault` — so an off extension stops claiming its key rather than
+  swallowing it. `app.feedback` stays in `STATIC_COMMANDS` and keeps its
+  `shortcut`, because `DEFAULT_SHORTCUTS` is derived from that list statically:
+  moving it to a provider so it "disappears" would strand any user's rebinding
+  of `report_bug`.
+- Tests: `tests/unit/extension-inertness.test.tsx` (32), two per feature — one
+  that fails if it acts while off, one that fails if it leaves the catalogue
+  while off. 13 deliberate mutations, each confirmed red and restored
+  byte-identical. Full suite 2035 green; lint 0 errors; tsc unchanged from main.
+- **Deliberately NOT moved, and why.** The rest of the audit's plausible
+  candidates were left alone rather than half-migrated: the EOD review and the
+  morning check (both already have Rituals switches — a second switch in
+  Extensions would be two owners for one behaviour), the keyboard-shortcut hint
+  pill and the ⌘K launcher (chrome, not features), Beacon (a whole pane's worth
+  of settings and an API key; it needs its own decision about what an off
+  assistant does to the chat transcript), and the past-due/overdue sweep (it
+  writes to items, so "off" means a data question, not a render question). Each
+  is a bigger conversation than a manifest entry.
+
 ## Research provenance
 
 Five-researcher sweep + adversarial critique, 2026-08-11 (prior-art, payments,

@@ -32,6 +32,8 @@ import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
+import { extensionOn, useExtensionOn } from '@/lib/extension-gate';
+import { EXT_GUIDED_TOUR } from '@/lib/extension-registry';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
 import { usePlannerStore } from '@/lib/planner-store';
@@ -197,13 +199,23 @@ export function AppShell() {
     document.documentElement.dataset.typeMode = typeMode;
   }, [typeMode]);
 
-  // Check onboarding status on mount
+  // Check onboarding status on mount — but only while the Guided-tour extension
+  // is on, and re-checked once it flips (the effect's dep), so switching it back
+  // on offers the tour without a reload.
+  const tourOn = useExtensionOn(EXT_GUIDED_TOUR);
   useEffect(() => {
+    if (!tourOn) return;
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       const uid = data.user?.id;
       if (!uid) return;
       const done = await isOnboardingComplete(uid);
+      // Re-asked NON-reactively after the two awaits: `tourOn` closed over the
+      // value at render, and the extensions store may well have hydrated during
+      // those round-trips. Beacon's first-run mode below is a real side effect —
+      // it stands the mobile dock down and hands the field to the chat — so it
+      // must not be started off a stale answer.
+      if (!extensionOn(EXT_GUIDED_TOUR)) return;
       if (!done) {
         setTourUserId(uid);
         setShowTour(true);
@@ -215,7 +227,7 @@ export function AppShell() {
         useUIStore.getState().setChatOnboardingActive(true);
       }
     });
-  }, []);
+  }, [tourOn]);
 
   // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
   useEffect(() => {

@@ -18,7 +18,10 @@ import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import {
+  EXT_BULK_PASTE,
   EXT_COMPLETION_CONFETTI,
+  EXT_FEEDBACK,
+  EXT_GUIDED_TOUR,
   EXT_HABIT_HEATMAP,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
@@ -370,6 +373,26 @@ const extUnavailable = () =>
  * case too, and "needs a database update" is the truer of the two answers.
  */
 const extPending = () => ext().available && !ext().configsLoaded;
+
+/**
+ * The reason a NON-extension row gives when the extension it drives is off.
+ *
+ * This is the settings half of "off means inert, not hidden", and it points the
+ * other way from `extUnavailable`: that one is a row inside an extension's own
+ * pane explaining that the whole feature can't be deployed here, this one is an
+ * ordinary Anchor row — "Replay the tour", "Send feedback" — that is still in
+ * its pane, still indexed by search, still lands you on a route, and simply
+ * cannot be actioned until you switch its extension back on. It names the
+ * extension so the sentence is a direction, not a dead end.
+ *
+ * Deliberately NOT `pending`-aware. During the hydration window a default-ON
+ * workspace extension reads as on, which is the same answer its behaviour is
+ * giving at that moment — a row that said "still loading" while the feature it
+ * describes was working would be the drift, not the fix.
+ */
+const extOffReason =
+  (slug: string, label: string) => () =>
+    ext().isEnabled(slug) ? null : `needs ${label}, in Extensions`;
 
 /**
  * The master switch a delivery channel or stake adapter actually rides on.
@@ -1026,6 +1049,12 @@ export const SETTINGS: SettingRecord[] = [
     description: 'Walks you back through the shell. Takes you to the planner.',
     control: 'action',
     keywords: ['onboarding', 'tutorial', 'walkthrough', 'intro', 'guide'],
+    // The row STAYS when Guided tour is switched off — present, searchable, and
+    // saying why. Removing it would be the hidden-not-inert mistake: someone who
+    // remembers a tour and cannot find the word "tour" anywhere concludes the
+    // feature was deleted, not that they turned it off. `unavailable` is exactly
+    // the shape for that: it disables the action and prints the reason inline.
+    unavailable: extOffReason(EXT_GUIDED_TOUR, 'Guided tour'),
     read: () => 'Replay',
     write: (_v, ctx) => ctx.actions?.replayTour(),
     defaultValue: 'Replay',
@@ -1037,6 +1066,7 @@ export const SETTINGS: SettingRecord[] = [
     description: 'Goes straight to the person who can fix it.',
     control: 'action',
     keywords: ['bug', 'report', 'issue', 'broken', 'support', 'feedback'],
+    unavailable: extOffReason(EXT_FEEDBACK, 'Send feedback'),
     read: () => 'Write',
     write: (_v, ctx) => ctx.actions?.openBugReport(),
     defaultValue: 'Write',
@@ -1093,6 +1123,65 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_COMPLETION_CONFETTI, Boolean(v));
     },
     defaultValue: false,
+  },
+
+  /**
+   * Workspace (Tier 0) — parts of Anchor made switchable.
+   *
+   * Hand-written like the two above them rather than generated, because they
+   * have no config or credential fields to generate FROM: EXTENSION_SETTINGS is
+   * the channels-and-stakes field list, and an entry there would be an empty
+   * spec existing only to make a loop cover these. One toggle each is the whole
+   * pane, which is exactly what the manifest's "every extension pane needs at
+   * least one record" rule asks for.
+   */
+  {
+    id: `extensions.${EXT_FEEDBACK}`,
+    pane: extensionPaneId(EXT_FEEDBACK),
+    label: 'Send feedback',
+    description: 'A bug-and-idea form that files a GitHub issue. Bound to ? and in the account menu.',
+    control: 'switch',
+    keywords: ['bug', 'report', 'issue', 'github', 'support', 'broken'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_FEEDBACK),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_FEEDBACK, Boolean(v));
+    },
+    // Mirrors the manifest, and the mirror is checked: a default that disagreed
+    // with defaultEnabled would draw the row at the opposite of what the app is
+    // actually doing for an account that has never touched it.
+    defaultValue: true,
+  },
+  {
+    id: `extensions.${EXT_GUIDED_TOUR}`,
+    pane: extensionPaneId(EXT_GUIDED_TOUR),
+    label: 'Guided tour',
+    description: 'The first-run walkthrough of the shell, replayable from Settings.',
+    control: 'switch',
+    keywords: ['onboarding', 'tutorial', 'walkthrough', 'intro', 'first run'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_GUIDED_TOUR),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_GUIDED_TOUR, Boolean(v));
+    },
+    defaultValue: true,
+  },
+  {
+    id: `extensions.${EXT_BULK_PASTE}`,
+    pane: extensionPaneId(EXT_BULK_PASTE),
+    label: 'Paste a list',
+    description: 'A multi-line paste becomes one item per line, anywhere you capture.',
+    control: 'switch',
+    keywords: ['bulk', 'multiple', 'import', 'csv', 'list', 'batch', 'many'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_BULK_PASTE),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_BULK_PASTE, Boolean(v));
+    },
+    defaultValue: true,
   },
 
   // The delivery channels and their fields — see channelRecords().

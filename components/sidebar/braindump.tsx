@@ -13,6 +13,8 @@ import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_BULK_PASTE } from '@/lib/extension-registry';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
 import { goalFilterItemIds } from '@/lib/goals';
@@ -43,6 +45,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [focused, setFocused] = useState(false);
+  const bulkPasteOn = useExtensionOn(EXT_BULK_PASTE);
 
   const commit = () => {
     const trimmed = title.trim();
@@ -126,7 +129,9 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         // fold it into one garbled title. Hand it to the bulk-add dialog, which
         // shows the split before anything is created. The typed draft stays put
         // in this field — the paste, not the draft, is what's being promoted.
+        // Paste-a-list off: fall through to the browser rather than swallow it.
         onPaste={(e) => {
+          if (!bulkPasteOn) return;
           const pasted = e.clipboardData.getData('text/plain');
           if (isBulkPaste(pasted)) {
             e.preventDefault();

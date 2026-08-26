@@ -18,6 +18,8 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
+import { useExtensionOn } from '@/lib/extension-gate';
+import { EXT_BULK_PASTE } from '@/lib/extension-registry';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
@@ -258,6 +260,7 @@ export function Omnibar({
   const isCommandMode = !activeCommand && trimmed.startsWith('/');
   const isAddMode = !activeCommand && trimmed.startsWith('+');
   const isChatMode = !activeCommand && trimmed.startsWith('?');
+  const bulkPasteOn = useExtensionOn(EXT_BULK_PASTE);
   const commandQuery = isCommandMode ? trimmed.slice(1).trim() : '';
   const addTitle = isAddMode ? trimmed.slice(1).trim() : trimmed;
   // Every prefix is stripped, not just '?': ⌘Enter sends to Beacon from any
@@ -1009,7 +1012,11 @@ export function Omnibar({
               // list). The typed query survives, as the braindump's draft
               // does: the paste is what's being promoted, not the draft.
               onPaste={(e) => {
-                if (isChatMode || activeCommand) return;
+                // Paste-a-list off: return BEFORE preventDefault, so the text
+                // lands in the field the way the browser would have put it
+                // there. Inert is a paste that behaves like every other app's,
+                // not a paste that vanishes.
+                if (!bulkPasteOn || isChatMode || activeCommand) return;
                 const pasted = e.clipboardData.getData('text/plain');
                 if (isBulkPaste(pasted)) {
                   e.preventDefault();

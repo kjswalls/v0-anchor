@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type { Task, Habit, Item, KnownItemType, TimeBucket } from './planner-types';
+import { extensionOn } from './extension-gate';
+import { EXT_BULK_PASTE } from './extension-registry';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -144,11 +146,26 @@ export const openAddDialog = (
   title?: string
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
 
-/** Open the bulk-add dialog, optionally seeded with pasted text and hand-off
- *  context (see the ActiveDialog variant for field meanings). */
+/**
+ * Open the bulk-add dialog, optionally seeded with pasted text and hand-off
+ * context (see the ActiveDialog variant for field meanings).
+ *
+ * BACKSTOP for the Paste-a-list extension, not its gate. Every caller already
+ * checks the gate itself and must keep doing so, because the useful half of
+ * "off" happens BEFORE this call: a paste handler has to decline to
+ * preventDefault so the text lands in the field natively, and a palette row has
+ * to not be offered rather than be offered and do nothing. What this line buys
+ * is that a caller added later — a drop handler, a share target, a command
+ * someone copies from another entry — cannot reopen the feature by forgetting.
+ * The silence is deliberate and safe precisely because no path reaches it
+ * without a bug above it.
+ */
 export const openBulkAdd = (
   seed: Omit<Extract<ActiveDialog, { type: 'bulk-add' }>, 'type'> = {}
-) => useUIStore.getState().openDialog({ type: 'bulk-add', ...seed });
+) => {
+  if (!extensionOn(EXT_BULK_PASTE)) return;
+  useUIStore.getState().openDialog({ type: 'bulk-add', ...seed });
+};
 
 /**
  * Callers hold legacy Task/Habit projections (no `type` at the type level), so
