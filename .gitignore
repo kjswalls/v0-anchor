@@ -29,6 +29,3 @@ docs/test-implementation-plan.md
 .claude/settings.local.json
 .vercel
 .env*
-
-# Worktrees created for parallel agent sessions — ephemeral, never repo content.
-.claude/worktrees/
