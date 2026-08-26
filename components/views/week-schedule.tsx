@@ -145,6 +145,7 @@ function WeekScheduleColumn({
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
@@ -155,9 +156,9 @@ function WeekScheduleColumn({
   const untimedGroups = useMemo(
     () =>
       groupBySupport('week', 'schedule', canvasGroupBy).honoured
-        ? groupRows(col.untimed, canvasGroupBy, { routines, programs })
+        ? groupRows(col.untimed, canvasGroupBy, { routines, programs, goals })
         : [{ key: '', label: '', rows: col.untimed }],
-    [col.untimed, canvasGroupBy, routines, programs]
+    [col.untimed, canvasGroupBy, routines, programs, goals]
   );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
@@ -393,14 +394,15 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
    */
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
+  const goals = usePlannerStore((s) => s.goals);
   const lanePlan = useMemo(
     () =>
       planLanes(
         perDay.flatMap((c) => c.timed.map((e) => ({ itemType: e.itemType, item: e.item }))),
         canvasGroupBy,
-        { variant: 'week', routines, programs }
+        { variant: 'week', routines, programs, goals }
       ),
-    [perDay, canvasGroupBy, routines, programs]
+    [perDay, canvasGroupBy, routines, programs, goals]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the

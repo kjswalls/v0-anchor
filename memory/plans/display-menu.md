@@ -537,6 +537,52 @@ below the Structure/Filter line because turning a scope on reveals work — a Sh
 action, not a Structure one — and is app-wide (like Show paused), so Reset display leaves it
 alone.
 
+## Addendum (2026-08-26): the aspire axis — a goal FILTER and a goal grouping
+
+Both group-by vocabularies gained **Goal**, and the Filter region gained a **Goal**
+section. This is the first container filter since projects and habit groups, and the
+first time anything outside the classify axis narrows a view — so it is worth stating
+exactly what it does and does not borrow.
+
+**It is a filter, unlike the gates, because the "deliberately not offered" rule was never
+about many-to-many.** A routine filter is refused because the SCOPE RAIL already answers
+"is this on today" per-date, through the DB, with a resume date; a client-side checkbox
+would be a second, weaker answer to a question that already has one. Nothing anywhere
+narrows a view to one goal, and a goal has no resume date, so that argument does not
+transfer. What does transfer is the shape: a goal is many-to-many, so the clause UNIONS
+the selected goals' members rather than choosing between them.
+
+**Grouping is first-claim-wins, borrowed verbatim from `routineGroups`.** An item may
+serve three goals; rendering it under each is two checkboxes for one obligation and a
+second copy that shift-range and ⌘A skip. The row lands in the first ACTIVE goal that
+claims it, in store order, and everything else falls into a trailing "No goal". A goal
+section carries no `gate` — the header has no switch, because a goal switches nothing —
+and the Schedule grid refuses to divide by it for the same reason it refuses routines and
+programs: a lane cannot express insert-into-B versus move-to-B when membership is not a
+partition. Focus-only, on every variant and width.
+
+**Three decisions worth keeping:**
+
+- **All three ROLES filter and group as members.** A role says what an item does FOR the
+  goal, not whether it serves it; dropping milestones would hide exactly the checkpoints
+  the goal is measured by. A milestone's `startDate` is its target date, so it appears on
+  the day it is aimed at, and an undated one stays in the braindump — both are rows those
+  surfaces already showed, now narrowed rather than moved.
+- **The clause holds goal IDS, not refs.** `containerRef` is a NAME grammar for the
+  classify axis; goal names are not unique and rename shipped with the feature. The
+  registry already refuses goals a ref, so `filters.goals` is its own field and
+  `passesContainerFilter` can never see a goal.
+- **An unresolvable selection goes INERT, never empty.** A goal achieved (or deleted)
+  while it was filtering resolves to `null` and narrows nothing, rather than blanking the
+  surface with only a filter chip to explain it — the stale-container-ref failure
+  `renameContainerRef` exists to prevent. The menu still lists a selected-but-ended goal
+  so the clause can be cleared from the panel that set it.
+
+Membership lives in `goal_items`, so the pure predicate cannot ask an item row for it:
+each surface resolves the selection ONCE (`goalFilterItemIds`) and hands the id set down,
+the same bargain `inactiveItemIds` makes. One set serves all seven week columns, because
+membership is dateless.
+
 ## Related
 
 `unified-items.md` (the registry this extends), `organize-console.md` (shares Phase B),

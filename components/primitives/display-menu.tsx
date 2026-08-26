@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Rows3,
   SlidersHorizontal,
+  Target,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -36,6 +37,8 @@ import {
   type ViewFilters,
 } from '@/lib/filters';
 import { NO_CONTAINER, containerRef, namesOfKind } from '@/lib/container-registry';
+import { displayGoals } from '@/lib/goals';
+import { accentColorForName } from '@/lib/accent-colors';
 import { buildScopeRows } from '@/lib/scope-rail';
 import { setGateOn } from '@/lib/gate-toggle';
 import { toDateStr } from '@/lib/recurrence';
@@ -48,7 +51,7 @@ import {
   sortByBlockedBy,
   SORT_BY_OPTIONS,
 } from '@/lib/view-options';
-import type { GroupBy, Priority } from '@/lib/planner-types';
+import type { Goal, GroupBy, Priority } from '@/lib/planner-types';
 import type { BraindumpGroupBy, ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
@@ -251,6 +254,8 @@ export function DisplayMenu({
   const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
+  const goals = usePlannerStore((s) => s.goals);
+  const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
 
   const view = useViewStore();
   const isCanvas = surface === 'canvas';
@@ -268,6 +273,32 @@ export function DisplayMenu({
 
   const selectedProjects = namesOfKind(filters.containers, 'project');
   const selectedGroups = namesOfKind(filters.containers, 'group');
+
+  /**
+   * The Goal clause's rows, described as DATA before anything draws them.
+   *
+   * ACTIVE goals (lib/goals.ts `displayGoals`), plus any SELECTED goal that is
+   * no longer active. The second half is not tidiness: a goal marked achieved
+   * while it was filtering leaves the active list, and without a row for it the
+   * clause is set, counted by the trigger, and untickable from the panel that
+   * set it — the "hiding the row strands the clause" rule this menu already
+   * follows for Grouping. (The clause degrades to inert in that state rather
+   * than emptying the surface; see `goalFilterItemIds`.)
+   *
+   * Ids, not names: goal names are not unique and rename shipped with the
+   * feature, which is why the container ref grammar excludes goals outright.
+   */
+  const goalRows = [
+    ...displayGoals(goals),
+    ...goals.filter((g) => filters.goals.includes(g.id) && g.state !== 'active'),
+  ].map((goal: Goal) => ({
+    key: goal.id,
+    label: goal.name,
+    leading: <ContainerSquare color={goal.color ?? accentColorForName(goal.name)} />,
+    checked: filters.goals.includes(goal.id),
+    keepOpen: true,
+    onToggle: () => patch({ goals: toggle(filters.goals, goal.id) }),
+  }));
 
   /**
    * The count behind the trigger dot and the Reset badge.
@@ -584,6 +615,50 @@ export function DisplayMenu({
           </div>
         </SubRow>
 
+        {/* GOAL — the aspire axis, and the one filter here that is not a
+            partition. An item can serve three goals at once, so this narrows by
+            MEMBERSHIP rather than by an answer the item carries: every selected
+            goal's members, milestones and check-ins, unioned.
+
+            No "No goal" value, unlike Project / Group. The classify axis has an
+            unset state (an item carries `project`, possibly empty); the aspire
+            axis has none — `unsetLabel` is null in the container registry
+            because an item serves a goal or it does not — and a checkbox for
+            "everything that serves nothing" is a different question from the
+            one this section asks. Grouping still mints a loose "No goal"
+            section, because grouping may never drop a row.
+
+            Gated on `goalsAvailable`, not on `goals.length`: the flag is the
+            table-unreachable signal, and the item dialog's chip renders from
+            zero for a reason this section does not share — it is a DOOR to the
+            manager, and a filter is not. With zero goals the panel says so. */}
+        {goalsAvailable && (
+          <SubRow
+            icon={Target}
+            label="Goal"
+            rail={goalRail(filters.goals, goals)}
+            set={filters.goals.length > 0}
+          >
+            <div className="max-h-64 overflow-y-auto">
+              {goalRows.map((row) => (
+                <ValueRow
+                  key={row.key}
+                  leading={row.leading}
+                  label={row.label}
+                  checked={row.checked}
+                  keepOpen={row.keepOpen}
+                  onToggle={row.onToggle}
+                />
+              ))}
+              <div className="px-2 pb-1.5 pt-2 text-[11px] leading-snug text-muted-foreground">
+                {goalRows.length === 0
+                  ? 'No goals yet — make one in Organize.'
+                  : 'Milestones and check-ins count as members.'}
+              </div>
+            </div>
+          </SubRow>
+        )}
+
         <Cap>Show</Cap>
         <ValueRow
           icon={Eye}
@@ -703,6 +778,20 @@ function priorityRail(values: PriorityFilterValue[]): string {
     return v === NO_PRIORITY ? 'None' : v[0].toUpperCase() + v.slice(1);
   }
   return String(values.length);
+}
+
+/**
+ * "Any" · the single goal's NAME · the count.
+ *
+ * Resolved against the store because the clause holds ids. A selected id that
+ * names no goal at all (deleted out from under the filter) falls back to the
+ * count, which is the honest answer — the rail cannot name what is gone, and
+ * Reset display is the way out.
+ */
+function goalRail(ids: string[], goals: readonly Goal[]): string {
+  if (ids.length === 0) return 'Any';
+  if (ids.length === 1) return goals.find((g) => g.id === ids[0])?.name ?? '1';
+  return String(ids.length);
 }
 
 function containerRail(values: string[]): string {

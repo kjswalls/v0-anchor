@@ -1,4 +1,5 @@
-import type { GroupBy, Habit, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
+import type { Goal, GroupBy, Habit, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
+import { displayGoals, goalItemIds } from './goals';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import { BUCKET_ORDER } from './day-items';
 import { containerRefOf, fieldApplies, typeNameOf } from './filters';
@@ -60,6 +61,10 @@ export interface RowGroup<T> {
    * It carries the switch a group header renders: the id and kind are all the
    * header needs to resolve the container's on/off state and toggle it. Absent
    * on every classify/priority/bucket/none section, so those headers stay inert.
+   *
+   * A GOAL section never carries it either, and that is the aspire role in one
+   * field: a goal switches nothing, so its heading has nothing to toggle. The
+   * type says so — `kind` is the two gate kinds, not `ContainerKind`.
    */
   gate?: { kind: 'routine' | 'program'; id: string };
 }
@@ -70,6 +75,8 @@ export interface GroupContext {
   routines?: readonly Routine[];
   /** Required by `'program'`; ignored by every other value. */
   programs?: readonly Program[];
+  /** Required by `'goal'`; ignored by every other value. */
+  goals?: readonly Goal[];
 }
 
 /** Internal: `unset` rides along so the "None" section can be forced last. */
@@ -293,6 +300,70 @@ function programGroups<T extends GroupableRow>(
   ];
 }
 
+/* ── goal ───────────────────────────────────────────────────────────────────*/
+
+/**
+ * ONE row, ONE group — the routine rule, applied to the aspire role.
+ *
+ * A goal is many-to-many exactly as a routine is ("morning run" serves Health
+ * AND Marathon — the plan's own example), so it is not a partition and cannot
+ * be rendered as one without either duplicating rows or lying about counts.
+ * `routineGroups` settled that trade first and this follows it verbatim: the
+ * row lands in the FIRST goal that claims it, in store order. Two sections
+ * holding one obligation is two checkboxes for one obligation, and the second
+ * copy is a row shift-range and ⌘A silently skip.
+ *
+ * What is NOT borrowed from the gates: no `gate` field on the section. A gate
+ * heading carries a pause switch; a goal heading carries nothing, because a
+ * goal suppresses nothing and there is no state on it to flip. That difference
+ * is the aspire role.
+ *
+ * ACTIVE goals only (`displayGoals`). A row whose only goal has been achieved
+ * falls into the loose bucket — it is never dropped, which is the contract
+ * `groupRows` states and the one an aspire container may never break.
+ *
+ * Members arrive in `goalItemIds` order — milestones first, in the goal's own
+ * timeline order, then check-ins, then plain members — so a section leads with
+ * the checkpoints. `sortRows(rows, 'default')` returns its input unchanged, so
+ * the caller's per-group sort preserves it until the user picks an ordering.
+ *
+ * Keyed by goal ID, labelled by name: `goals.name` is `text not null` with no
+ * UNIQUE and rename ships from day one, so keying on the name would merge two
+ * same-named goals into one heading holding both their work.
+ */
+function goalGroups<T extends GroupableRow>(rows: T[], goals: readonly Goal[]): RowGroup<T>[] {
+  const live = displayGoals(goals);
+  const claimed = new Map<string, { id: string; rank: number }>();
+  live.forEach((goal, i) => {
+    goalItemIds(goal).forEach((id, rank) => {
+      if (!claimed.has(id)) claimed.set(id, { id: goal.id, rank: i * 1e6 + rank });
+    });
+  });
+
+  const groups = new Map<string, T[]>();
+  for (const goal of live) groups.set(goal.id, []);
+  const loose: T[] = [];
+  for (const row of rows) {
+    const claim = claimed.get(row.item.id);
+    if (claim) groups.get(claim.id)!.push(row);
+    else loose.push(row);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => claimed.get(a.item.id)!.rank - claimed.get(b.item.id)!.rank);
+  }
+
+  return [
+    ...live
+      .filter((goal) => (groups.get(goal.id)?.length ?? 0) > 0)
+      .map((goal) => ({ key: goal.id, label: goal.name, rows: groups.get(goal.id)! })),
+    // Prefixed for the same React-key reason as 'routine:none'. A goal id is a
+    // uuid, so it cannot collide with this literal — and `containerKindOf`
+    // reads neither as a ref, which is what keeps GroupSection from hunting a
+    // project glyph for a goal heading.
+    ...(loose.length ? [{ key: 'goal:none', label: 'No goal', rows: loose }] : []),
+  ];
+}
+
 /* ── the entry point ────────────────────────────────────────────────────────*/
 
 /**
@@ -304,10 +375,10 @@ function programGroups<T extends GroupableRow>(
  * HABITS / TASKS / PROJECTS) owns that itself, because it is a presentation
  * choice for that view rather than an answer to "group by what".
  *
- * Section order is FIRST-ENCOUNTER for the open-ended values (container,
- * routine) and a fixed ladder for the closed ones (priority, bucket). "None"
- * sections sort last either way, matching the sort side's rule that unset ranks
- * last rather than floating to the top.
+ * Section order is FIRST-ENCOUNTER for the container value and STORE ORDER for
+ * the id-keyed ones (routine, program, goal); the closed values (priority,
+ * bucket) use a fixed ladder. "None" sections sort last either way, matching
+ * the sort side's rule that unset ranks last rather than floating to the top.
  */
 export function groupRows<T extends GroupableRow>(
   rows: T[],
@@ -318,6 +389,7 @@ export function groupRows<T extends GroupableRow>(
   if (groupBy === 'none') return [{ key: '', label: '', rows }];
   if (groupBy === 'routine') return routineGroups(rows, ctx.routines ?? []);
   if (groupBy === 'program') return programGroups(rows, ctx.programs ?? [], ctx.routines ?? []);
+  if (groupBy === 'goal') return goalGroups(rows, ctx.goals ?? []);
 
   if (groupBy === 'priority') {
     const byPriority = new Map<Priority | null, T[]>();

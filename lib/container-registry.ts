@@ -25,7 +25,10 @@ import type { ItemTypeConfig } from './item-registry';
  *     is no "the" routine to file it under; `lib/grouping.ts` groups by routine
  *     only through a documented first-claim-wins rule, and the Display menu
  *     deliberately offers no routine FILTER because the scope rail already owns
- *     that question per-date, through the DB, with a resume date.
+ *     that question per-date, through the DB, with a resume date. That last
+ *     argument is what a GOAL filter does not have to answer to: nothing else
+ *     in the app narrows a view to one goal, and a goal has no resume date to
+ *     own it with.
  *
  *   ASPIRE — goals. Many-to-many like a gate, but membership switches NOTHING:
  *     a goal says why work matters, and a goal you are behind on is the last
@@ -35,13 +38,35 @@ import type { ItemTypeConfig } from './item-registry';
  *     than a gate with suppression turned off: an item can sit in a goal AND a
  *     program at once (the Chinese habit inside the school-year program), so
  *     the two questions have to be asked separately or the answers merge.
+ *     Since the goal display work it IS a filter and a grouping axis — by id,
+ *     never by ref, and never as suppression; see the seam below.
  *
  * The seam is enforced by types, not by convention: `ClassifyKind` is what a ref
  * can name and what `containerRefOf` returns; `GateKind` is what `ScopeKind` is
  * and what `ActivationContext` carries; `AspireKind` is neither, and nothing
- * downstream widens to it. So a routine cannot leak into a filter clause, a
- * project cannot gate a day, and a goal can do neither — which is why adding
- * this kind needed no edit in filters.ts, grouping.ts or scope-rail.ts.
+ * downstream widens to it. So a routine cannot leak into a filter clause and a
+ * project cannot gate a day.
+ *
+ * A GOAL is now visible to filters.ts and grouping.ts, and that is a narrowing
+ * of the original claim, not an exception to the seam — the type unions are
+ * untouched. What reaches those modules is a goal ID and a set of item ids
+ * resolved from `goal_items`, never an `AspireKind` and never a ref:
+ *
+ *   - `ViewFilters.goals` holds ids. `containerRef`/`containerKindOf` still
+ *     answer only for CLASSIFY kinds, so a goal cannot enter `containers` and
+ *     `containerRefOf` cannot return one. The two clauses never mix.
+ *   - Grouping by goal is `lib/grouping.ts`'s first-claim-wins rule — the one
+ *     the gates already needed, because a many-to-many is not a partition. A
+ *     goal section carries no `gate`, so its heading has no switch: the gates'
+ *     grouping can pause a container from a header and the aspire one cannot.
+ *   - Nothing goal-shaped reaches `lib/active.ts`, `isItemActiveOn`,
+ *     `inactiveItemIdsOn` or scope-rail.ts. A goal STILL cannot suppress an
+ *     item — the filter narrows a view the user is looking at and clears with
+ *     Reset display; suppression is DB state that outlives the session.
+ *
+ * The distinction the seam is really making, then: CLASSIFY is the axis an item
+ * ANSWERS WITH, GATE is the axis that RESOLVES ACTIVATION, and ASPIRE may
+ * organise a view while doing neither.
  *
  * A NOTE ON DISCOVERY, because the obvious assumption is wrong: widening
  * `ContainerKind` does NOT light up the codebase with exhaustive-switch errors.
@@ -83,6 +108,10 @@ export type GateKind = 'routine' | 'program';
 /**
  * Kinds that say why work matters. Many-to-many, and they suppress NOTHING —
  * deliberately not a `GateKind`, so a goal can never reach a resolver.
+ *
+ * It may still ORGANISE a view (the Display menu's Goal filter and grouping),
+ * which reads goal ids and member id sets, never this union. Narrowing what you
+ * are looking at is not gating what counts.
  */
 export type AspireKind = 'goal';
 export type ContainerKind = ClassifyKind | GateKind | AspireKind;

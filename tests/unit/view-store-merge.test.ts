@@ -189,9 +189,19 @@ describe('normalizeFilters — rehydrating a stored payload', () => {
       const merged = normalizeFilters(stored);
       expect(merged.containers).toEqual([]);
       expect(merged.priorities).toEqual([]);
+      // `goals` is the newest field and every stored blob predates it, so it is
+      // the `containers` hazard again: `filters.goals.length` on an undefined
+      // throws before the surface can render a row.
+      expect(merged.goals).toEqual([]);
       expect(merged.hideFinished).toBe(false);
       expect(() => merged.containers.length).not.toThrow();
+      expect(() => merged.goals.length).not.toThrow();
     }
+  });
+
+  it('keeps a stored goal selection, and drops a non-array one', () => {
+    expect(normalizeFilters({ goals: ['g1', 'g2'] }).goals).toEqual(['g1', 'g2']);
+    expect(normalizeFilters({ goals: 'g1' }).goals).toEqual([]);
   });
 
   it('is idempotent — an already-normalized value passes through unchanged', () => {
@@ -276,6 +286,7 @@ describe('isEmptyFilters', () => {
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, containers: ['project:Work'] })).toBe(false);
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, priorities: ['high'] })).toBe(false);
     expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, hideFinished: true })).toBe(false);
+    expect(isEmptyFilters({ ...EMPTY_VIEW_FILTERS, goals: ['g1'] })).toBe(false);
   });
 });
 

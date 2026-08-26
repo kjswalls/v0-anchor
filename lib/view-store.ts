@@ -25,7 +25,7 @@ import {
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program' | 'goal';
 
 const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'none',
@@ -33,6 +33,7 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'project',
   'routine',
   'program',
+  'goal',
 ];
 
 /**

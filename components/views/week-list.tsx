@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
-  const { selectedDate, setSelectedDate, routines, programs } = usePlannerStore();
+  const { selectedDate, setSelectedDate, routines, programs, goals } = usePlannerStore();
   const groupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
@@ -35,7 +35,7 @@ function DaySection({ date }: { date: Date }) {
    * ordering when Week × Schedule cannot — a day section has no time axis of its
    * own to contradict.
    */
-  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
+  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs, goals }).map((g) => ({
     ...g,
     rows: sortRows(g.rows, sortBy),
   }));

@@ -39,7 +39,7 @@ export interface DayItemsInput {
   timezone: string;
   typeFilter: 'all' | 'tasks' | 'habits';
   showCompletedTasks: boolean;
-  /** Optional canvas filters (priority/project/hide-completed); defaults to none. */
+  /** Optional canvas filters (priority/container/goal/hide-finished); defaults to none. */
   filters?: DayItemFilters;
   /**
    * Ids suppressed ON THIS DATE — from lib/active.ts `inactiveItemIdsOn`.
@@ -54,6 +54,20 @@ export interface DayItemsInput {
    * Optional so week columns and tests that predate pausing keep working.
    */
   inactiveItemIds?: ReadonlySet<string>;
+  /**
+   * `filters.goals` RESOLVED to item ids — `goalFilterItemIds` in lib/goals.ts.
+   *
+   * Threaded rather than derived for the same two reasons `inactiveItemIds` is:
+   * this module is store-free and pure, and goal membership lives in a join
+   * table the item rows know nothing about. Resolved once per surface in
+   * hooks/use-day-items.ts, not once per item per day.
+   *
+   * Absent means the goal clause is inert, never that it matched nothing — see
+   * `passesGoalFilter`. Every week column shares one set because membership is
+   * DATELESS; a goal narrows the same items on every day it is on, which is
+   * exactly why `inactiveItemIds` is per-column and this is not.
+   */
+  goalMemberIds?: ReadonlySet<string> | null;
 }
 
 export interface DayItems {
@@ -119,6 +133,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   const { tasks, habits, projects, dateStr, timezone, typeFilter, showCompletedTasks } = input;
   const filters = input.filters ?? NO_FILTERS;
   const inactive = input.inactiveItemIds;
+  const goalMembers = input.goalMemberIds;
   // hideFinished stacks on the existing showCompletedTasks preference
   const hideDoneTasks = !showCompletedTasks || filters.hideFinished;
   /**
@@ -137,10 +152,11 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
       : tasks.filter((task) => {
           if (inactive?.has(task.id)) return false;
           if (hideDoneTasks && task.status === 'completed') return false;
-          // One rule for both narrowing axes, resolved per type through the
-          // registry. An unset priority or project now lands in the explicit
+          // One rule for every narrowing axis: priority and container resolve
+          // per type through the registry, and the goal clause reads the id set
+          // resolved above. An unset priority or project lands in the explicit
           // "None" value rather than being deleted by every filter.
-          if (!passesFilters(task, filters)) return false;
+          if (!passesFilters(task, filters, undefined, goalMembers)) return false;
           if (hideSkipped && isSkippedOnDate(task, dateStr)) return false;
           if (!task.startDate) return false;
           // startDate is yyyy-MM-dd; tolerate legacy ISO strings
@@ -174,7 +190,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
           // depend on a field the declared Habit type does not carry — any
           // caller building a row without it would silently get task rules,
           // which is a priority filter deleting every habit all over again.
-          if (!passesFilters(h, filters, 'habit')) return false;
+          if (!passesFilters(h, filters, 'habit', goalMembers)) return false;
           if (!shouldShowOnDate(h, dateStr, timezone)) return false;
           if (filters.hideFinished && isCompletedOnDate(h, dateStr)) return false;
           if (hideSkipped && isSkippedOnDate(h, dateStr)) return false;

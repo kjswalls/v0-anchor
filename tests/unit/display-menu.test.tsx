@@ -73,7 +73,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
-import type { Routine, Program } from '@anchor-app/types';
+import type { Goal, Routine, Program } from '@anchor-app/types';
 
 /**
  * jsdom implements neither PointerEvent nor pointer capture, and Radix's menus
@@ -113,6 +113,11 @@ function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
     // into the next case's menu.
     routines: [],
     programs: [],
+    // Goals reset for the same reason, and one more: seed() does not clear what
+    // it does not name, so a Goal fixture would otherwise still be filtering
+    // two tests later.
+    goals: [],
+    goalsAvailable: true,
     showPausedOnGrid: false,
   });
   useViewStore.setState({
@@ -617,5 +622,154 @@ describe('the Paused scopes list', () => {
     // row — the blocking program is, and turning it on brings the routine back.
     expect(await screen.findByRole('menuitem', { name: /Term/ })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: /Mornings/ })).toBeNull();
+  });
+});
+
+describe('the Goal clause', () => {
+  /**
+   * The aspire axis in the menu. Everything here is about the two things a goal
+   * is NOT: not a ref (it is filtered by id), and not a partition (an item can
+   * serve several, so the clause unions rather than choosing).
+   */
+  const goal = (over: Partial<Goal> & { id: string; name: string }): Goal => ({
+    state: 'active',
+    memberIds: [],
+    milestoneIds: [],
+    checkinIds: [],
+    ...over,
+  });
+
+  const seedGoals = (goals: Goal[], available = true) =>
+    usePlannerStore.setState({ goals, goalsAvailable: available });
+
+  it('writes the goal ID, never its name', async () => {
+    // Goal names are not unique and rename shipped with the feature, which is
+    // why the container ref grammar refuses goals outright.
+    seedGoals([goal({ id: 'g1', name: 'Learn Chinese' })]);
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Goal');
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Learn Chinese/ }));
+
+    expect(view().canvasFilters.goals).toEqual(['g1']);
+    // The other surface is untouched, like every other clause here.
+    expect(view().braindumpFilters.goals).toEqual([]);
+    // And it lands in its OWN field — a goal must never reach `containers`,
+    // where passesContainerFilter would read it as a ref.
+    expect(view().canvasFilters.containers).toEqual([]);
+  });
+
+  it('takes a second goal alongside the first, because the clause is a union', async () => {
+    seedGoals([goal({ id: 'g1', name: 'Learn Chinese' }), goal({ id: 'g2', name: 'Marathon' })]);
+    render(<DisplayMenu surface="braindump" trigger="icon" align="start" />);
+
+    openMenu('braindump');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Goal/ }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Learn Chinese/ }));
+    // Still open — multi-select, exactly like the container rows.
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Marathon/ }));
+
+    expect(view().braindumpFilters.goals).toEqual(['g1', 'g2']);
+  });
+
+  it('offers no unset value, because the aspire axis has none', async () => {
+    // Project / Group carries "No project or group" — an item answers that axis
+    // with a value that may be empty. An item does not answer the goal axis at
+    // all: it serves a goal or it does not (CONTAINER_KINDS.goal.unsetLabel is
+    // null). Grouping still mints a loose "No goal" section, because grouping
+    // may never drop a row.
+    seedGoals([goal({ id: 'g1', name: 'Learn Chinese' })]);
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Goal');
+
+    expect(screen.queryByRole('menuitemcheckbox', { name: /No goal/ })).toBeNull();
+  });
+
+  it('lists live goals only — but keeps a SELECTED one that has ended', async () => {
+    // Achieving a goal while it is filtering must not strand the clause: the
+    // trigger still counts it, so the row that unsets it has to stay reachable.
+    // seed() first: it resets the planner fixture, goals included.
+    seed({ canvasFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g2'] } });
+    seedGoals([
+      goal({ id: 'g1', name: 'Learn Chinese' }),
+      goal({ id: 'g2', name: 'Ship v1', state: 'achieved' }),
+      goal({ id: 'g3', name: 'Old thing', state: 'abandoned' }),
+    ]);
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Goal');
+
+    expect(await screen.findByRole('menuitemcheckbox', { name: /Learn Chinese/ })).toBeTruthy();
+    const ended = screen.getByRole('menuitemcheckbox', { name: /Ship v1/ });
+    expect(ended).toHaveAttribute('aria-checked', 'true');
+    // Unselected and ended: not offered.
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Old thing/ })).toBeNull();
+
+    fireEvent.click(ended);
+    expect(view().canvasFilters.goals).toEqual([]);
+  });
+
+  it('keeps the section at ZERO goals, and says so', async () => {
+    // The counterpart to the gate below. `goals.length` is not the condition:
+    // with the feature available and nothing in it, an absent section reads as
+    // a missing feature, and the empty panel is where the menu explains itself.
+    seedGoals([]);
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Goal');
+
+    expect(await screen.findByText(/No goals yet/)).toBeTruthy();
+  });
+
+  it('withholds the section entirely when goals are unavailable', async () => {
+    // `goalsAvailable` is the table-unreachable signal (planner-store), not a
+    // count. With the feature present but empty the section stays and says so.
+    seedGoals([], false);
+    render(<DisplayMenu surface="canvas" />);
+
+    openMenu();
+    const menu = await screen.findByTestId('display-menu');
+
+    expect(within(menu).queryByRole('menuitem', { name: /Goal/ })).toBeNull();
+  });
+
+  it('counts a goal clause in the trigger, and Reset clears it', async () => {
+    seed({ canvasFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] } });
+    seedGoals([goal({ id: 'g1', name: 'Learn Chinese' })]);
+    render(<DisplayMenu surface="canvas" />);
+
+    expect(screen.getByTestId('display-trigger-canvas')).toHaveAttribute(
+      'aria-label',
+      'Display (1 active)'
+    );
+
+    openMenu();
+    fireEvent.click(await screen.findByTestId('display-reset'));
+
+    expect(view().canvasFilters.goals).toEqual([]);
+  });
+
+  it('names the single selected goal on the section rail', async () => {
+    seed({ canvasFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] } });
+    seedGoals([goal({ id: 'g1', name: 'Learn Chinese' })]);
+    render(<DisplayMenu surface="canvas" />);
+
+    openMenu();
+    const row = within(await screen.findByTestId('display-menu')).getByRole('menuitem', {
+      name: /Goal/,
+    });
+
+    expect(row).toHaveTextContent('Learn Chinese');
+  });
+
+  it('offers Goal as a grouping on both surfaces', async () => {
+    render(<DisplayMenu surface="braindump" trigger="icon" align="start" />);
+
+    openMenu('braindump');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Grouping/ }));
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: /Goal/ }));
+
+    expect(view().braindumpGroupBy).toBe('goal');
   });
 });

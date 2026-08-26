@@ -1153,8 +1153,13 @@ live agent calls have not run.
 - **Guided check-in flow** (EOD-style dialog) — after Phase 3's receipt+note proves
   the cadence.
 - **Sub-goals / hierarchy** — milestones cover the first level.
-- **`goal:<name>` search grammar; Display-menu group-by-goal** — grouping by a
-  many-to-many needs the first-claim-wins rule; adopt together or not at all.
+- **`goal:<name>` search grammar** — still deferred. (Display-menu group-by-goal was
+  deferred beside it and SHIPPED 2026-08-26, with the first-claim-wins rule this entry
+  called for and a goal FILTER alongside it; the search grammar did not have to come
+  with it, because a filter row and a query token are different affordances and only the
+  grouping needed the rule. See the addendum in display-menu.md, and note the product
+  decision below — "no ScopeRail or Display-menu presence" — which this reverses for the
+  Display menu and leaves standing for the scope rail: a goal still suppresses nothing.)
 - **Braindump sub-grouping for undated milestones** — if squatting chafes.
 
 ## Product decisions (Kirby, 2026-08-20)

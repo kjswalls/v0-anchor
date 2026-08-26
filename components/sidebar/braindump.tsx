@@ -15,6 +15,7 @@ import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
+import { goalFilterItemIds } from '@/lib/goals';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { sortRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
@@ -248,7 +249,7 @@ interface BraindumpProps {
 }
 
 export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
-  const { tasks, habits, items, routines, programs, userTimezone } = usePlannerStore();
+  const { tasks, habits, items, routines, programs, goals, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
   const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
   const isMobile = variant === 'mobile';
@@ -277,12 +278,26 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     });
   }, [items, routines, programs, userTimezone]);
 
+  /**
+   * The goal clause, resolved to item ids.
+   *
+   * Membership lives in `goal_items`, so the pure predicate cannot ask an item
+   * row for it — the surface resolves it once and hands it down, the same
+   * bargain `inactiveItemIdsOn` above makes. `null` is INERT, not empty: a
+   * selection that names no live goal narrows nothing rather than emptying the
+   * list (see lib/goals.ts).
+   */
+  const goalMemberIds = useMemo(
+    () => goalFilterItemIds(goals, braindumpFilters.goals),
+    [goals, braindumpFilters.goals]
+  );
+
   const rows: RowItem[] = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
       if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
       if (braindumpFilters.hideFinished && task.status === 'completed') return false;
-      if (!passesFilters(task, braindumpFilters)) return false;
+      if (!passesFilters(task, braindumpFilters, undefined, goalMemberIds)) return false;
       return true;
     });
 
@@ -303,7 +318,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
       if (braindumpFilters.hideFinished && habit.status === 'done') return false;
       // 'habit' explicitly — see the note in lib/day-items.ts.
-      if (!passesFilters(habit, braindumpFilters, 'habit')) return false;
+      if (!passesFilters(habit, braindumpFilters, 'habit', goalMemberIds)) return false;
       return true;
     });
 
@@ -315,7 +330,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
       ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
     ];
-  }, [tasks, habits, braindumpFilters, suppressedIds]);
+  }, [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]);
 
   /**
    * Everything currently set aside — the home paused work would otherwise not
@@ -402,11 +417,12 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
             { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
-        : // routines/programs feed the gate values ('routine', 'program'); they
-          // are inert for 'none'/'project', so passing them always is harmless.
-          groupRows(rows, braindumpGroupBy, { routines, programs });
+        : // routines/programs feed the gate values ('routine', 'program') and
+          // goals the aspire one; each is inert for the values it does not
+          // answer, so passing all three always is harmless.
+          groupRows(rows, braindumpGroupBy, { routines, programs, goals });
     return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs]);
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals]);
 
   return (
     <section
