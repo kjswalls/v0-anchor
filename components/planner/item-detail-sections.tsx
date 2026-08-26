@@ -255,6 +255,9 @@ function AgentSection({ item }: { item: Item }) {
   );
 }
 
+/** Shared empty list, so a render with no options allocates nothing. */
+const NO_OPTIONS: string[] = [];
+
 /**
  * The answer half of `blocked`.
  *
@@ -268,40 +271,81 @@ function AgentSection({ item }: { item: Item }) {
 function AgentReply({ item }: { item: TaskItem }) {
   const updateTask = usePlannerStore((s) => s.updateTask);
   const [text, setText] = useState('');
-  const [options, setOptions] = useState<string[]>([]);
+  /**
+   * The fetched options, TAGGED with the item and question they belong to.
+   *
+   * Derived during render rather than reset by an effect, for the reason the
+   * proposal card learned the same way: an effect resets a render late, so the
+   * panel paints the previous item's buttons once before clearing them — and
+   * this panel is REUSED across items (the dialog re-seeds on id change without
+   * unmounting), so that frame has the new item's id already bound to the old
+   * item's answers.
+   */
+  const optionsKey = `${item.id}\u0000${(item.aiResult ?? '').trim()}`;
+  const [fetched, setFetched] = useState<{ key: string; options: string[] }>(() => ({
+    key: '',
+    options: NO_OPTIONS,
+  }));
+  const options = fetched.key === optionsKey ? fetched.options : NO_OPTIONS;
 
   /**
-   * The tappable answers, if the agent offered any.
+   * The tappable answers, if the agent offered any FOR THE QUESTION ON SCREEN.
    *
    * Fetched here rather than lifted from the Activity section below: this only
    * renders while `aiStatus` is `blocked`, so the query is rare, and the two
    * sections are independent by design (Activity is collapsible and may never
-   * be opened). Newest question wins — an agent that asks again after a reply
-   * has superseded whatever it asked before.
+   * be opened).
+   *
+   * Two things this has to get right, both of which it got wrong first:
+   *
+   * 1. CLEAR BEFORE FETCHING. The detail panel is REUSED across items — the
+   *    dialog re-seeds on id change without unmounting — so leaving the old
+   *    options up during the round-trip meant opening blocked item B while A
+   *    was on screen showed A's buttons with B's id already bound. A tap in
+   *    that window filed A's answer against B and re-queued B unanswered.
+   *
+   * 2. MATCH THE QUESTION, not just "the newest event". The question the user
+   *    reads comes from `aiResult`, which `anchor_report_progress` can also
+   *    set — and that path writes no `agent_question` event. So an agent that
+   *    asked with options, then asked again through the old tool, left the new
+   *    question on screen above the OLD question's buttons. Comparing the
+   *    payload against `aiResult` ties the two together, and incidentally
+   *    handles a lost event (no match, no buttons) and a truncated feed the
+   *    same safe way.
    */
   useEffect(() => {
     let cancelled = false;
     if (!getItemEventsAvailable()) return;
+
     fetchItemEvents(item.id)
       .then((events) => {
         if (cancelled) return;
         const question = events.find((e) => e.action === 'agent_question');
-        // Only offer buttons for a question that is still open: a reply
-        // recorded AFTER it means the user has already answered this one, and
-        // re-offering stale choices would invite a duplicate answer.
+        if (!question) return;
+
+        // Is this the question currently being asked?
+        const asked = typeof question.payload?.question === 'string' ? question.payload.question : '';
+        if (asked.trim() !== (item.aiResult ?? '').trim()) return;
+
+        // Still open? A reply recorded AFTER it means the user already answered,
+        // and re-offering the choices would invite a duplicate answer.
         const answeredSince = events.find((e) => e.action === 'agent_reply');
-        const stale =
-          question && answeredSince && answeredSince.createdAt > question.createdAt;
-        const raw = !stale && Array.isArray(question?.payload?.options)
+        if (answeredSince && answeredSince.createdAt > question.createdAt) return;
+
+        const raw = Array.isArray(question.payload?.options)
           ? (question.payload.options as unknown[])
           : [];
-        setOptions(raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0));
+        setFetched({
+          key: optionsKey,
+          options: raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0),
+        });
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.aiResult]);
+  }, [item.id, item.aiResult, optionsKey]);
 
   const answer = (value: string) => {
     const trimmed = value.trim();
@@ -310,8 +354,10 @@ function AgentReply({ item }: { item: TaskItem }) {
     updateTask(item.id, { aiStatus: 'queued' });
     setText('');
     // The question is answered; the buttons would otherwise sit there inviting
-    // a second reply to a queued item.
-    setOptions([]);
+    // a second reply to a queued item. (In the app the status flip unmounts
+    // this whole section — but that is the CALLER's behaviour, not this
+    // component's, and it should not be load-bearing here.)
+    setFetched({ key: '', options: NO_OPTIONS });
   };
 
   const send = () => answer(text);
@@ -363,6 +409,15 @@ function AgentReply({ item }: { item: TaskItem }) {
     </div>
   );
 }
+
+/**
+ * Exported for tests only.
+ *
+ * The reply box is reachable from the UI only through a `blocked` item inside a
+ * dialog, which would mean standing up the whole panel to test three lines of
+ * option logic — and that logic is where the cross-item bug lived.
+ */
+export { AgentReply as AgentReplyForTest };
 
 // ── Activity ─────────────────────────────────────────────────────────────────
 

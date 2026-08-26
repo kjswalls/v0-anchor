@@ -441,6 +441,48 @@ export function getItemEventsAvailable(): boolean {
   return itemEventsAvailable;
 }
 
+/**
+ * The insert itself, awaitable.
+ *
+ * Split out from `recordItemEvent` so a caller that NEEDS to know whether the
+ * row landed can wait for it. Almost nothing does — a trace that failed is a
+ * missing line in a feed — but a question the user is supposed to answer is not
+ * a trace, and a route that returns 200 for a write it never confirmed is
+ * lying. Resolves false rather than throwing, because every existing caller
+ * treats a failed event as a non-event.
+ */
+async function insertItemEvent(
+  itemId: string,
+  itemType: string,
+  action: string,
+  payload: Record<string, unknown>,
+  userId?: string,
+  client?: DbClient,
+): Promise<boolean> {
+  if (!itemEventsAvailable) return false;
+  const supabase = client ?? createClient();
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v])
+  );
+  try {
+    const { error } = await supabase.from('item_events').insert({
+      ...(userId ? { user_id: userId } : {}),
+      item_id: itemId,
+      item_type: itemType,
+      action,
+      payload: cleanPayload,
+    });
+    if (error) {
+      if (missingEventsTable(error)) itemEventsAvailable = false;
+      else console.error('item_events insert failed', error);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function recordItemEvent(
   itemId: string,
   itemType: string,
@@ -542,16 +584,21 @@ export const MAX_QUESTION_OPTIONS = 4;
  *
  * The service-role path must pass `userId`: `item_events.user_id` defaults to
  * `auth.uid()`, and the agent API has no auth context.
+ *
+ * AWAITED, unlike every other event writer. The rest of them are traces, and a
+ * lost trace is a missing line in a feed; this one is a question a human is
+ * meant to answer, and losing it strands the agent waiting on a reply that can
+ * never come.
  */
-export function recordAgentQuestion(
+export async function recordAgentQuestion(
   itemId: string,
   itemType: string,
   question: string,
   options: string[],
   userId?: string,
   client?: DbClient,
-): void {
-  recordItemEvent(
+): Promise<boolean> {
+  return insertItemEvent(
     itemId,
     itemType,
     'agent_question',

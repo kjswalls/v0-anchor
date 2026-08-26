@@ -508,6 +508,38 @@ they have the energy to compose a sentence.
   `agent_reply` after it — otherwise the user is invited to answer something they already
   answered.
 
+*Adversarial review, same day, five real findings — one of which refuted the claim above.*
+
+- **The atomicity claim was false.** `recordItemEvent` is fire-and-forget by design, so the
+  original route flipped the status and dropped the insert's promise: the block could stick
+  while the question was lost (or never sent at all, if the serverless invocation froze the
+  moment the response returned), leaving the user a question with no buttons and the agent a
+  tool result saying it had offered them. The question is now written FIRST and **awaited**
+  (`insertItemEvent`, the one awaitable event writer — the rest are traces, and a lost trace
+  is a missing line in a feed; a lost question strands a human).
+- **No item-type guard.** This is the only agent write that looks items up by id alone —
+  every other one goes through `verifyItemOwnership`, which filters on type — so a worker
+  could block a HABIT. Nothing renders a reply box for one (`AgentSection` is gated on
+  `agentAssignable`), `selectAssignedWork` filters it out of the queue, and the follow-up
+  `report_progress` 404s: a question nobody can answer and an agent waiting forever. The
+  registry's own header names this hazard. Now guarded on `agentAssignable`, plus a 409 for
+  an item assigned to nobody, which fails the same way in a different shape.
+- **Options could attach to the wrong question.** The question the user reads comes from
+  `aiResult`, which `anchor_report_progress` also sets — and that path writes no event. Ask
+  with options, then ask again through the old tool, and the new question rendered above the
+  OLD question's buttons; a tap filed "Dana Reyes" as the answer to "what's the invoice
+  number". Options are now matched against the current `aiResult`, which also handles a lost
+  event and a truncated feed the same safe way.
+- **Options leaked across items.** The detail panel is reused — the dialog re-seeds on id
+  change without unmounting — so opening blocked item B while A was up showed A's buttons
+  with B's id already bound. Now derived during render from a key of `(itemId, question)`,
+  which fixes the leak and the one-frame flash together.
+- **The block skipped `updateItem`**, so it emitted no `tasks.updated` webhook (a permanent
+  contract) and no Activity line — the one status change in the app that happened silently.
+
+Not acted on: `fetchItemEvents`' `limit(50)` can push a question out of the window on a busy
+item. It degrades to the text box, which is where the user was before any of this existed.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:
