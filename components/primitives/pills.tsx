@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Flame } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bot, Flame, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { agentStatusView } from '@/lib/agent-status';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -610,5 +611,88 @@ export function CountBadge({
     >
       {count}
     </span>
+  );
+}
+
+
+/**
+ * How often the elapsed reading refreshes.
+ *
+ * `agentStatusView` is coarse — minutes, then hours, then days — so a
+ * per-second tick would re-render the row sixty times for one changed digit.
+ * A minute is the smallest interval that can ever change what it says.
+ */
+const AGENT_CLOCK_MS = 60_000;
+
+/**
+ * The delegated-work badge: what the agent is doing with this item, and for how
+ * long.
+ *
+ * A sibling of the title, NOT a rail column — the same call the goal-role glyph
+ * made, for the same two reasons. The rail's columns reserve width on EVERY row
+ * of both types, so a sixth would cost horizontal space app-wide to say
+ * something true of a handful of rows; and this needs a word, not a glyph,
+ * because "Working" and "Needs you" are not distinguishable as icons.
+ *
+ * "Working" alone is not information — an agent four minutes into a task is
+ * fine and the same agent three hours in has died somewhere. The elapsed
+ * reading is the entire point, which is why it comes from a dedicated
+ * `aiStatusAt` stamp (migration 038) rather than the item's `updated_at`:
+ * that one moves whenever anything is edited, so renaming the task mid-run
+ * would silently reset the clock and the row would report a confident wrong
+ * number. No number beats a wrong one.
+ *
+ * The interval lives HERE rather than in the row, because this component only
+ * mounts for an item that actually has a live agent state — so a planner with
+ * nothing delegated runs no timers at all.
+ */
+export function AgentPill({
+  item,
+  className,
+}: {
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
+  className?: string;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), AGENT_CLOCK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const view = agentStatusView(item, now);
+  if (!view) return null;
+
+  return (
+    <RailTooltip label="Agent" detail={view.detail}>
+      <span
+        data-testid="item-agent-status"
+        data-agent-state={item.aiStatus}
+        className={cn(
+          'flex flex-shrink-0 items-center gap-1 text-[10px] font-medium',
+          // Honey is reserved for the ONE state that wants something from the
+          // user. Everything else is the agent's business and stays muted —
+          // a row that shouts about work proceeding normally is a row that
+          // teaches you to stop reading it.
+          view.needsUser ? 'text-warning-text' : 'text-muted-foreground/70',
+          className
+        )}
+      >
+        {view.active ? (
+          <Loader2
+            aria-hidden
+            className={cn('size-3 flex-shrink-0', item.aiStatus === 'working' && 'animate-spin')}
+          />
+        ) : (
+          <Bot aria-hidden className="size-3 flex-shrink-0" />
+        )}
+        <span>{view.label}</span>
+        {view.elapsed && view.elapsed !== 'just now' && (
+          <span className="tabular-nums opacity-70">{view.elapsed}</span>
+        )}
+        {/* The tooltip never fires on touch and never reaches a screen reader. */}
+        <span className="sr-only">{view.detail}</span>
+      </span>
+    </RailTooltip>
   );
 }

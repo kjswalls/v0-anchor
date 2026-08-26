@@ -540,6 +540,41 @@ they have the energy to compose a sentence.
 Not acted on: `fetchItemEvents`' `limit(50)` can push a question out of the window on a busy
 item. It degrades to the text box, which is where the user was before any of this existed.
 
+**Phase 2g — what the agent is doing, on the row. SHIPPED.**
+
+Delegation state lived only inside the item's detail panel, so seeing which items were
+moving meant opening each one — and the one state that wants something FROM the user
+(`blocked`) was the most buried of all.
+
+- **`lib/agent-status.ts`** is the pure derivation: label, elapsed, and two booleans
+  (`needsUser`, `active`). `done` returns null on purpose — a row that keeps announcing
+  finished work is the badge equivalent of a notification that will not clear.
+- **`AgentPill` is a sibling of the title, not a rail column** — the same call the goal-role
+  glyph made and for the same reasons: the rail's columns reserve width on every row of both
+  types, so a sixth would cost space app-wide to say something true of a handful of rows;
+  and this needs a word, because "Working" and "Needs you" are not distinguishable as icons.
+  Honey is reserved for `blocked` alone; a row that shouts about work proceeding normally
+  teaches you to stop reading it.
+- **Migration 038 adds `ai_status_at`**, and `lib/db.ts` stamps it as a declared
+  `COMPANION_COLUMNS` entry of `aiStatus` — the mechanism `db-allowlists.test.ts` already
+  had for exactly this, so the drift detector can see it rather than having the assertion
+  loosened around it. `aiStatusAt` is EXEMPT from the allowlist itself: nothing may write it
+  alone, which is what keeps the clock from drifting from the state it timestamps.
+
+**Why not `items.updated_at`** (which exists, is trigger-maintained, and would have needed no
+migration): it answers *time since ANY edit*. Renaming a task mid-run would reset the clock
+and the row would report a confident wrong number. The whole value here is that "working 4m"
+and "working 3h" mean different things — a wrong number is worse than none.
+
+The 60-second interval lives inside `AgentPill`, which only mounts for an item with a live
+agent state, so a planner with nothing delegated runs no timers.
+
+*Caught by its own tests:* `isAgentState` used `in`, which walks the prototype chain — an
+agent writing `aiStatus: 'toString'` would have passed the guard and handed React a function
+to render. `aiStatus` is a loose string by design (constraining it would let a future
+vocabulary addition brick an old plugin's `safeParse`), so that was reachable. `Object.hasOwn`
+now.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

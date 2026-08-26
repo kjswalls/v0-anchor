@@ -57,6 +57,7 @@ interface ItemRow {
   assignee?: string | null;
   ai_status?: string | null;
   ai_result?: string | null;
+  ai_status_at?: string | null;
   // habit-side
   group?: string | null;
   streak?: number | null;
@@ -105,6 +106,7 @@ function itemFromRow(row: ItemRow): Item {
       assignee: row.assignee ?? undefined,
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
+      aiStatusAt: row.ai_status_at ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
       reminderTime: row.reminder_time ?? undefined,
@@ -169,6 +171,7 @@ function itemFromRow(row: ItemRow): Item {
     assignee: row.assignee ?? undefined,
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
+    aiStatusAt: row.ai_status_at ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     reminderTime: row.reminder_time ?? undefined,
@@ -287,6 +290,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     assignee: item.assignee ?? null,
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
+    ai_status_at: item.aiStatusAt ?? null,
     ...pauseColumns(item),
     ...containerColumns(item),
     ...reminderColumns(item),
@@ -335,7 +339,15 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if ('parentItemId' in updates) row.parent_item_id = updates.parentItemId ?? null;
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
-  if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
+  if ('aiStatus' in updates) {
+    row.ai_status = updates.aiStatus ?? null;
+    // Stamped WITH the status, never on its own (migration 038). Writing them
+    // together is what stops the timestamp drifting from the state it
+    // describes — and it is why `aiStatusAt` is not in this allowlist as a
+    // field of its own: nothing outside this line may set it. The allowlist
+    // suite knows it as a declared COMPANION_COLUMN of `aiStatus`.
+    row.ai_status_at = new Date().toISOString();
+  }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
   // Reminders (migration 032). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the

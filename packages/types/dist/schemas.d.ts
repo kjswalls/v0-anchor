@@ -334,6 +334,18 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -364,6 +376,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -394,6 +407,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -424,6 +438,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -454,6 +469,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     /**
@@ -671,6 +687,18 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -703,6 +731,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -734,6 +763,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -765,6 +795,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -796,6 +827,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
@@ -1011,6 +1043,18 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1054,6 +1098,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1086,6 +1131,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1118,6 +1164,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1150,6 +1197,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
     /**
@@ -1219,6 +1267,18 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -1251,6 +1311,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -1282,6 +1343,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, z.ZodObject<{
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
@@ -1447,6 +1509,18 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1490,6 +1564,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1522,6 +1597,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>]>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -1553,6 +1629,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 } | {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1609,6 +1686,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -1640,6 +1718,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 } | {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1696,6 +1775,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const ItemTypeDefSchema: z.ZodObject<{
     id: z.ZodString;
@@ -1795,6 +1875,18 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
 }, "pausedAt" | "pausedUntil" | "projectId">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1822,6 +1914,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1849,6 +1942,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1876,6 +1970,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1903,6 +1998,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
@@ -3164,6 +3260,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3194,6 +3302,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3224,6 +3333,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3254,6 +3364,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3284,6 +3395,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         /**
@@ -3545,6 +3657,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"task">;
     }, "strip", z.ZodTypeAny, {
         type: "task";
@@ -3577,6 +3701,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -3608,6 +3733,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, z.ZodObject<{
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
@@ -3773,6 +3899,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"custom">;
         /**
          * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -3816,6 +3954,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -3848,6 +3987,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>]>, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -3879,6 +4019,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -3935,6 +4076,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -3966,6 +4108,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4022,6 +4165,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** Member item ids (routine_items), in routine-internal order. */
@@ -4234,6 +4378,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4309,6 +4454,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4365,6 +4511,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;
@@ -4438,6 +4585,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4513,6 +4661,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4569,6 +4718,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;

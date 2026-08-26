@@ -318,6 +318,18 @@ const taskShape = {
   aiStatus: z.string().optional(),
   /** Agent's latest result/summary for this item. */
   aiResult: z.string().optional(),
+  /**
+   * When `aiStatus` last changed (migration 038). Read-only client-side —
+   * stamped by lib/db.ts as a companion of the status write, never on its own,
+   * so it cannot drift from the state it timestamps.
+   *
+   * Same "small and stable" class as the three fields above it: it changes
+   * exactly as often as `aiStatus` does, which is a handful of times over a
+   * delegated task's life. That is what keeps it out of the hazard the schema
+   * note names — a field that changes OFTEN entering the frozen `tasks[]`
+   * projection and the 50-entry undo stack.
+   */
+  aiStatusAt: z.string().optional(),
   ...RecurrenceFieldsSchema.shape,
   ...pauseFields,
   ...reminderFields,

@@ -36,12 +36,32 @@ describe('growth-field update mappings', () => {
       assignee: 'openclaw',
       ai_status: 'working',
       ai_result: 'Slide 3 of 8 drafted',
+      // Stamped WITH the status and never on its own (migration 038) — which is
+      // what stops the timestamp drifting from the state it describes. The row
+      // says "Working 3h"; a clock written separately could make that a
+      // confident wrong number, which is worse than no number.
+      ai_status_at: expect.any(String),
     });
 
     // Unassign: present-but-undefined keys clear to NULL, never get dropped.
     expect(
       updatesToRow('task', { assignee: undefined, aiStatus: undefined, aiResult: undefined })
-    ).toEqual({ assignee: null, ai_status: null, ai_result: null });
+    ).toEqual({
+      assignee: null,
+      ai_status: null,
+      ai_result: null,
+      // Cleared status, fresh stamp: "not delegated, as of now" is the truth,
+      // and leaving the old one would date the clearing to the last run.
+      ai_status_at: expect.any(String),
+    });
+
+    // The companion rides ONLY with a status write. A result-only progress
+    // report must not restart the clock — an agent posting an update every few
+    // minutes would otherwise keep the row reading "Working just now" forever,
+    // which is precisely the stuck-run signal this exists to surface.
+    expect(updatesToRow('task', { aiResult: 'still going' })).toEqual({
+      ai_result: 'still going',
+    });
   });
 
   it('never maps growth fields through the habit allowlist', () => {

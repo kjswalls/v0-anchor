@@ -19,6 +19,7 @@ import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/li
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import {
+  AgentPill,
   PriorityGlyph,
   RailTooltip,
   StreakFlame,
@@ -545,6 +546,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           </span>
         </RailTooltip>
       )}
+
+      {/* What the agent is doing with this, and for how long — a sibling of the
+          title for exactly the reasons the goal role above it is one, and
+          registry-gated so a type that cannot be delegated never reserves the
+          space. The pill returns null on its own for an unassigned or finished
+          item, so most rows render nothing and start no timer. */}
+      {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
 
       {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
           right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].
