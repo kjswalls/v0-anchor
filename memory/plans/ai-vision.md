@@ -654,7 +654,12 @@ back until its semantics could be implemented properly rather than as a null wri
   items" was unobservable: `buildProposalContext` never emitted recurrence, so a recurring
   task was byte-identical to a one-shot — and the refusal that catches it is silent, because
   `validateProposal`'s `rejected[]` is dropped by the store. Recurrence is now in the
-  context. *Still open:* nothing tells the user when operations were dropped.
+  context. **Closed 2026-08-26:** the card now says so — `refused` carries the count and the
+  deduped reasons, and the empty card says "None of those would work here" rather than "no
+  changes to suggest", which would be a lie about a reply that suggested plenty. Named
+  `refused` rather than `dropped` because the user DROPS lines on the card and validation
+  REFUSES operations before it — different actor, different meaning, and the two had already
+  collided in one component.
 
 Refuted: `'Accept plan:'` IS in `SIGNIFICANT_ACTIONS`, so accepting does raise an undo toast.
 Also refuted, usefully: `updatesToRow` really is presence-keyed on all five cleared fields,

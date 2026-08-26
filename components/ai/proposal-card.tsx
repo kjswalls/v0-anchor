@@ -47,6 +47,7 @@ export function ProposalCard({
     (s) => s.lastRequest != null && s.lastRequest.intent !== 'catch-up'
   );
   const requestSurface = useProposalStore((s) => s.lastRequest?.surface);
+  const refused = useProposalStore((s) => s.refused);
 
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
@@ -140,7 +141,19 @@ export function ProposalCard({
       <div className={shell} data-testid="proposal-card" role="status">
         <div className="flex items-start gap-2">
           <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-          <p className="flex-1 text-sm text-foreground">{emptyMessage}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-foreground">{emptyMessage}</p>
+            {/* When EVERYTHING was refused this is the only account the user
+                gets of a reply that did suggest things. */}
+            {refused.count > 0 && (
+              <p
+                className="mt-1 text-2xs leading-relaxed text-muted-foreground"
+                data-testid="proposal-refused"
+              >
+                {refused.reasons.join('; ')}.
+              </p>
+            )}
+          </div>
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
             Close
           </Button>
@@ -237,6 +250,20 @@ export function ProposalCard({
           );
         })}
       </ul>
+
+      {/* What was asked for and could not be done.
+      
+          Validation drops individual operations rather than failing the whole
+          plan — right, but it was silent: ask for five things and have three
+          refused, and the card rendered two with no explanation, which reads as
+          the assistant ignoring most of what you said. Phrased as the app's
+          limitation, never the user's mistake. */}
+      {refused.count > 0 && (
+        <p className="mt-2 pl-6 text-2xs leading-relaxed text-muted-foreground" data-testid="proposal-refused">
+          {refused.count === 1 ? 'One other change' : `${refused.count} other changes`} couldn&apos;t
+          be made here — {refused.reasons.join('; ')}.
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
         <Button

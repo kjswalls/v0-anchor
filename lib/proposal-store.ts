@@ -55,6 +55,18 @@ interface ProposalStore {
   } | null;
   /** Summaries offered and turned down this round, newest last. */
   rejected: string[];
+  /**
+   * How many suggestions VALIDATION refused before the card was drawn, and
+   * why. Distinct from the lines the USER drops on the card — different actor,
+   * different meaning, so a different word.
+   *
+   * Validation silently discarded these. Ask for five things back in the
+   * Braindump, have three of them turn out to be repeating items, and the card
+   * rendered two with no explanation — the user reads that as the assistant
+   * ignoring most of what they said. The reasons are already computed; they
+   * were being thrown away at the one point where somebody could read them.
+   */
+  refused: { count: number; reasons: string[] };
 
   request: (intent: ProposalIntent, prompt?: string, itemId?: string) => Promise<void>;
   /**
@@ -172,7 +184,25 @@ const cleared = (): Partial<ProposalStore> => ({
   emptyMessage: null,
   lastRequest: null,
   rejected: [],
+  refused: NOTHING_REFUSED,
 });
+
+const NOTHING_REFUSED = { count: 0, reasons: [] as string[] };
+
+/**
+ * Deduped and capped: three identical "a repeating item cannot be moved to the
+ * Braindump" lines say no more than one, and the note is a footnote, not a
+ * report.
+ */
+function summariseRefused(
+  rejected: ReadonlyArray<{ reason: string }>
+): { count: number; reasons: string[] } {
+  if (rejected.length === 0) return NOTHING_REFUSED;
+  return {
+    count: rejected.length,
+    reasons: [...new Set(rejected.map((r) => r.reason))].slice(0, 3),
+  };
+}
 
 export const useProposalStore = create<ProposalStore>()((set, get) => {
   /**
@@ -248,12 +278,21 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
 
       // Validate against the CURRENT planner, not the one the request was built
       // from — the user may have edited things while the model was thinking.
-      const { proposal } = validateProposal(stamp(data.proposal), plannerContext());
+      const { proposal, rejected } = validateProposal(stamp(data.proposal), plannerContext());
+      const refused = summariseRefused(rejected);
       settle(
         token,
         proposal.operations.length
-          ? { proposal, status: 'ready' }
-          : { status: 'empty', emptyMessage: 'Those suggestions no longer apply.' }
+          ? { proposal, refused, status: 'ready' }
+          : {
+              status: 'empty',
+              refused,
+              // Every operation was refused. Saying "no changes to suggest"
+              // would be a lie about a reply that suggested plenty.
+              emptyMessage: rejected.length
+                ? "None of those would work here — see why below."
+                : 'Those suggestions no longer apply.',
+            }
       );
     } catch (err) {
       settle(token, {
@@ -270,6 +309,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     emptyMessage: null,
     lastRequest: null,
     rejected: [],
+    refused: NOTHING_REFUSED,
 
     request: async (intent, prompt, itemId) => {
       const token = claim();
@@ -278,6 +318,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         error: null,
         emptyMessage: null,
         proposal: null,
+        refused: NOTHING_REFUSED,
         // The original ask, kept verbatim so retries decorate it rather than
         // stacking on each other's decoration.
         lastRequest: { intent, prompt, itemId, surface: itemId ? `item:${itemId}` : 'chat' },
@@ -294,8 +335,12 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
           settle(token, { status: 'empty', emptyMessage: "Nothing's waiting on you. Enjoy it." });
           return;
         }
-        const { proposal } = validateProposal(stamp(draft), ctx);
-        settle(token, { proposal, status: proposal.operations.length ? 'ready' : 'empty' });
+        const { proposal, rejected } = validateProposal(stamp(draft), ctx);
+        settle(token, {
+          proposal,
+          refused: summariseRefused(rejected),
+          status: proposal.operations.length ? 'ready' : 'empty',
+        });
         return;
       }
 
@@ -329,6 +374,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         error: null,
         emptyMessage: null,
         proposal: null,
+        refused: NOTHING_REFUSED,
         rejected: nextRejected,
       });
       await askModel(

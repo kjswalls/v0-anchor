@@ -22,6 +22,7 @@ let proposal: Proposal | null = null;
 let status = 'ready';
 let intent: string | null = 'ask';
 let surface = 'chat';
+let refused: { count: number; reasons: string[] } = { count: 0, reasons: [] };
 
 const storeState = () => ({
   proposal,
@@ -32,6 +33,7 @@ const storeState = () => ({
   retry,
   dismiss,
   lastRequest: intent ? { intent, surface } : null,
+  refused,
 });
 
 vi.mock('@/lib/proposal-store', () => {
@@ -73,6 +75,7 @@ beforeEach(() => {
   status = 'ready';
   intent = 'ask';
   surface = 'chat';
+  refused = { count: 0, reasons: [] };
   proposal = makeProposal('one', 'two', 'three');
 });
 
@@ -262,5 +265,51 @@ describe('states with a way out', () => {
   it('announces itself, since the card can appear without the user looking', () => {
     render(<ProposalCard />);
     expect(screen.getByTestId('proposal-card').getAttribute('role')).toBe('status');
+  });
+});
+
+describe('suggestions that could not be made', () => {
+  /**
+   * Validation drops individual operations rather than failing the whole plan —
+   * right, but it was SILENT. Ask for five things back in the Braindump, have
+   * three turn out to be repeating items, and the card rendered two with no
+   * explanation, which reads as the assistant ignoring most of what you said.
+   * The reasons were already computed and thrown away at the one point where
+   * somebody could read them.
+   */
+  it('says how many were left out, and why', () => {
+    refused = { count: 2, reasons: ['a repeating item cannot be moved to the Braindump'] };
+    render(<ProposalCard />);
+    const note = screen.getByTestId('proposal-refused').textContent ?? '';
+    expect(note).toContain('2 other changes');
+    expect(note).toContain('repeating item');
+  });
+
+  it('reads naturally for a single one', () => {
+    refused = { count: 1, reasons: ['a goal milestone keeps its target date'] };
+    render(<ProposalCard />);
+    expect(screen.getByTestId('proposal-refused').textContent).toContain('One other change');
+  });
+
+  it('says nothing when everything went through', () => {
+    render(<ProposalCard />);
+    expect(screen.queryByTestId('proposal-refused')).toBeNull();
+  });
+
+  it('explains an empty card, where it is the only account there is', () => {
+    // Every operation refused. "No changes to suggest" alone would be a lie
+    // about a reply that suggested plenty.
+    status = 'empty';
+    refused = { count: 3, reasons: ['a repeating item cannot be moved to the Braindump'] };
+    render(<ProposalCard />);
+    expect(screen.getByTestId('proposal-refused').textContent).toContain('repeating item');
+  });
+
+  it('blames the app, never the user', () => {
+    refused = { count: 2, reasons: ['a goal milestone keeps its target date'] };
+    render(<ProposalCard />);
+    const note = screen.getByTestId('proposal-refused').textContent ?? '';
+    expect(note).not.toMatch(/you |your |invalid|error|failed/i);
+    expect(note).toMatch(/couldn.t be made/i);
   });
 });

@@ -81,6 +81,7 @@ const reset = () =>
     emptyMessage: null,
     lastRequest: null,
     rejected: [],
+    refused: { count: 0, reasons: [] },
   });
 
 beforeEach(() => {
@@ -388,5 +389,85 @@ describe('a body-less failure', () => {
     await useProposalStore.getState().request('ask', 'x');
     expect(useProposalStore.getState().status).toBe('error');
     expect(useProposalStore.getState().error).toBe('HTTP 500');
+  });
+});
+
+describe('suggestions validation refused', () => {
+  /**
+   * The reasons are computed on every card and were thrown away at the one
+   * point where somebody could read them, so a plan whose operations were
+   * mostly refused rendered as a short card with no explanation.
+   */
+  const refusable = (summary: string) => ({
+    summary,
+    rationale: 'because',
+    operations: [
+      // A habit create — refused by canCreateType (containerRequired).
+      { kind: 'create', itemType: 'habit', title: 'Meditate' },
+      { kind: 'create', itemType: 'task', title: 'A real one' },
+    ],
+  });
+
+  it('counts them and keeps the reasons', async () => {
+    mockPropose(refusable('Mixed plan') as never);
+    await useProposalStore.getState().request('ask', 'x');
+
+    const { refused, proposal } = useProposalStore.getState();
+    expect(proposal!.operations).toHaveLength(1);
+    expect(refused.count).toBe(1);
+    expect(refused.reasons[0]).toMatch(/cannot create items of type/i);
+  });
+
+  it('reports nothing when every operation went through', async () => {
+    mockPropose(draft('All good'));
+    await useProposalStore.getState().request('ask', 'x');
+    expect(useProposalStore.getState().refused.count).toBe(0);
+  });
+
+  it('explains an empty card rather than claiming there was nothing to suggest', async () => {
+    // Every operation refused. "No changes to suggest" would be a lie about a
+    // reply that suggested plenty.
+    mockPropose({
+      summary: 'All refused',
+      operations: [{ kind: 'create', itemType: 'habit', title: 'Meditate' }],
+    } as never);
+    await useProposalStore.getState().request('ask', 'x');
+
+    const s = useProposalStore.getState();
+    expect(s.status).toBe('empty');
+    expect(s.refused.count).toBe(1);
+    expect(s.emptyMessage).toMatch(/none of those would work/i);
+  });
+
+  it('dedupes reasons, since three identical lines say no more than one', async () => {
+    mockPropose({
+      summary: 'Three habits',
+      operations: [
+        { kind: 'create', itemType: 'habit', title: 'a' },
+        { kind: 'create', itemType: 'habit', title: 'b' },
+        { kind: 'create', itemType: 'habit', title: 'c' },
+      ],
+    } as never);
+    await useProposalStore.getState().request('ask', 'x');
+
+    const { refused } = useProposalStore.getState();
+    expect(refused.count).toBe(3);
+    expect(refused.reasons).toHaveLength(1);
+  });
+
+  it('clears on a fresh ask, so a stale count never rides along', async () => {
+    mockPropose(refusable('Mixed') as never, draft('Clean'));
+    await useProposalStore.getState().request('ask', 'x');
+    expect(useProposalStore.getState().refused.count).toBe(1);
+
+    await useProposalStore.getState().request('ask', 'y');
+    expect(useProposalStore.getState().refused.count).toBe(0);
+  });
+
+  it('clears on accept and dismiss', async () => {
+    mockPropose(refusable('Mixed') as never);
+    await useProposalStore.getState().request('ask', 'x');
+    useProposalStore.getState().dismiss();
+    expect(useProposalStore.getState().refused.count).toBe(0);
   });
 });
