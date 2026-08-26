@@ -204,6 +204,39 @@ describe('the folded lookups still fold after the kinds merged', () => {
     expect(store().getProjectEmoji('PERSONAL')).toBe('⭐');
   });
 
+  /**
+   * WHAT THE FOLD COSTS WHEN TWO CONTAINER ROWS COLLIDE — the case migration 039
+   * refuses to run against (its section 1b), pinned here so the refusal has a
+   * reason on this side of the line rather than only in SQL.
+   *
+   * It is not merely "one row is unreachable by name". Deleting EITHER row
+   * unfiles the OTHER one's members, because `removeProject` matches with
+   * `sameContainerName` — collateral damage across a container the user did not
+   * touch. There is no app-side fix: folding is what makes a habit stored as
+   * 'personal' resolve against a seeded 'Personal', and the two rows are
+   * genuinely indistinguishable to every lookup once it is on.
+   */
+  it('cannot tell two live case-variant containers apart — the 039 pre-flight case', () => {
+    const PAIR: Project[] = [
+      { id: 'p-upper', name: 'Work', emoji: '💼' },
+      { id: 'p-lower', name: 'work', emoji: '📐' },
+    ];
+    seed([task('t-upper', 'Work'), task('t-lower', 'work')], PAIR);
+
+    // Both names resolve to the FIRST row in store order; the second is
+    // unreachable by name, and takes the first's glyph.
+    expect(store().getProject('Work')?.id).toBe('p-upper');
+    expect(store().getProject('work')?.id).toBe('p-upper');
+    expect(store().getProjectEmoji('work')).toBe('💼');
+
+    // …and the collateral damage: deleting the upper row unfiles the lower
+    // row's item too, while `p-lower` itself survives.
+    store().removeProject('p-upper');
+    expect(store().projects.map((p) => p.id)).toEqual(['p-lower']);
+    expect(containerOf('t-upper').project).toBeUndefined();
+    expect(containerOf('t-lower').project).toBeUndefined();
+  });
+
   it('keeps the three legacy habit tokens on the merged colour getter', () => {
     // They came over from `getHabitGroupColor`. Dropping them would restyle
     // every account still holding a Wellness / Work / Personal container.

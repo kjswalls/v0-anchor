@@ -17,10 +17,19 @@
 --     its id.
 --
 -- WHAT DOES NOT MOVE, and deliberately:
---   * `habit_groups` is NOT dropped, and `items."group"` is NOT cleared. They
---     become rollback ballast, the same posture migration 019 took with the
---     frozen `tasks`/`habits` tables and 027 took with the container name
---     columns. Nothing in the app reads or writes them after this.
+--   * `habit_groups` is NOT dropped, and `items."group"` / `items.group_id` are
+--     NOT cleared. They become rollback ballast, the same posture migration 019
+--     took with the frozen `tasks`/`habits` tables and 027 took with the
+--     container name columns.
+--
+--     Nothing WRITES them after this, and nothing reads the TABLE — there is no
+--     `.from('habit_groups')` left in the app. `items."group"` is the one
+--     exception and it is deliberate: `itemFromRow` reads it as a FALLBACK
+--     (`project: row.project ?? row.group ?? ''`, lib/db.ts) so a build that
+--     lands ahead of this migration shows a habit's container instead of
+--     blanking it. The NAME falls back; the ID never does, because
+--     `items.group_id` points into `habit_groups` and `items_project_id_fkey`
+--     would reject it.
 --   * the legacy projections are NOT touched by this file and must not be.
 --     `/api/agent/context` still serves `habits[].group` and `habitGroups[]`,
 --     and the webhooks still emit `habitGroups.updated` — the OpenClaw plugin
@@ -68,10 +77,27 @@
 -- Safe to re-run: every statement is guarded on the destination still being
 -- unset (`where project is null`, `not exists`, `on conflict do nothing`), so a
 -- second pass is a no-op — and, like 027's backfill, a LATER pass adopts rows
--- that did not exist on the first.
+-- whose `items.project` is still unset.
+--
+-- WITH ONE LIMIT, and it is narrower than it sounds: an item that took section
+-- 5's text-only path has a non-NULL `project` and a NULL `project_id`, so
+-- `where i.project is null` blocks section 4 from ever LINKING it, even once a
+-- container of that name is created. That is not a regression — it is exactly
+-- the state the item was in before this migration, and it is exactly what
+-- `adoptContainerMembers` (lib/db.ts, the app-side re-run of 027's backfill)
+-- exists to repair the moment the container is created. Re-running 039 will not
+-- do it.
 --
 -- DEPLOY ORDER: database first, app second. Nothing reads `items.project` for a
 -- habit until the app build lands, so applying this alone changes no behaviour.
+--
+-- THE READ PATH IS ALREADY TOLERANT; THE WRITE PATH IS NOT. `itemFromRow`'s
+-- `row.project ?? row.group` fallback means a build landing AHEAD of this
+-- migration still shows a habit's container rather than blanking it — so the
+-- wrong order degrades instead of breaking. What it cannot survive is a WRITE:
+-- an app that saves a habit writes `items.project` and stops maintaining
+-- `items."group"`, and a rolled-back database has no `project` value for the
+-- next reader to find. Database first is what keeps that window shut.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ─── 1. Preconditions ─────────────────────────────────────────────────────────
@@ -103,6 +129,78 @@ begin
      where table_schema = 'public' and table_name = 'projects' and column_name = 'deleted_at'
   ) then
     raise exception '039_one_classify_kind requires projects.deleted_at (migration 013)';
+  end if;
+end$$;
+
+-- ─── 1b. THE ONE CASE THIS MIGRATION CANNOT REPAIR, AND REFUSES ──────────────
+--
+-- Two LIVE `projects` rows for one user whose names differ only in case.
+--
+-- The app is about to start folding container names — `CONTAINER_KINDS.project`
+-- carries `caseFold: true`, inherited from the habit-group half of the axis
+-- because `makeAddDraft` writes a lowercase 'personal' against a seeded
+-- 'Personal' whenever the container list has not loaded. Folding is what makes
+-- that item resolve; it is also what makes two same-folded ROWS indistinguishable
+-- to every lookup in the store, and the consequences are worse than "one row is
+-- unreachable":
+--
+--   * `getProject`, `getProjectEmoji` and `getProjectColor` all answer with
+--     whichever row comes first in store order, so the second row's items show
+--     the first row's glyph and colour;
+--   * `removeProject` matches members with `sameContainerName`, so deleting
+--     EITHER row unfiles the other one's items as well — collateral damage
+--     across a container the user did not delete.
+--
+-- This migration cannot fix that. Merging two containers the user created by
+-- hand is a data decision with visible consequences (which glyph and which
+-- colour survive, and which name), and it is not one a migration should make
+-- silently. Renaming one for them is worse.
+--
+-- So it REFUSES. A loud stop before anything is written is the whole point:
+-- proceeding would leave a working database and a quietly misattributing app.
+-- Run this to see what is in the way, and merge or rename the rows by hand
+-- first:
+--
+--   select user_id, lower(name) folded, count(*),
+--          string_agg(name||'='||id::text, ' | ') from projects
+--    where deleted_at is null group by user_id, lower(name) having count(*) > 1;
+--
+-- LIVE ROWS ONLY (`deleted_at is null`). A binned row differing only in case
+-- from a live one is harmless: the store never loads binned containers, so no
+-- lookup can confuse the two. It still holds its name against the unique index
+-- for 30 days, which section 2 already accounts for.
+--
+-- The habit-group side needs no equivalent check. Section 2's `distinct on`
+-- collapses two groups that fold equal to EACH OTHER down to one project, and a
+-- group folding equal to an existing project is the merge case — neither can
+-- create a new same-folded pair.
+
+do $$
+declare
+  clash record;
+begin
+  if to_regclass('public.projects') is null then
+    return;
+  end if;
+
+  select p.user_id                                            as user_id,
+         lower(p.name)                                        as folded,
+         count(*)                                             as n,
+         string_agg(p.name || '=' || p.id::text, ' | ' order by p.id) as rows
+    into clash
+    from public.projects p
+   where p.deleted_at is null
+   group by p.user_id, lower(p.name)
+  having count(*) > 1
+   limit 1;
+
+  if found then
+    raise exception
+      '039_one_classify_kind: user % holds % live projects whose names fold to ''%'' — %. '
+      'The app folds container names after this migration, so these rows would be '
+      'indistinguishable to every lookup and deleting either would unfile the other''s '
+      'items. Merge or rename them by hand, then re-run. See the header for the query.',
+      clash.user_id, clash.n, clash.folded, clash.rows;
   end if;
 end$$;
 

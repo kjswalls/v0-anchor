@@ -3391,10 +3391,21 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       // These three, and every identity lookup below, ask the container registry
-      // whether this kind folds rather than spelling a comparison. Projects do
-      // not fold, so they are `===` in effect — written this way so the policy
-      // has one home and the two kinds read the same, not two idioms whose
-      // difference you have to already know about.
+      // whether this kind folds rather than spelling a comparison — so the policy
+      // has one home rather than being re-decided per call site.
+      //
+      // IT FOLDS (`CONTAINER_KINDS.project.caseFold`), and that is a change of
+      // answer, not just of wording: before 039 collapsed the two CLASSIFY kinds
+      // these were `===` in effect, and this comment said so. The merged kind
+      // inherited the habit-group half's policy, because `makeAddDraft` writes a
+      // lowercase 'personal' against a seeded 'Personal' whenever the container
+      // list has not loaded.
+      //
+      // The consequence to know about: two LIVE container rows whose names fold
+      // equal are indistinguishable here — `find` returns whichever comes first
+      // in store order, and `removeProject` below would unfile BOTH rows'
+      // members. Migration 039 refuses to run against an account in that state
+      // rather than leaving it to be discovered; see its section 1b.
       getProjectEmoji: (name) => {
         const project = get().projects.find((p) => sameContainerName('project', p.name, name));
         return project?.emoji || '';

@@ -216,11 +216,24 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
    * 'Project' is provisional — it was chosen because it is already the DB
    * column, the agent API's field, and the word in every shipped string, so
    * renaming would buy a synonym and cost a migration plus a contract change.
-   * If it ever moves (to 'Collection', say), these four strings are the change:
-   * every surface that names the axis — the Display menu's section, the item
-   * dialog's picker, the Organize console's rail, the grouping headings — reads
-   * them through `getContainerKindConfig`. The `kind` and `itemField` are
-   * MACHINE names and are not the noun; they stay `project` regardless.
+   *
+   * If it ever moves (to 'Collection', say), NO MIGRATION IS NEEDED — `kind`,
+   * `itemField` and the DB column are MACHINE names and stay `project`
+   * regardless. These four strings are where the change starts: the Display
+   * menu's section and unset row, the item dialog's picker label and its
+   * create-new row, the Organize console's rail, the grouping headings and the
+   * failed-create toast all read them through `getContainerKindConfig`.
+   *
+   * IT IS NOT *ONLY* THESE FOUR, and pretending otherwise is how a rename ships
+   * half-done. About eight user-visible strings still spell the noun by hand,
+   * all of them pre-dating this record: `sections/labels.tsx` ("No projects
+   * yet.", the back row, the identity row's label, the meta line),
+   * `sections/trash.tsx`'s KIND_LABEL, `bulk-add-dialog.tsx`'s placeholder and
+   * its "No project" option, and `day-list.tsx`'s own PROJECTS section heading —
+   * which is a type-shaped section rather than this axis and may not want to
+   * follow at all. Moving them here is cheap and was left out of 039 on purpose:
+   * it is a copy refactor with no behaviour in it, and bundling it would have
+   * hidden it inside a data migration.
    */
   project: {
     kind: 'project',

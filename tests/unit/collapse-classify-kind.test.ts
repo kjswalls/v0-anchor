@@ -36,7 +36,15 @@ import {
   HABIT_FIELDS,
   type HabitItem,
 } from '@anchor-app/types';
-import { toLegacyHabit, fromLegacyHabit, fromLegacyHabitUpdates } from '@/lib/db';
+import {
+  toLegacyHabit,
+  fromLegacyHabit,
+  fromLegacyHabitUpdates,
+  createProject,
+  updateProject,
+  deleteProject,
+} from '@/lib/db';
+import { notifyPlugins } from '@/lib/openclaw-registry';
 
 const habitItem = (over: Partial<HabitItem> = {}): HabitItem =>
   ({
@@ -126,6 +134,7 @@ const projects = [
   },
 ];
 
+vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 vi.mock('@/lib/supabase-server', () => ({ createClient: vi.fn(async () => ({ auth: { getUser: async () => ({ data: { user: null } }) } })) }));
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: () => ({
@@ -187,6 +196,53 @@ describe('/api/agent/context keeps habitGroups[] alive as a projection', () => {
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     // And the habit reached it under the legacy field name.
     expect(body.habits[0].group).toBe('Wellness');
+  });
+});
+
+/* ── the webhook half of the same contract ──────────────────────────────── */
+
+describe('a container write still announces itself under BOTH event names', () => {
+  /**
+   * `habitGroups.updated` is in the plugin's pinned event enum
+   * (AnchorChangeEventSchema) and in the subscription it registers on setup
+   * (openclaw-plugin/src/webhook.ts). `notifyPlugins` DROPS an unregistered
+   * name, so going quiet on it does not fail anywhere — it silently
+   * unsubscribes every deployed build and leaves it on a stale cache until
+   * something else happens to move.
+   *
+   * That is precisely the shape of regression no other test in this repo can
+   * see, because nothing else asserts on webhook names at all: deleting the
+   * second `notifyPlugins` call left all 2026 tests green.
+   */
+  it('emits projects.updated AND habitGroups.updated for create, update and delete', async () => {
+    // An explicit `client` rather than a module mock of `@/lib/supabase`: every
+    // CRUD function here takes one, so no real Supabase client is ever
+    // constructed and the test says nothing about how one would be built.
+    const chain: Record<string, unknown> = {};
+    chain.insert = async () => ({ error: null });
+    chain.update = () => chain;
+    chain.eq = () => chain;
+    chain.then = (resolve: (v: { error: null }) => unknown) =>
+      Promise.resolve({ error: null }).then(resolve);
+    const client = { from: () => chain } as never;
+
+    const project = { id: 'pr-1', name: 'Wellness', emoji: 'icon:Heart' };
+    await createProject('u1', project, client);
+    await updateProject('u1', 'pr-1', { name: 'Health' }, client);
+    await deleteProject('u1', 'pr-1', client);
+
+    const events = vi.mocked(notifyPlugins).mock.calls.map((c) => c[1]);
+    expect(events).toEqual([
+      'projects.updated', 'habitGroups.updated',
+      'projects.updated', 'habitGroups.updated',
+      'projects.updated', 'habitGroups.updated',
+    ]);
+    // Same payload under both names — an older build reads it as a habit-group
+    // change and a newer one as a project change, and they are the same change.
+    const calls = vi.mocked(notifyPlugins).mock.calls;
+    for (let i = 0; i < calls.length; i += 2) {
+      expect(calls[i][2]).toEqual(calls[i + 1][2]);
+    }
   });
 });
 
@@ -322,5 +378,71 @@ describe('migration 039 is safe to re-run', () => {
     // just as dead when it is the second assignment in a SET list — which is
     // exactly how the first version of this assertion was got past.
     expect(SQL).not.toMatch(/"group"\s*=/);
+    // BOTH halves of the ballast. `group_id` is the other one, and it is what
+    // makes the ids resolvable if the app is rolled back — clearing it destroys
+    // half the rollback while passing every assertion above.
+    expect(SQL).not.toMatch(/\bgroup_id\s*=/);
+    // The TABLE is ballast too, and soft-deleting every row of it is a way to
+    // destroy it that names neither `drop` nor `delete`.
+    expect(SQL).not.toMatch(/update\s+(public\.)?habit_groups/i);
+  });
+
+  it('prefers a LIVE row over a binned one, on both sides of the fold', () => {
+    // The preference appears twice — once choosing which of two fold-equal habit
+    // groups becomes a project, once choosing which project a name resolves to —
+    // and both orderings must put live first. Flipped, items are filed into a
+    // container that is IN THE TRASH: they vanish from every surface while the
+    // database looks healthy. `(x is not null)` sorts false before true in
+    // Postgres, so this exact spelling is the live-first one.
+    const orders = SQL.match(/order by[\s\S]*?;/g) ?? [];
+    const prefs = orders.filter((o) => o.includes('deleted_at is not null'));
+    expect(prefs.length).toBe(2);
+    for (const o of prefs) {
+      expect(o).toMatch(/\(\w+\.deleted_at is not null\)/);
+      expect(o).not.toMatch(/deleted_at is not null\)\s+desc/i);
+    }
+  });
+
+  it('carries soft-deleted groups across rather than skipping them', () => {
+    // Their members still point at them (027 links deleted parents on purpose),
+    // so leaving them behind strands exactly the rows a Trash restore is for.
+    // A `where g.deleted_at is null` on the insert would do it silently.
+    const insert = SQL.slice(SQL.indexOf('insert into public.projects'));
+    expect(insert).toContain('g.deleted_at');
+    expect(insert).not.toMatch(/g\.deleted_at is null/);
+  });
+
+  it('writes the id alongside the name whenever there is one to write', () => {
+    // Name without id is the pre-027 state: invisible to the rename fan-out, so
+    // renaming the container silently empties it again. Section 4 must set both;
+    // section 5 sets only the name, and honestly, because there is no row.
+    const canonUpdate = SQL.slice(SQL.indexOf('with canon as'));
+    expect(canonUpdate).toMatch(/set project = c\.name,\s*\n\s*project_id = c\.id/);
+  });
+
+  it('leaves the habit_groups rows themselves untouched', () => {
+    // Renaming them (to mark them migrated, say) would make the rollback land on
+    // data the old build never wrote.
+    expect(SQL).not.toMatch(/habit_groups\s+(g\s+)?set\b/i);
+  });
+
+  it('refuses an account it cannot repair rather than proceeding', () => {
+    // Two LIVE projects whose names fold equal. The app is about to start
+    // folding, which makes them indistinguishable to every lookup AND makes
+    // deleting either unfile the other's members. A migration cannot pick which
+    // glyph, colour and name survive, so it stops.
+    const guard = SQL.slice(SQL.indexOf('-- ─── 1b.'), SQL.indexOf('-- ─── 2.'));
+    // REFUSES, not warns. A `raise notice` here would scroll past in a db:push
+    // and leave the account in exactly the state the guard exists to prevent —
+    // which is why this asserts on the guard block rather than on the file
+    // (the preconditions above raise too, and would satisfy a file-wide match).
+    expect(guard).toMatch(/raise exception/);
+    expect(guard).not.toMatch(/raise notice/);
+    expect(guard).toMatch(/having count\(\*\) > 1/);
+    // LIVE rows only — a binned case-variant is invisible to the store and
+    // cannot collide, so refusing on one would block a healthy account.
+    expect(guard).toMatch(/p\.deleted_at is null/);
+    // And it runs BEFORE anything is written.
+    expect(SQL.indexOf('-- ─── 1b.')).toBeLessThan(SQL.indexOf('insert into public.projects'));
   });
 });

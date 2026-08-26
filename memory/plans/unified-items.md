@@ -49,11 +49,15 @@ types should appear there). Next: Phase 6.
 
    Three things about it are load-bearing and not obvious from the diff:
 
-   - **The noun is provisional and has one home.** 'Project' won because it is already
-     the DB column, the agent field and every shipped string — renaming would buy a
-     synonym and cost a migration plus a contract change. It lives in
-     `CONTAINER_KINDS.project.label` / `labelPlural` / `unsetLabel` / `newLabel`, and
-     every surface reads it from there, so moving it later is a string edit.
+   - **The noun is provisional, and renaming it needs no migration.** 'Project' won
+     because it is already the DB column, the agent field and every shipped string.
+     `kind`, `itemField` and the column are machine names and never move; the label
+     lives in `CONTAINER_KINDS.project.label` / `labelPlural` / `unsetLabel` /
+     `newLabel`. About eight user-visible strings still spell it by hand
+     (`sections/labels.tsx`, `sections/trash.tsx`, `bulk-add-dialog.tsx`,
+     `day-list.tsx`), all pre-dating 039 — listed in that record's own note. Moving
+     them is a copy refactor with no behaviour in it and was deliberately kept out of
+     the data migration.
    - **The merged kind FOLDS CASE.** It inherited the habit-group half's policy, not the
      project half's: `makeAddDraft` writes a lowercase `'personal'` against a seeded
      `'Personal'` whenever the container list has not loaded, so taking the exact half
@@ -67,6 +71,22 @@ types should appear there). Next: Phase 6.
      `projects_user_id_name_key` is `UNIQUE (user_id, name)` and the ref grammar has no
      way to tell two same-named containers apart, so the alternative was renaming one
      without being asked.
+
+     It does NOT cover project-vs-project, which is the case it cannot repair: two LIVE
+     `projects` rows folding equal are indistinguishable to every lookup once folding is
+     on, and `removeProject` would unfile BOTH rows' members. A migration cannot choose
+     which glyph, colour and name survive, so **039 refuses to run** against such an
+     account (section 1b) rather than proceeding. `scripts/verify-039.sh` exercises the
+     refusal; `tests/unit/container-case-policy.test.tsx` pins the damage it prevents.
+
+   - **The migration is verified against a real Postgres**, not only against its own
+     text. `scripts/verify-039.sh` stands up a throwaway cluster, reconstructs the
+     pre-039 schema, and asserts on the resulting rows — merge, id preservation, binned
+     containers carried with their members, live-beats-binned, text-only refs, ballast
+     untouched, three runs producing an identical snapshot, and the pre-flight refusing.
+     `tests/unit/collapse-classify-kind.test.ts` covers the same file in CI but only as
+     TEXT, which cannot catch a syntax error or a wrong join; the two are complements,
+     and the text half exists because CI has no Postgres.
 5. **Projects-as-item-type is deferred** (edit-project has a quasi-item time-block form;
    candidate future type, out of scope).
 6. **External API projections live indefinitely.** `/api/agent/context` keeps serving
