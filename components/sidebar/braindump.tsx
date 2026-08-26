@@ -17,7 +17,7 @@ import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
 import { goalFilterItemIds } from '@/lib/goals';
 import { groupRows, type RowGroup } from '@/lib/grouping';
-import { sortRows } from '@/lib/sort-rows';
+import { orderRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -405,6 +405,13 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * rendered [Work, Home]; switching to Title A–Z rendered [Home, Work]. The
    * rows inside were right either way, which is why it reads as a jump rather
    * than as a bug.
+   *
+   * `orderRows` also sinks finished rows to the foot of each group. The date is
+   * NULL, not today: the braindump carries no date of its own (locked decision
+   * 3), and TaskRow already refuses to draw a recurring row as completed here
+   * for that reason (`suppressCompletedLook`, issue #181). A recurring row that
+   * shows no completion mark must not move as though it had one, so only
+   * one-shot rows — which are what this list is almost entirely made of — sink.
    */
   const grouped: RowGroup<RowItem>[] = useMemo(() => {
     // 'type' is the braindump's own value and has no canvas counterpart — the
@@ -421,7 +428,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
           groupRows(rows, braindumpGroupBy, { routines, programs, goals });
-    return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
+    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null) }));
   }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals]);
 
   return (

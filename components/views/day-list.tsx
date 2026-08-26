@@ -8,8 +8,9 @@ import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { flattenDayRows } from '@/lib/day-items';
+import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
-import { sortRows } from '@/lib/sort-rows';
+import { orderRows } from '@/lib/sort-rows';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,8 @@ function defaultListGroups(rows: ListRow[]): RowGroup<ListRow>[] {
 
 export function DayList() {
   const day = useDayItems();
-  const { selectedDate, navDirection, routines, programs, goals } = usePlannerStore();
+  const { selectedDate, navDirection, routines, programs, goals, userTimezone } =
+    usePlannerStore();
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
 
@@ -55,13 +57,24 @@ export function DayList() {
    * own sequence (routine_items.sort_order, the only place that order is visible
    * outside the manager). An explicit Ordering overrides it, which is the right
    * precedence: the user asked for it on this surface, now.
+   *
+   * `orderRows` then sinks finished rows to the foot of each group. Safe on the
+   * WHOLE list here, unlike Day × Buckets: this layout has no per-row drop zones
+   * at all (drops go to the Braindump), so nothing resolves a drop against a
+   * neighbour's time and there is no timed spine to contradict.
+   *
+   * The day is resolved in the USER's zone, the same conversion TaskRow makes
+   * for its own `completed` — a recurring row's completion is per-date, so
+   * reading it against the browser's zone would sink today's tick a day early
+   * or late for anyone east or west of it.
    */
+  const dateStr = toDateStr(selectedDate, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const rows = flattenDayRows(day);
   const groups = (
     canvasGroupBy === 'none'
       ? defaultListGroups(rows)
       : groupRows(rows, canvasGroupBy, { routines, programs, goals })
-  ).map((g) => ({ ...g, rows: sortRows(g.rows, sortBy) }));
+  ).map((g) => ({ ...g, rows: orderRows(g.rows, sortBy, dateStr) }));
 
   return (
     <ScrollArea className="h-full flex-1">
