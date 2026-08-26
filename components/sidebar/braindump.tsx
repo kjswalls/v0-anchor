@@ -9,6 +9,7 @@ import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
+import { NoticeSlot } from '@/components/notices/notice-slot';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
@@ -519,6 +520,19 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         />
         {headerAccessory}
       </SurfaceHeader>
+
+      {/* The sweep receipt, standing on the list it added to.
+          "12 items put aside this morning" needs no words to say WHICH items —
+          they are the rows immediately below it, and "Put back" is next to the
+          things that would move. Outside the scroller on purpose: a receipt you
+          have to scroll to find is a receipt you never see, and this is the
+          surface the sweep's own consequence lives on.
+
+          It renders nothing when there is no receipt, and it registers the
+          `braindump` anchor only while it is mounted — so on the phone, where
+          this component lives on one tab, a receipt raised while you are on Today
+          falls back to the dock's line by itself. */}
+      <NoticeSlot anchor="braindump" className={cn(isMobile ? 'mx-[10px]' : 'px-[6px]')} />
 
       {/* List — sits directly on the paper backdrop, no card. A plain
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so

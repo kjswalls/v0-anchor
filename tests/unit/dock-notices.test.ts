@@ -60,10 +60,14 @@ describe('capNotices', () => {
   });
 
   it('folds the only notice away too when the cap is one row', () => {
-    // Mobile. With max 1 there is no slot that can hold both a notice and the
-    // summary, so the summary wins and speaks for the pile — the row reads
-    // "2 to answer" rather than standing in for one of them.
-    const { visible, overflow } = capNotices(three.slice(0, 2), 1);
+    // With max 1 there is no slot that can hold both a notice and the summary,
+    // so the summary wins and speaks for the pile — the row reads "2 to answer"
+    // rather than standing in for one of them.
+    //
+    // Deliberately NOT `three` here: its first notice is rank 90, and a blocked
+    // notice is the one thing exempt from this (see below). Using it made this
+    // test pass for the wrong reason for as long as the exemption did not exist.
+    const { visible, overflow } = capNotices([notice('b', 50), notice('c', 30)], 1);
     expect(visible).toEqual([]);
     expect(overflow).toBe(2);
   });
@@ -76,6 +80,23 @@ describe('capNotices', () => {
     const { visible, overflow } = capNotices(three, 2, true);
     expect(visible).toHaveLength(3);
     expect(overflow).toBe(0);
+  });
+
+  it('never folds a blocked notice away, even at a one-row cap', () => {
+    // The one deliberate overrun of the cap. Folding "the app cannot proceed"
+    // behind a summary moves it from somewhere you have to scroll to, to
+    // somewhere you have to click to — the same failure the pin exists to
+    // prevent. So the row stands AND the summary takes the slot after it.
+    const blocked = [notice('offline', NOTICE_RANK.blocked), notice('waiting', 50)];
+    const { visible, overflow } = capNotices(blocked, 1);
+    expect(visible.map((n) => n.id)).toEqual(['offline']);
+    expect(overflow).toBe(1);
+  });
+
+  it('does not overrun for anything below blocked', () => {
+    const { visible, overflow } = capNotices([notice('a', 50), notice('b', 30)], 1);
+    expect(visible).toEqual([]);
+    expect(overflow).toBe(2);
   });
 
   it('reports nothing to fold for an empty stack', () => {
