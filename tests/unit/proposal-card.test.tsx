@@ -296,6 +296,15 @@ describe('suggestions that could not be made', () => {
     expect(screen.queryByTestId('proposal-refused')).toBeNull();
   });
 
+  it('offers a retry from the empty card, where asking differently is the move', () => {
+    // "None of those would work here" was the one state that could not retry.
+    status = 'empty';
+    refused = { count: 3, reasons: ['a repeating item cannot be moved to the Braindump'] };
+    render(<ProposalCard />);
+    fireEvent.click(screen.getByTestId('proposal-retry'));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
   it('explains an empty card, where it is the only account there is', () => {
     // Every operation refused. "No changes to suggest" alone would be a lie
     // about a reply that suggested plenty.

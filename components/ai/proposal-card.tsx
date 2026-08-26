@@ -154,6 +154,21 @@ export function ProposalCard({
               </p>
             )}
           </div>
+          {/* Retry belongs here most of all: "None of those would work here"
+              is precisely the state where asking again differently is the
+              right move, and it was the one state that could not. */}
+          {canRetry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => retry()}
+              data-testid="proposal-retry"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Try again
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
             Close
           </Button>

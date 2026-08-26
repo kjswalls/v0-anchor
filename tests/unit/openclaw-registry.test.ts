@@ -77,6 +77,7 @@ async function load() {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   rows.length = 0;
   selectSpy.mockClear();
   fetchSpy.mockClear();
@@ -86,7 +87,10 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchSpy);
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('surviving a cold start', () => {
   it('writes the registration to the table, not only to memory', async () => {
@@ -199,9 +203,11 @@ describe('the cache in front of the table', () => {
 });
 
 describe('deployed ahead of the migration', () => {
+  const missing = { code: '42P01', message: 'relation does not exist' };
+
   it('falls back to memory rather than failing to register', async () => {
-    selectError = { code: '42P01', message: 'relation does not exist' };
-    writeError = { code: '42P01', message: 'relation does not exist' };
+    selectError = missing;
+    writeError = missing;
 
     const m = await load();
     await m.registerPlugin(reg());
@@ -210,21 +216,90 @@ describe('deployed ahead of the migration', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('stops asking once the table has proved absent', async () => {
-    selectError = { code: '42P01', message: 'relation does not exist' };
+  it('says the registration is not durable rather than just "ok"', async () => {
+    writeError = missing;
     const m = await load();
-    await m.notifyPlugins('u1', 'tasks.updated', {});
+    // Memory-only until this instance restarts, which is the bug 039 fixes.
+    // Reporting plain success would make it silent instead of absent.
+    expect(await m.registerPlugin(reg())).toEqual({ ok: true, durable: false });
+  });
+
+  it('refuses to claim a deregistration it could not perform', async () => {
+    // The row may exist and be unreachable from here. Every other instance
+    // keeps reading it and POSTing the user's items to a webhook they revoked.
+    selectError = missing;
+    const m = await load();
+    await m.notifyPlugins('u1', 'tasks.updated', {}); // trips the latch
+    const removed = await m.deregisterPlugin('u1', 'anchor-context');
+    expect(removed.ok).toBe(false);
+  });
+
+  it('stops asking for a while, then tries again', async () => {
+    /**
+     * A one-way latch was wrong here. PostgREST returns PGRST205 for anything
+     * missing from its SCHEMA CACHE, which includes the propagation window on
+     * a table that genuinely exists — so one reply right after `db:push` would
+     * have disabled persistence for the whole life of that instance.
+     */
+    selectError = { code: 'PGRST205', message: 'not in schema cache' };
+    const m = await load();
     await m.notifyPlugins('u1', 'tasks.updated', {});
     await m.notifyPlugins('u1', 'tasks.updated', {});
     expect(selectSpy).toHaveBeenCalledTimes(1);
+
+    // The schema cache catches up.
+    selectError = null;
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    await m.notifyPlugins('u1', 'tasks.updated', {});
+    expect(selectSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps delivering when a read fails for some other reason', async () => {
-    // A transient error must not silently stop notifications for the session.
+  it('does not resurrect a revoked webhook when a read blips', async () => {
+    // The table EXISTS and this was transient. The Map may hold a registration
+    // revoked days ago on another instance, and delivering the user's items to
+    // a webhook they took away is worse than missing a notification.
+    const m = await load();
+    await m.registerPlugin(reg());
+    m.clearRegistrationCache();
     selectError = { code: '08006', message: 'connection failure' };
+
+    await m.notifyPlugins('u1', 'tasks.updated', {});
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('forgets a registration the table no longer has', async () => {
+    // Deregistered on another instance, or the account cascaded away.
+    const m = await load();
+    await m.registerPlugin(reg());
+    rows.length = 0;
+    m.clearRegistrationCache();
+
+    await m.notifyPlugins('u1', 'tasks.updated', {});
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // And it is gone from memory too, so a later blip cannot revive it.
+    m.clearRegistrationCache();
+    selectError = { code: '08006', message: 'blip' };
+    await m.notifyPlugins('u1', 'tasks.updated', {});
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('cache invalidation ordering', () => {
+  it('does not serve the pre-write answer for a full TTL after a change', async () => {
+    /**
+     * `cache.delete` used to run BEFORE the write, and the dynamic import
+     * guarantees an await boundary — so a concurrent notify could read the
+     * pre-write table and re-cache it fresh, and the very instance that
+     * accepted the change served the old answer for a minute.
+     */
     const m = await load();
     await m.registerPlugin(reg());
     await m.notifyPlugins('u1', 'tasks.updated', {});
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    await m.deregisterPlugin('u1', 'anchor-context');
+    await m.notifyPlugins('u1', 'tasks.updated', {});
+    // Still once: the second notify must not find the removed hook.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

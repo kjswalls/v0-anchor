@@ -161,8 +161,21 @@ function isMetadataHostname(host: string): boolean {
   return host === 'metadata' || host.endsWith('.internal')
 }
 
-export function assertAllowedGatewayUrl(
-  raw: string
+/**
+ * The host rules, without a TLS policy.
+ *
+ * Split out because Anchor now fetches TWO user-supplied URLs and they differ
+ * on exactly one axis. A gateway URL must be https outside local development —
+ * it carries a bearer token that is full operator access. A plugin WEBHOOK URL
+ * is the plugin's own listener, typically plain http on the tailnet that
+ * already encrypts it, so demanding TLS there would reject the ordinary
+ * deployment. Everything else — metadata addresses, credentials in the URL,
+ * the protocol allowlist — is identical and must not be reimplemented per
+ * caller, which is how one of two copies quietly stops blocking something.
+ */
+export function assertSafeOutboundUrl(
+  raw: string,
+  opts: { requireTls: boolean }
 ): { ok: true; url: string } | { ok: false; reason: string } {
   let url: URL
   try {
@@ -202,11 +215,25 @@ export function assertAllowedGatewayUrl(
     return { ok: false, reason: 'That address range is not allowed' }
   }
 
-  if (url.protocol === 'http:' && !(isLoopback && process.env.NODE_ENV !== 'production')) {
+  if (
+    opts.requireTls &&
+    url.protocol === 'http:' &&
+    !(isLoopback && process.env.NODE_ENV !== 'production')
+  ) {
     return { ok: false, reason: 'Use https (http is only allowed for localhost in development)' }
   }
 
   return { ok: true, url: url.toString().replace(/\/+$/, '') }
+}
+
+/**
+ * The gateway URL — the one Anchor sends an operator-access bearer token to, so
+ * TLS is not optional.
+ */
+export function assertAllowedGatewayUrl(
+  raw: string
+): { ok: true; url: string } | { ok: false; reason: string } {
+  return assertSafeOutboundUrl(raw, { requireTls: true })
 }
 
 export interface GatewayChatRequest {

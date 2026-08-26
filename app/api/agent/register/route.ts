@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveUserIdFromApiKey, createServiceClient } from '@/lib/supabase-service'
 import { registerPlugin, deregisterPlugin, PluginRegistration } from '@/lib/openclaw-registry'
+import { assertSafeOutboundUrl } from '@/lib/openclaw-gateway'
 
 /**
  * POST /api/agent/register
@@ -35,8 +36,19 @@ export async function POST(req: NextRequest) {
     agentId?: string
   }
 
-  // chatUrl-only registration is allowed (no webhookUrl/events required)
-  const hasWebhook = webhookUrl && events?.length
+  // chatUrl-only registration is allowed (no webhookUrl/events required).
+  //
+  // `Array.isArray` matters: `events?.length` is truthy for a STRING, so
+  // `events: "tasks.updated"` passed this check, reached a `text[]` column, and
+  // failed the insert — while still working locally, because
+  // `"tasks.updated".includes("tasks.updated")` is true against the in-memory
+  // copy. It delivered until the next cold start and then silently stopped.
+  const hasWebhook =
+    typeof webhookUrl === 'string' &&
+    webhookUrl.length > 0 &&
+    Array.isArray(events) &&
+    events.length > 0 &&
+    events.every((e) => typeof e === 'string')
   const hasChatUrl = typeof chatUrl === 'string' && chatUrl.length > 0
 
   if (!pluginId) {
@@ -67,6 +79,17 @@ export async function POST(req: NextRequest) {
 
   // Register webhook if provided
   if (hasWebhook) {
+    // Anchor POSTs the user's item data to this URL on every mutation, from
+    // now until they revoke it. `assertSafeOutboundUrl` is the same guard the
+    // gateway URL gets, minus the TLS requirement — a plugin listener on the
+    // tailnet is ordinarily plain http, and that tunnel is already encrypted.
+    // Unvalidated, `http://169.254.169.254/` was a durable SSRF that survived
+    // cold starts on every instance.
+    const allowed = assertSafeOutboundUrl(webhookUrl, { requireTls: false })
+    if (!allowed.ok) {
+      return NextResponse.json({ error: `webhookUrl: ${allowed.reason}` }, { status: 400 })
+    }
+
     const registration: PluginRegistration = {
       pluginId,
       webhookUrl,
@@ -76,11 +99,23 @@ export async function POST(req: NextRequest) {
       registeredAt: new Date().toISOString(),
     }
 
-    // Awaited: the response saying "registered" should not beat the row that
-    // makes it true, or a plugin that immediately expects events on another
-    // instance gets none and has no way to tell.
-    await registerPlugin(registration)
-    console.log(`[agent/register] "${pluginId}" registered for user ${userId} → ${webhookUrl}`)
+    // Awaited AND checked. Returning ok for a write that failed leaves the
+    // plugin registered only in this instance's memory — precisely the bug
+    // migration 039 exists to fix, now silent rather than absent.
+    const written = await registerPlugin(registration)
+    if (!written.ok) {
+      return NextResponse.json({ error: written.reason }, { status: 500 })
+    }
+    console.log(`[agent/register] "${pluginId}" registered for user ${userId} → ${allowed.url}`)
+
+    return NextResponse.json({
+      ok: true,
+      userId,
+      registeredAt: registration.registeredAt,
+      // False means "this instance only, until it restarts" — the caller can
+      // decide whether that is good enough rather than being told it is.
+      durable: written.durable,
+    })
   }
 
   return NextResponse.json({ ok: true, userId, registeredAt: new Date().toISOString() })
@@ -98,7 +133,13 @@ export async function DELETE(req: NextRequest) {
   if (typeof pluginId !== 'string' || !pluginId) {
     return NextResponse.json({ error: 'Missing required field: pluginId' }, { status: 400 })
   }
-  await deregisterPlugin(userId, pluginId)
+  const removed = await deregisterPlugin(userId, pluginId)
+  if (!removed.ok) {
+    // The one operation whose failure has to be visible: the user is revoking
+    // where their item data gets sent, and every other instance keeps reading
+    // the row until it is actually gone.
+    return NextResponse.json({ error: removed.reason }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

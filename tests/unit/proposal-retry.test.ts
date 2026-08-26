@@ -464,10 +464,17 @@ describe('suggestions validation refused', () => {
     expect(useProposalStore.getState().refused.count).toBe(0);
   });
 
-  it('clears on accept and dismiss', async () => {
+  it('clears on dismiss', async () => {
     mockPropose(refusable('Mixed') as never);
     await useProposalStore.getState().request('ask', 'x');
     useProposalStore.getState().dismiss();
+    expect(useProposalStore.getState().refused.count).toBe(0);
+  });
+
+  it('clears on accept too', async () => {
+    mockPropose(refusable('Mixed') as never);
+    await useProposalStore.getState().request('ask', 'x');
+    useProposalStore.getState().accept();
     expect(useProposalStore.getState().refused.count).toBe(0);
   });
 });
