@@ -122,7 +122,7 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 3px; padding-left: 2px;">
-        <div class="mark">5 chips · 1 of 5 unset chips will ever be used by most items</div>
+        <div class="mark">6 chips — 5 before a date is set, 6 after. Four of the six are unset.</div>
         <div class="mark">3 sections, 0 content — the dashed block is height spent on nothing</div>
       </div>
     </div>
@@ -232,11 +232,11 @@
         <div class="lbl">Finding 1 · the chips are no longer the weight</div>
         <div class="note">Ten chips exist in <b>renderChips</b>. <b>No item can show all ten</b> — Priority and Date are task-only,
           Times&nbsp;per&nbsp;day is habit-only. Task tops out at 9, habit at 8. On a fresh account with Goals and Organize
-          off and no routines yet, a task shows <b>5</b> and a habit shows <b>5</b>. The gating worked. A direction premised
-          on a bloated chip row is designing against a problem that already left.</div>
+          off and no routines yet, a task shows <b>5</b>, or 6 once it has a date, and a habit shows <b>5</b>. The gating
+          worked. A direction premised on a bloated chip row is designing against a problem that already left.</div>
         <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: oklch(0.9 0.008 272); border: 1px solid oklch(0.9 0.008 272); border-radius: 10px; overflow: hidden; margin-top: 4px;">
           <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">Type</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Task</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Habit</div><div style="font-size: 11px; color: oklch(0.24 0.01 272);">Custom</div></div>
-          <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">Fresh</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div></div>
+          <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">Fresh</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5–6</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">5–6</div></div>
           <div style="background: oklch(0.996 0 0); padding: 8px 10px;"><div class="lbl" style="margin-bottom: 3px;">All on</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">9</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">8</div><div class="mono" style="font-size: 11px; color: oklch(0.24 0.01 272);">9</div></div>
         </div>
       </div>
@@ -261,11 +261,12 @@
       <div style="display: flex; flex-direction: column; gap: 7px;">
         <div class="lbl">Finding 4 · file composition</div>
         <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 2px;">
-          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">932</span><span style="height: 8px; border-radius: 3px; background: oklch(0.72 0.14 30 / 55%); width: 132px;"></span><span style="font-size: 11px; color: oklch(0.24 0.01 272);">renderChips</span></div>
-          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">460</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 65px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">header + body render</span></div>
-          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">335</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 47px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">save adapters + autosave</span></div>
-          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">323</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 46px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">draft shape + seeding</span></div>
-          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">585</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 83px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">imports, wrappers, confirms</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">919</span><span style="height: 8px; border-radius: 3px; background: oklch(0.72 0.14 30 / 55%); width: 132px;"></span><span style="font-size: 11px; color: oklch(0.24 0.01 272);">renderChips</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">551</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 79px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">header, body render, 3 confirms</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">508</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 73px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">save adapters, seeding, store</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">330</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 47px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">imports, wrappers, prop types</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">170</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 24px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">draft shape + scoped writes</span></div>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="mono" style="width: 40px; font-size: 10px; color: oklch(0.5 0.02 272); text-align: right;">157</span><span style="height: 8px; border-radius: 3px; background: oklch(0.66 0.03 272 / 45%); width: 23px;"></span><span style="font-size: 11px; color: oklch(0.5 0.02 272);">autosave + focus/keyboard</span></div>
         </div>
         <div class="note" style="margin-top: 2px;">Inside renderChips, <b>702 lines are the ten chips</b> and ~230 are membership
           plumbing — routine, program and goal read a live join and write through the store rather than the draft, because a
