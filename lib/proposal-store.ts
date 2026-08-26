@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { format } from 'date-fns';
 import { usePlannerStore } from './planner-store';
 import { inactiveItemIdsOn } from './active';
+import { milestoneItemIds } from './goals';
 import { useAISettingsStore } from './ai-settings-store';
 import { resolveAICapabilities } from './ai-registry';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
@@ -142,6 +143,9 @@ function plannerContext() {
     todayStr: today,
     // Work a routine or program has paused today is not "waiting on you" — the
     // same rule the auto-age sweep and the past-due bar obey.
+    // Every bulk date verb subtracts these; a proposal that clears a date is
+    // one. See the note on ProposalContext.
+    milestoneIds: milestoneItemIds(state.goals),
     inactiveIds: inactiveItemIdsOn(state.items, today, {
       // Same fallback the store uses everywhere it needs a zone.
       userTimezone: state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,

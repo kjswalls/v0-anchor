@@ -436,6 +436,66 @@ describe('applyProposal — moving something back to the Braindump', () => {
     expect(live().startDate).toBe('2026-07-20');
   });
 
+  it('keeps the clear when a LATER operation touches the same item', () => {
+    /**
+     * The clear used to be expanded per-operation and then merged
+     * later-op-wins, so a second op put back what the first had removed:
+     * `[{startDate: null}, {timeBucket: 'afternoon'}]` left an item with a
+     * bucket and no day. The grid drops it (`!startDate`) and the Braindump
+     * drops it too (`isScheduled || timeBucket`) — invisible everywhere, and
+     * persisted. Exactly the unplaceable row this feature exists to avoid.
+     */
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: null } as ProposalOperation,
+        { kind: 'update', itemId: 'task-1', timeBucket: 'afternoon' } as ProposalOperation
+      )
+    );
+    const item = live();
+    expect(item.startDate).toBeUndefined();
+    expect(item.timeBucket).toBeUndefined();
+    expect(item.isScheduled).toBe(false);
+  });
+
+  it('keeps it against a later op that would invent a bucket from a time', () => {
+    // The startTime path runs autoCorrectBucket, which conjures a bucket out of
+    // the clock — the same unplaceable row by a longer route.
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: null } as ProposalOperation,
+        { kind: 'update', itemId: 'task-1', startTime: '14:00' } as ProposalOperation
+      )
+    );
+    const item = live();
+    expect(item.startDate).toBeUndefined();
+    expect(item.startTime).toBeUndefined();
+    expect(item.timeBucket).toBeUndefined();
+  });
+
+  it('keeps it whichever order the operations arrive in', () => {
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', timeBucket: 'afternoon' } as ProposalOperation,
+        { kind: 'update', itemId: 'task-1', startDate: null } as ProposalOperation
+      )
+    );
+    expect(live().timeBucket).toBeUndefined();
+    expect(live().startDate).toBeUndefined();
+  });
+
+  it('lands the item somewhere the user can actually find it', () => {
+    // The Braindump filter is `isScheduled || timeBucket` — both must be gone,
+    // which is the whole reason the clear is a set of four fields.
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: null } as ProposalOperation,
+        { kind: 'update', itemId: 'task-1', timeBucket: 'afternoon' } as ProposalOperation
+      )
+    );
+    const item = live();
+    expect(Boolean(item.isScheduled || item.timeBucket)).toBe(false);
+  });
+
   it('applies a clear and a move in the same plan without them fighting', () => {
     store().applyProposal(
       proposalOf(

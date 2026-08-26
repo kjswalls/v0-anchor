@@ -504,6 +504,31 @@ describe('clearing a field — "put it back in the Braindump"', () => {
     expect(accepted[0]).not.toHaveProperty('timeBucket');
   });
 
+  it('refuses to erase a goal milestone target date', () => {
+    /**
+     * The rule three other bulk date verbs already guard (`unscheduleTasks`,
+     * `moveTasksToDate`, `scheduleItemsAt`) and CLAUDE.md names by hand: for a
+     * milestone, `startDate` is not stale scheduling residue, it is the target
+     * date. Nothing in the card would have said so either — the model is shown
+     * no goal membership, so the line reads like any other row.
+     */
+    const { accepted, rejected } = validateProposalOperations(
+      [{ kind: 'update', itemId: 'sched-1', startDate: null } as ProposalOperation],
+      { ...localCtx, milestoneIds: new Set(['sched-1']) }
+    );
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0].reason).toMatch(/milestone/i);
+  });
+
+  it('still lets a milestone be MOVED, which is what re-dating a target is', () => {
+    const { accepted, rejected } = validateProposalOperations(
+      [{ kind: 'update', itemId: 'sched-1', startDate: '2026-10-01' } as ProposalOperation],
+      { ...localCtx, milestoneIds: new Set(['sched-1']) }
+    );
+    expect(rejected).toHaveLength(0);
+    expect(accepted[0]).toMatchObject({ startDate: '2026-10-01' });
+  });
+
   it('reads as Braindump on the card, not as a null', () => {
     expect(
       describeOperation(
@@ -511,5 +536,45 @@ describe('clearing a field — "put it back in the Braindump"', () => {
         localCtx
       )
     ).toContain('Braindump');
+  });
+});
+
+describe('what the model is shown', () => {
+  it('marks repeating items, since a prompt rule now depends on it', () => {
+    // "Not available for repeating items" is unfollowable if a recurring task
+    // is byte-identical to a one-shot in the context — and the refusal that
+    // catches it is silent.
+    const repeating = {
+      type: 'task',
+      id: 'r1',
+      title: 'Water the plants',
+      status: 'pending',
+      isScheduled: false,
+      order: 0,
+      completedDates: [],
+      startDate: '2026-08-01',
+      repeatFrequency: 'daily',
+    } as Item;
+    const context = buildProposalContext(
+      { items: [repeating], customTypeNames: [], todayStr: '2026-08-26' },
+    );
+    expect(context).toContain('repeats');
+  });
+
+  it('leaves a one-shot unmarked', () => {
+    const oneShot = items.filter((i) => i.type === 'task');
+    const context = buildProposalContext(
+      { items: oneShot, customTypeNames: [], todayStr: '2026-08-26' },
+    );
+    expect(context).not.toContain('repeats');
+  });
+
+  it('marks a habit, which repeats by construction', () => {
+    // Habits cannot go to the Braindump anyway (braindumpEligible: false), but
+    // the marker is a property of the item, not of one rule that reads it.
+    const habits = items.filter((i) => i.type === 'habit');
+    expect(
+      buildProposalContext({ items: habits, customTypeNames: [], todayStr: '2026-08-26' })
+    ).toContain('repeats');
   });
 });

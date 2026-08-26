@@ -633,6 +633,34 @@ back until its semantics could be implemented properly rather than as a null wri
   when something should not have a day yet, rather than shuffling it to a date nobody
   believes in. A capability the model is not told about is a capability nobody has.
 
+*Adversarial review — three real, and the worst was a rule CLAUDE.md names by hand.*
+
+- **A proposal could erase a goal milestone's target date.** `unscheduleTasks`,
+  `moveTasksToDate` and `scheduleItemsAt` all subtract `milestoneItemIds` before touching a
+  date; `applyProposal` is the same kind of verb and did not. `lib/goals.ts` states the rule
+  outright — for a milestone `startDate` is the target date, not scheduling residue — and
+  CLAUDE.md says to read that file before touching "anything that writes an item's
+  `startDate` in bulk". The card would have given no warning either: `buildProposalContext`
+  emits no goal membership, so "Ship the beta — move to Braindump" reads like any other row.
+  `ProposalContext` now carries `milestoneIds` and both validation sites pass it — the card
+  AND the write boundary, since an item can become a milestone between render and tap.
+- **Two operations on one item re-created the unplaceable row.** The clear was expanded
+  per-operation and then merged later-op-wins, so `[{startDate:null},{timeBucket:'afternoon'}]`
+  left a bucket with no day: dropped by the grid (`!startDate`) AND by the Braindump
+  (`isScheduled || timeBucket`). Invisible everywhere, and persisted. The expansion now runs
+  on the MERGED patch, and the clear wins over a later reschedule — a plan saying both is
+  incoherent, and only that reading leaves the item somewhere findable.
+- **The prompt stated a rule the model could not follow.** "Not available for repeating
+  items" was unobservable: `buildProposalContext` never emitted recurrence, so a recurring
+  task was byte-identical to a one-shot — and the refusal that catches it is silent, because
+  `validateProposal`'s `rejected[]` is dropped by the store. Recurrence is now in the
+  context. *Still open:* nothing tells the user when operations were dropped.
+
+Refuted: `'Accept plan:'` IS in `SIGNIFICANT_ACTIONS`, so accepting does raise an undo toast.
+Also refuted, usefully: `updatesToRow` really is presence-keyed on all five cleared fields,
+and `diffItem`'s `JSON.stringify` comparison does capture a value→undefined transition, so
+undo round-trips for the right reason rather than by luck.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

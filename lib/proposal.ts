@@ -30,6 +30,18 @@ export interface ProposalContext {
    * the user already made.
    */
   inactiveIds?: ReadonlySet<string>
+  /**
+   * Milestone ids (lib/goals.ts `milestoneItemIds`) — the set every bulk date
+   * verb subtracts, because a milestone's `startDate` is not stale scheduling
+   * residue, it is the TARGET DATE. `unscheduleTasks`, `moveTasksToDate` and
+   * `scheduleItemsAt` all guard it; a proposal that clears a date is the same
+   * kind of verb and needs the same guard.
+   *
+   * Optional because most proposal work never touches a date, but a caller that
+   * omits it on a planner WITH goals is one accepted card away from erasing a
+   * checkpoint's date — see the refusal below.
+   */
+  milestoneIds?: ReadonlySet<string>
 }
 
 export interface RejectedOperation {
@@ -151,6 +163,15 @@ export function validateProposalOperations(
         reject(operation, `"${next.status}" is not a valid status for ${config.label.toLowerCase()}`)
         continue
       }
+      if (ctx.milestoneIds?.has(target.id)) {
+        // For a milestone the date IS the commitment — the one piece of a
+        // checkpoint that says when it was meant to happen. Nothing in the
+        // card would have said so either: `buildProposalContext` emits no
+        // goal-membership signal, so the model cannot know, and the line would
+        // have read "Ship the beta — move to Braindump" like any other row.
+        reject(operation, 'a goal milestone keeps its target date')
+        continue
+      }
       if (isRecurring(target)) {
         // Recurring items track completion per-DATE in completedDates and never
         // through scalar status — a daily chore is `pending` forever by design.
@@ -175,6 +196,15 @@ export function validateProposalOperations(
       // Braindump is.
       if (!config.braindumpEligible) {
         reject(operation, `${itemTypeName(target)} items cannot go to the Braindump`)
+        continue
+      }
+      if (ctx.milestoneIds?.has(target.id)) {
+        // For a milestone the date IS the commitment — the one piece of a
+        // checkpoint that says when it was meant to happen. Nothing in the
+        // card would have said so either: `buildProposalContext` emits no
+        // goal-membership signal, so the model cannot know, and the line would
+        // have read "Ship the beta — move to Braindump" like any other row.
+        reject(operation, 'a goal milestone keeps its target date')
         continue
       }
       if (isRecurring(target)) {
@@ -271,6 +301,11 @@ export function buildProposalContext(
   for (const item of actionable.slice(0, limit)) {
     const typeName = itemTypeName(item)
     const bits = [typeName]
+    // Recurrence is emitted because the prompt now states a rule that depends
+    // on it ("not available for repeating items"), and a recurring task was
+    // byte-identical to a one-shot here — so the model was being asked to obey
+    // something it could not see, and the refusal is silent when it fails.
+    if (isRecurring(item)) bits.push('repeats')
     if (item.type !== 'habit' && item.startDate) bits.push(item.startDate)
     if (item.timeBucket) bits.push(item.timeBucket)
     if (item.type !== 'habit' && item.priority) bits.push(`${item.priority} priority`)

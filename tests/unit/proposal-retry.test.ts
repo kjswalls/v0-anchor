@@ -31,6 +31,9 @@ vi.mock('@/lib/planner-store', () => ({
       itemTypes: [],
       routines: [],
       programs: [],
+      // plannerContext reads goals for milestoneItemIds — a proposal that
+      // clears a date is a bulk date verb and must subtract milestones.
+      goals: [],
       userTimezone: 'UTC',
       applyProposal,
     }),

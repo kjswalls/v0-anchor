@@ -2402,6 +2402,11 @@ export const usePlannerStore = create<PlannerStore>()(
         const { accepted } = validateProposalOperations(proposal.operations, {
           items: state.items,
           customTypeNames: state.itemTypes.map((t) => t.name),
+          // The write boundary carries the guard too, not just the card: this
+          // re-validation exists precisely because the planner can have changed
+          // since the card was rendered — and an item can BECOME a milestone in
+          // that window.
+          milestoneIds: milestoneItemIds(state.goals),
         });
         if (accepted.length === 0) return 0;
 
@@ -2411,6 +2416,21 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const created: Item[] = [];
         const patchById = new Map<string, Partial<Task>>();
+        /**
+         * Items a clear targeted, applied AFTER every operation is merged.
+         *
+         * Two update operations on one item merge later-op-wins, so expanding
+         * the clear per-operation let a following op put back what it had just
+         * removed — `[{startDate: null}, {timeBucket: 'afternoon'}]` produced an
+         * item with a bucket and no day, which the grid drops (`!startDate`)
+         * and the Braindump also drops (`isScheduled || timeBucket`). Invisible
+         * everywhere, and persisted.
+         *
+         * The clear wins over a later reschedule rather than the reverse: a plan
+         * saying both is incoherent, and of the two readings only this one
+         * leaves the item somewhere the user can find it.
+         */
+        const unscheduled = new Set<string>();
         // Mirrors addTask's `order: get().tasks.length`, advanced per create so
         // a multi-item plan doesn't stack every new task on the same index.
         //
@@ -2485,12 +2505,7 @@ export const usePlannerStore = create<PlannerStore>()(
           // spelled everywhere else in the store: `updatesToRow` is
           // presence-keyed, so a key present-and-undefined writes NULL while an
           // absent key is left alone.
-          if (rest.startDate === null) {
-            updates.startDate = undefined;
-            updates.startTime = undefined;
-            updates.timeBucket = undefined;
-            updates.isScheduled = false;
-          }
+          if (rest.startDate === null) unscheduled.add(itemId);
           // The simple clears: no companions, nothing derived from them.
           if (rest.startTime === null) updates.startTime = undefined;
           if (rest.priority === null) updates.priority = undefined;
@@ -2510,6 +2525,17 @@ export const usePlannerStore = create<PlannerStore>()(
           }
           // Merge rather than overwrite: two operations may touch one item.
           patchById.set(itemId, { ...(patchById.get(itemId) ?? {}), ...updates });
+        }
+
+        // Expanded on the MERGED patch — see the note on `unscheduled`.
+        for (const id of unscheduled) {
+          patchById.set(id, {
+            ...(patchById.get(id) ?? {}),
+            startDate: undefined,
+            startTime: undefined,
+            timeBucket: undefined,
+            isScheduled: false,
+          });
         }
 
         // ONE set() => ONE history entry => ONE Cmd+Z reverses the whole plan.
