@@ -23,7 +23,11 @@ interface SwipeRowProps {
  * - `stopPropagation` on the swipe so the container tab-swipe never sees it
  *   (+ a `rowSwipeActive` guard as backup);
  * - dnd-kit's TouchSensor needs a 250ms still-hold, so a quick swipe never
- *   triggers a drag.
+ *   triggers a drag. That third clause was aspirational until the sensor split
+ *   in lib/dnd/sensors.ts: PointerSensor also fires for fingers and claimed the
+ *   gesture at 5px, i.e. before this handler's own 10px delta, so a swipe and a
+ *   drag ran on one finger. Nothing here had to change — the arbitration this
+ *   comment describes simply started happening.
  * One row open at a time; tapping an open row closes it instead of opening edit.
  *
  * The row itself is transparent and the ACTION TRAY is what moves — see the

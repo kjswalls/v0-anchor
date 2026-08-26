@@ -108,11 +108,40 @@ a pristine checkout. If a bucket drag flakes, check the account's row count befo
 Locally also pass `--workers=1`: `workers` is only pinned under `CI`, and parallel specs
 share one test user.
 
-## Sensors (`components/shell/app-shell.tsx`)
+## Sensors (`components/shell/app-shell.tsx`, policy in `lib/dnd/sensors.ts`)
 
-- `PointerSensor` — activationConstraint `{ distance: 5 }`
+- `NonTouchPointerSensor` — activationConstraint `{ distance: 5 }`
 - `TouchSensor` — activationConstraint `{ delay: 250, tolerance: 5 }`
 - `collisionDetection` — `closestCenter`
+
+`NonTouchPointerSensor` is `PointerSensor` with one extra line in its activator:
+it returns `false` for `pointerType === 'touch'`. That line is the whole reason
+touch drag and touch scroll can coexist, and it is load-bearing rather than
+cosmetic — a plain `PointerSensor` also fires for fingers, and dnd-kit lets only
+the *first* sensor claim a gesture (`activeRef.current !== null` → "another
+sensor is already instantiating"). Since `pointerdown` precedes `touchstart`,
+the pointer sensor used to win every touch and the `TouchSensor` line below was
+dead configuration: a 5px flick dragged a row instead of scrolling the list, and
+raced `components/mobile/swipe-row.tsx`, which claims horizontal intent at 10px.
+
+**Split by input type, never by viewport.** A media query mis-handles a
+touchscreen laptop in both directions. `pointerType` is per-gesture and honest.
+
+Two consequences for tests and helpers:
+
+- Anything driving a drag through Playwright's `page.mouse` (`tests/e2e/helpers/dnd.ts`)
+  is unaffected — those are `pointerType: 'mouse'`, so the 5px distance
+  constraint still governs, exactly as before.
+- A drag driven by *touch* must press and hold ≥250ms, moving <5px, before it
+  moves. There is no e2e touch drag today; one would need that hold.
+
+### The schedule grid's resize handles are mouse/pen only
+
+`components/views/day-schedule.tsx` declines `onResizeDown` for touch pointers.
+The hit zone is 12px tall — unaimable with a fingertip, yet crossed constantly by
+a scrolling thumb, and every crossing captured the pointer and wrote a new
+duration on release. It is not a drop target and no ID above changes; the touch
+path to the same edit is the duration field in the item dialog.
 
 `closestCenter` compares the **dragged element's rect centre**, not the cursor. A helper
 that aims the pointer at the target's centre is aiming at the wrong thing whenever the grab

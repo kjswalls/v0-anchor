@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -20,6 +19,12 @@ import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
+import {
+  NonTouchPointerSensor,
+  POINTER_ACTIVATION_DISTANCE_PX,
+  TOUCH_ACTIVATION_DELAY_MS,
+  TOUCH_ACTIVATION_TOLERANCE_PX,
+} from '@/lib/dnd/sensors';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
@@ -227,19 +232,20 @@ export function AppShell() {
   // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
   // settings) whose tap lands on the ?eod=1 deep link above.
 
+  // Two sensors, split by INPUT TYPE, not by viewport — see lib/dnd/sensors.ts
+  // for why the plain PointerSensor that used to sit here swallowed every touch
+  // gesture before the TouchSensor could see it, and why that made a 5px flick
+  // drag a row instead of scrolling the list. Order matters only in that both
+  // must be present: the pointer sensor declines fingers, the touch sensor takes
+  // them after a hold.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        // 5px: low enough that the ghost appears near-instantly, high enough
-        // that a jittery click doesn't register as a drag (rows open the edit
-        // dialog on click).
-        distance: 5,
-      },
+    useSensor(NonTouchPointerSensor, {
+      activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
-        tolerance: 5,
+        delay: TOUCH_ACTIVATION_DELAY_MS,
+        tolerance: TOUCH_ACTIVATION_TOLERANCE_PX,
       },
     })
   );
