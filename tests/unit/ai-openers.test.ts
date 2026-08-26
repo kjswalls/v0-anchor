@@ -135,3 +135,62 @@ describe('buildChatOpeners', () => {
     }
   });
 });
+
+describe('agreeing with the grid', () => {
+  /**
+   * `openToday` decides which opener the user is offered, and disagreeing with
+   * `deriveDayItems` means Beacon calls a day busy that the grid draws empty.
+   * The rule that is easy to miss: recurrence says which WEEKDAYS a series
+   * lands on, not when it begins.
+   */
+  const recurring = (id: string, startDate?: string): Item =>
+    ({
+      type: 'task',
+      id,
+      title: id,
+      status: 'pending',
+      isScheduled: false,
+      order: 0,
+      completedDates: [],
+      repeatFrequency: 'daily',
+      ...(startDate ? { startDate } : {}),
+    }) as Item;
+
+  it('does not count a recurring series that has not started yet', () => {
+    // A daily task starting in December is not on today's plate in August,
+    // however cheerfully shouldShowOnDate says "daily".
+    expect(ids([recurring('future', '2026-12-01')])).toContain('plan');
+  });
+
+  it('counts a recurring series that has already started', () => {
+    expect(ids([recurring('running', '2026-01-01')])).not.toContain('plan');
+  });
+
+  it('does not count a recurring task with no start date at all', () => {
+    expect(ids([recurring('undated')])).toContain('plan');
+  });
+
+  it('counts a habit due today, which carries no start date by design', () => {
+    // Habits are date-blind: recurrence alone decides, exactly as the grid's
+    // habit filter does. Excluding them for having no startDate would call a
+    // day of habits empty.
+    const habit = {
+      type: 'habit',
+      id: 'stretch',
+      title: 'Stretch',
+      group: 'Personal',
+      streak: 0,
+      status: 'pending',
+      completedDates: [],
+      skippedDates: [],
+      dailyCounts: {},
+      repeatFrequency: 'daily',
+    } as unknown as Item;
+    expect(ids([habit])).not.toContain('plan');
+  });
+
+  it('ignores subtasks, which no day-scoped surface shows', () => {
+    const sub = { ...(task('sub', TODAY) as Record<string, unknown>), parentItemId: 'p1' } as Item;
+    expect(ids([sub])).toContain('plan');
+  });
+});

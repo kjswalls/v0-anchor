@@ -51,7 +51,12 @@ function SubtasksSection({ item }: { item: Item }) {
 
   const provider = useAISettingsStore((s) => s.provider);
   const requestProposal = useProposalStore((s) => s.request);
-  const proposalStatus = useProposalStore((s) => s.status);
+  // Scoped to THIS item — see the note in chat-conversation.tsx. A breakdown
+  // loading for another item must not grey out this one's button with no
+  // spinner in sight.
+  const proposalBusy = useProposalStore(
+    (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
+  );
 
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
@@ -91,7 +96,7 @@ function SubtasksSection({ item }: { item: Item }) {
         {canBreakDown && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
-            disabled={proposalStatus === 'loading'}
+            disabled={proposalBusy}
             data-testid="break-it-down"
             className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
           >

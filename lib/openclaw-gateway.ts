@@ -115,16 +115,50 @@ export function proposeSessionKey(userId: string): string {
  * reject the correct configuration. What it does block is the cloud metadata
  * endpoint, and it requires TLS anywhere but local development.
  */
-/** `::ffff:a9fe:a9fe` → is that 169.254.x.x? */
+/**
+ * Does this IPv6 spelling actually carry a 169.254.x.x address?
+ *
+ * The WHATWG parser folds octal, decimal, hex and trailing-dot IPv4 back to a
+ * dotted quad, so those are caught by the plain string test. What it does NOT
+ * fold is IPv4 riding inside IPv6, and there is more than one way to write
+ * that:
+ *   ::ffff:a9fe:a9fe    IPv4-mapped (the well-known one)
+ *   ::a9fe:a9fe         IPv4-compatible (deprecated, still routable)
+ *   64:ff9b::a9fe:a9fe  the NAT64 well-known prefix — on IPv6-only egress
+ *                       behind a NAT64 gateway this IS translated to the v4
+ *                       address, which makes it the one that could really bite
+ * So the last two hextets are decoded for any of those prefixes rather than
+ * matching one literal string.
+ */
 function isMappedLinkLocal(host: string): boolean {
-  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host)
-  if (hex) {
-    const high = parseInt(hex[1], 16)
-    return ((high >> 8) & 0xff) === 169 && (high & 0xff) === 254
+  const prefixes = ['::ffff:', '::', '64:ff9b::']
+
+  for (const prefix of prefixes) {
+    if (!host.startsWith(prefix)) continue
+    const tail = host.slice(prefix.length)
+
+    const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(tail)
+    if (hex) {
+      const high = parseInt(hex[1], 16)
+      if (((high >> 8) & 0xff) === 169 && (high & 0xff) === 254) return true
+      continue
+    }
+    // Some parsers keep the dotted tail; handle that spelling too.
+    const dotted = /^(\d{1,3}(?:\.\d{1,3}){3})$/.exec(tail)
+    if (dotted && /^169\.254\./.test(dotted[1])) return true
   }
-  // Some parsers keep the dotted tail; handle that spelling too.
-  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host)
-  return dotted ? /^169\.254\./.test(dotted[1]) : false
+  return false
+}
+
+/**
+ * Hostnames that resolve to a metadata service by NAME rather than by address.
+ *
+ * `metadata.google.internal` is the documented alias for 169.254.169.254, and
+ * no literal-IP test will ever catch it. `.internal` is not a public TLD, so
+ * refusing the whole suffix costs a legitimate gateway nothing.
+ */
+function isMetadataHostname(host: string): boolean {
+  return host === 'metadata' || host.endsWith('.internal')
 }
 
 export function assertAllowedGatewayUrl(
@@ -159,7 +193,12 @@ export function assertAllowedGatewayUrl(
   // `[::ffff:a9fe:a9fe]`, hex rather than dotted, and reaches the same address.
   // So the mapped form is decoded back to an IPv4 rather than matched as a
   // literal — one hard-coded address would only block the one everybody knows.
-  if (/^169\.254\./.test(host) || host === 'fd00:ec2::254' || isMappedLinkLocal(host)) {
+  if (
+    /^169\.254\./.test(host) ||
+    host === 'fd00:ec2::254' ||
+    isMappedLinkLocal(host) ||
+    isMetadataHostname(host)
+  ) {
     return { ok: false, reason: 'That address range is not allowed' }
   }
 

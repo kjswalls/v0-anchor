@@ -18,6 +18,7 @@ const requestProposal = vi.fn();
 let messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 let provider = 'openai';
 let proposalStatus = 'idle';
+let proposalSurface = 'chat';
 let isLoading = false;
 
 vi.mock('@/lib/chat-store', () => ({
@@ -45,7 +46,14 @@ vi.mock('@/lib/planner-store', () => ({
 
 vi.mock('@/lib/proposal-store', () => ({
   useProposalStore: (sel: (s: unknown) => unknown) =>
-    sel({ request: requestProposal, status: proposalStatus }),
+    sel({
+      request: requestProposal,
+      status: proposalStatus,
+      // Which surface owns the pending request. The chat button disables only
+      // for its OWN — a breakdown loading inside an item panel used to grey
+      // this out with no spinner visible anywhere on screen.
+      lastRequest: { surface: proposalSurface },
+    }),
 }));
 
 vi.mock('@/lib/use-time-format', () => ({ useTimeFormat: () => 'HH:mm' }));
@@ -73,6 +81,7 @@ beforeEach(() => {
   messages = [];
   provider = 'openai';
   proposalStatus = 'idle';
+  proposalSurface = 'chat';
 });
 
 const renderChat = () => render(<ChatConversation variant="desktop" />);
@@ -202,6 +211,20 @@ describe('turning a conversation into a plan', () => {
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
     expect(requestProposal).not.toHaveBeenCalled();
+  });
+
+  it('stays live while another surface is thinking', () => {
+    // A breakdown loading in an item panel renders its spinner THERE. Greying
+    // out this button too leaves a dead control with no explanation — and
+    // superseding is safe now, because the store drops a superseded reply.
+    proposalStatus = 'loading';
+    proposalSurface = 'item:abc';
+    messages = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'b' },
+    ];
+    renderChat();
+    expect((screen.getByTestId(PLAN_BUTTON) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('clips a long reply from the front, keeping the conclusion', () => {

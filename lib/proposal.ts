@@ -76,6 +76,18 @@ export function validateProposalOperations(
       const config = getItemTypeConfig(operation.itemType)
       const next = { ...operation }
 
+      // Trimmed and re-read, not just truthiness-checked. `parentItemId: ""`
+      // used to slip the whole branch below — so a "step" was created with a
+      // blank parent, rendered as a top-level task (the projection filters on
+      // `!parentItemId`), kept its scheduling fields, and then failed to
+      // persist because Postgres rejects '' as a uuid. The schema now demands
+      // min(1), and this makes the invariant local to the validator too, which
+      // is what tests and any hand-built operation actually go through.
+      if (next.parentItemId !== undefined && !next.parentItemId.trim()) {
+        reject(operation, 'parentItemId was blank')
+        continue
+      }
+
       if (next.parentItemId) {
         const parent = ctx.items.find((i) => i.id === next.parentItemId)
         if (!parent) {

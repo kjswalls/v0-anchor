@@ -25,6 +25,7 @@
  */
 
 import { isOpenLoopOn } from './active'
+import { getItemTypeConfig, itemTypeName } from './item-registry'
 import { selectOverdue, toDateOnly } from './overdue'
 import { isRecurring, shouldShowOnDate } from './recurrence'
 import type { Item } from './planner-types'
@@ -68,18 +69,38 @@ export const BUSY_DAY_THRESHOLD = 6
  *
  * `isOpenLoopOn` answers "does this still want doing", NOT "is it due today" —
  * a pending one-shot dated next Friday passes it. So the date test lives here,
- * and it is the same pair every day-scoped surface uses: `shouldShowOnDate` for
- * recurrence, the stored date otherwise.
+ * and it deliberately mirrors `deriveDayItems` (lib/day-items.ts) rule for
+ * rule, because this decides which opener the user is offered and the two
+ * disagreeing means Beacon calls a day busy that the grid draws empty.
+ *
+ * The rule that is easy to miss, and that this got wrong at first: a recurring
+ * task-like needs `startDate` AND `startDate <= today`. Recurrence says which
+ * WEEKDAYS it lands on, not when the series begins — so a daily task starting
+ * in December is "due today" to `shouldShowOnDate` alone, all year before it.
  */
 function openToday(ctx: OpenerContext): Item[] {
+  const today = toDateOnly(ctx.todayStr)
+
   return ctx.items.filter((item) => {
     if (ctx.inactiveIds?.has(item.id)) return false
+    // Explicit, not incidental. Subtasks are excluded from every day-scoped
+    // surface (selectOverdue, buildProposalContext, the tasks projection); this
+    // held here only by the accident that they never carry a date.
+    if ('parentItemId' in item && item.parentItemId) return false
     if (!isOpenLoopOn(item, ctx.todayStr)) return false
-    if (isRecurring(item)) return shouldShowOnDate(item, ctx.todayStr, ctx.userTimezone)
-    // `in` rather than the registry's dateAnchored: habits carry no startDate
-    // at all, so this is a type narrowing as much as a capability question.
+
+    // Date-blind types (habits) carry no startDate at all — recurrence alone
+    // decides, exactly as the grid's habit filter does.
+    if (!getItemTypeConfig(itemTypeName(item)).dateAnchored) {
+      return isRecurring(item) && shouldShowOnDate(item, ctx.todayStr, ctx.userTimezone)
+    }
+
     if (!('startDate' in item) || !item.startDate) return false
-    return toDateOnly(item.startDate) === toDateOnly(ctx.todayStr)
+    const start = toDateOnly(item.startDate)
+    if (isRecurring(item)) {
+      return shouldShowOnDate(item, ctx.todayStr, ctx.userTimezone) && start <= today
+    }
+    return start === today
   })
 }
 

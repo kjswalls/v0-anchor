@@ -237,6 +237,50 @@ describe('gatewayTurnMessages', () => {
   });
 });
 
+describe('assertAllowedGatewayUrl — metadata spellings', () => {
+  /**
+   * The WHATWG parser folds octal/decimal/hex/trailing-dot IPv4 back to a
+   * dotted quad, so those never needed decoding. IPv4 riding inside IPv6 does,
+   * and there is more than one prefix that carries it.
+   */
+  const blocked = [
+    'https://169.254.169.254/',
+    'https://[::ffff:169.254.169.254]/',
+    'https://[::ffff:a9fe:a9fe]/',
+    // IPv4-compatible: deprecated, still routable, previously allowed.
+    'https://[::a9fe:a9fe]/',
+    // NAT64 well-known prefix — on IPv6-only egress this really is translated
+    // to 169.254.169.254, which makes it the one that could actually bite.
+    'https://[64:ff9b::a9fe:a9fe]/',
+    'https://[64:ff9b::169.254.169.254]/',
+    'https://fd00:ec2::254/',
+    // Resolves to the metadata address by NAME; no literal-IP test sees it.
+    'https://metadata.google.internal/',
+    'https://anything.internal/',
+  ];
+
+  it.each(blocked)('refuses %s', (url) => {
+    const result = assertAllowedGatewayUrl(url);
+    expect(result.ok).toBe(false);
+  });
+
+  const allowed = [
+    // A tailnet address is the intended deployment — private ranges and CGNAT
+    // must keep working, or the guard rejects the correct configuration.
+    'https://100.64.1.5:8080',
+    'https://192.168.1.10',
+    'https://10.0.0.7',
+    'https://gateway.example.com',
+    // Not link-local: 169.253 and 169.255 are ordinary addresses.
+    'https://[::ffff:a9fd:a9fd]/',
+    'https://[::1234:5678]/',
+  ];
+
+  it.each(allowed)('still allows %s', (url) => {
+    expect(assertAllowedGatewayUrl(url).ok).toBe(true);
+  });
+});
+
 describe('extractJsonObject', () => {
   /**
    * The OpenAI branch can demand `json_object` and get it. A gateway agent is

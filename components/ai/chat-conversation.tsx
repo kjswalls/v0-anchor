@@ -50,7 +50,14 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const requestProposal = useProposalStore((s) => s.request);
-  const proposalStatus = useProposalStore((s) => s.status);
+  // Scoped, not global. The spinner renders on the surface that asked, so a
+  // breakdown loading inside an item panel used to grey out THIS button with no
+  // "Thinking it through…" visible anywhere — a dead control with no
+  // explanation. Superseding another surface's request is safe now: the store
+  // drops the reply of any request that is no longer current.
+  const proposalBusy = useProposalStore(
+    (s) => s.status === 'loading' && s.lastRequest?.surface === 'chat'
+  );
   const timeFormatStr = useTimeFormat();
 
   // 'unknown' connection: this component has no reachability probe, and the
@@ -350,7 +357,7 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
                     {canPropose && msg.content && i === messages.length - 1 && !isLoading && (
                       <button
                         onClick={() => askForPlan(i)}
-                        disabled={proposalStatus === 'loading'}
+                        disabled={proposalBusy}
                         data-testid="chat-make-plan"
                         className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
                       >

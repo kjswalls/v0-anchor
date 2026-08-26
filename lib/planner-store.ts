@@ -2395,7 +2395,23 @@ export const usePlannerStore = create<PlannerStore>()(
         const patchById = new Map<string, Partial<Task>>();
         // Mirrors addTask's `order: get().tasks.length`, advanced per create so
         // a multi-item plan doesn't stack every new task on the same index.
+        //
+        // Top-level creates ONLY. Subtasks are absent from the tasks projection
+        // (projectItems filters `!parentItemId`), so counting them here would
+        // push the cursor past a length that never included them — and a step
+        // added by hand afterwards, ordered by the real `tasks.length`, would
+        // sort into the MIDDLE of the generated list after a reload.
         let orderCursor = state.tasks.length;
+        // Steps get their own run, per parent, continuing that parent's
+        // existing children rather than restarting at zero.
+        const childCursors = new Map<string, number>();
+        const nextChildOrder = (parentId: string) => {
+          const seeded =
+            childCursors.get(parentId) ??
+            state.items.filter((i) => 'parentItemId' in i && i.parentItemId === parentId).length;
+          childCursors.set(parentId, seeded + 1);
+          return seeded;
+        };
 
         for (const op of accepted) {
           if (op.kind === 'create') {
@@ -2421,9 +2437,10 @@ export const usePlannerStore = create<PlannerStore>()(
               status: 'pending' as const,
               isScheduled: !!timeBucket,
             };
+            const order = op.parentItemId ? nextChildOrder(op.parentItemId) : orderCursor++;
             created.push(
               op.itemType === 'task'
-                ? ({ ...common, type: 'task', order: orderCursor++ } as Item)
+                ? ({ ...common, type: 'task', order } as Item)
                 : // Custom types aren't manually orderable (created_at sorts).
                   ({ ...common, type: 'custom', customType: op.itemType, order: 0 } as Item),
             );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
@@ -72,6 +72,26 @@ export function ProposalCard({
 
   const dropped = selection.proposalId === (proposal?.id ?? null) ? selection.dropped : NONE_DROPPED;
 
+  /**
+   * A card scoped to an item lives inside a panel the user can close.
+   *
+   * If they close it while it owns the request, the reply lands on a surface
+   * nothing mounts: no card, no toast, no trace that the button did anything,
+   * and only reopening that exact item would have revealed it — which nothing
+   * tells them. Dropping the request is the honest read of the gesture: they
+   * closed the thing they asked from. Re-asking is one click.
+   *
+   * Reads the store imperatively so the cleanup sees the state at UNMOUNT
+   * rather than whatever was captured when the effect ran.
+   */
+  useEffect(() => {
+    if (surface === 'chat') return;
+    return () => {
+      const store = useProposalStore.getState();
+      if (store.lastRequest?.surface === surface) store.dismiss();
+    };
+  }, [surface]);
+
   const toggle = (index: number) => {
     const next = new Set(dropped);
     if (!next.delete(index)) next.add(index);
@@ -99,10 +119,17 @@ export function ProposalCard({
 
   if (status === 'loading') {
     return (
-      <div className={shell} data-testid="proposal-card">
+      <div className={shell} data-testid="proposal-card" role="status">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Thinking it through…
+          <span className="flex-1">Thinking it through…</span>
+          {/* Every other state has an exit; this one did not, and it is the
+              state that can last longest and that greys out the AI buttons
+              everywhere else. Dismissing bumps the store's generation, so the
+              reply cannot land after the user has walked away from it. */}
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
+            Cancel
+          </Button>
         </div>
       </div>
     );
@@ -110,7 +137,7 @@ export function ProposalCard({
 
   if (status === 'empty') {
     return (
-      <div className={shell} data-testid="proposal-card">
+      <div className={shell} data-testid="proposal-card" role="status">
         <div className="flex items-start gap-2">
           <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
           <p className="flex-1 text-sm text-foreground">{emptyMessage}</p>
@@ -124,9 +151,23 @@ export function ProposalCard({
 
   if (status === 'error') {
     return (
-      <div className={shell} data-testid="proposal-card">
+      <div className={shell} data-testid="proposal-card" role="status">
         <div className="flex items-start gap-2">
           <p className="flex-1 text-sm text-muted-foreground">{error}</p>
+          {/* Retry lived only in the `ready` branch, so the one state where
+              trying again is the obvious move was the one that could not. */}
+          {canRetry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => retry()}
+              data-testid="proposal-retry"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Try again
+            </Button>
+          )}
           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
             Close
           </Button>
@@ -156,7 +197,7 @@ export function ProposalCard({
           : `Do these ${keeping.length}`;
 
   return (
-    <div className={shell} data-testid="proposal-card">
+    <div className={shell} data-testid="proposal-card" role="status">
       <div className="flex items-start gap-2">
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-ai" />
         <div className="min-w-0 flex-1">

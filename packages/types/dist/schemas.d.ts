@@ -4771,6 +4771,14 @@ export declare const ProposalSchema: z.ZodObject<{
     summary: z.ZodString;
     /** Optional second line explaining the thinking. Never scolding. */
     rationale: z.ZodOptional<z.ZodString>;
+    /**
+     * Capped because the producer is untrusted by design — on the agent tier it
+     * is somebody else's gateway. The system prompts ask for at most eight;
+     * nothing enforced it, and a 5,000-operation reply would render six visible
+     * lines inside a scroll box under a button reading "Do all of it", then fan
+     * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+     * honest plan, so exceeding it is malformed rather than merely long.
+     */
     operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
         kind: z.ZodLiteral<"create">;
         /** Registry type name: 'task', 'habit', or a user-defined slug. */
@@ -4911,6 +4919,14 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
     summary: z.ZodString;
     /** Optional second line explaining the thinking. Never scolding. */
     rationale: z.ZodOptional<z.ZodString>;
+    /**
+     * Capped because the producer is untrusted by design — on the agent tier it
+     * is somebody else's gateway. The system prompts ask for at most eight;
+     * nothing enforced it, and a 5,000-operation reply would render six visible
+     * lines inside a scroll box under a button reading "Do all of it", then fan
+     * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+     * honest plan, so exceeding it is malformed rather than merely long.
+     */
     operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
         kind: z.ZodLiteral<"create">;
         /** Registry type name: 'task', 'habit', or a user-defined slug. */

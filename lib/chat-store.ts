@@ -117,6 +117,26 @@ export function createChatStore(config: ChatThreadConfig) {
       });
     };
 
+    /**
+     * Remove the placeholder turn a stopped reply never filled.
+     *
+     * `send` pushes an empty assistant message up front so the typing dots have
+     * somewhere to live. Aborting used to just return, leaving that empty
+     * bubble in the transcript AND in localStorage — a turn that never fills,
+     * offers no "Turn this into a plan" (gated on content), and suppresses the
+     * openers forever after, since those key on an empty transcript.
+     *
+     * Only ever drops a LAST assistant turn that is still empty, so a reply
+     * stopped halfway keeps whatever text had already arrived — that partial
+     * answer is usually why the user hit stop.
+     */
+    const dropEmptyAssistantTurn = () => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        return last?.role === 'assistant' && last.content === '' ? prev.slice(0, -1) : prev;
+      });
+    };
+
     return {
       messages: [],
       isLoading: false,
@@ -213,6 +233,11 @@ export function createChatStore(config: ChatThreadConfig) {
         set({ isLoading: true });
         setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
+        // Declared out here so `finally` can tell "my controller" from a newer
+        // request's — clearing the store's reference unconditionally would let
+        // a finishing request disarm the stop button of the one after it.
+        let controller: AbortController | null = null;
+
         try {
           const { items, projects, habitGroups, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
@@ -273,7 +298,10 @@ export function createChatStore(config: ChatThreadConfig) {
                 timestamp: Date.now(),
               }));
             } catch (err) {
-              if (err instanceof DOMException && err.name === 'AbortError') return;
+              if (err instanceof DOMException && err.name === 'AbortError') {
+                dropEmptyAssistantTurn();
+                return;
+              }
               const msg = err instanceof Error ? err.message : 'Unknown error';
               patchLastAssistant(() => ({
                 role: 'assistant',
@@ -287,9 +315,20 @@ export function createChatStore(config: ChatThreadConfig) {
             return;
           }
 
+          // The stop button reaches HERE, not just the plugin branch below it.
+          // This fetch carried no signal until now, so `stop()` was a silent
+          // no-op on the transport that serves openai and every gateway user —
+          // the square stayed up, the reply kept arriving, and the composer
+          // stayed disabled. Claimed otherwise in an earlier comment; it was
+          // wrong.
+          abortController?.abort();
+          controller = new AbortController();
+          abortController = controller;
+
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               messages: updatedMessages,
               context,
@@ -314,17 +353,22 @@ export function createChatStore(config: ChatThreadConfig) {
               patchLastAssistant((last) => ({ ...last, content: last.content + frame.content }));
             }
           }
-        } catch {
-          patchLastAssistant((last) =>
-            last.content === ''
-              ? {
-                  role: 'assistant',
-                  content: 'Sorry, something went wrong. Please try again.',
-                  timestamp: Date.now(),
-                }
-              : last
-          );
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            dropEmptyAssistantTurn();
+          } else {
+            patchLastAssistant((last) =>
+              last.content === ''
+                ? {
+                    role: 'assistant',
+                    content: 'Sorry, something went wrong. Please try again.',
+                    timestamp: Date.now(),
+                  }
+                : last
+            );
+          }
         } finally {
+          if (abortController === controller) abortController = null;
           set({ isLoading: false });
         }
       },

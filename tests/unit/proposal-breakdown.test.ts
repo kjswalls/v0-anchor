@@ -5,6 +5,7 @@ import {
   type ProposalContext,
 } from '@/lib/proposal';
 import { hydrateCustomTypes } from '@/lib/item-registry';
+import { ProposalCreateOpSchema, ProposalDraftSchema } from '@anchor-app/types';
 import type { Item, ProposalOperation } from '@/lib/planner-types';
 
 /**
@@ -172,6 +173,82 @@ describe('creating subtasks', () => {
     );
     expect(accepted.map((o) => (o as { title: string }).title)).toEqual(['one', 'three']);
     expect(rejected).toHaveLength(1);
+  });
+});
+
+describe('a blank parent', () => {
+  /**
+   * `parentItemId: ""` used to slip the whole parent branch — truthiness, not
+   * presence. The result was a "step" with a blank parent that rendered as a
+   * top-level task (the projection filters on `!parentItemId`), kept the
+   * scheduling fields the branch would have stripped, and then failed to
+   * persist because Postgres rejects '' as a uuid. It appeared, got an undo
+   * entry, and vanished on the next load.
+   */
+  it('is refused rather than treated as absent', () => {
+    const { accepted, rejected } = validate(
+      step({ parentItemId: '', startDate: '2026-09-01' } as never)
+    );
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0].reason).toMatch(/blank/);
+  });
+
+  it('is refused when it is only whitespace', () => {
+    const { accepted } = validate(step({ parentItemId: '   ' } as never));
+    expect(accepted).toHaveLength(0);
+  });
+
+  it('is rejected by the schema before it ever reaches the validator', () => {
+    expect(
+      ProposalCreateOpSchema.safeParse({
+        kind: 'create',
+        itemType: 'task',
+        title: 'Step',
+        parentItemId: '',
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe('size caps', () => {
+  it('refuses a reply with an implausible number of operations', () => {
+    // The producer is untrusted by design — on the agent tier it is somebody
+    // else's gateway. 5,000 operations rendered six visible lines in a scroll
+    // box under a button reading "Do all of it", then fanned out 5,000
+    // unthrottled inserts on one tap.
+    const many = Array.from({ length: 5000 }, () => ({
+      kind: 'create',
+      itemType: 'task',
+      title: 'spam',
+    }));
+    expect(
+      ProposalDraftSchema.safeParse({ summary: 'x', operations: many }).success
+    ).toBe(false);
+  });
+
+  it('still accepts a plausible plan', () => {
+    const some = Array.from({ length: 8 }, () => ({
+      kind: 'create',
+      itemType: 'task',
+      title: 'a real step',
+    }));
+    expect(ProposalDraftSchema.safeParse({ summary: 'x', operations: some }).success).toBe(true);
+  });
+
+  it('refuses unbounded strings', () => {
+    const huge = 'x'.repeat(100_000);
+    expect(
+      ProposalDraftSchema.safeParse({
+        summary: 'x',
+        operations: [{ kind: 'create', itemType: 'task', title: huge }],
+      }).success
+    ).toBe(false);
+    expect(
+      ProposalDraftSchema.safeParse({
+        summary: huge,
+        operations: [{ kind: 'create', itemType: 'task', title: 'ok' }],
+      }).success
+    ).toBe(false);
   });
 });
 

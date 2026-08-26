@@ -265,3 +265,125 @@ describe('breakdown', () => {
     expect(bodies[0].itemContext).toContain('no longer exists');
   });
 });
+
+describe('a superseded request never lands', () => {
+  /**
+   * Both adversarial reviews found this independently. Without a generation
+   * token the last request to RETURN wins rather than the last one ASKED — and
+   * those differ, because catch-up resolves synchronously. The visible damage:
+   * a card the user is reading silently mutates into unrelated lines, under a
+   * `lastRequest` describing a different intent on a surface whose panel is
+   * closed, with the retry button hidden because the intent no longer matches.
+   */
+  function deferredPropose() {
+    let release!: (value: ReturnType<typeof draft>) => void;
+    const pending = new Promise<ReturnType<typeof draft>>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ proposal: await pending }) }))
+    );
+    return release;
+  }
+
+  it('drops a slow answer once a newer request has been made', async () => {
+    const release = deferredPropose();
+    const slow = useProposalStore.getState().request('breakdown', undefined, 'parent-1');
+
+    // Catch-up is computed locally and resolves synchronously — no fetch.
+    vi.unstubAllGlobals();
+    await useProposalStore.getState().request('catch-up');
+    const afterCatchUp = useProposalStore.getState().proposal;
+
+    release(draft('Three steps to start'));
+    await slow;
+
+    expect(useProposalStore.getState().proposal).toBe(afterCatchUp);
+    expect(useProposalStore.getState().lastRequest?.intent).toBe('catch-up');
+  });
+
+  it('does not re-open a card the user has already dismissed', async () => {
+    const release = deferredPropose();
+    const slow = useProposalStore.getState().request('ask', 'x');
+
+    useProposalStore.getState().dismiss();
+    release(draft('A plan'));
+    await slow;
+
+    expect(useProposalStore.getState().status).toBe('idle');
+    expect(useProposalStore.getState().proposal).toBeNull();
+    // The bug this prevents: status 'ready' with lastRequest null passes the
+    // card's surface guard on EVERY mount, so the same card renders twice.
+    expect(useProposalStore.getState().lastRequest).toBeNull();
+  });
+
+  it('does not re-open a card the user has already accepted', async () => {
+    // The reachable shape: a slow ask is still out when a second one answers
+    // first and the user accepts THAT card. Accepting during a retry is not
+    // reachable — retry clears the proposal, so the card is showing its loading
+    // state and has no accept button at all.
+    const release = deferredPropose();
+    const slow = useProposalStore.getState().request('ask', 'x');
+
+    mockPropose(draft('A fast plan'));
+    await useProposalStore.getState().request('ask', 'y');
+    useProposalStore.getState().accept();
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+
+    release(draft('A late plan'));
+    await slow;
+
+    expect(useProposalStore.getState().status).toBe('idle');
+    expect(useProposalStore.getState().proposal).toBeNull();
+  });
+});
+
+describe('when the plan no longer applies', () => {
+  it('says so instead of closing on nothing', async () => {
+    // applyProposal re-validates against the CURRENT planner and can drop every
+    // operation. Closing silently means the user taps "Do all of it", the card
+    // vanishes, and nothing happens — not even an undo entry, because
+    // applyProposal returns before arming one.
+    mockPropose(draft('A plan'));
+    await useProposalStore.getState().request('ask', 'x');
+
+    applyProposal.mockReturnValueOnce(0);
+    expect(useProposalStore.getState().accept()).toBe(0);
+    expect(useProposalStore.getState().status).toBe('empty');
+    expect(useProposalStore.getState().emptyMessage).toMatch(/nothing left to apply/i);
+  });
+});
+
+describe('rejections', () => {
+  it('does not let one repeated summary fill every carried slot', async () => {
+    const bodies = mockPropose(draft('The same plan'));
+    await useProposalStore.getState().request('ask', 'the ask');
+    await useProposalStore.getState().retry();
+    await useProposalStore.getState().retry();
+    await useProposalStore.getState().retry();
+
+    expect(useProposalStore.getState().rejected).toEqual(['The same plan']);
+    expect((bodies.at(-1) as { prompt: string }).prompt.match(/^- /gm)).toHaveLength(1);
+  });
+});
+
+describe('a body-less failure', () => {
+  it('reports the status rather than a JSON parse error', async () => {
+    // A crashed or platform-killed function returns 500 with no body at all,
+    // and res.json() then throws a SyntaxError that used to reach the card.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        json: async () => {
+          throw new SyntaxError('Unexpected end of JSON input');
+        },
+      }))
+    );
+    await useProposalStore.getState().request('ask', 'x');
+    expect(useProposalStore.getState().status).toBe('error');
+    expect(useProposalStore.getState().error).toBe('HTTP 500');
+  });
+});

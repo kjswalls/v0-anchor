@@ -427,6 +427,61 @@ startable in five minutes. A fifteen-step decomposition of a task someone is alr
 avoiding is a fresh source of dread, which is exactly the failure the audience section
 warns about.
 
+**Adversarial review of 2c–2e (three lenses: correctness, security, UI state).** Both the
+correctness and UI passes independently found the same top defect, which is the strongest
+signal a review gives. What was real, and what it cost:
+
+- **A superseded reply overwrote a newer card.** `askModel` wrote its result unconditionally,
+  so the last request to RETURN won rather than the last one ASKED — and those differ,
+  because `request('catch-up')` resolves synchronously. A slow breakdown could land on top
+  of a catch-up card the user was reading, under a `lastRequest` describing a different
+  intent, on a surface whose panel was closed, with retry hidden because the intent no
+  longer matched. Dismissing mid-flight was worse: `lastRequest: null` passes the surface
+  guard on EVERY mount, so the same card rendered twice. Fixed with a generation token that
+  `request`, `retry`, `accept` and `dismiss` all claim.
+- **The stop button was wired to nothing on the transport that serves almost everyone.**
+  `chat-store.stop()` aborts `abortController`, which only the plugin branch ever armed;
+  the `/api/chat` fetch passed no signal. An earlier comment in this repo asserted the
+  opposite — it was wrong, and `tests/unit/chat-stop.test.ts` now checks the claim rather
+  than repeating it. Aborting also stranded the empty placeholder turn in the transcript
+  and in localStorage, which suppressed the openers permanently (they key on an empty
+  transcript).
+- **`parentItemId: ""` slipped every guard.** Truthiness, not presence. The "step" was
+  created with a blank parent, rendered as a top-level task (the projection filters on
+  `!parentItemId`), kept the scheduling fields the parent branch would have stripped, and
+  then failed to persist because Postgres rejects `''` as a uuid — so it appeared, earned an
+  undo entry, and vanished on next load. Closed at both the schema (`min(1)`) and the
+  validator.
+- **`operations[]` had no ceiling.** The producer is untrusted by design; 5,000 operations
+  rendered six visible lines in a scroll box under a button reading "Do all of it", then
+  fanned out 5,000 unthrottled inserts on one tap. Capped at 20, with length caps on every
+  string.
+- **Any registered account was an uncapped OpenAI proxy.** `model` travelled verbatim from
+  the request body to the deployment's own key. Now: a user's own key buys any model they
+  name, the server's key is restricted to what the settings UI offers, and `prompt` +
+  `itemContext` are clipped.
+- **Dead ends.** Loading had no exit while greying out AI buttons app-wide; the error state
+  had no retry; the OpenAI branch had no deadline (the SDK defaults to ten minutes);
+  `plannerContext()` sat outside the try, so a throw parked `status` at `'loading'` forever;
+  accepting a plan whose items had since been deleted closed the card silently with no
+  change and no undo entry; and "Break it down" then closing the panel stranded the answer
+  where nothing mounts. All fixed; the busy-gating is now per-surface.
+- **`openToday` disagreed with the grid** on recurring items — the doc comment claimed
+  parity with `deriveDayItems` and it was false. Recurrence says which WEEKDAYS a series
+  lands on, not when it begins, so a daily task starting in December read as "due today" all
+  year before it.
+- **SSRF spellings.** `[::a9fe:a9fe]` (IPv4-compatible), `[64:ff9b::a9fe:a9fe]` (NAT64 —
+  genuinely translated on IPv6-only egress) and `metadata.google.internal` all passed.
+  Theoretical, since the guard requires https in production and every cloud metadata service
+  is http-only, but the guard's stated job is to block that address.
+
+Judged real but not acted on: **prompt injection through item titles**. Items can be written
+through the agent API, so injected text can steer a proposal — but the injector is already a
+write-capable principal, and after double validation the worst a steered proposal achieves is
+mass cancel/reschedule/create on the user's own items, behind an explicit tap, reversible
+with one ⌘Z. It cannot delete, cannot touch recurring status, cannot cross a user boundary,
+cannot write arbitrary columns, and renders as React children so it cannot script. Low.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

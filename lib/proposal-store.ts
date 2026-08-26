@@ -172,22 +172,47 @@ const cleared = (): Partial<ProposalStore> => ({
 
 export const useProposalStore = create<ProposalStore>()((set, get) => {
   /**
+   * Which request the store is currently listening to.
+   *
+   * Every terminal write goes through `settle`, which drops anything from a
+   * superseded request. Without this the last fetch to RETURN wins rather than
+   * the last one ASKED, and the two do not have to be the same: `request`
+   * ('catch-up') resolves synchronously, so a slow breakdown can land after a
+   * catch-up card is already on screen and silently replace it — leaving
+   * breakdown lines under a `lastRequest` that says catch-up, on a surface
+   * whose panel is closed, with the retry button hidden because the intent no
+   * longer matches. Accepting or dismissing bumps it too, so a reply in flight
+   * cannot resurrect a card the user has already dealt with.
+   */
+  let generation = 0;
+  const claim = () => ++generation;
+  const settle = (token: number, patch: Partial<ProposalStore>) => {
+    if (token === generation) set(patch);
+  };
+
+  /**
    * Everything from the tier check to the validated card.
    *
    * Shared by `request('ask')` and `retry()` so the two cannot drift — and so
    * retry is genuinely the same call with a different prompt, rather than a
    * second copy of the fetch that will one day be updated alone.
    */
-  async function askModel(promptForModel: string, itemId?: string): Promise<void> {
+  async function askModel(promptForModel: string, itemId: string | undefined, token: number): Promise<void> {
     const { provider } = useAISettingsStore.getState();
     if (!resolveAICapabilities(provider).canPropose) {
-      set({ status: 'error', error: 'Connect an AI assistant in Settings to ask for a plan.' });
+      settle(token, {
+        status: 'error',
+        error: 'Connect an AI assistant in Settings to ask for a plan.',
+      });
       return;
     }
 
-    const ctx = plannerContext();
-
     try {
+      // Inside the try: this reads three stores and walks every item, and a
+      // throw out here would park `status` at 'loading' forever — a spinner
+      // with no exit that also greys out every other AI button.
+      const ctx = plannerContext();
+
       const res = await fetch('/api/ai/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -204,23 +229,30 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
           todayStr: ctx.todayStr,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
+      // A 500 with no body — a crashed or platform-killed function — makes
+      // res.json() throw, and an unhandled SyntaxError would reach the card as
+      // "Unexpected end of JSON input".
+      const data = await res.json().catch(() => ({}) as Record<string, unknown>);
+      if (!res.ok || data.error) throw new Error((data.error as string) ?? `HTTP ${res.status}`);
       if (!data.proposal) {
-        set({ status: 'empty', emptyMessage: data.message ?? 'No changes to suggest.' });
+        settle(token, {
+          status: 'empty',
+          emptyMessage: (data.message as string) ?? 'No changes to suggest.',
+        });
         return;
       }
 
       // Validate against the CURRENT planner, not the one the request was built
       // from — the user may have edited things while the model was thinking.
       const { proposal } = validateProposal(stamp(data.proposal), plannerContext());
-      set(
+      settle(
+        token,
         proposal.operations.length
           ? { proposal, status: 'ready' }
           : { status: 'empty', emptyMessage: 'Those suggestions no longer apply.' }
       );
     } catch (err) {
-      set({
+      settle(token, {
         status: 'error',
         error: err instanceof Error ? err.message : 'Could not reach the assistant.',
       });
@@ -236,6 +268,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     rejected: [],
 
     request: async (intent, prompt, itemId) => {
+      const token = claim();
       set({
         status: 'loading',
         error: null,
@@ -254,17 +287,18 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         const ctx = plannerContext();
         const draft = buildCatchUpProposal(ctx);
         if (!draft) {
-          set({ status: 'empty', emptyMessage: "Nothing's waiting on you. Enjoy it." });
+          settle(token, { status: 'empty', emptyMessage: "Nothing's waiting on you. Enjoy it." });
           return;
         }
         const { proposal } = validateProposal(stamp(draft), ctx);
-        set({ proposal, status: proposal.operations.length ? 'ready' : 'empty' });
+        settle(token, { proposal, status: proposal.operations.length ? 'ready' : 'empty' });
         return;
       }
 
       await askModel(
         withRejections(prompt, [], itemId ? DEFAULT_ASK.breakdown : DEFAULT_ASK.plan),
-        itemId
+        itemId,
+        token
       );
     },
 
@@ -279,8 +313,13 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       if (!lastRequest || lastRequest.intent === 'catch-up') return;
 
       const summary = proposal?.summary?.trim();
-      const nextRejected = summary ? [...rejected, summary] : rejected;
+      // Deduped: a model that keeps offering the same plan would otherwise fill
+      // all three carried slots with one repeated line, crowding out the two
+      // genuinely different alternatives it had already been told about.
+      const nextRejected =
+        summary && !rejected.includes(summary) ? [...rejected, summary] : rejected;
 
+      const token = claim();
       set({
         status: 'loading',
         error: null,
@@ -294,7 +333,8 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
           nextRejected,
           lastRequest.itemId ? DEFAULT_ASK.breakdown : DEFAULT_ASK.plan
         ),
-        lastRequest.itemId
+        lastRequest.itemId,
+        token
       );
     },
 
@@ -307,10 +347,30 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       const applied = usePlannerStore
         .getState()
         .applyProposal({ ...proposal, operations: chosen });
+
+      claim();
+      if (applied === 0) {
+        // applyProposal re-validates against the CURRENT planner, so every
+        // operation can be dropped — the items were deleted while the card sat
+        // there. Closing silently would mean the user taps "Do all of it",
+        // sees the card vanish, and nothing happens: no change, and no undo
+        // entry either, because applyProposal returns before arming one.
+        set({
+          ...cleared(),
+          status: 'empty',
+          emptyMessage: 'Those items have changed — nothing left to apply.',
+        });
+        return 0;
+      }
       set(cleared());
       return applied;
     },
 
-    dismiss: () => set(cleared()),
+    // Bumps the generation too: a reply still in flight must not re-open a card
+    // the user has already closed.
+    dismiss: () => {
+      claim();
+      set(cleared());
+    },
   };
 });

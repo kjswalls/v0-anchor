@@ -1031,22 +1031,22 @@ export const AnchorContextResponseSchema = z.object({
 //     checks each value against that type's allowedStatuses.
 
 const proposalFields = {
-  title: z.string().min(1).optional(),
+  title: z.string().min(1).max(500).optional(),
   startDate: z.string().optional(),
   timeBucket: TimeBucketSchema.optional(),
   startTime: z.string().optional(),
   priority: PrioritySchema.optional(),
-  notes: z.string().optional(),
+  notes: z.string().max(10_000).optional(),
 }
 
 export const ProposalCreateOpSchema = z.object({
   ...proposalFields,
   kind: z.literal('create'),
   /** Registry type name: 'task', 'habit', or a user-defined slug. */
-  itemType: z.string(),
+  itemType: z.string().min(1).max(100),
   /** Required on create — the one field a new item cannot be missing. */
-  title: z.string().min(1),
-  project: z.string().optional(),
+  title: z.string().min(1).max(500),
+  project: z.string().max(200).optional(),
   /**
    * Create this as a child of an existing item (the panel's Subtasks section).
    *
@@ -1057,13 +1057,13 @@ export const ProposalCreateOpSchema = z.object({
    * is looking. Validation additionally requires that the parent's type allows
    * children and is not itself a child; nesting has no UI.
    */
-  parentItemId: z.string().optional(),
+  parentItemId: z.string().min(1).optional(),
 })
 
 export const ProposalUpdateOpSchema = z.object({
   ...proposalFields,
   kind: z.literal('update'),
-  itemId: z.string(),
+  itemId: z.string().min(1).max(200),
   /** Null clears the field, matching the update-schema convention above. */
   startDate: z.string().nullable().optional(),
   timeBucket: TimeBucketSchema.nullable().optional(),
@@ -1080,10 +1080,18 @@ export const ProposalOperationSchema = z.discriminatedUnion('kind', [
 export const ProposalSchema = z.object({
   id: z.string(),
   /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
-  summary: z.string().min(1),
+  summary: z.string().min(1).max(200),
   /** Optional second line explaining the thinking. Never scolding. */
-  rationale: z.string().optional(),
-  operations: z.array(ProposalOperationSchema).min(1),
+  rationale: z.string().max(1000).optional(),
+  /**
+   * Capped because the producer is untrusted by design — on the agent tier it
+   * is somebody else's gateway. The system prompts ask for at most eight;
+   * nothing enforced it, and a 5,000-operation reply would render six visible
+   * lines inside a scroll box under a button reading "Do all of it", then fan
+   * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+   * honest plan, so exceeding it is malformed rather than merely long.
+   */
+  operations: z.array(ProposalOperationSchema).min(1).max(20),
   createdAt: z.string(),
 })
 
