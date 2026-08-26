@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ChevronLeft, Moon, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
+import type { ItemDialogState } from '@/components/planner/item-dialog';
 import {
   ItemDetailSections,
   ItemThread,
@@ -28,6 +29,27 @@ import { cn } from '@/lib/utils';
  * SupabaseProvider hydrates the store when a session exists; without one this
  * page simply has no items and shows the not-found state with a sign-in link.
  */
+
+/* ── The editor, deferred until Edit is pressed ────────────────────────────
+   ItemDialog is the app's largest single component and it drags react-day-picker
+   in behind it (the start-date field). Statically imported it was 89.6 kB gzip
+   of this route's first load — measured off the script tags of a production
+   build, 386.8 kB before and 297.2 kB after — for a panel that opens on a
+   button press and is closed on arrival every time. What is left is within
+   5 kB of /ledger, i.e. of the shared baseline every route pays.
+
+   `ssr: false` because the panel renders nothing while closed, and the page it
+   sits on has no session server-side to render an item from anyway.
+
+   MOUNTED ON FIRST OPEN AND KEPT, never unmounted on close: next/dynamic
+   fetches the chunk when the component first RENDERS, so leaving it mounted at
+   `state={null}` would download it on page load and split nothing; unmounting
+   it when `editState` goes back to null would tear the subtree out from under
+   the panel's own exit animation. `everOpened` below is exactly that latch. */
+const ItemDialog = dynamic(
+  () => import('@/components/planner/item-dialog').then((m) => m.ItemDialog),
+  { ssr: false }
+);
 
 function Square({ color, className }: { color: string; className?: string }) {
   return (
@@ -53,19 +75,27 @@ function StaticChip({ children, testId }: { children: React.ReactNode; testId?: 
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-  const {
-    items,
-    userId,
-    isLoading,
-    getProjectColor,
-    getHabitGroupColor,
-    userTimezone,
-    routines,
-    programs,
-  } = usePlannerStore();
+  /* Field selectors, not the whole store. `usePlannerStore()` bare subscribes
+     to the store OBJECT, which zustand replaces on every set() — including
+     `setHoveredItem`, which fires on every card the cursor crosses in the
+     subtask list below. This page was re-rendering its whole thread on hover.
+     Selecting the item itself rather than `items` narrows it further: `find`
+     returns the same object identity until that one row actually changes. */
+  const item = usePlannerStore((s) => s.items.find((i) => i.id === id));
+  const userId = usePlannerStore((s) => s.userId);
+  const isLoading = usePlannerStore((s) => s.isLoading);
+  const getProjectColor = usePlannerStore((s) => s.getProjectColor);
+  const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
-
-  const item = items.find((i) => i.id === id);
+  // Latched on the first Edit press — see the note on the dynamic import.
+  const [everOpened, setEverOpened] = useState(false);
+  const openEditor = useCallback((next: ItemDialogState) => {
+    setEverOpened(true);
+    setEditState(next);
+  }, []);
 
   if (!item) {
     // initializeStore stamps userId BEFORE the items fetch resolves, so
@@ -152,7 +182,7 @@ export default function ItemPage() {
             variant="outline"
             size="sm"
             data-testid="item-page-edit"
-            onClick={() => setEditState({ mode: 'edit', item })}
+            onClick={() => openEditor({ mode: 'edit', item })}
           >
             <Pencil className="size-3.5" />
             Edit
@@ -211,14 +241,16 @@ export default function ItemPage() {
           overlay (edit mode drops the scrim, so nothing would explain why).
           withDetailSections={false} because those sections are already on the
           page — the panel beside them must not mount a second live copy. */}
-      <div className="fixed inset-y-3 right-3 z-30">
-        <ItemDialog
-          presentation="panel"
-          state={editState}
-          withDetailSections={false}
-          onOpenChange={(open) => !open && setEditState(null)}
-        />
-      </div>
+      {everOpened && (
+        <div className="fixed inset-y-3 right-3 z-30">
+          <ItemDialog
+            presentation="panel"
+            state={editState}
+            withDetailSections={false}
+            onOpenChange={(open) => !open && setEditState(null)}
+          />
+        </div>
+      )}
     </main>
   );
 }

@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import { SettingsShell } from '@/components/settings/settings-shell';
-import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
-import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { Button } from '@/components/ui/button';
 
@@ -23,6 +23,7 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
+import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { resetOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
@@ -54,16 +55,142 @@ import {
  *   3. The modals the settings surface hands off to. ConfirmDialog,
  *      KeyboardShortcutsModal and BugReportDialog are mounted only by AppShell,
  *      so dispatching to them through ui-store from here would set state that
- *      nothing renders.
+ *      nothing renders. The two the surface opens BY NAME are lazy — see
+ *      `openLocalDialog`; ConfirmDialog stays eager because it is answered by
+ *      a store, not by this component, and a confirm that arrives before its
+ *      dialog has downloaded is a prompt nobody sees.
  *   4. The hydration gate. Every store here is localStorage-persisted under a
  *      browser-global key, so before Supabase settles this page would render
  *      the PREVIOUS account's values as live controls — and a click inside that
- *      window writes someone else's preference to this user's row.
+ *      window writes someone else's preference to this user's row. The gate is
+ *      `settingsBelongToUser` (lib/settings/hydration.ts), and it waits for the
+ *      SETTINGS request only: it used to also wait on planner-store's
+ *      `isLoading`, which is the seven-table item load this route never reads,
+ *      and which the settings request usually beats anyway.
  */
 
 /** Where an unrecognised path goes. Nearest real pane, never a blank page. */
 function fallbackPane(path: string | undefined): PaneId {
   return path && isExtensionPane(path) ? 'extensions' : 'day';
+}
+
+/* ── The two modals this page opens by name, deferred ──────────────────────
+   Both are reached only from a row the user clicks: Help → Keyboard shortcuts,
+   Help → Report a bug. Statically imported they were 43.9 kB gzip of this
+   route's first load — measured off the script tags of a production build,
+   369.5 kB before and 325.6 kB after — spent on two surfaces most visits
+   never open.
+
+   `ssr: false` because neither has anything to say before hydration, and both
+   are already client-only (one reads the shortcut registry, the other captures
+   a screenshot of the live document).
+
+   next/dynamic fetches a chunk the first time the component RENDERS, not the
+   first time it is opened, so these must not be left permanently mounted at
+   `open={false}` — that downloads them on mount and the split buys nothing.
+   `openLocalDialog` below is the other half: it latches a mount flag that is
+   never cleared, so the chunk is fetched on the first open and the modal then
+   STAYS mounted, keeping the close animation Radix needs a live subtree for. */
+const KeyboardShortcutsModal = dynamic(
+  () =>
+    import('@/components/planner/keyboard-shortcuts-modal').then(
+      (m) => m.KeyboardShortcutsModal
+    ),
+  { ssr: false }
+);
+const BugReportDialog = dynamic(
+  () => import('@/components/bug-report/bug-report-dialog').then((m) => m.BugReportDialog),
+  { ssr: false }
+);
+
+/**
+ * What stands where the settings surface will be, while the settings request
+ * is in flight.
+ *
+ * It is a SKELETON and not a message on purpose. The screen this replaces led
+ * with "Loading…" over "If nothing loads, you may need to sign in", which read
+ * as an auth check on a route the proxy has already refused to serve to a
+ * signed-out visitor — the app asking, every single time, whether you were
+ * really logged in. The escape hatch it existed for is kept below and shown
+ * only when this has been on screen long enough to count as stuck.
+ */
+function SettingsSkeleton({ userId }: { userId: string | null }) {
+  // Not a state machine — one timer, one boolean. Long enough that a normal
+  // load never reaches it (the settings read is a single indexed row), short
+  // enough to be an answer rather than an abandonment.
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setStuck(true), 5000);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  return (
+    <main
+      // Mirrors SettingsShell's own container exactly, so the real surface
+      // lands where the skeleton stood instead of jumping under the cursor.
+      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
+      data-testid="settings-page"
+      data-settings-state="loading"
+    >
+      <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        <Link
+          href="/"
+          className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+        >
+          <ChevronLeft className="size-3.5" aria-hidden />
+          Anchor
+        </Link>
+        <span aria-hidden>/</span>
+        <span className="text-foreground font-medium">Settings</span>
+      </nav>
+
+      <h1 className="text-foreground text-2xl font-semibold tracking-tight">Settings</h1>
+
+      {/* `animate-pulse` and not a bespoke shimmer: globals.css already clamps
+          every animation to nothing under [data-reduce-motion], which
+          SupabaseProvider stamps from the (browser-persisted, so immediately
+          available) animations setting. A skeleton that sits perfectly still
+          reads as broken; one that ignores that setting reads as rude. */}
+      <div className="flex animate-pulse flex-col gap-8 md:flex-row md:gap-10" aria-hidden>
+        <div className="flex shrink-0 gap-1 md:w-[184px] md:flex-col">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="bg-secondary h-8 w-full min-w-[92px] rounded-sm" />
+          ))}
+        </div>
+        <div className="min-w-0 flex-1 md:max-w-[600px]">
+          <div className="bg-secondary h-9 w-full rounded-md" />
+          <div className="divide-border mt-6 divide-y">
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex h-14 items-center justify-between gap-6">
+                <div className="bg-secondary h-3 w-40 rounded-sm" />
+                <div className="bg-secondary h-7 w-24 rounded-sm" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* The old screen's whole point, kept and demoted: if this is still here
+          after five seconds something is genuinely wrong, and a signed-out
+          visitor (the proxy lets requests through when Supabase itself is
+          unreachable) needs a way out that isn't the back button. */}
+      <p role="status" aria-live="polite" className="text-muted-foreground min-h-5 text-sm">
+        {stuck ? 'Still loading your settings.' : ''}
+      </p>
+      {stuck && (
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/">Open Anchor</Link>
+          </Button>
+          {!userId && (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/login?redirect=/settings">Sign in</Link>
+            </Button>
+          )}
+        </div>
+      )}
+    </main>
+  );
 }
 
 export default function SettingsPage() {
@@ -74,11 +201,22 @@ export default function SettingsPage() {
 
   const { theme, setTheme } = useTheme();
   const userId = usePlannerStore((s) => s.userId);
-  const isLoading = usePlannerStore((s) => s.isLoading);
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
 
   const [localDialog, setLocalDialog] = useState<'shortcuts' | 'bug' | null>(null);
+  // Which of the deferred modals have ever been opened. Latched, never
+  // cleared — see the note on the dynamic imports above for both halves of
+  // why: mounting them unopened downloads them, unmounting them on close
+  // takes the exit animation with it.
+  const [everOpened, setEverOpened] = useState<{ shortcuts: boolean; bug: boolean }>({
+    shortcuts: false,
+    bug: false,
+  });
+  const openLocalDialog = useCallback((which: 'shortcuts' | 'bug') => {
+    setEverOpened((prev) => (prev[which] ? prev : { ...prev, [which]: true }));
+    setLocalDialog(which);
+  }, []);
 
   /* ── The pane is the WHOLE path, not the first segment ──────────────────
      An extension's settings live at /settings/extensions/<slug>, which the
@@ -216,8 +354,8 @@ export default function SettingsPage() {
       userId,
       push,
       actions: {
-        openShortcuts: () => setLocalDialog('shortcuts'),
-        openBugReport: () => setLocalDialog('bug'),
+        openShortcuts: () => openLocalDialog('shortcuts'),
+        openBugReport: () => openLocalDialog('bug'),
         replayTour: () => void replayTour(),
         signOut: () => void signOut(),
         openLedger: () => router.push('/ledger'),
@@ -234,6 +372,7 @@ export default function SettingsPage() {
       router,
       replayTour,
       signOut,
+      openLocalDialog,
       plannerTick,
       viewTick,
       sidebarTick,
@@ -271,43 +410,19 @@ export default function SettingsPage() {
   );
 
   /* ── 4. The hydration gate ────────────────────────────────────────────── */
-  // `userId` alone is not "loaded" — initializeStore stamps it before the
-  // fetch resolves. And `settingsHydratedUserId` is the only honest answer to
-  // "are these values this account's yet"; it's stamped in the same set() as
-  // the server values, so it can never disagree with them.
-  const settled = !!userId && !isLoading;
-  const hydrated = settled && hydratedUserId === userId;
+  // `userId` alone is not "loaded" — initializeStore stamps it before anything
+  // has been fetched. `settingsHydratedUserId` is the honest answer to "are
+  // these values this account's yet": it is stamped in the same set() as the
+  // server values, so it can never disagree with them. See
+  // lib/settings/hydration.ts for the whole argument, including why
+  // planner-store's `isLoading` — the seven-table item load — is deliberately
+  // not part of it.
+  const hydrated = settingsBelongToUser(userId, hydratedUserId);
 
-  if (!hydrated) {
-    return (
-      <main
-        className="mx-auto flex max-w-lg flex-col items-start gap-4 px-6 py-16"
-        data-testid="settings-page"
-      >
-        <h1 className="text-foreground text-lg font-semibold">
-          {settled ? 'Loading your settings…' : 'Loading…'}
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          {settled
-            ? 'One moment — showing them before they arrive would show you the wrong values.'
-            : 'If nothing loads, you may need to sign in.'}
-        </p>
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/">Open Anchor</Link>
-          </Button>
-          {!userId && (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/login?redirect=/settings">Sign in</Link>
-            </Button>
-          )}
-        </div>
-      </main>
-    );
-  }
+  if (!hydrated) return <SettingsSkeleton userId={userId} />;
 
   return (
-    <div data-testid="settings-page">
+    <div data-testid="settings-page" data-settings-state="ready">
       <SettingsShell
         pane={pane}
         ctx={ctx}
@@ -318,14 +433,18 @@ export default function SettingsPage() {
 
       {/* Mounted here because AppShell isn't. */}
       <ConfirmDialog />
-      <KeyboardShortcutsModal
-        open={localDialog === 'shortcuts'}
-        onOpenChange={(open) => setLocalDialog(open ? 'shortcuts' : null)}
-      />
-      <BugReportDialog
-        open={localDialog === 'bug'}
-        onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
-      />
+      {everOpened.shortcuts && (
+        <KeyboardShortcutsModal
+          open={localDialog === 'shortcuts'}
+          onOpenChange={(open) => setLocalDialog(open ? 'shortcuts' : null)}
+        />
+      )}
+      {everOpened.bug && (
+        <BugReportDialog
+          open={localDialog === 'bug'}
+          onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
+        />
+      )}
     </div>
   );
 }
