@@ -10,6 +10,7 @@ import { useCurrentBucket } from '@/hooks/use-current-bucket';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
@@ -113,7 +114,7 @@ function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
 }
 
 function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant, dateStr }: DayBucketProps) {
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const goals = usePlannerStore((s) => s.goals);

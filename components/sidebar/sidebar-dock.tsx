@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { ChatPanel } from '@/components/sidebar/chat-panel';
 import { DockNotices } from '@/components/sidebar/dock-notices';
+import { UndoStrip } from '@/components/notices/undo-strip';
 import { UserCard } from '@/components/sidebar/user-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { RelayField } from '@/components/primitives/relay-field';
@@ -19,16 +20,24 @@ import { cn } from '@/lib/utils';
  * — when summoned from the omnibar (`?` / Ask Beacon / ⌘]) it mounts above the
  * user row and the capsule grows upward, shrinking the Braindump.
  *
- * It is also where the app SPEAKS — see components/sidebar/dock-notices.tsx.
- * The omnibar is the user's half of that (they type, the panel answers upward
- * out of the pill); the notice stack is the app's (it speaks, the tray answers
- * upward out of the row). Putting both on one capsule is the whole argument for
- * the placement: one edge of the screen where you and the app talk, instead of
- * a bar in the canvas, a modal, and a toast.
+ * It is also where the app SPEAKS — but from a STRIP above the capsule, not
+ * from inside it. That is a placement decision (notices are not part of the
+ * dock), and it is worth being precise about what it did and did not fix: at the
+ * resting state the omnibar never moved for a notice, on either structure, at
+ * any viewport height down to 360px — the capsule's bottom is pinned by the
+ * column, so a row grows it upward into the braindump. What DID jump was the
+ * undo toast, measured off this capsule's top edge; it is a strip row now and
+ * measures nothing.
+ *
+ * The conversation still shares an edge — you type into the pill, the app
+ * answers one row above it — and a notice tray still grows upward out of its row
+ * into the same airspace as the omnibar's suggestion panel, one occupant at a
+ * time. See components/sidebar/dock-notices.tsx and
+ * memory/plans/notices-in-place.md.
  */
 export function SidebarDock() {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
-  const dockRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
   // own focus (via onFocusChange) rather than the dock's focus-within: the
   // latter sticks lit when a menu returns focus to its trigger or the chat
@@ -41,58 +50,75 @@ export function SidebarDock() {
   const [burst, setBurst] = useState(0);
   const pulse = useCallback(() => setBurst((n) => n + 1), []);
 
-  // The undo toast anchors just above this capsule — exact instead of an
-  // estimate, and it follows the dock when chat expands, when a notice arrives,
-  // and when one is dismissed. Shared with the mobile dock, which never had it.
-  useToastAnchor(dockRef);
+  // What sonner's remaining toasts (item dialog, bug report, store errors) sit
+  // above. The ref is on the WRAPPER, not the capsule, so it clears the strip
+  // too — a toast that floated through the notice rows would be the old
+  // stacking problem in a new place. The capsule's own height no longer moves
+  // with the notices at all; it moves with chat, and nothing else.
+  useToastAnchor(wrapperRef);
 
   return (
     <div
-      ref={dockRef}
-      data-tour="right-sidebar"
-      // The focus handoff target when a notice dismisses itself out from under
-      // the keyboard: the capsule outlives every row in it and closes over the
-      // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
-      data-dock-surface
-      // No overflow-hidden here: the omnibar's suggestion panel grows upward
-      // out of the dock, so clipping the capsule would cut it off. The relay
-      // clips itself instead (its own rounded overflow-hidden, below).
-      className={cn(
-        'relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]',
-        chatExpanded && 'flex-1'
-      )}
+      ref={wrapperRef}
+      className={cn('relative flex min-h-0 flex-col', chatExpanded && 'flex-1')}
     >
-      {RELAY.dock && (
-        <RelayField
-          className="absolute inset-0 z-0 rounded-[10px]"
-          focalY={0.7}
-          pitch={20}
-          idleIntensity={0.2}
-          activeIntensity={0.6}
-          activeIntensityLight={0.4}
-          active={focused}
-          burst={burst}
-          mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
-        />
-      )}
-      {chatExpanded && (
-        <div className="relative z-10 mb-4 flex min-h-0 flex-1 flex-col">
-          <ChatPanel focusSignal={1} />
-        </div>
-      )}
-      {/* Above the UserCard rather than above the ChatPanel: chat takes flex-1
-          and wants the top of the capsule, and a notice line pushed up there by
-          an open conversation would read as part of it. Below chat, the stack
-          sits on the same short run of rows as the identity line — chrome with
-          chrome. It renders nothing at all when there is nothing to answer, so
-          the resting capsule is unchanged. */}
-      <DockNotices />
+      {/* THE STRIP: the app's notices, above the capsule instead of inside it.
+          Both children render null when they have nothing to say, so the resting
+          column is unchanged.
 
-      <div className="relative z-10">
-        <UserCard />
-      </div>
-      <div className="relative z-10 mt-5">
-        <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
+          The notice rows are in FLOW, and at the resting state (chat closed)
+          that costs nothing measurable — the capsule's bottom is pinned by the
+          column and the braindump's flex-1 absorbs the row, at every viewport
+          height down to 360px.
+
+          The undo row is NOT in flow, and that difference is measured rather
+          than reasoned. It appears and vanishes on a 5s timer the instant after
+          the user acts, so it is the one row whose arrival lands under a moving
+          cursor; and with chat expanded in a short window the column has no
+          slack left to absorb it. `absolute bottom-full` takes it out of the
+          squeeze budget entirely, at the cost of needing an opaque ground since
+          it now overlays the braindump's last row. */}
+      <DockNotices />
+      <UndoStrip className="absolute inset-x-0 bottom-full z-20 mb-1.5 bg-surface-0" />
+
+      <div
+        data-tour="right-sidebar"
+        // The focus handoff target when a notice dismisses itself out from under
+        // the keyboard: the capsule outlives every row in it and closes over the
+        // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
+        data-dock-surface
+        // No overflow-hidden here: the omnibar's suggestion panel grows upward
+        // out of the dock, so clipping the capsule would cut it off. The relay
+        // clips itself instead (its own rounded overflow-hidden, below).
+        className={cn(
+          'relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]',
+          chatExpanded && 'flex-1'
+        )}
+      >
+        {RELAY.dock && (
+          <RelayField
+            className="absolute inset-0 z-0 rounded-[10px]"
+            focalY={0.7}
+            pitch={20}
+            idleIntensity={0.2}
+            activeIntensity={0.6}
+            activeIntensityLight={0.4}
+            active={focused}
+            burst={burst}
+            mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
+          />
+        )}
+        {chatExpanded && (
+          <div className="relative z-10 mb-4 flex min-h-0 flex-1 flex-col">
+            <ChatPanel focusSignal={1} />
+          </div>
+        )}
+        <div className="relative z-10">
+          <UserCard />
+        </div>
+        <div className="relative z-10 mt-5">
+          <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
+        </div>
       </div>
     </div>
   );

@@ -44,8 +44,11 @@ import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 beforeEach(() => {
+  // These drive the console's confirms, and the console ships off.
+  enableGoalsAndOrganize();
   useUIStore.setState({ confirmRequest: null });
   usePlannerStore.setState({
     items: [],

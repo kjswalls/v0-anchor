@@ -19,7 +19,9 @@ import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import {
   EXT_COMPLETION_CONFETTI,
+  EXT_GOALS,
   EXT_HABIT_HEATMAP,
+  EXT_ORGANIZE,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
 } from '@/lib/extension-registry';
@@ -1064,6 +1066,44 @@ export const SETTINGS: SettingRecord[] = [
   // (`extensions.habitHeatmap`, not `extensions.habit-heatmap`) and an id is a
   // permanent deep link. `pane` is derived from the slug all the same, so the
   // pane and the catalog entry cannot drift apart.
+  //
+  // Goals and the Organize console are hand-written for a different reason than
+  // the two below: they have no ChannelSettingsSpec, because they are not
+  // channels — there is nothing to credential and nothing to configure. One
+  // switch each is the whole surface, which is exactly what the extension index
+  // renders a row from.
+  {
+    id: 'extensions.goals',
+    pane: extensionPaneId(EXT_GOALS),
+    label: 'Goals',
+    description:
+      'Long-term goals with milestones and check-ins, a Goal filter and a Goal grouping. Switching it off hides the goal layer and keeps every goal, every item and every membership.',
+    control: 'switch',
+    keywords: ['goal', 'milestone', 'check-in', 'checkin', 'ambition', 'target', 'long term'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_GOALS),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_GOALS, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.organize',
+    pane: extensionPaneId(EXT_ORGANIZE),
+    label: 'Organize console',
+    description:
+      'The console for routines, programs, projects, item types, habit groups and recently deleted. Switching it off closes the console; nothing in it is deleted.',
+    control: 'switch',
+    keywords: ['organize', 'organise', 'console', 'manage', 'containers', 'trash', 'bulk'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_ORGANIZE),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_ORGANIZE, Boolean(v));
+    },
+    defaultValue: false,
+  },
   {
     id: 'extensions.habitHeatmap',
     pane: extensionPaneId(EXT_HABIT_HEATMAP),

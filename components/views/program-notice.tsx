@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Moon } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useViewStore } from '@/lib/view-store';
 import { programSuppressionOn } from '@/lib/program-boundaries';
 import { toDateStr } from '@/lib/recurrence';
@@ -51,6 +52,7 @@ export function ProgramNotice({ className }: { className?: string }) {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const scope = useViewStore((s) => s.scope);
   const openDialog = useUIStore((s) => s.openDialog);
+  const organizeOn = useOrganizeEnabled();
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dateStr = toDateStr(selectedDate, tz);
@@ -76,9 +78,16 @@ export function ProgramNotice({ className }: { className?: string }) {
       // consequence is also the way back to the control that caused it — and it
       // lands on the program actually doing the hiding rather than on the list.
       // With several off, the first named is the one the sentence leads with.
+      // The way back is the console, so with the console off this sentence
+      // still REPORTS the suppression — which is the part that matters, since
+      // rows are hidden either way — and simply stops being a button. The
+      // program is unpaused from its own scope-rail entry meanwhile.
       onClick={() =>
-        openDialog({ type: 'organize', section: 'programs', focusId: off[0]?.id })
+        organizeOn
+          ? openDialog({ type: 'organize', section: 'programs', focusId: off[0]?.id })
+          : undefined
       }
+      disabled={!organizeOn}
       data-testid="program-notice"
       data-date={dateStr}
       data-hidden-count={hidden}

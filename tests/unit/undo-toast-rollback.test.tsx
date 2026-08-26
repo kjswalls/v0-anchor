@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, renderHook } from '@testing-library/react';
 
 /**
- * The undo toast, and what the container rollback must not do to it.
+ * The undo row, and what the container rollback must not do to it.
+ *
+ * The surface is a strip above the dock now rather than a sonner toast
+ * (components/notices/undo-strip.tsx), so these assertions read the store the
+ * hook writes instead of a mocked toast() call. The claims are unchanged — they
+ * were never about sonner.
  *
  * `useUndoToast` decides "is this new?" by comparing `actionLog[0].id` against
  * the last one it saw. That is a perfectly good test for the append-only log it
@@ -41,21 +46,26 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 
-// Typed args, not `vi.fn(() => …)`: with no declared parameters the recorded
-// calls are a zero-length tuple, so `mock.calls[0][0]` is a tsc error. It went
-// unnoticed because tsc is not gated in CI (`ignoreBuildErrors`).
-const toastFn = vi.fn((_message?: unknown, _opts?: unknown) => 'toast-id');
-const dismiss = vi.fn();
+// sonner is still mocked: the planner store reaches for toast.error on a failed
+// write, and this file makes one fail on purpose.
 vi.mock('sonner', () => ({
-  toast: Object.assign((...a: unknown[]) => toastFn(...(a as [])), {
-    error: vi.fn(),
-    dismiss: (...a: unknown[]) => dismiss(...(a as [])),
-  }),
+  toast: Object.assign(() => 'toast-id', { error: vi.fn(), dismiss: vi.fn() }),
 }));
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import * as db from '@/lib/db';
+
+/**
+ * Every row the hook has raised, in order. The strip holds ONE at a time — a
+ * replacement is the point — so "did this action speak?" has to be recorded as
+ * it happens rather than read off the store at the end.
+ */
+const raised: string[] = [];
+useUndoStripStore.subscribe((state, prev) => {
+  if (state.entry && state.entry.id !== prev.entry?.id) raised.push(state.entry.label);
+});
 
 const store = () => usePlannerStore.getState();
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -71,7 +81,8 @@ beforeEach(async () => {
   vi.mocked(db.fetchProjects).mockResolvedValue([]);
   vi.mocked(db.createProject).mockResolvedValue(undefined);
   await store().initializeStore('user-1');
-  toastFn.mockClear();
+  useUndoStripStore.setState({ entry: null });
+  raised.length = 0;
 });
 
 afterEach(cleanup);
@@ -86,14 +97,13 @@ const deleteAProject = async () => {
   await settle();
 };
 
-describe('a rollback under a live undo toast', () => {
+describe('a rollback under a live undo row', () => {
   it('does not raise the previous action a second time', async () => {
     const { rerender } = renderHook(() => useUndoToast());
 
     await deleteAProject();
     rerender();
-    expect(toastFn).toHaveBeenCalledTimes(1);
-    expect(toastFn.mock.calls[0][0]).toBe('Delete project: Reading');
+    expect(raised).toEqual(['Delete project: Reading']);
 
     // A create goes out and the database refuses it. Nothing the user did.
     vi.mocked(db.createProject).mockRejectedValueOnce(duplicate);
@@ -103,7 +113,7 @@ describe('a rollback under a live undo toast', () => {
 
     // Pop the entry instead of relabelling it and "Delete project: Reading"
     // surfaces again here, minutes later, wired to the wrong step.
-    expect(toastFn).toHaveBeenCalledTimes(1);
+    expect(raised).toEqual(['Delete project: Reading']);
   });
 
   it('leaves the log the same length, so nothing slides into the front', async () => {
@@ -121,7 +131,7 @@ describe('a rollback under a live undo toast', () => {
     expect(store().actionLog[0].label).toBe('Couldn’t add project: Work');
   });
 
-  it('still toasts the NEXT real action, so the ref did not go stale', async () => {
+  it('still speaks for the NEXT real action, so the ref did not go stale', async () => {
     const { rerender } = renderHook(() => useUndoToast());
     await deleteAProject();
     rerender();
@@ -139,7 +149,6 @@ describe('a rollback under a live undo toast', () => {
     await settle();
     rerender();
 
-    expect(toastFn).toHaveBeenCalledTimes(2);
-    expect(toastFn.mock.calls[1][0]).toBe('Delete project: Errands');
+    expect(raised).toEqual(['Delete project: Reading', 'Delete project: Errands']);
   });
 });

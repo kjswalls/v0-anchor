@@ -81,6 +81,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
+import { enableGoalsAndOrganize } from './support/extensions';
 import type { Goal, Routine, Program } from '@anchor-app/types';
 
 /**
@@ -108,6 +109,11 @@ beforeAll(() => {
 const view = () => useViewStore.getState();
 
 function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
+  // The Goal section and the Goal grouping value ride the Goals extension,
+  // which ships OFF. This file is about what the menu DOES with them, so it
+  // says so once here; the gate's own behaviour is pinned in
+  // extension-gates-goals.test.tsx.
+  enableGoalsAndOrganize();
   usePlannerStore.setState({
     userId: 'user-1',
     userTimezone: 'UTC',

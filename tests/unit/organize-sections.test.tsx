@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { enableGoalsAndOrganize } from './support/extensions';
 import { accentColorForName } from '@/lib/accent-colors';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import type { Item, Program, Project, Routine } from '@/lib/planner-types';
@@ -112,6 +113,9 @@ const pick = (triggerTestId: string, option: string) => {
 };
 
 beforeEach(() => {
+  // The sections are the console's, and the console ships off — see
+  // tests/unit/support/extensions.ts for why this is stated per suite.
+  enableGoalsAndOrganize();
   vi.useFakeTimers();
   vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
   useUIStore.setState({ confirmRequest: null });

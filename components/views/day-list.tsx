@@ -7,6 +7,7 @@ import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
@@ -46,7 +47,7 @@ export function DayList() {
   const day = useDayItems();
   const { selectedDate, navDirection, routines, programs, goals, userTimezone } =
     usePlannerStore();
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const sortBy = useViewStore((s) => s.canvasSortBy);
 
   /**

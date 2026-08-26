@@ -307,6 +307,12 @@ export function AppShell() {
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
       const planner = usePlannerStore.getState();
+      // DELIBERATELY NOT GATED on the Goals extension, unlike every other
+      // goal read in the app. This set is what stops a bulk date verb from
+      // overwriting a milestone's target date, and that write is not
+      // recoverable by switching the extension back on — the date it replaced
+      // is gone. A gate here would make "off" destructive, which is the one
+      // thing off must never be. See lib/extension-gates.ts.
       const milestoneIds = milestoneItemIds(planner.goals);
       // What the primary drop resolved to: a bucket always, and — for a TIMED
       // slot (an hour cell) — a clock time. A timed target schedules the whole

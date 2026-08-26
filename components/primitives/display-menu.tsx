@@ -55,6 +55,7 @@ import {
   sameContainerName,
 } from '@/lib/container-registry';
 import { displayGoals } from '@/lib/goals';
+import { useBraindumpGroupBy, useCanvasGroupBy, useGoalsEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import { buildScopeRows } from '@/lib/scope-rail';
 import { setGateOn } from '@/lib/gate-toggle';
@@ -444,6 +445,18 @@ export function DisplayMenu({
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
   const goals = usePlannerStore((s) => s.goals);
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
+  /**
+   * Two different questions, and both have to be yes.
+   *
+   * `goalsAvailable` is "the goals TABLE answered" (migration 036 deployed);
+   * `goalsOn` is "this account asked for the idea at all". The first is
+   * infrastructure and the second is a choice, so neither stands in for the
+   * other — and unlike the availability flag, the gate takes the stranded
+   * clause with it: while Goals is off nothing consults `filters.goals`, so a
+   * selection left behind by the switch narrows nothing and must not be counted
+   * by a trigger that has no row to account for it. See lib/extension-gates.ts.
+   */
+  const goalsOn = useGoalsEnabled();
 
   const view = useViewStore();
   const isCanvas = surface === 'canvas';
@@ -456,7 +469,13 @@ export function DisplayMenu({
 
   const filters = isCanvas ? view.canvasFilters : view.braindumpFilters;
   const setFilters = isCanvas ? view.setCanvasFilters : view.setBraindumpFilters;
-  const groupBy: string = isCanvas ? view.canvasGroupBy : view.braindumpGroupBy;
+  // The EFFECTIVE value, not the stored one: a group-by whose extension is off
+  // resolves to 'none' here exactly as it does on the surfaces themselves, so
+  // the rail, the count and the checkmark all say what the canvas is doing. The
+  // stored value survives untouched and comes back with the toggle.
+  const canvasGroupByOn = useCanvasGroupBy();
+  const braindumpGroupByOn = useBraindumpGroupBy();
+  const groupBy: string = isCanvas ? canvasGroupByOn : braindumpGroupByOn;
 
   const patch = (next: Partial<ViewFilters>) => setFilters({ ...filters, ...next });
 
@@ -466,6 +485,8 @@ export function DisplayMenu({
   /* ── what is set ──────────────────────────────────────────────────────── */
 
   const selectedProjects = namesOfKind(filters.containers, 'project');
+  /** The goal selection AS THE APP READS IT — empty while Goals is off. */
+  const goalClause = goalsOn ? filters.goals : [];
 
   /**
    * The Goal clause's rows, described as DATA before anything draws them.
@@ -533,7 +554,10 @@ export function DisplayMenu({
   const groupSet = groupBy !== 'none';
   const sortSet = (isCanvas ? view.canvasSortBy : view.braindumpSortBy) !== 'default';
   const activeCount =
-    activeFilterCount(filters) + (groupSet ? 1 : 0) + (sortSet ? 1 : 0) + (typeSet ? 1 : 0);
+    activeFilterCount({ ...filters, goals: goalClause }) +
+    (groupSet ? 1 : 0) +
+    (sortSet ? 1 : 0) +
+    (typeSet ? 1 : 0);
 
   /**
    * Reset clears everything this menu OWNS for this surface. `showPausedOnGrid`
@@ -543,13 +567,24 @@ export function DisplayMenu({
    * change what the other five show.
    */
   const reset = () => {
-    setFilters(EMPTY_VIEW_FILTERS);
+    // RESET CLEARS WHAT THE MENU IS SHOWING, and a gated clause is not showing.
+    //
+    // While Goals is off this menu renders no row for the goal filter and no
+    // Goal value under Grouping, and the trigger deliberately does not count
+    // either — the argument being that the menu does not own them. Clearing
+    // them here would contradict that in the most annoying possible way:
+    // Reset would silently destroy a selection the user cannot see, so
+    // switching Goals back on would return an empty filter rather than the one
+    // they left. Off has to be lossless, and this is the one path where it
+    // nearly was not.
+    setFilters({ ...EMPTY_VIEW_FILTERS, goals: goalsOn ? [] : filters.goals });
+    const keepGroupBy = (stored: string) => !goalsOn && stored === 'goal';
     if (isCanvas) {
-      view.setCanvasGroupBy('none');
+      if (!keepGroupBy(view.canvasGroupBy)) view.setCanvasGroupBy('none');
       view.setCanvasSortBy('default');
       view.setTypeFilter('all');
     } else {
-      view.setBraindumpGroupBy('none');
+      if (!keepGroupBy(view.braindumpGroupBy)) view.setBraindumpGroupBy('none');
       view.setBraindumpSortBy('default');
     }
   };
@@ -571,7 +606,15 @@ export function DisplayMenu({
    * whose rows explain themselves, which is the grammar this menu already uses
    * for values inside Buckets.
    */
-  const groupOptions = isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS;
+  // The Goal value is NOT OFFERED while Goals is off, which is the one place
+  // this menu drops a row rather than disabling it. A disabled row states a
+  // reason about THIS SURFACE ("Already by bucket", "List only") and invites you
+  // to switch layout; "your account does not have this feature" is a different
+  // sentence, and its home is the extension's own settings pane — where the row
+  // still is, because off means inert rather than gone.
+  const groupOptions = (isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS).filter(
+    (o) => o.value !== 'goal' || goalsOn
+  );
   const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
   /** How far the CURRENT value reaches on this surface — see groupBySupport. */
   const groupReach = isCanvas
@@ -787,7 +830,14 @@ export function DisplayMenu({
     // filter is not. With zero goals the panel says so. The `||` is the stranded
     // clause again: an unreachable table must not take the only row that can
     // clear a selection down with it.
-    ...(goalsAvailable || filters.goals.length > 0
+    //
+    // AND GATED ON THE EXTENSION, which is a stronger cut than either of the
+    // two above: with Goals off there is no clause to clear, because nothing
+    // consults `filters.goals` at all (hooks/use-day-items.ts, braindump.tsx).
+    // A stranded selection is therefore already inert — it hides no row — so
+    // the section that exists to clear one has nothing left to do, and the
+    // trigger's count leaves it out to match.
+    ...(goalsOn && (goalsAvailable || filters.goals.length > 0)
       ? [
           {
             id: 'goal',

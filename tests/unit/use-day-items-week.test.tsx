@@ -66,6 +66,7 @@ import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS, type ViewFilters } from '@/lib/filters';
 import type { DayItems } from '@/lib/day-items';
 import type { Goal, Item } from '@/lib/planner-types';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /** Mon 13th → Sun 19th July 2026. UTC throughout so dateStr is unambiguous. */
 const WEEK = ['13', '14', '15', '16', '17', '18', '19'].map(
@@ -152,7 +153,11 @@ const idsOf = (d: DayItems): string[] => [
 
 const week = () => renderHook(() => useDayItemsForDates(WEEK)).result.current;
 
-beforeEach(() => vi.clearAllMocks());
+// The GOAL clause below is the Goals extension's, and it ships off.
+beforeEach(() => {
+  enableGoalsAndOrganize();
+  vi.clearAllMocks();
+});
 afterEach(cleanup);
 
 describe('useDayItemsForDates', () => {

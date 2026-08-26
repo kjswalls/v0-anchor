@@ -57,6 +57,12 @@ import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
+import {
+  goalsEnabled,
+  groupByOptionsFor,
+  organizeEnabled,
+  resolvedCanvasGroupBy,
+} from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
@@ -565,7 +571,12 @@ export const STATIC_COMMANDS: Command[] = [
       kind: 'enum',
       placeholder: 'Group by',
       flatten: true,
-      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy),
+      // Both halves resolved against what is switched on, not read raw. A
+      // gated value is not offered, and a STORED gated value does not draw a
+      // checkmark — every surface and the Display menu report 'none' for it, and
+      // the palette is the one place that used to say otherwise.
+      options: () =>
+        optionsFrom(groupByOptionsFor(CANVAS_GROUP_BY_OPTIONS), resolvedCanvasGroupBy()),
     },
     run: (_ctx, arg) => view().setCanvasGroupBy(arg as GroupBy),
   },
@@ -1068,6 +1079,13 @@ export const STATIC_COMMANDS: Command[] = [
     icon: FolderOpen,
     keywords: 'projects groups categories manage organize folders edit labels',
     aliases: ['projects', 'groups'],
+    // GREYED, NOT GONE, while the Organize console is off. `availableWhen`
+    // renders the row and blocks the run, which is exactly the "inert but still
+    // findable" posture the extension surface is built on — and it is the same
+    // grammar the display menu uses for a value the current view cannot honour.
+    // A row that vanished would read as a broken palette; this one reads as a
+    // feature you have not switched on.
+    availableWhen: () => organizeEnabled(),
     run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'projects' }),
   },
   {
@@ -1079,7 +1097,10 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['routines'],
     // Not gated on collectionsAvailable: the console explains the situation
     // better than a missing row does, and a row that silently disappears reads
-    // as a broken palette rather than an unavailable feature.
+    // as a broken palette rather than an unavailable feature. The EXTENSION is
+    // a different question — with the console switched off there is no console
+    // to do the explaining, so the row greys out instead. See app.categories.
+    availableWhen: () => organizeEnabled(),
     run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'routines' }),
   },
   {
@@ -1091,6 +1112,12 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['goals'],
     // Ungated, like app.collections and for the same reason: the console
     // explains an unavailable feature better than a vanished palette row does.
+    //
+    // Gated on GOALS rather than on the console, matching the section it opens
+    // (console-rail.tsx): the Goals section rides EXT_GOALS, so this row works
+    // with the rest of the console switched off and greys out when the idea
+    // itself is off, whatever the console is doing.
+    availableWhen: () => goalsEnabled(),
     run: () => useUIStore.getState().openDialog({ type: 'organize', section: 'goals' }),
   },
   {
@@ -1336,6 +1363,12 @@ let cachedGoalCommands: Command[] = [];
  */
 const goalCommands: CommandProvider = () => {
   const { goals, goalsAvailable } = planner();
+  // DATA rows, not catalogue rows — so these go away entirely rather than grey
+  // out. "Open Learn Chinese" is one of the user's goals, and a palette full of
+  // greyed goal names would be worse than the static row above, which is the one
+  // that stays findable and says the feature exists. The page they open is inert
+  // while Goals is off anyway (app/goal/[id]/page.tsx).
+  if (!goalsEnabled()) return [];
   if (!goalsAvailable) return [];
   if (goals === cachedGoals) return cachedGoalCommands;
 

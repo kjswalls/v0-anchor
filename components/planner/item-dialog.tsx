@@ -60,6 +60,7 @@ import {
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import { nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
@@ -540,6 +541,18 @@ export function ItemDialog({
     goalsAvailable,
     updateGoal,
   } = usePlannerStore();
+  /**
+   * The two extension gates this dialog answers to.
+   *
+   * The dialog is a READOUT, not a feature — the weight ledger's word for it —
+   * so nothing here is gated for its own sake. `goalsOn` takes the Goal chip
+   * because the chip IS goal membership; `organizeOn` takes the three
+   * "Organize …" rows because each is a door to a console that will not open.
+   * A door to a shut room is worse than no door: it is the one kind of dead
+   * control that looks like a bug rather than a choice.
+   */
+  const goalsOn = useGoalsEnabled();
+  const organizeOn = useOrganizeEnabled();
 
   // Hoisted out of renderChips, which runs on every render of a component that
   // subscribes to the whole store — so this rebuilt an N-item Map on every
@@ -1377,21 +1390,29 @@ export function ItemDialog({
                 })}
                 {/* The manager's home. It is NOT in the braindump header —
                     that row is width-critical at the 280px minimum — so the
-                    routes in are here, the palette, and mobile's sheet. */}
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    // Replaces this dialog rather than stacking on it —
-                    // openDialog swaps the single active slot. Same escape the
-                    // type chip's "Organize types…" row makes.
-                    useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
-                  }}
-                  testId="item-dialog-routine-manage"
-                >
-                  <Plus className="size-3.5" />
-                  Organize routines…
-                </ChipOption>
+                    routes in are here, the palette, and mobile's sheet.
+
+                    Gone entirely while the Organize console is off, rather than
+                    disabled: this is a door, and a door that cannot open is not
+                    worth the row it costs inside a 264px popover. The console's
+                    catalogue row, its settings pane and its (greyed) palette
+                    commands are where it stays findable. */}
+                {organizeOn && (
+                  <ChipOption
+                    tone="muted"
+                    onSelect={() => {
+                      close();
+                      // Replaces this dialog rather than stacking on it —
+                      // openDialog swaps the single active slot. Same escape the
+                      // type chip's "Organize types…" row makes.
+                      useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
+                    }}
+                    testId="item-dialog-routine-manage"
+                  >
+                    <Plus className="size-3.5" />
+                    Organize routines…
+                  </ChipOption>
+                )}
               </div>
             )}
           </PropertyChip>
@@ -1447,20 +1468,24 @@ export function ItemDialog({
                     </ChipOption>
                   );
                 })}
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    useUIStore.getState().openDialog({
-                      type: 'organize',
-                      section: 'programs',
-                    });
-                  }}
-                  testId="item-dialog-program-manage"
-                >
-                  <Plus className="size-3.5" />
-                  Organize programs…
-                </ChipOption>
+                {/* A door, gone while the console is off — see the routine
+                    chip's row above for the whole argument. */}
+                {organizeOn && (
+                  <ChipOption
+                    tone="muted"
+                    onSelect={() => {
+                      close();
+                      useUIStore.getState().openDialog({
+                        type: 'organize',
+                        section: 'programs',
+                      });
+                    }}
+                    testId="item-dialog-program-manage"
+                  >
+                    <Plus className="size-3.5" />
+                    Organize programs…
+                  </ChipOption>
+                )}
               </div>
             )}
           </PropertyChip>
@@ -1478,7 +1503,7 @@ export function ItemDialog({
             other route. A goal is the container a user is most likely to want
             before they own any, so its chip renders from zero and its popover
             leads with the door. */}
-        {goalsAvailable && collectible && (
+        {goalsOn && goalsAvailable && collectible && (
           <PropertyChip
             icon={Target}
             label="Goal"
@@ -1544,6 +1569,10 @@ export function ItemDialog({
                   </>
                 )}
 
+                {/* The Goals section of the console rides EXT_GOALS, not
+                    EXT_ORGANIZE (lib/extension-gates.ts), so this door stays
+                    open with the console switched off — otherwise Goals would
+                    be an extension you can switch on and then never use. */}
                 <ChipOption
                   tone="muted"
                   onSelect={() => {
@@ -2192,21 +2221,25 @@ export function ItemDialog({
             ))}
             {itemTypesAvailable && (
               <>
-                <div className="bg-border -mx-1 my-1 h-px" />
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    // Replaces this dialog rather than stacking on it: openDialog
-                    // swaps the single active slot.
-                    useUIStore
-                      .getState()
-                      .openDialog({ type: 'organize', section: 'types' });
-                  }}
-                >
-                  <Plus className="size-3.5" />
-                  Organize types…
-                </ChipOption>
+                {organizeOn && (
+                  <>
+                    <div className="bg-border -mx-1 my-1 h-px" />
+                    <ChipOption
+                      tone="muted"
+                      onSelect={() => {
+                        close();
+                        // Replaces this dialog rather than stacking on it: openDialog
+                        // swaps the single active slot.
+                        useUIStore
+                          .getState()
+                          .openDialog({ type: 'organize', section: 'types' });
+                      }}
+                    >
+                      <Plus className="size-3.5" />
+                      Organize types…
+                    </ChipOption>
+                  </>
+                )}
               </>
             )}
           </>

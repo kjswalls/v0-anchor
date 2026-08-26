@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { buildAnchorContext } from './ai-context';
+import { goalsEnabled } from './extension-gates';
 import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
 
@@ -177,7 +178,14 @@ export function createChatStore(config: ChatThreadConfig) {
           const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
           const context = buildAnchorContext({
-            items, projects, routines, programs, goals, focusItemId, userTimezone,
+            items, projects, routines, programs,
+            // Beacon is told about goals only while the user has the idea
+            // switched on. `buildAnchorContext` already renders nothing for an
+            // empty list, so this removes a LINE from the context rather than
+            // changing its shape — the byte-pinned no-goal output is what an
+            // account with Goals off now gets. Nothing is written either way.
+            goals: goalsEnabled() ? goals : [],
+            focusItemId, userTimezone,
           });
           // Fresh values via getState() to avoid stale closures.
           const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();

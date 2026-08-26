@@ -6,7 +6,7 @@ import { useViewStore } from '@/lib/view-store';
 import { toDateStr } from '@/lib/recurrence';
 import { deriveDayItems, type DayItems } from '@/lib/day-items';
 import { inactiveItemIdsOn } from '@/lib/active';
-import { goalFilterItemIds } from '@/lib/goals';
+import { useGoalFilterIds } from '@/lib/extension-gates';
 
 /**
  * Store-connected wrapper around deriveDayItems — the single data path for
@@ -46,13 +46,16 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
    * Membership is dateless — a goal holds the same items on Monday as on
    * Friday — so unlike `inactiveItemIds` below there is nothing per-date to
    * resolve, and a week of columns shares one set. `null` means the clause is
-   * inert (nothing selected, or nothing selected that is still a live goal);
-   * see lib/goals.ts.
+   * inert (nothing selected, nothing selected that is still a live goal, or —
+   * since the Goals extension — the whole feature switched off); see
+   * lib/goals.ts and lib/extension-gates.ts.
+   *
+   * THE GATE IS HERE, at the canvas's one data path, rather than in each of the
+   * six view mounts. Inert and not empty is what makes switching Goals off
+   * safe on a surface that was filtered by one: `passesGoalFilter` reads `null`
+   * as "do not narrow", so every row the clause was hiding comes straight back.
    */
-  const goalMemberIds = useMemo(
-    () => goalFilterItemIds(goals, canvasFilters.goals),
-    [goals, canvasFilters.goals]
-  );
+  const goalMemberIds = useGoalFilterIds(goals, canvasFilters.goals);
 
   /**
    * The memo key for `dates`, since a fresh array every render would defeat it.

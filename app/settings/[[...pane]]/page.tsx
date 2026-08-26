@@ -30,6 +30,7 @@ import { usePushSubscription } from '@/hooks/use-push-subscription';
 import { applyThemeChange } from '@/lib/theme-transition';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
+  extensionPaneId,
   isExtensionPane,
   isPaneId,
   settingById,
@@ -37,6 +38,8 @@ import {
   type SettingCtx,
   type DestinationRecord,
 } from '@/lib/settings/manifest';
+import { consoleSectionExtension } from '@/components/planner/organize/console-rail';
+import { extensionEnabled } from '@/lib/extension-gates';
 
 /**
  * Settings, as a route.
@@ -424,6 +427,22 @@ export default function SettingsPage() {
       }
       if (record.action === 'ledger') {
         router.push('/ledger');
+        return;
+      }
+      // Every remaining destination is a console section, and a section rides
+      // an extension (console-rail.tsx). With that extension off the console
+      // closes itself on arrival, so the row would look broken — send the user
+      // to the switch instead, which is both the truthful answer and the one
+      // click that makes the destination work. The ROW stays in the search
+      // index either way: off is findable.
+      //
+      // `null` is a section that rides nothing and may never be gated — today
+      // that is Trash, which someone reaches for from a different emotional
+      // place than the rest of this list and must never be redirected to a
+      // settings switch on the way. It falls straight through to the open below.
+      const slug = consoleSectionExtension(record.section);
+      if (slug !== null && !extensionEnabled(slug)) {
+        router.push(`/settings/${extensionPaneId(slug)}`);
         return;
       }
       // ui-store is a module singleton and survives client-side navigation, so

@@ -1484,3 +1484,102 @@ body {
     transition-duration: 0s !important;
   }
 }
+
+/* ─── Notices in place ────────────────────────────────────────────────────────
+   The typewriter reveal (components/primitives/typewriter-text.tsx) and the
+   undo strip's expiry hairline (components/notices/undo-strip.tsx).
+
+   `clip-path`, not width and not opacity: the text keeps its own box, so the row
+   never reflows mid-reveal, and the sentence is in the DOM and in the
+   accessibility tree the whole time — the animation can only ever fail OPEN.
+   `both` fill so the final frame is the unclipped line even if the animation is
+   cut short, which is exactly what the two reduced-motion escapes below do. */
+@keyframes notice-type {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 -0.1em 0 0);
+  }
+}
+
+.notice-type {
+  animation-name: notice-type;
+  animation-fill-mode: both;
+  /* duration + steps() come from the component, off the line's own length. */
+}
+
+/* One sheen crossing the line as it lands. Neutral, never lime: lime is this
+   palette's meaning colour and a notice arriving means nothing in particular.
+   Its own element with its own gradient alpha — no parent opacity is ever
+   applied to an accent here (CLAUDE.md). */
+@keyframes notice-shimmer {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(360%);
+  }
+}
+
+.notice-shimmer {
+  animation-name: notice-shimmer;
+  animation-timing-function: var(--ease-out-soft, ease-out);
+  animation-fill-mode: forwards;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--foreground) 22%, transparent) 50%,
+    transparent 100%
+  );
+}
+
+/* The transient row's own clock, drawn as a hairline that drains left to right.
+   WIDTH, never opacity: this is the one lime mark on the strip, and lime never
+   takes alpha in this palette. It is also its own element, so no parent can fade
+   it either. */
+@keyframes notice-expiry {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.notice-expiry {
+  animation-name: notice-expiry;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* Both motion vetoes, spelled out rather than left to the blanket
+   `[data-reduce-motion] *` rule above. That rule clamps duration to 0.01ms,
+   which lands on the FINAL frame here (fill-mode: both) and is therefore already
+   safe — but "safe by accident, via a rule about durations" is not a thing to
+   leave a reveal animation resting on. These say it directly. */
+@media (prefers-reduced-motion: reduce) {
+  .notice-type {
+    animation: none;
+    clip-path: none;
+  }
+  .notice-shimmer {
+    display: none;
+  }
+  .notice-expiry {
+    animation: none;
+    width: 100%;
+  }
+}
+
+[data-reduce-motion='true'] .notice-type {
+  animation: none;
+  clip-path: none;
+}
+[data-reduce-motion='true'] .notice-shimmer {
+  display: none;
+}
+[data-reduce-motion='true'] .notice-expiry {
+  animation: none;
+  width: 100%;
+}

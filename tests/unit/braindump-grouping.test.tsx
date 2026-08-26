@@ -70,6 +70,7 @@ import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import type { Goal, Item } from '@/lib/planner-types';
 import type { SortBy } from '@/lib/sort-rows';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /**
  * Two unscheduled tasks whose STORE order is the reverse of their alphabetical
@@ -180,7 +181,11 @@ describe('braindump: grouping owns the outer order', () => {
   });
 });
 
-beforeEach(() => seed('default'));
+// Group by Goal rides the Goals extension, which ships off.
+beforeEach(() => {
+  enableGoalsAndOrganize();
+  seed('default');
+});
 
 describe('braindump: grouping by a gate', () => {
   it('sections unscheduled items by their routine, with a pause switch on the header', () => {
