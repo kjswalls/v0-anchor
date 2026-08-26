@@ -2174,6 +2174,24 @@ export const usePlannerStore = create<PlannerStore>()(
           newUpdates.projectId = projectIdFor(updates.project, get().projects);
         }
 
+        // Stamp the agent clock LOCALLY too, not just in the row mapper.
+        //
+        // The store applies `{...item, ...updates}` optimistically and nothing
+        // refetches for the rest of the session — there is no realtime
+        // subscription, no polling, and `initializeStore` early-returns on
+        // re-entry. So a status change whose stamp only existed server-side
+        // left the store holding the PREVIOUS one, and the row went on
+        // reporting elapsed time from the old state until a reload: answer a
+        // question asked six hours ago and the row reads "Queued 6h" for a
+        // state six seconds old. That is precisely the confident wrong number
+        // this column was added to avoid.
+        //
+        // Set only when absent, so an explicit stamp — the one `diffItem`
+        // carries back through undo — is preserved rather than overwritten.
+        if ('aiStatus' in newUpdates && newUpdates.aiStatusAt === undefined) {
+          newUpdates.aiStatusAt = new Date().toISOString();
+        }
+
         updateItemAction(id, 'task', newUpdates);
       },
 

@@ -565,7 +565,15 @@ export const TaskCreateSchema = z
   // resolver is what makes this omission safe rather than lossy — omitting the
   // field without it silently strips every agent write out of the rename
   // fan-out, which is the bug Phase 0 exists to remove.
-  .omit({ pausedAt: true, pausedUntil: true, projectId: true })
+  //
+  // `aiStatusAt` is omitted on the same principle as `projectId`: it is derived,
+  // not declared. Spreading `taskShape` makes every new field an accepted create
+  // body field automatically, which handed an agent two ways to be wrong — an
+  // unvalidated string reaching a `timestamptz` column 500s at Postgres instead
+  // of 400ing here (the rule the `aiStatus` line beside it states outright), and
+  // a well-formed past value manufactures a fake "Working 3h". The stamp is
+  // written by lib/db.ts alongside the status it describes, and by nothing else.
+  .omit({ pausedAt: true, pausedUntil: true, projectId: true, aiStatusAt: true })
   .superRefine(requireCustomDays)
 
 export const HabitCreateSchema = z

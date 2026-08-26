@@ -209,6 +209,23 @@ function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_u
  * order does not cover: a fresh clone pointed at an un-migrated project, and a
  * rollback of the migration under a deployed build.
  */
+/**
+ * The agent status stamp, emitted ONLY when set — the same PGRST204 guard as
+ * `pauseColumns` and `containerColumns`, and for the identical reason their
+ * headers give: an INSERT naming a column absent from PostgREST's schema cache
+ * is rejected outright, so writing this unconditionally would break EVERY task
+ * create against a pre-038 database, not only delegated ones.
+ *
+ * That window is real here rather than theoretical: Vercel deploys on push
+ * while `pnpm db:push` is run by hand, so the build can lead the schema. And
+ * `createItem`'s PGRST204 recovery only strips the reminder columns, so this
+ * would rethrow rather than degrade.
+ */
+function agentStampColumn(item: Item): Partial<Pick<ItemRow, 'ai_status_at'>> {
+  const stamp = (item as { aiStatusAt?: string }).aiStatusAt
+  return stamp !== undefined ? { ai_status_at: stamp } : {}
+}
+
 function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'group_id'>> {
   if (item.type === 'habit') {
     return item.groupId !== undefined ? { group_id: item.groupId } : {};
@@ -290,8 +307,8 @@ function itemToRow(userId: string, item: Item): ItemRow {
     assignee: item.assignee ?? null,
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
-    ai_status_at: item.aiStatusAt ?? null,
     ...pauseColumns(item),
+    ...agentStampColumn(item),
     ...containerColumns(item),
     ...reminderColumns(item),
   };
@@ -343,10 +360,17 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
     row.ai_status = updates.aiStatus ?? null;
     // Stamped WITH the status, never on its own (migration 038). Writing them
     // together is what stops the timestamp drifting from the state it
-    // describes — and it is why `aiStatusAt` is not in this allowlist as a
-    // field of its own: nothing outside this line may set it. The allowlist
-    // suite knows it as a declared COMPANION_COLUMN of `aiStatus`.
-    row.ai_status_at = new Date().toISOString();
+    // describes — and it is why `aiStatusAt` has no branch of its own here:
+    // nothing may set it alone. The allowlist suite knows it as a declared
+    // COMPANION_COLUMN of `aiStatus`.
+    //
+    // An EXPLICIT stamp wins over `now`, and that is what makes undo honest.
+    // `diffItem` captures both fields together, so ⌘Z on an agent status
+    // change carries the original time back — without this the restored state
+    // would be dated to the moment of the undo, and a question asked six hours
+    // ago would read "Needs you just now" with the real time unrecoverable.
+    const explicit = (updates as { aiStatusAt?: string }).aiStatusAt;
+    row.ai_status_at = explicit ?? new Date().toISOString();
   }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
   // Reminders (migration 032). Nulls pass through and MEAN something here —

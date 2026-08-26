@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentStatusView, formatElapsed, isAgentState } from '@/lib/agent-status';
+import { agentStatusView, formatElapsed, hasAgentState, isAgentState } from '@/lib/agent-status';
 
 /**
  * What a delegated item says on a row.
@@ -142,5 +142,41 @@ describe('isAgentState', () => {
     for (const s of [undefined, '', 'pending', 'completed', 'toString', 'constructor', 'valueOf']) {
       expect(isAgentState(s as string | undefined)).toBe(false);
     }
+  });
+});
+
+describe('hasAgentState — the clockless half', () => {
+  /**
+   * A component cannot read `Date.now()` during render (impure), and nothing
+   * about WHETHER to show the pill depends on the time — only the elapsed
+   * reading does. So the decision is split out, and the risk is that the two
+   * halves drift: a predicate saying "show it" where the view returns null
+   * would mount a ticking component that renders nothing.
+   */
+  const cases = [
+    { assignee: 'beacon', aiStatus: 'working' },
+    { assignee: 'beacon', aiStatus: 'blocked' },
+    { assignee: 'beacon', aiStatus: 'queued' },
+    { assignee: 'beacon', aiStatus: 'failed' },
+    { assignee: 'beacon', aiStatus: 'done' },
+    { assignee: 'beacon', aiStatus: 'toString' },
+    { assignee: 'beacon', aiStatus: undefined },
+    { assignee: undefined, aiStatus: 'working' },
+    {},
+  ];
+
+  it('agrees with the view on every input', () => {
+    for (const item of cases) {
+      expect(hasAgentState(item), JSON.stringify(item)).toBe(
+        agentStatusView({ ...item, aiStatusAt: ago(MINUTE) }, NOW) !== null
+      );
+    }
+  });
+
+  it('does not depend on the clock', () => {
+    const item = { assignee: 'beacon', aiStatus: 'working' };
+    expect(hasAgentState(item)).toBe(true);
+    // No stamp at all, and none needed — the decision is about state.
+    expect(hasAgentState({ ...item, aiStatusAt: undefined } as never)).toBe(true);
   });
 });

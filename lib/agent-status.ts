@@ -75,19 +75,33 @@ export function isAgentState(value: string | undefined): value is AgentState {
 /**
  * What the row should say, or null when there is nothing worth saying.
  *
- * `done` returns null deliberately: a finished item's outcome belongs on the
- * item, and a row that keeps announcing "Done" for work the user has already
- * seen is the badge equivalent of a notification that will not clear.
+ * `done` returns null deliberately — see `hasAgentState`, which owns that rule
+ * and every other "is there anything to say" condition, so the clockless
+ * predicate and the view can never disagree.
  */
+/**
+ * Is there anything to say about this item at all?
+ *
+ * Split out from the view because it is PURE in the strict sense — no clock —
+ * which is what lets a component decide whether to mount the ticking half
+ * without reading `Date.now()` during render. The two must stay in step, so the
+ * view delegates to it rather than repeating the conditions.
+ */
+export function hasAgentState(item: { aiStatus?: string; assignee?: string }): boolean {
+  if (!item.assignee) return false
+  if (!isAgentState(item.aiStatus)) return false
+  // A row that keeps announcing finished work is the badge equivalent of a
+  // notification that will not clear.
+  return item.aiStatus !== 'done'
+}
+
 export function agentStatusView(
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string },
   now: number
 ): AgentStatusView | null {
-  if (!item.assignee) return null
-  if (!isAgentState(item.aiStatus)) return null
-  if (item.aiStatus === 'done') return null
+  if (!hasAgentState(item)) return null
 
-  const state = item.aiStatus
+  const state = item.aiStatus as AgentState
   const elapsed = item.aiStatusAt ? formatElapsed(item.aiStatusAt, now) : undefined
   const label = LABELS[state]
 

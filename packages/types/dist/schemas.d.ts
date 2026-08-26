@@ -1887,7 +1887,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      * projection and the 50-entry undo stack.
      */
     aiStatusAt: z.ZodOptional<z.ZodString>;
-}, "pausedAt" | "pausedUntil" | "projectId">, "strip", z.ZodTypeAny, {
+}, "pausedAt" | "pausedUntil" | "projectId" | "aiStatusAt">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -1914,7 +1914,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
-    aiStatusAt?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1942,7 +1941,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
-    aiStatusAt?: string | undefined;
 }>, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1970,7 +1968,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
-    aiStatusAt?: string | undefined;
 }, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
@@ -1998,7 +1995,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
     aiResult?: string | undefined;
-    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;

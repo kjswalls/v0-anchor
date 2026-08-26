@@ -575,6 +575,39 @@ to render. `aiStatus` is a loose string by design (constraining it would let a f
 vocabulary addition brick an old plugin's `safeParse`), so that was reachable. `Object.hasOwn`
 now.
 
+*Adversarial review — the worst batch so far. Two would have broken production.*
+
+- **The migration never rebuilt `items_windowed`.** That view freezes its column list at
+  creation and `fetchItems` reads `select('*')` from it, so a new `items` column is invisible
+  to the client until the view is rebuilt. 031's header states the rule outright and 032 is
+  the precedent; 038 was the first migration since to add a column and missed it. Every write
+  would have succeeded, every read returned `undefined`, and the whole feature been silently
+  dead — while working fine in any dev database that never ran 031.
+- **`itemToRow` wrote the new column unconditionally**, so a build deployed ahead of the
+  migration could not create ANY task. `pauseColumns`, `containerColumns` and
+  `reminderColumns` are all conditional emitters and `containerColumns`' header says exactly
+  why. Vercel deploys on push while `db:push` is manual, so that window is real, and
+  `createItem`'s PGRST204 recovery only strips reminder columns — it would have rethrown.
+- **`aiStatusAt` was agent-writable and unvalidated.** `TaskCreateSchema` spreads `taskShape`,
+  so every new field becomes an accepted create-body field automatically: an unvalidated
+  string reached a `timestamptz` column and 500'd at Postgres instead of 400ing at the
+  boundary, and a well-formed past value let an agent manufacture a fake "Working 3h". Omitted
+  now, on the same principle as `projectId` — it is derived, not declared.
+- **The optimistic write left the clock stale for the session.** The store merges updates
+  locally and nothing refetches — no realtime subscription, no polling, `initializeStore`
+  early-returns. So a status change stamped only server-side left the store on the PREVIOUS
+  time: answer a question asked six hours ago and the row reads "Queued 6h" for a state six
+  seconds old. Exactly the confident wrong number this column exists to prevent.
+- **Undo re-stamped instead of restoring.** `diffItem` carries both fields back, but the row
+  mapper overwrote the stamp with `now`, so ⌘Z on an agent status change dated the restored
+  state to the moment of the undo and lost the original irrecoverably. An explicit stamp now
+  wins over `now`, which is what makes the pair honest in both directions.
+- **The pill ran a timer on every task row.** Hooks cannot be skipped by an early return, so
+  the interval was registered before the `return null` — 150 rows meant 150 timers ticking to
+  re-render nothing. The comment and the paragraph above both claimed otherwise; splitting
+  the decision (`hasAgentState`, clockless) from the clock (`AgentClock`) is what makes the
+  claim true.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

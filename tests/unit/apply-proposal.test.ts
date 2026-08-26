@@ -304,3 +304,56 @@ describe('applyProposal — breakdown', () => {
     expect(store().items.find((i) => i.title === 'A sub-step')).toBeUndefined();
   });
 });
+
+describe('the agent clock through the store', () => {
+  /**
+   * The store applies updates optimistically and NOTHING refetches for the rest
+   * of the session — no realtime subscription, no polling, and initializeStore
+   * early-returns on re-entry. So a stamp that existed only server-side left the
+   * store holding the previous one, and the row went on reporting elapsed time
+   * from the OLD state until a reload: answer a question asked six hours ago and
+   * the row reads "6h" for a state six seconds old.
+   */
+  it('stamps the clock locally when the agent status changes', () => {
+    store().updateTask('task-1', { aiStatus: 'working' });
+    const item = store().items.find((i) => i.id === 'task-1')!;
+    expect('aiStatusAt' in item ? item.aiStatusAt : undefined).toBeTypeOf('string');
+  });
+
+  it('sends the same stamp to the database, so the two agree', () => {
+    store().updateTask('task-1', { aiStatus: 'working' });
+    const local = store().items.find((i) => i.id === 'task-1') as { aiStatusAt?: string };
+    const written = vi.mocked(db.updateItem).mock.calls.at(-1)?.[2] as { aiStatusAt?: string };
+    expect(written.aiStatusAt).toBe(local.aiStatusAt);
+  });
+
+  it('leaves the clock alone for an edit that is not a status change', () => {
+    store().updateTask('task-1', { aiStatus: 'working' });
+    const first = (store().items.find((i) => i.id === 'task-1') as { aiStatusAt?: string })
+      .aiStatusAt;
+
+    store().updateTask('task-1', { title: 'Renamed while the agent works' });
+    const after = (store().items.find((i) => i.id === 'task-1') as { aiStatusAt?: string })
+      .aiStatusAt;
+    // The whole reason this is not `items.updated_at`: a rename must not reset
+    // the agent's clock.
+    expect(after).toBe(first);
+  });
+
+  it('restores the original time on undo rather than dating it to the undo', () => {
+    const original = '2026-07-01T06:00:00.000Z';
+    store().updateTask('task-1', { aiStatus: 'blocked', aiStatusAt: original });
+    store().updateTask('task-1', { aiStatus: 'queued' });
+
+    store().undo();
+
+    const item = store().items.find((i) => i.id === 'task-1') as {
+      aiStatus?: string;
+      aiStatusAt?: string;
+    };
+    expect(item.aiStatus).toBe('blocked');
+    // Without this a question asked six hours ago reads "Needs you just now"
+    // after an undo, with the real time unrecoverable.
+    expect(item.aiStatusAt).toBe(original);
+  });
+});

@@ -23,10 +23,13 @@ import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types';
 // allowlists — the assertion below is the inverse of the one this suite makes
 // for every other field.
 const INTENT_ROUTED = ['completedDates', 'skippedDates'];
-// Read-only client-side, like `id`: `aiStatusAt` is stamped by the aiStatus
-// write and by nothing else (migration 038), so `updatesToRow` deliberately has
-// no branch for it. It appears below as a declared companion of `aiStatus`
-// instead, which is where the drift detector can actually see it.
+// `aiStatusAt` never travels alone (migration 038): `updatesToRow` has no
+// branch for it, only a companion write inside the `aiStatus` branch, which is
+// what stops the clock drifting from the state it describes. It appears below
+// as a declared COMPANION_COLUMN instead — and `tests/unit/agent-status-write.test.ts`
+// covers the half this suite structurally cannot: that an EXPLICIT stamp
+// travelling WITH a status is preserved rather than overwritten, which is what
+// makes undo restore the original time instead of dating it to the undo.
 const READ_ONLY = ['aiStatusAt'];
 const EXEMPT = new Set(['id', ...INTENT_ROUTED, ...READ_ONLY]);
 

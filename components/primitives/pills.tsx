@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bot, Flame, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { agentStatusView } from '@/lib/agent-status';
+import { agentStatusView, hasAgentState } from '@/lib/agent-status';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -642,11 +642,35 @@ const AGENT_CLOCK_MS = 60_000;
  * would silently reset the clock and the row would report a confident wrong
  * number. No number beats a wrong one.
  *
- * The interval lives HERE rather than in the row, because this component only
- * mounts for an item that actually has a live agent state — so a planner with
- * nothing delegated runs no timers at all.
+ * The interval lives in `AgentClock` below, which this renders only for an item
+ * that actually HAS a live agent state — so a planner with nothing delegated
+ * starts no timers. That split is load-bearing rather than tidy: hooks cannot
+ * be skipped by an early return, so a single component would have run an
+ * interval on every task row in the app to render nothing.
  */
 export function AgentPill({
+  item,
+  className,
+}: {
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
+  className?: string;
+}) {
+  // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
+  // skipped by an early return — an interval declared above this line would run
+  // for all of them, ticking every minute to re-render a component that returns
+  // null. An earlier version of this file said the opposite, and was wrong.
+  // Splitting the decision from the clock is what makes the claim true: a
+  // planner with nothing delegated mounts no <AgentClock> and starts no timers.
+  //
+  // `hasAgentState` is the clockless half of the same decision — reading
+  // `Date.now()` during render is impure, and nothing about WHETHER to show the
+  // pill depends on the time. Only the elapsed reading does, and that lives
+  // below the mount boundary.
+  if (!hasAgentState(item)) return null;
+  return <AgentClock item={item} className={className} />;
+}
+
+function AgentClock({
   item,
   className,
 }: {
