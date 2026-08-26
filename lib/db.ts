@@ -522,6 +522,45 @@ export function recordAgentReply(itemId: string, itemType: string, text: string)
   recordItemEvent(itemId, itemType, 'agent_reply', { text });
 }
 
+/** How many tappable answers a question may offer. */
+export const MAX_QUESTION_OPTIONS = 4;
+
+/**
+ * The question half of `blocked`, with answers the user can tap.
+ *
+ * `aiResult` already carries the question text, and it always will — an agent
+ * that only reports `blocked` keeps working exactly as before. What it cannot
+ * carry is a SHAPE, and "which Dana?" deserves two buttons rather than a text
+ * box the user has to retype a name into.
+ *
+ * Options live in the event payload rather than in a new `items` column on
+ * purpose: every `taskShape` field spreads into the frozen `tasks[]`
+ * projection that the OpenClaw plugin `safeParse`s, and `item_events.payload`
+ * is already `jsonb` with an open `action` — its own header anticipated this
+ * ("a future action … is additive, not a migration"). So this costs no schema
+ * change and cannot drift a contract.
+ *
+ * The service-role path must pass `userId`: `item_events.user_id` defaults to
+ * `auth.uid()`, and the agent API has no auth context.
+ */
+export function recordAgentQuestion(
+  itemId: string,
+  itemType: string,
+  question: string,
+  options: string[],
+  userId?: string,
+  client?: DbClient,
+): void {
+  recordItemEvent(
+    itemId,
+    itemType,
+    'agent_question',
+    { question, options: options.slice(0, MAX_QUESTION_OPTIONS) },
+    userId,
+    client,
+  );
+}
+
 /**
  * Every check-in note a goal has collected, newest first.
  *

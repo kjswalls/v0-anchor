@@ -268,19 +268,75 @@ function AgentSection({ item }: { item: Item }) {
 function AgentReply({ item }: { item: TaskItem }) {
   const updateTask = usePlannerStore((s) => s.updateTask);
   const [text, setText] = useState('');
+  const [options, setOptions] = useState<string[]>([]);
 
-  const send = () => {
-    const answer = text.trim();
-    if (!answer) return;
-    recordAgentReply(item.id, itemTypeName(item), answer);
+  /**
+   * The tappable answers, if the agent offered any.
+   *
+   * Fetched here rather than lifted from the Activity section below: this only
+   * renders while `aiStatus` is `blocked`, so the query is rare, and the two
+   * sections are independent by design (Activity is collapsible and may never
+   * be opened). Newest question wins — an agent that asks again after a reply
+   * has superseded whatever it asked before.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!getItemEventsAvailable()) return;
+    fetchItemEvents(item.id)
+      .then((events) => {
+        if (cancelled) return;
+        const question = events.find((e) => e.action === 'agent_question');
+        // Only offer buttons for a question that is still open: a reply
+        // recorded AFTER it means the user has already answered this one, and
+        // re-offering stale choices would invite a duplicate answer.
+        const answeredSince = events.find((e) => e.action === 'agent_reply');
+        const stale =
+          question && answeredSince && answeredSince.createdAt > question.createdAt;
+        const raw = !stale && Array.isArray(question?.payload?.options)
+          ? (question.payload.options as unknown[])
+          : [];
+        setOptions(raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, item.aiResult]);
+
+  const answer = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    recordAgentReply(item.id, itemTypeName(item), trimmed);
     updateTask(item.id, { aiStatus: 'queued' });
     setText('');
+    // The question is answered; the buttons would otherwise sit there inviting
+    // a second reply to a queued item.
+    setOptions([]);
   };
 
+  const send = () => answer(text);
+
   return (
-    // data-sub-input so the dialog's Enter-to-submit guard leaves this alone —
-    // Enter here answers the agent, it does not save the item.
-    <div className="mt-1 flex items-center gap-1.5" data-sub-input>
+    <div className="mt-1 flex flex-col gap-1.5">
+      {options.length > 0 && (
+        <div className="flex flex-wrap gap-1" data-testid="agent-options">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => answer(option)}
+              className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* data-sub-input so the dialog's Enter-to-submit guard leaves this alone
+          — Enter here answers the agent, it does not save the item. The box
+          stays even with options: an exhaustive-looking list often isn't. */}
+      <div className="flex items-center gap-1.5" data-sub-input>
       <Input
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -294,15 +350,16 @@ function AgentReply({ item }: { item: TaskItem }) {
         data-testid="agent-reply-input"
         className="h-7 flex-1 text-xs"
       />
-      <button
-        type="button"
-        onClick={send}
-        disabled={!text.trim()}
-        data-testid="agent-reply-send"
-        className="text-warning-text hover:text-foreground disabled:opacity-40 text-[10px] font-medium"
-      >
-        Send
-      </button>
+        <button
+          type="button"
+          onClick={send}
+          disabled={!text.trim()}
+          data-testid="agent-reply-send"
+          className="text-warning-text hover:text-foreground disabled:opacity-40 text-[10px] font-medium"
+        >
+          Send
+        </button>
+      </div>
     </div>
   );
 }
@@ -314,6 +371,19 @@ function eventLabel(e: ItemEvent): string {
   if (e.action === 'delete') return 'Deleted';
   // The user's answer to a blocked agent — like a check-in note, the payload is
   // the only part worth reading.
+  // The agent's question. Reads before the user's answer in the feed, and the
+  // options are worth showing — they say what the agent thought the shape of
+  // the answer was.
+  if (e.action === 'agent_question') {
+    const question = typeof e.payload?.question === 'string' ? e.payload.question.trim() : '';
+    const options = Array.isArray(e.payload?.options)
+      ? (e.payload.options as unknown[]).filter((o): o is string => typeof o === 'string')
+      : [];
+    if (!question) return 'Agent asked a question';
+    return options.length > 0
+      ? `Agent asked — ${question} (${options.join(' / ')})`
+      : `Agent asked — ${question}`;
+  }
   if (e.action === 'agent_reply') {
     const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
     return text ? `You answered — ${text}` : 'You answered';

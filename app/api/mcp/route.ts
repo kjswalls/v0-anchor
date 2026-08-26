@@ -9,6 +9,7 @@ import {
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
+import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
@@ -76,12 +77,15 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
 
-  // /api/agent/items/:id/events — its own handler, not one of the CRUD sets.
-  if (collection === 'items' && segments[2] === 'events') {
+  // /api/agent/items/:id/{events,ask} — their own handlers, not CRUD sets.
+  if (collection === 'items' && (segments[2] === 'events' || segments[2] === 'ask')) {
     if (!id || id.includes('/') || id.includes('..') || id.includes('%')) {
       return NextResponse.json({ error: 'id must be a single path segment' }, { status: 400 })
     }
-    return getItemEvents(proxyRequest(original, plan), { params: Promise.resolve({ id }) })
+    const params = Promise.resolve({ id })
+    return segments[2] === 'ask'
+      ? askUser(proxyRequest(original, plan), { params })
+      : getItemEvents(proxyRequest(original, plan), { params })
   }
 
   const entry = COLLECTION[collection]

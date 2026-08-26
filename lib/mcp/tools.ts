@@ -313,6 +313,54 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'anchor_ask_user',
+    description:
+      'Ask the user a question you are stuck on, offering answers they can tap. ' +
+      'Use this INSTEAD of anchor_report_progress when the answer is a choice — which ' +
+      'person, which of two files, is that date still fine. It blocks the item and posts ' +
+      'the question in one call, so there is no half-done state. ' +
+      'Prefer it: most questions that stop delegated work are choices, and a tap gets you ' +
+      'an answer far sooner than a box someone has to compose a sentence into. ' +
+      'Offer options ONLY when they are genuinely exhaustive — a question whose real answer ' +
+      'is not on the list is worse than no options at all. Omit them for anything open-ended ' +
+      '(the user always keeps a free-text box either way). ' +
+      'The answer comes back through anchor_item_activity as an `agent_reply` entry, and the ' +
+      'item returns to your queue by itself.',
+    inputSchema: obj(
+      {
+        id: ID,
+        question: str('What you need to know, written for a human. This is all they see.'),
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Two to four short answers to offer as buttons. Each is sent back verbatim as ' +
+            'the reply, so write them as the ANSWER ("Dana Reyes"), not as a label ' +
+            '("the first one"). Omit for an open question.',
+        },
+      },
+      ['id', 'question']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      const question = requireString(args, 'question')
+      if (typeof question !== 'string') return question
+
+      // Filtered here as well as at the route: a tool that silently passes
+      // rubbish through and lets the route drop it teaches the model nothing.
+      const options = Array.isArray(args.options)
+        ? args.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+        : []
+
+      return {
+        method: 'POST',
+        path: `/api/agent/items/${id}/ask`,
+        body: { question, ...(options.length > 0 ? { options } : {}) },
+      }
+    },
+  },
+  {
     name: 'anchor_report_progress',
     description:
       'Say where you have got to on an item assigned to you. Call it when you START ' +

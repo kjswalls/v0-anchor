@@ -389,3 +389,72 @@ describe('what the worker is given', () => {
     });
   });
 });
+
+describe('anchor_ask_user — a question with answers', () => {
+  /**
+   * Most of what actually stops delegated work is a CHOICE — which Dana, which
+   * of the two invoices, is Thursday still fine. `report_progress('blocked')`
+   * could ask; it could not offer. Making someone retype a name into a box is
+   * the difference between a loop that closes in a second and one that waits
+   * until they have the energy to compose a sentence.
+   */
+  it('blocks the item and posts the question in one call', () => {
+    // Two calls would make the half-done state reachable whenever a run dies
+    // in between: a question with no block renders nowhere, and a block with no
+    // question is the old text-box behaviour.
+    expect(plan('anchor_ask_user', { id: 'i1', question: 'Which Dana?' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/items/i1/ask',
+      body: { question: 'Which Dana?' },
+    });
+  });
+
+  it('carries the options through verbatim', () => {
+    const result = plan('anchor_ask_user', {
+      id: 'i1',
+      question: 'Which Dana?',
+      options: ['Dana Reyes', 'Dana Whitfield'],
+    });
+    expect(result).toMatchObject({
+      body: { options: ['Dana Reyes', 'Dana Whitfield'] },
+    });
+  });
+
+  it('omits options entirely rather than sending an empty list', () => {
+    // An empty array reads to the route as "offer no buttons", which is right,
+    // but sending the key at all invites a UI that renders an empty chip row.
+    const result = plan('anchor_ask_user', { id: 'i1', question: 'What next?', options: [] });
+    expect(result).not.toHaveProperty('body.options');
+  });
+
+  it('drops rubbish in the options rather than the whole question', () => {
+    const result = plan('anchor_ask_user', {
+      id: 'i1',
+      question: 'Which one?',
+      options: ['Real answer', '', '   ', 42, null],
+    });
+    expect(result).toMatchObject({ body: { options: ['Real answer'] } });
+  });
+
+  it('refuses without a question, which is all the user ever sees', () => {
+    expect(plan('anchor_ask_user', { id: 'i1' })).toHaveProperty('error');
+  });
+
+  it('refuses without an id', () => {
+    expect(plan('anchor_ask_user', { question: 'Which Dana?' })).toHaveProperty('error');
+  });
+
+  it('tells the agent to write options as answers, not as labels', () => {
+    // "the first one" is useless as a reply: the text is sent back verbatim.
+    const schema = toolByName('anchor_ask_user')!.inputSchema as {
+      properties: { options: { description: string } };
+    };
+    expect(schema.properties.options.description).toMatch(/verbatim/i);
+  });
+
+  it('warns against options that are not exhaustive', () => {
+    // A question whose real answer is not on the list is worse than no options
+    // — it reads as a closed set and the user has to notice it is not.
+    expect(toolByName('anchor_ask_user')!.description).toMatch(/exhaustive/i);
+  });
+});

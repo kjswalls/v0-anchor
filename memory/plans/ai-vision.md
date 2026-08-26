@@ -482,6 +482,32 @@ mass cancel/reschedule/create on the user's own items, behind an explicit tap, r
 with one ⌘Z. It cannot delete, cannot touch recurring status, cannot cross a user boundary,
 cannot write arbitrary columns, and renders as React children so it cannot script. Low.
 
+**Phase 2f — a question you can answer with one tap. SHIPPED.**
+
+`anchor_report_progress` with status `blocked` could always ask a question; what it could
+not do is offer ANSWERS. Most of what actually stops delegated work is a choice — which
+Dana, which of the two invoices, is Thursday still fine — and making the user retype a name
+into a box is the difference between a loop that closes in a second and one that waits until
+they have the energy to compose a sentence.
+
+- **`anchor_ask_user`** → `POST /api/agent/items/:id/ask`. Blocks the item and posts the
+  question in ONE call: a question without the block renders nowhere (nothing draws a reply
+  box unless `aiStatus` is `blocked`), and a block without the question is the old
+  behaviour — so two tool calls would make the half-done state reachable every time a run
+  died in between.
+- **Options ride in `item_events.payload`, not in a new column.** Every `taskShape` field
+  spreads into the frozen `tasks[]` projection the OpenClaw plugin `safeParse`s, and that
+  throws on drift. `payload` is `jsonb` with an open `action`, and migration 023's own header
+  anticipated exactly this — *"a future action … is additive, not a migration"*. So this
+  costs no schema change and cannot break a contract. `aiResult` still carries the question
+  text, so an agent that only reports `blocked` is unchanged.
+- **The text box never goes away.** An exhaustive-looking list usually isn't, and the tool
+  description says so: offer options only when they genuinely cover the answer, because a
+  question whose real answer is missing reads as a closed set and is worse than no options.
+- **Stale choices are withdrawn.** `AgentReply` offers buttons only for a question with no
+  `agent_reply` after it — otherwise the user is invited to answer something they already
+  answered.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

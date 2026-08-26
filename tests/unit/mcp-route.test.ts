@@ -41,6 +41,21 @@ vi.mock('@/lib/agent-api', () => ({
   makeGoalCreateHandler: () => fake('create:goal'),
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
 }));
+vi.mock('@/app/api/agent/items/[id]/ask/route', () => ({
+  POST: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
+    const { id } = await ctx.params;
+    const body = await req.json();
+    calls.push({
+      handler: 'ask',
+      url: req.url,
+      method: req.method,
+      auth: req.headers.get('authorization'),
+      id,
+      body,
+    });
+    return Response.json({ itemId: id, ...body });
+  },
+}));
 vi.mock('@/app/api/agent/items/[id]/events/route', () => ({
   GET: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
     const { id } = await ctx.params;
@@ -288,6 +303,35 @@ describe('the delegation loop, end to end through the route', () => {
       id: 'a',
       body: { aiStatus: 'working' },
     });
+  });
+
+  it('routes a question with options to its own handler', async () => {
+    await POST(
+      call('anchor_ask_user', {
+        id: 'a',
+        question: 'Which Dana?',
+        options: ['Dana Reyes', 'Dana Whitfield'],
+      })
+    );
+    expect(calls[0]).toMatchObject({
+      handler: 'ask',
+      method: 'POST',
+      id: 'a',
+      body: { question: 'Which Dana?', options: ['Dana Reyes', 'Dana Whitfield'] },
+    });
+  });
+
+  it('refuses a traversal in an ask id', async () => {
+    // Dispatch reads the RAW path while proxyRequest normalises it, so a
+    // traversal would make the two disagree about what is being addressed.
+    const res = await POST(call('anchor_ask_user', { id: '../../context', question: 'hi' }));
+    expect((await res.json()).result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('forwards the caller auth to the ask handler, like every other route', async () => {
+    await POST(call('anchor_ask_user', { id: 'a', question: 'Which one?' }));
+    expect(calls[0].auth).toBe('Bearer anchor_testkey');
   });
 });
 
