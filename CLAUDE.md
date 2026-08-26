@@ -87,8 +87,12 @@ discriminated-union narrowing keeps working, but the DB stores the bare slug in
 container tables into three ROLES — classify (project), gate (routine, program), aspire
 (goal) — and there is exactly ONE classify kind since migration 039 folded habit groups
 into projects. Every type answers with `items.project`; `containerRequired` is what still
-makes a habit different. `habit_groups` and `items."group"` are frozen ballast — never
-read them. The user-facing noun lives only in `CONTAINER_KINDS.project.label`, so moving
+makes a habit different. The `habit_groups` TABLE is frozen ballast — never query it. The
+`items."group"` COLUMN is ballast too, but `itemFromRow` ([lib/db.ts](lib/db.ts)) still reads
+it in exactly one place, as a fallback (`row.project ?? row.group`), so a build landing ahead
+of the migration — a fresh clone, a rolled-back 039 — shows a habit's container instead of
+blanking it. That read is load-bearing, not dead code. The name falls back; the id never does.
+The user-facing noun lives only in `CONTAINER_KINDS.project.label`, so moving
 it is a string edit. The kind folds case (`caseFold: true`), which is why `Work` and
 `work` are one container to every lookup.
 
