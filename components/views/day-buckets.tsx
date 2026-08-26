@@ -14,6 +14,8 @@ import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
+import { sinkCompleted } from '@/lib/sort-rows';
+import { toDateStr } from '@/lib/recurrence';
 import type { Task, Habit, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -87,6 +89,14 @@ interface DayBucketProps {
   activeId: string | null;
   isCurrent: boolean;
   variant: BucketStyle;
+  /**
+   * The rendered day, in the USER's zone. Threaded down rather than re-resolved
+   * per card: a recurring row's completion is per-date, and `toDateStr` builds
+   * an uncached Intl.DateTimeFormat per call (see the note in
+   * hooks/use-day-items.ts) — four cards would pay for it four times to reach
+   * the same answer.
+   */
+  dateStr: string;
 }
 
 /**
@@ -102,7 +112,7 @@ function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
   ].filter((g) => g.rows.length > 0);
 }
 
-function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant }: DayBucketProps) {
+function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant, dateStr }: DayBucketProps) {
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
@@ -141,10 +151,33 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
     ...untimedHabits.map((h) => ({ itemType: 'habit' as const, item: h })),
     ...untimedTasks.map((t) => ({ itemType: 'task' as const, item: t })),
   ];
-  const untimedGroups =
+  /**
+   * Finished rows sink to the foot of each untimed section — the SAME half of
+   * the card grouping already governs, and stopping at the same line for the
+   * same reason.
+   *
+   * This is not the "sort control that silently governs half a card" that
+   * lib/sort-rows.ts records as considered and rejected. That objection is about
+   * a menu value claiming a surface and then reaching half of it. There is no
+   * control here and nothing claimed; what the sink must not do is overwrite an
+   * order the USER authored, and the two halves differ on exactly that. The
+   * untimed section's order is "habits, then tasks, then whatever the derivation
+   * emitted" — nobody chose it. The timed spine's order IS each row's own
+   * `startTime`, which the user set and which `inferDropTime` reads back:
+   * `scheduled:{bucket}:before|after:{type}:{id}` resolves to ±30 min from that
+   * row's time (lib/dnd/CONTRACT.md), so a completed 9am row pushed below an
+   * 11am one would make "drop above the 11am row" assign 10:30 — a time on the
+   * far side of the row the pointer was actually above.
+   *
+   * So the spine keeps its clock and only the untimed rows move. A completed
+   * timed row staying put is not the sink failing there; it is that the spine's
+   * position already means something else.
+   */
+  const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
       ? groupRows(untimedRows, canvasGroupBy, { routines, programs })
-      : defaultBucketGroups(untimedRows);
+      : defaultBucketGroups(untimedRows)
+  ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr) }));
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
   const timedRows = [
@@ -258,7 +291,12 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 
 export function DayBuckets({ activeId }: { activeId: string | null }) {
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems();
-  const { selectedDate, navDirection } = usePlannerStore();
+  const { selectedDate, navDirection, userTimezone } = usePlannerStore();
+  // Resolved once for all four cards — see the note on DayBucketProps.dateStr.
+  const dateStr = toDateStr(
+    selectedDate,
+    userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  );
   // No `mounted` flag — useCurrentBucket returns null on the first render,
   // which is the hydration guard the flag used to duplicate.
   const currentBucket = useCurrentBucket(selectedDate);
@@ -296,6 +334,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
             activeId={activeId}
             isCurrent={currentBucket === bucket}
             variant={bucketStyle}
+            dateStr={dateStr}
           />
         ))}
       </div>

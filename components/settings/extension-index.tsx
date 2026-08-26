@@ -67,6 +67,17 @@ function stateOf(
   ctx: SettingCtx
 ): { label: string; on: boolean } {
   try {
+    // Two store-level facts come FIRST, because neither is something the
+    // record can answer. `available: false` means the extensions table itself
+    // is missing — nothing under here is real, whatever a toggle would say.
+    // And before the fetch resolves, every read answers with the MANIFEST
+    // default, which for an account that has toggled anything is a guess and
+    // can be the opposite of the truth. This page cannot write, so nothing is
+    // at risk — but printing "Off" beside an extension the server has on is
+    // the one lie a user opens this index to avoid. Say what is known.
+    const store = useExtensionsStore.getState();
+    if (!store.available) return { label: 'Unavailable', on: false };
+    if (!store.configsLoaded) return { label: 'Loading', on: false };
     if (!toggle) return { label: 'Off', on: false };
     if (toggle.unavailable?.(ctx)) return { label: 'Unavailable', on: false };
     return toggle.read(ctx) ? { label: 'On', on: true } : { label: 'Off', on: false };
@@ -83,7 +94,7 @@ export function ExtensionIndex({ ctx }: { ctx: SettingCtx }) {
      that a React.memo anywhere up the tree would quietly sever. These are the
      two stores a row's state actually depends on now, named here so the
      dependency survives that. */
-  useExtensionsStore((s) => `${s.available}|${JSON.stringify(s.enabled)}`);
+  useExtensionsStore((s) => `${s.available}|${s.configsLoaded}|${JSON.stringify(s.enabled)}`);
   useReminderStore((s) => `${s.remindersEnabled}|${s.stakesEnabled}`);
 
   const panes = subPanesOf('extensions');

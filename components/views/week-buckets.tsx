@@ -17,7 +17,9 @@ import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
+import { sinkCompleted } from '@/lib/sort-rows';
 import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
+import { toDateStr } from '@/lib/recurrence';
 import type { TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -50,6 +52,7 @@ function WeekBucketCell({
   const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
   const tasks = tasksByBucket[bucket];
   const habits = habitsByBucket[bucket];
   // The header count stays "everything in this bucket", project-block tasks
@@ -77,13 +80,52 @@ function WeekBucketCell({
    * neighbour's time — and the cell was never in one time order anyway, since it
    * renders every habit before every task.
    */
-  const rows: GroupableRow[] = [
+  const allRows: GroupableRow[] = [
     ...habits.map((h) => ({ itemType: 'habit' as const, item: h })),
     ...looseTasks.map((t) => ({ itemType: 'task' as const, item: t })),
   ];
+  /**
+   * The day finished rows are resolved at — NOT the `dateStr` above.
+   *
+   * That one is the droppable id and is browser-local `format()`, while a
+   * recurring row's completion is read per-date by TaskRow through
+   * `toDateStr(date, timezone)`. One cell answering two different calendar days
+   * is exactly the disagreement this has to avoid. And it is THIS cell's date
+   * rather than the store's selected one: the seven columns are seven different
+   * days, so the selected day would sink Tuesday's tick in every column.
+   *
+   * Memoized on the date's identity — `weekDays` is memoized upstream, so it is
+   * stable — the same trade hooks/use-day-items.ts makes and for the same
+   * reason: `toDateStr` builds an uncached Intl.DateTimeFormat per call, this
+   * grid mounts 28 cells, and dnd-kit re-renders every droppable on each
+   * collision-target change.
+   */
+  const completionDateStr = useMemo(
+    () => toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
+    [date, userTimezone]
+  );
+  /**
+   * Finished rows sink to the foot of the cell, and this cell takes the pass
+   * WHOLE for the same reason it hands grouping everything: no spine.
+   *
+   * Two applications because there are two render paths, and the grouped one
+   * takes it PER GROUP, on `allRows` — never on a pre-sunk flat list. The group
+   * map is filled by walking the rows, so its insertion order is "whichever
+   * group owns the first row"; sinking beforehand would move the SECTIONS,
+   * which is the bug the braindump shipped for one commit (lib/grouping.ts,
+   * rule 1).
+   *
+   * Only ONE of the two ever runs: the ungrouped pass is applied at its own
+   * render branch below rather than hoisted here, since the grouped path would
+   * discard it — and an O(n) partition spent for nothing, 28 cells deep and on
+   * every dnd re-render, is the cost the memo above exists to avoid.
+   */
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
-      ? groupRows(rows, canvasGroupBy, { routines, programs })
+      ? groupRows(allRows, canvasGroupBy, { routines, programs }).map((g) => ({
+          ...g,
+          rows: sinkCompleted(g.rows, completionDateStr),
+        }))
       : null;
 
   return (
@@ -135,7 +177,7 @@ function WeekBucketCell({
                     ))}
                   </GroupSection>
                 ))
-              : rows.map((row) => (
+              : sinkCompleted(allRows, completionDateStr).map((row) => (
                   <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                 ))}
           </>

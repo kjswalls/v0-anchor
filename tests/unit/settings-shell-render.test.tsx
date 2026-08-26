@@ -188,4 +188,53 @@ describe('the extension index and the extension pane agree', () => {
       ).toBe('On')
     );
   });
+
+  /**
+   * The two STORE-level facts outrank the record, and the order is the point.
+   *
+   * Asking the toggle record is the fix for the index and the pane disagreeing,
+   * but a record read against a store that has not fetched yet answers with the
+   * MANIFEST DEFAULT — a guess, and for any account that has ever toggled
+   * something, frequently the opposite of the truth. So `available` and
+   * `configsLoaded` are checked BEFORE `toggle.read`, not after. Nothing in the
+   * shape of the code says so; these say it.
+   */
+  it('says Loading rather than guessing from the manifest default', async () => {
+    act(() => {
+      // The server has it ON. The store has not heard yet, so `isEnabled` would
+      // fall back to the manifest default and print the opposite.
+      useExtensionsStore.setState({ configsLoaded: false, enabled: {} });
+      useReminderStore.setState({ stakesEnabled: true });
+    });
+    renderShell('extensions');
+    expect(
+      document.querySelector<HTMLElement>('[data-extension-row="beeminder"]')!.dataset
+        .extensionState
+    ).toBe('Loading');
+
+    // And it clears on its own once the fetch lands — the subscription names
+    // configsLoaded, so "Loading" is not a state the row can get stuck in.
+    act(() => useExtensionsStore.setState({ configsLoaded: true, enabled: { beeminder: true } }));
+    await waitFor(() =>
+      expect(
+        document.querySelector<HTMLElement>('[data-extension-row="beeminder"]')!.dataset
+          .extensionState
+      ).toBe('On')
+    );
+  });
+
+  it('says Unavailable for every row when the extensions table is missing', async () => {
+    // `available: false` is "the migration has not run" — no row under here is
+    // real, whatever its record would compute.
+    act(() => {
+      useExtensionsStore.setState({ available: false, configsLoaded: true });
+      useReminderStore.setState({ stakesEnabled: true, remindersEnabled: true });
+    });
+    renderShell('extensions');
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-extension-row]')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.dataset.extensionState, row.dataset.extensionRow).toBe('Unavailable');
+    }
+  });
 });
