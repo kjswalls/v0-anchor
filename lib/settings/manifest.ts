@@ -17,7 +17,12 @@ import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
+import {
+  EXT_COMPLETION_CONFETTI,
+  EXT_HABIT_HEATMAP,
+  OFFICIAL_EXTENSIONS,
+  extensionManifest,
+} from '@/lib/extension-registry';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
 import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
@@ -51,15 +56,65 @@ import type { TimeBucket } from '@/lib/planner-types';
  * manifest is what stops search deep-linking to a control that does nothing.
  * See memory/plans/deferred-settings-features.md for the ones that are coming
  * back once the feature behind them exists.
+ *
+ * PANES ARE TWO LEVELS, and only under Extensions. The rail is the map and it
+ * stays at seven entries; an extension gets a pane of its OWN below it, at
+ * `extensions/<slug>`. Every one of those is generated from the catalog in
+ * lib/extension-registry.ts — there is no hand-written pane per extension and
+ * there must never be one, because the whole promise of the extension surface
+ * is that adding one is adding config. See EXTENSION_PANES for the rest.
  */
 
-export type PaneId = 'day' | 'look' | 'rituals' | 'beacon' | 'keyboard' | 'extensions' | 'anchor';
+/** The rail. Closed, hand-declared, and the only level that appears in it. */
+export type RootPaneId =
+  | 'day'
+  | 'look'
+  | 'rituals'
+  | 'beacon'
+  | 'keyboard'
+  | 'extensions'
+  | 'anchor';
+
+/**
+ * One extension's own pane.
+ *
+ * OPEN by construction, because the set of extensions is data — closing it
+ * would mean editing this union every time the catalog grows, which is the
+ * hand-written pane this design exists to avoid. `isPaneId` is still the
+ * runtime gate: the template literal admits `extensions/anything` to the type,
+ * and only a slug with a catalog entry survives the route.
+ */
+export type ExtensionPaneId = `extensions/${string}`;
+
+export type PaneId = RootPaneId | ExtensionPaneId;
+
+/** The pane id an extension's settings live at. Slug in, route segment out. */
+export function extensionPaneId(slug: string): ExtensionPaneId {
+  return `extensions/${slug}`;
+}
+
+export function isExtensionPane(pane: string): pane is ExtensionPaneId {
+  return pane.startsWith('extensions/');
+}
+
+/** The slug back out of a sub-pane id, or null for anything else. */
+export function extensionSlugFromPane(pane: string): string | null {
+  return isExtensionPane(pane) ? pane.slice('extensions/'.length) : null;
+}
 
 export interface SettingsPane {
   id: PaneId;
   name: string;
   icon: LucideIcon;
   blurb: string;
+  /**
+   * Set on a sub-pane only: the rail entry it belongs under.
+   *
+   * The rail renders PANES and nothing else, so this is what lets a sub-pane
+   * still light the right rail row, roll its search hits up into that row's
+   * count, and name itself "Extensions · Beeminder" in a result group.
+   */
+  parent?: RootPaneId;
 }
 
 export const PANES: SettingsPane[] = [
@@ -97,7 +152,10 @@ export const PANES: SettingsPane[] = [
     id: 'extensions',
     name: 'Extensions',
     icon: Blocks,
-    blurb: 'Optional pieces of Anchor — on when you want them.',
+    // The rail entry is now an INDEX — the blurb says so, because the pane
+    // stopped being the place the switches are and became the place they are
+    // listed from.
+    blurb: 'Optional pieces of Anchor — on when you want them. Open one to set it up.',
   },
   {
     id: 'anchor',
@@ -106,6 +164,60 @@ export const PANES: SettingsPane[] = [
     blurb: 'The account, the tour, and how to reach us.',
   },
 ];
+
+/**
+ * One pane per extension, generated from the catalog.
+ *
+ * This is the whole answer to "each extension may have a lot of config": an
+ * extension's toggle, its config fields and its credential fields are a page of
+ * their own at /settings/extensions/<slug>, deep-linkable and searchable like
+ * any other pane, and /settings/extensions is the index that lists them.
+ *
+ * DERIVED, never declared. The catalog is the source of the id, the name, the
+ * icon and the blurb, so adding an extension still means adding a manifest
+ * entry, a field list and a deliver() — the three things CLAUDE.md says an
+ * extension is — and nothing here. A hand-written pane per extension would put
+ * a fourth edit in that list and would drift from the catalog the first time
+ * someone renamed one.
+ *
+ * Every entry needs at least one record (its own toggle), or the route is a
+ * room with nothing in it. That is asserted in tests/unit/settings-manifest.
+ * test.ts rather than papered over by hiding the pane: an extension a user
+ * cannot switch on is a bug in the extension, not a pane to quietly drop.
+ */
+export const EXTENSION_PANES: SettingsPane[] = OFFICIAL_EXTENSIONS.map((extension) => ({
+  id: extensionPaneId(extension.slug),
+  name: extension.name,
+  icon: extension.icon,
+  blurb: extension.description,
+  parent: 'extensions',
+}));
+
+/**
+ * Every pane, rail order first and each sub-pane immediately under its parent.
+ *
+ * Search results group by walking this, so the order here IS the order a
+ * multi-pane result list reads in — "Extensions" then its extensions, not the
+ * extensions scattered after Anchor.
+ */
+export const ALL_PANES: SettingsPane[] = PANES.flatMap((pane) => [
+  pane,
+  ...EXTENSION_PANES.filter((sub) => sub.parent === pane.id),
+]);
+
+/** Sub-panes of a rail entry, in catalog order. */
+export function subPanesOf(parent: RootPaneId): SettingsPane[] {
+  return ALL_PANES.filter((pane) => pane.parent === parent);
+}
+
+/**
+ * The rail row a pane lights up — itself, or its parent when it's a sub-pane.
+ * The rail never grows an entry per extension; it just stays lit while you're
+ * inside one.
+ */
+export function railPaneFor(pane: PaneId): RootPaneId {
+  return paneById(pane)?.parent ?? (pane as RootPaneId);
+}
 
 /**
  * The capabilities a record can't reach through a store singleton.
@@ -286,13 +398,14 @@ function channelRecords(): SettingRecord[] {
     const manifest = extensionManifest(spec.slug);
     if (!manifest) continue;
     const toggleId = `extensions.${spec.slug}`;
+    const pane = extensionPaneId(spec.slug);
     const master = masterSwitchFor(spec.slug);
     const gated = () =>
       extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in Rituals`);
 
     records.push({
       id: toggleId,
-      pane: 'extensions',
+      pane,
       label: manifest.name,
       description: manifest.description,
       control: 'switch',
@@ -308,7 +421,7 @@ function channelRecords(): SettingRecord[] {
     for (const field of spec.config) {
       records.push({
         id: `${toggleId}.${field.key}`,
-        pane: 'extensions',
+        pane,
         label: field.label,
         description: field.description,
         control: 'text',
@@ -331,7 +444,7 @@ function channelRecords(): SettingRecord[] {
     for (const field of spec.secrets) {
       records.push({
         id: `${toggleId}.${field.key}`,
-        pane: 'extensions',
+        pane,
         label: field.label,
         description: field.description,
         control: 'text',
@@ -899,13 +1012,20 @@ export const SETTINGS: SettingRecord[] = [
   },
 
   /* ── Extensions ───────────────────────────────────────────────────────── */
-  // One switch per manifest entry in lib/extension-registry.ts. Persistence is
-  // the user_extensions table (migration 026), NOT a user_settings column —
-  // per-extension columns are the missing-column reset footgun. No dbColumn,
-  // so data-setting falls back to the record id.
+  // One switch per manifest entry in lib/extension-registry.ts, each in the
+  // extension's OWN pane (see EXTENSION_PANES) rather than in a shared list.
+  // Persistence is the user_extensions table (migration 026), NOT a
+  // user_settings column — per-extension columns are the missing-column reset
+  // footgun. No dbColumn, so data-setting falls back to the record id.
+  //
+  // These two are hand-written where the channels and stakes below are
+  // generated, and they stay that way: their ids predate the slug convention
+  // (`extensions.habitHeatmap`, not `extensions.habit-heatmap`) and an id is a
+  // permanent deep link. `pane` is derived from the slug all the same, so the
+  // pane and the catalog entry cannot drift apart.
   {
     id: 'extensions.habitHeatmap',
-    pane: 'extensions',
+    pane: extensionPaneId(EXT_HABIT_HEATMAP),
     label: 'Habit heatmap',
     description: 'A six-month completion grid in the item panel, for anything with a streak.',
     control: 'switch',
@@ -919,7 +1039,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'extensions.confetti',
-    pane: 'extensions',
+    pane: extensionPaneId(EXT_COMPLETION_CONFETTI),
     label: 'Completion confetti',
     description: 'A small burst when you complete something. Purely celebratory.',
     control: 'switch',
@@ -944,7 +1064,9 @@ export const SETTINGS: SettingRecord[] = [
  * destination record and a manager surface rather than a new pane — the budget
  * is a mechanism, not a promise someone has to keep defending. (Extensions
  * spent the budget once, deliberately: its rows are durable opt-in switches
- * with no manager surface to point a destination at.)
+ * with no manager surface to point a destination at. It has since grown a
+ * level BELOW itself, one pane per extension — which costs the rail nothing,
+ * because the rail still shows one Extensions entry and always will.)
  */
 export interface DestinationRecord {
   id: string;
@@ -1061,11 +1183,16 @@ export function settingsForPane(pane: PaneId): SettingRecord[] {
 }
 
 export function paneById(id: string): SettingsPane | undefined {
-  return PANES.find((p) => p.id === id);
+  return ALL_PANES.find((p) => p.id === id);
 }
 
+/**
+ * The route's gate, and the reason ExtensionPaneId can afford to be an open
+ * template literal type: `extensions/beeminder` is a pane because the catalog
+ * has that slug, and `extensions/anything-else` is not a pane at all.
+ */
 export function isPaneId(value: string): value is PaneId {
-  return PANES.some((p) => p.id === value);
+  return ALL_PANES.some((p) => p.id === value);
 }
 
 /** The value as the user sees it — chip copy, and what search echoes back. */

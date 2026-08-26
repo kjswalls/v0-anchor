@@ -28,7 +28,14 @@ import { createClient } from '@/lib/supabase';
 import { usePushSubscription } from '@/hooks/use-push-subscription';
 import { applyThemeChange } from '@/lib/theme-transition';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { isPaneId, type PaneId, type SettingCtx, type DestinationRecord } from '@/lib/settings/manifest';
+import {
+  isExtensionPane,
+  isPaneId,
+  settingById,
+  type PaneId,
+  type SettingCtx,
+  type DestinationRecord,
+} from '@/lib/settings/manifest';
 
 /**
  * Settings, as a route.
@@ -54,6 +61,11 @@ import { isPaneId, type PaneId, type SettingCtx, type DestinationRecord } from '
  *      window writes someone else's preference to this user's row.
  */
 
+/** Where an unrecognised path goes. Nearest real pane, never a blank page. */
+function fallbackPane(path: string | undefined): PaneId {
+  return path && isExtensionPane(path) ? 'extensions' : 'day';
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const params = useParams<{ pane?: string[] }>();
@@ -68,8 +80,14 @@ export default function SettingsPage() {
 
   const [localDialog, setLocalDialog] = useState<'shortcuts' | 'bug' | null>(null);
 
-  const segment = params?.pane?.[0];
-  const pane: PaneId = segment && isPaneId(segment) ? segment : 'day';
+  /* ── The pane is the WHOLE path, not the first segment ──────────────────
+     An extension's settings live at /settings/extensions/<slug>, which the
+     optional catch-all already captures as two segments. Joining them is what
+     makes a sub-pane a real deep link rather than a URL that silently renders
+     the extensions index — and it costs nothing for the one-segment panes,
+     whose join is themselves. */
+  const path = params?.pane?.join('/');
+  const pane: PaneId = path && isPaneId(path) ? path : fallbackPane(path);
   const focusId = searchParams?.get('focus') ?? undefined;
 
   /* ── 1. The type-mode stamp ───────────────────────────────────────────── */
@@ -91,10 +109,34 @@ export default function SettingsPage() {
     };
   }, []);
 
-  /* ── A bare /settings is the day, not a blank "pick something" ─────────── */
+  /* ── A bare /settings is the day, not a blank "pick something" ───────────
+     A path that names no pane is corrected in the URL too, rather than left
+     pointing at something that isn't what rendered. An unknown extension slug
+     lands on the extensions index — the list it was probably reached from, and
+     the one page that can say which extensions exist. */
   useEffect(() => {
-    if (!segment) router.replace('/settings/day');
-  }, [segment, router]);
+    if (!path) {
+      router.replace('/settings/day');
+      return;
+    }
+    if (!isPaneId(path)) router.replace(`/settings/${fallbackPane(path)}`);
+  }, [path, router]);
+
+  /* ── A ?focus= always lands on the pane that actually holds the row ───────
+     The shell finds the row by querying the DOM, so a focus id belonging to
+     another pane silently does nothing — and every extension field moved down
+     a level when extensions got panes of their own, which would have turned
+     every /settings/extensions?focus=extensions.<slug>.<field> link written
+     before that into exactly that silent nothing. Sending the browser to the
+     record's own pane keeps those links working and, more usefully, makes
+     ?focus= self-routing: the id is enough, the pane no longer has to be
+     right. It settles in one hop — after the replace the panes agree. */
+  useEffect(() => {
+    if (!focusId) return;
+    const home = settingById(focusId)?.pane;
+    if (!home || home === pane) return;
+    router.replace(`/settings/${home}?focus=${encodeURIComponent(focusId)}`);
+  }, [focusId, pane, router]);
 
   /* ── Subscriptions that keep record.read() fresh ──────────────────────────
      The manifest reads through getState() so it stays a plain module. These
