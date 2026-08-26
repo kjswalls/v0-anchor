@@ -42,8 +42,18 @@ function DaySection({ date }: { date: Date }) {
    * against the selected day would sink Tuesday's tick in every column of the
    * week. Same rule TaskRow applies to its own per-date reads and writes below,
    * where `date` is passed for exactly this reason.
+   *
+   * Memoized on the date's identity, which `weekDays` below keeps stable, for
+   * the reason Week × Buckets memoizes its own: `toDateStr` builds an uncached
+   * Intl.DateTimeFormat per call, and this is seven sections re-running it on
+   * every store change. Day × List and Day × Buckets resolve theirs unmemoized
+   * because each pays for exactly one call per render — Day × Buckets already
+   * threads one string down to all four cards rather than resolving per card.
    */
-  const dateStr = toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const dateStr = useMemo(
+    () => toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
+    [date, userTimezone]
+  );
   const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
     ...g,
     rows: orderRows(g.rows, sortBy, dateStr),

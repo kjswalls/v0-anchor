@@ -113,8 +113,13 @@ describe('isRowCompletedOn — one status vocabulary per type, asked of the regi
   });
 
   it("uses the HABIT vocabulary's 'done' for a non-recurring habit", () => {
-    // A habit with no recurrence is what the braindump admits (it filters out
-    // every habit that repeats), so this is the live path, not a hypothetical.
+    // CONSTRUCTED, not a live row: `habit.allowedFrequencies` has no 'none'
+    // (lib/item-registry.ts), and `braindumpEligible` is false, so no habit
+    // reaches either the dateless surface or a non-recurring shape through the
+    // app. It is still the assertion that pins the scalar branch to the
+    // registry: `isRowCompletedOn` only consults `doneStatus` when `isRecurring`
+    // is false, so a task-vocabulary literal there is invisible to every other
+    // habit case in this file.
     const finished = habit('Read', { repeatFrequency: 'none', status: 'done' });
 
     expect(isRowCompletedOn(finished, DAY)).toBe(true);

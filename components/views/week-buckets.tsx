@@ -109,13 +109,17 @@ function WeekBucketCell({
    * WHOLE for the same reason it hands grouping everything: no spine.
    *
    * Two applications because there are two render paths, and the grouped one
-   * takes it PER GROUP, on `allRows` — never on the already-sunk `rows`. The
-   * group map is filled by walking the rows, so its insertion order is
-   * "whichever group owns the first row"; sinking beforehand would move the
-   * SECTIONS, which is the bug the braindump shipped for one commit
-   * (lib/grouping.ts, rule 1).
+   * takes it PER GROUP, on `allRows` — never on a pre-sunk flat list. The group
+   * map is filled by walking the rows, so its insertion order is "whichever
+   * group owns the first row"; sinking beforehand would move the SECTIONS,
+   * which is the bug the braindump shipped for one commit (lib/grouping.ts,
+   * rule 1).
+   *
+   * Only ONE of the two ever runs: the ungrouped pass is applied at its own
+   * render branch below rather than hoisted here, since the grouped path would
+   * discard it — and an O(n) partition spent for nothing, 28 cells deep and on
+   * every dnd re-render, is the cost the memo above exists to avoid.
    */
-  const rows = sinkCompleted(allRows, completionDateStr);
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
       ? groupRows(allRows, canvasGroupBy, { routines, programs }).map((g) => ({
@@ -173,7 +177,7 @@ function WeekBucketCell({
                     ))}
                   </GroupSection>
                 ))
-              : rows.map((row) => (
+              : sinkCompleted(allRows, completionDateStr).map((row) => (
                   <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                 ))}
           </>

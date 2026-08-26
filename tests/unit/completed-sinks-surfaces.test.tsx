@@ -351,6 +351,35 @@ describe('Week × Buckets', () => {
     expect(rowTitles(droppable(`week:${THURSDAY}:morning`), NAMES)).toEqual(['Journal', 'Stretch']);
     expect(rowTitles(droppable(`week:${FRIDAY}:morning`), NAMES)).toEqual(['Stretch', 'Journal']);
   });
+
+  it('sinks inside each GROUP, without moving the sections', () => {
+    // The grouped branch is a SECOND call site with its own argument, not a
+    // reuse of the flat one: it applies the sink per group and on the unsunk
+    // rows, because `groupRows` takes its section order from whichever group
+    // owns the first row it walks (lib/grouping.ts, rule 1). Sink the flat list
+    // first and Charlie leads, so the headings come back ['Home', 'Work'].
+    //
+    // The Day × Buckets counterpart of this test guards the same rule for that
+    // view; without this one, dropping the sink from the week's grouped map
+    // leaves the whole suite green.
+    const tasks = [
+      task({ id: 'a', title: 'Alpha', project: 'Work', status: 'completed' }),
+      task({ id: 'c', title: 'Charlie', project: 'Home' }),
+      task({ id: 'b', title: 'Bravo', project: 'Work' }),
+    ];
+    seedStore({ tasks, items: tasks });
+    useViewStore.setState({ canvasGroupBy: 'project' });
+
+    mount(<WeekBuckets activeId={null} />);
+
+    const cell = droppable(`week:${THURSDAY}:morning`);
+    const headings = [...cell.querySelectorAll('button[aria-expanded]')]
+      .filter((el) => el.className.includes('group/heading'))
+      .map((el) => el.textContent?.trim());
+
+    expect(headings).toEqual(['Work', 'Home']);
+    expect(rowTitles(cell, NAMES)).toEqual(['Bravo', 'Alpha', 'Charlie']);
+  });
 });
 
 /* ── the two existing controls still win ────────────────────────────────────*/

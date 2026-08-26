@@ -34,6 +34,15 @@ import { isCompletedOnDate, isRecurring } from './recurrence';
  * untimed rows take the sink, on Day × Buckets only; Week × Buckets has no
  * spine at all (its cells carry no per-row droppable) and takes it whole.
  * See the call sites in components/views/*.tsx for the per-surface reasoning.
+ *
+ * "The untimed section has none" is true today, and by accident rather than by
+ * design: lib/day-items.ts sorts untimed rows by `order`, `task.orderable` is
+ * true, and planner-store.ts exposes `reorderTasks` — but nothing under
+ * components/ or app/ calls it, so that `order` is a creation sequence nobody
+ * has dragged. Wire drag-to-reorder into the untimed section and the sink
+ * begins silently overriding an order the user DID author, which is the one
+ * thing the paragraph above says it must not do. Revisit this file then, not
+ * only the call site.
  */
 
 export type SortBy = 'default' | 'priority' | 'title';
@@ -172,6 +181,21 @@ export function isRowCompletedOn(row: SortableRow, dateStr: string | null): bool
  * like `sortRows`, and for the same reason — see this file's header. The one
  * surface that hands over less than everything is Day × Buckets, which passes
  * its untimed rows only; the note at that call site says why.
+ *
+ * Two places are outside the pass entirely, and neither omission is forced by
+ * the spine rule above:
+ *
+ *  - Day × Schedule's `unscheduled:anytime` tray is untimed and sits behind one
+ *    droppable, so nothing there resolves a drop against a neighbour's time. It
+ *    COULD take the pass; it does not because this landed on the list and
+ *    bucket surfaces. A choice left open, not a correctness argument.
+ *  - The braindump's `pausedGroups` never reaches {@link orderRows}, so a
+ *    finished row under a "Paused" heading stays put while one in the working
+ *    list sinks. That section is a recovery surface grouped BY CAUSE, and it
+ *    already declines `braindumpFilters` and `braindumpSortBy` on the grounds
+ *    that shaping it would reintroduce the hiding it exists to undo; letting
+ *    the sink alone through would make it the single working-list rule that
+ *    leaks in.
  */
 export function sinkCompleted<T extends SortableRow>(rows: T[], dateStr: string | null): T[] {
   const open: T[] = [];
