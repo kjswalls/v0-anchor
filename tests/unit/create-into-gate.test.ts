@@ -11,8 +11,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *     (lib/container-registry.ts — programs are a GATE, not a CLASSIFY kind).
  *  2. Adding one changes NOTHING about what activation means. A gate membership
  *     is an input to lib/active.ts's path algebra and nothing else; an item
- *     created into a program is indistinguishable from one collected into it
- *     afterwards, and every other item answers exactly as it did.
+ *     created into a program is as ACTIVE as one collected into it afterwards,
+ *     and every other item answers exactly as it did. (Only activation — the
+ *     two doors' receipts are not the same, and the create path's is the right
+ *     one. See the plan addendum's follow-ups.)
  *  3. It does not happen silently. A program that is off on the item's landing
  *     date hides the new item the moment the dialog closes, which is the same
  *     consequence the bulk "Add to …" verb already announces — so the create
@@ -231,9 +233,14 @@ describe('activation means exactly what it meant before', () => {
     expect(isItemActiveOn(created('Swim'), TODAY, ctx())).toBe(false);
   });
 
-  it('is indistinguishable from collecting the item afterwards', () => {
+  it('answers the same however the join row arrived', () => {
     // The invariant that says the create path added no new rule: whatever
     // membership means, it means it identically however the join row arrived.
+    //
+    // ACTIVATION only. This deliberately does NOT say the two doors are
+    // equivalent — their receipts differ, and the create path is the correct
+    // one: `newMemberReceipt` resolves at the item's own start date while
+    // setItemsCollected resolves at today. See the plan addendum's follow-ups.
     for (const state of ['active', 'paused'] as const) {
       for (const date of ['2026-03-09', TODAY, '2026-03-11']) {
         seed({ programs: [program({ state })] });
@@ -389,17 +396,99 @@ describe('the receipt', () => {
     );
     expect(getActionLog()[0].receipt).toBe('Hidden with your Summer program');
   });
+
+  it('resolves a habit at TODAY, since a habit has no landing date of its own', () => {
+    // `paused` above would be satisfied by any date at all, which is the hole
+    // this closes: swap addHabit's (absent) date argument for a far-future
+    // constant and the test above still passes. An `auto` window is the only
+    // state that can tell the days apart — decision 3, the same answer
+    // assignHabitToBucket takes.
+    seed({
+      programs: [program({ state: 'auto', startsOn: '2026-03-01', endsOn: '2026-03-31' })],
+    });
+    store().addHabit(
+      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { programIds: ['p1'] },
+    );
+    // TODAY is inside the window, so nothing to say.
+    expect(getActionLog()[0].receipt).toBeUndefined();
+
+    // And the converse, so "quiet" above is a real answer and not a dead call:
+    // a window that today sits outside of does produce the receipt.
+    seed({
+      programs: [program({ state: 'auto', startsOn: '2026-04-01', endsOn: '2026-04-30' })],
+    });
+    store().addHabit(
+      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { programIds: ['p1'] },
+    );
+    expect(getActionLog()[0].receipt).toContain('Summer');
+  });
+
+  it('rides custom types too, which reach the store by their own action', () => {
+    // addItem is a third door, not a branch of addTask — it mints the row
+    // itself and labels it off the type's config — so its receipt has to be
+    // asserted on its own or a third of this feature is unpinned.
+    seed({ programs: [program({ state: 'paused' })] });
+    usePlannerStore.setState({
+      itemTypes: [{ id: 't1', name: 'errand', label: 'Errand', labelPlural: 'Errands' }],
+    });
+    store().addItem('errand', { title: 'Post office' }, { programIds: ['p1'] });
+
+    expect(store().programs[0].itemIds).toEqual([created('Post office').id]);
+    expect(getActionLog()[0].label).toBe('Add errand: Post office');
+    expect(getActionLog()[0].receipt).toBe('Hidden with your Summer program');
+  });
+
+  it('answers a custom type at ITS landing date, not at today', () => {
+    seed({
+      programs: [program({ state: 'auto', startsOn: '2026-03-01', endsOn: '2026-03-31' })],
+    });
+    usePlannerStore.setState({
+      itemTypes: [{ id: 't1', name: 'errand', label: 'Errand', labelPlural: 'Errands' }],
+    });
+    store().addItem('errand', { title: 'Post office', startDate: '2026-04-05' }, {
+      programIds: ['p1'],
+    });
+    // Today is inside the window and would say the opposite.
+    expect(getActionLog()[0].receipt).toContain('Summer');
+  });
+
+  it('stays quiet for a custom type created into a live program', () => {
+    usePlannerStore.setState({
+      itemTypes: [{ id: 't1', name: 'errand', label: 'Errand', labelPlural: 'Errands' }],
+    });
+    store().addItem('errand', { title: 'Post office' }, { programIds: ['p1'] });
+    expect(getActionLog()[0].receipt).toBeUndefined();
+  });
 });
 
 describe('the toast rule', () => {
-  it('announces an ordinary verb when it carries a receipt', () => {
+  it('announces an ADD verb when it carries a receipt', () => {
     // `Add task:` is not, and should not be, in SIGNIFICANT_ACTIONS — every add
     // would toast. The receipt is the store's own statement that THIS write is
     // not visible where it was made, which is the condition the toast exists
-    // for, so it is significance in itself.
+    // for, so on the create path it is significance in itself.
     expect(isToastWorthy({ label: 'Add task: Swim' })).toBe(false);
     expect(isToastWorthy({ label: 'Add task: Swim', receipt: 'Hidden with your Summer program' }))
       .toBe(true);
+    // The other two create doors, by the same prefix.
+    expect(isToastWorthy({ label: 'Add habit: Stretch', receipt: 'Hidden with your Mornings routine' }))
+      .toBe(true);
+    expect(isToastWorthy({ label: 'Add errand: Post office', receipt: 'Paused' })).toBe(true);
+  });
+
+  it('says nothing about a receipted verb that is not an add', () => {
+    // The other half of the rule, and the reason it is prefix-scoped. Every one
+    // of these is an `Edit task:` in the store, and every one of them is noise:
+    // a priority-only modal Save (updateTask tests key PRESENCE, not change), a
+    // dozen EOD carry rows batched into one toast that names one of them, and
+    // the triage/EOD undo paths, which would announce "hidden where it landed"
+    // about a reversal. Widening this is the last step of fixing those.
+    const receipt = 'Hidden with your Summer program';
+    expect(isToastWorthy({ label: 'Edit task: Swim', receipt })).toBe(false);
+    expect(isToastWorthy({ label: 'Edit task: Swim', receipt: 'Paused' })).toBe(false);
+    expect(isToastWorthy({ label: 'Edit program: Summer', receipt })).toBe(false);
   });
 
   it('still announces the listed verbs with no receipt', () => {

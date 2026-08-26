@@ -649,10 +649,13 @@ function landingReceipt(
  * into a container that is currently off, and creating an item into one is the
  * same act arriving by a different door: the row is written, it is a legal
  * write, and it is not on the surface the user was looking at when they made
- * it. In EDIT mode the dialog answers this itself — its activation note reads
- * the live containers and appears the instant the chip is ticked — but in ADD
- * mode there is no item yet and the dialog closes on save, so this receipt is
- * the only thing that can speak.
+ * it. ADD mode is what this covers, and it is the mode that needs covering
+ * most: there is no item yet and the dialog closes on save, so nothing on the
+ * surface survives to say anything. EDIT mode is NOT covered and is an open
+ * follow-up — its chip writes through `updateProgram` (label `Edit program:`,
+ * no receipt) and the dialog's activation note resolves at today rather than at
+ * the item's date, so a program whose window excludes a future-dated item is
+ * silent there while it speaks here.
  *
  * Both sides are handed in PROSPECTIVELY, and that is the whole difficulty: the
  * item is not in `state.items` yet and its join rows are not written yet, so

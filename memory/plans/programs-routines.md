@@ -1187,16 +1187,52 @@ receipt, via `newMemberReceipt` in [lib/planner-store.ts](../../lib/planner-stor
   date-blind habits — the rule `scheduleTask` and `assignHabitToBucket` already follow.
 
 The toast rule moved with it, in [hooks/use-undo-toast.ts](../../hooks/use-undo-toast.ts):
-**an action carrying a receipt is announced whatever its verb.** `Add task:` is far too
-ordinary to earn a place in `SIGNIFICANT_ACTIONS`, and a list of consequential verbs is
-the wrong instrument anyway — a receipt is already the store's statement that this
-particular write is not visible where it was made. One consequence beyond the create
-path, and it is a fix rather than a side effect: `updateTask` has attached a landing
-receipt to `Edit task:` since Phase 3 (the dialog's date chip and EOD's picker arrive
-there rather than at `moveTaskToDate`) and that receipt could never be shown, because
-`Edit task:` is not in the list either.
+**a receipt on an `Add ` verb is announced**, even though `Add task:` is far too ordinary
+to earn a place in `SIGNIFICANT_ACTIONS` — a receipt is already the store's statement that
+this particular write is not visible where it was made.
+
+It is prefix-scoped rather than "any receipt at all" on purpose. The general rule was
+tried first and it lit up three paths that are not ready to speak: `updateTask` attaches
+its receipt on `'startDate' in updates` (key PRESENCE, not change) while the mobile modal
+commits the whole `DRAFT_KEYS` payload on every Save, so a priority-only edit inside a
+paused program would toast; EOD's "Move all to tomorrow" pushes N suppressed rows through
+that same action and React batches them into ONE toast naming one arbitrary row, whose
+Undo reverses only that row; and the morning-triage and EOD undo paths write the saved
+scheduling fields back through it too, so a REVERSAL would announce "hidden where it
+landed". Widening the rule is the last step of fixing those, not the first.
 
 **Not changed:** activation itself. A gate membership is still exactly what
 `lib/active.ts` says it is — the receipt is a readout of `isItemActiveOn`, computed from
 the same resolver every surface uses, and adding one to the create path gives no
 container a new way to hide anything.
+
+### Correction: the create path is not equivalent to the collect path
+
+An earlier draft of this addendum (and the commit that introduced it) claimed the create
+receipt is the same write as collecting the item afterwards. **It is not, and the create
+path is the correct one.** `newMemberReceipt` resolves at the item's own `startDate`;
+`setItemsCollected` calls `landingReceipt` with no date at all, i.e. at today. Program
+`auto` Apr 1–30 with a task dated Apr 5: creating it into the program is correctly
+silent, collecting the identical item into the identical program says *"Hidden with your
+Summer program — back Apr 1"* — a false receipt about an item that is live on its own
+date. The test that reads as if it pinned the equivalence only ever compared
+`isItemActiveOn`, and is now named for that.
+
+### Follow-ups this addendum leaves open
+
+1. **`setItemsCollected` should resolve at each item's own date**, the way the create path
+   does, instead of at today (`lib/planner-store.ts`, the `landingReceipt` call in the
+   `member` branch). Today's answer is the wrong day for every dated item in the selection.
+2. **`updateTask` tests key presence, not change** — `'startDate' in updates` fires on any
+   payload that merely carries the key. It should compare `updates.startDate` against the
+   task's current `startDate`. Until it does, `Edit task:` cannot be let into the toast
+   rule.
+3. **The edit-mode chip is silent where add mode speaks.** `toggleProgram` in edit mode
+   writes through `updateProgram` (label `Edit program:`, no receipt), and the dialog's
+   activation note resolves at today rather than at the item's date — so a program whose
+   window excludes an item's future date says nothing while today is inside it. The note
+   taking the item's date is the fix.
+4. **`landingReceipt` asks `suppressionReason`, not `isOpenLoopSuppressedOn`.** A
+   completed or cancelled task moved into a suppressed window is told it is hidden when
+   decision 4 guarantees it is not. Pre-existing for the move verbs; `Edit task:` made it
+   newly *visible* for a moment, and the prefix-scoped toast rule closed that off again.

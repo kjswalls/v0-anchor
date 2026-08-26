@@ -1403,13 +1403,22 @@ export function ItemDialog({
             would have to invent a grouping the user never asked for.
 
             Both chips name GATES, so ticking either can switch the item off on
-            the very date it was created for. Nothing here announces that, on
-            purpose, because the two modes already have their own answer and
-            neither belongs in a popover: EDIT mode has the activation note
-            above (it reads the live containers, so it appears the instant the
-            chip is ticked), and ADD mode gets the store's landing receipt on
-            the undo toast — `newMemberReceipt` in lib/planner-store.ts, the
-            same words the bulk "Add to …" verb uses for the identical write. */}
+            the very date it belongs to. Nothing here announces that, and only
+            ADD mode has an answer elsewhere: the store's landing receipt on the
+            undo toast — `newMemberReceipt` in lib/planner-store.ts, resolved at
+            the item's own start date, in the same words the bulk "Add to …"
+            verb uses for the identical write. That is the mode that behaves
+            correctly.
+
+            EDIT mode does not, and it is an open follow-up rather than
+            something this chip should paper over. Its write goes through
+            `updateProgram`, whose label is `Edit program:` with no receipt and
+            no SIGNIFICANT_ACTIONS match, so the toast never fires; and the
+            activation note above resolves at TODAY (decision 3 — pausing is
+            dateless), not at the item's date. So ticking a program whose window
+            excludes an item's future date, while today sits inside that window,
+            is silent here and spoken in add mode. The fix is the note taking the
+            item's date, not a warning in this popover. */}
         {collectionsAvailable && programs.length > 0 && collectible && (
           <PropertyChip
             icon={CalendarRange}
