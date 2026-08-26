@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { DockNoticesMobile } from '@/components/sidebar/dock-notices';
+import { UndoStrip } from '@/components/notices/undo-strip';
 import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -12,10 +13,10 @@ import { cn } from '@/lib/utils';
 
 /**
  * Mobile bottom dock — the desktop sidebar-dock recipe, at phone width: one
- * surface-3 well (radius 10, `--shadow-elev-bar`, inset 10px) holding the app's
- * notice stack over a single row — the 44px mode card, then a white pill. Owns
- * the bottom safe area. NOT overflow-hidden — the omnibar's results panel opens
- * upward out of it.
+ * surface-3 well (radius 10, `--shadow-elev-bar`, inset 10px) holding a single
+ * row — the 44px mode card, then a white pill — with the app's notice strip
+ * ABOVE it rather than inside it. Owns the bottom safe area. NOT overflow-hidden
+ * — the omnibar's results panel opens upward out of it.
  *
  * The pill is the omnibar everywhere except Beacon, where it is the chat
  * composer instead. One bar, one address for typing, whichever surface you are
@@ -29,8 +30,10 @@ import { cn } from '@/lib/utils';
  * 88px counting this box's own 8px top gap and 12px bottom floor, and more only
  * where the safe-area inset exceeds that floor.
  *
- * The notice stack is capped at ONE row here against the desktop's two —
- * anything past the first folds into a "+N more" row that expands in place.
+ * The notice stack is capped at ONE row, the same as the desktop now that most
+ * notices render on the thing they are about — anything past the first folds
+ * into a "+N more" row that expands in place. See
+ * memory/plans/notices-in-place.md.
  */
 export function MobileBottomDock() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
@@ -78,18 +81,24 @@ export function MobileBottomDock() {
       // clipped off, while still showing its 10px gap left and right.
       className="px-[10px] pt-2 pb-[max(12px,env(safe-area-inset-bottom,0px))]"
     >
+      {/* THE STRIP, above the well rather than inside it. Same geometry fix as
+          the desktop: the tab content above is flex-1 and absorbs the row, so the
+          well — and therefore the omnibar in it — does not move when the app has
+          something to say. Both children render null when they don't.
+
+          Mounted on every tab, Beacon included. The point of one voice with one
+          address is that going quiet on the tab where the user is talking to
+          Beacon would put the two halves of the same conversation on different
+          screens. */}
+      <DockNoticesMobile />
+      <UndoStrip />
+
       <div
         className="rounded-[10px] bg-surface-3 p-[10px] shadow-[var(--shadow-elev-bar)]"
         // Focus handoff target for a self-dismissing notice — see
         // useDismissWithFocus in components/ai/morning-check.tsx.
         data-dock-surface
       >
-        {/* Mounted on every tab, Beacon included. The point of the move into
-            this well is that the app has ONE voice with one address; going quiet
-            on the tab where the user is talking to Beacon would put the two
-            halves of the same conversation on different screens. */}
-        <DockNoticesMobile />
-
         {/* items-end only where the bar can grow: the chat composer wraps
             upward and the mode card has to stay on the well's floor beside it
             rather than drift to the middle of a three-line bar. The omnibar is a

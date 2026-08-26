@@ -2,6 +2,18 @@ import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 /**
+ * The surfaces that can hold a notice in place.
+ *
+ * Deliberately a closed union rather than a string: an anchor is a promise that
+ * some component mounts a slot for it (lib/notice-anchors.ts), and a typo in a
+ * free-text anchor is a notice that silently never renders anywhere.
+ *
+ *  - `braindump` — pinned under the braindump header, above the rows.
+ *  - `day-foot`  — the foot of TODAY's column, in all three day layouts.
+ */
+export type NoticeAnchor = 'braindump' | 'day-foot';
+
+/**
  * The shape of a thing the app says first.
  *
  * Anchor has two directions of speech and they used to be scattered. The user
@@ -20,11 +32,32 @@ import type { LucideIcon } from 'lucide-react';
  * beside the date. Put standing
  * facts in here and the dock silts up into a notification centre nobody reads,
  * which is the failure mode this surface exists to avoid.
+ *
+ * WHAT CHANGED WITH DIRECTION E, and what did not. The membership rule above is
+ * unchanged and still load-bearing. What moved is the ADDRESS: a notice that
+ * has an object on screen now renders on that object (`anchor`, and
+ * {@link placeNotices}), and the dock keeps at most one line — the highest-
+ * ranked question with nowhere else to live. So the rule binds harder than
+ * before, not less: nearly everything that is a standing fact about a thing is
+ * now literally drawn on that thing. See memory/plans/notices-in-place.md.
  */
 export type DockNotice = {
   id: string;
   /** Higher sorts first — see {@link NOTICE_RANK}. */
   rank: number;
+  /**
+   * Where this notice's OBJECT is, if it has one on screen.
+   *
+   * Direction E: a notice standing next to the thing it changed needs no words
+   * to say what it is about. Naming an anchor sends it there whenever that
+   * surface is mounted; declining to name one is the judgement that this notice
+   * must not wait to be scrolled to, and it keeps the dock's one line.
+   *
+   * That judgement is not a rule code can derive, so it is argued per notice in
+   * memory/plans/notices-in-place.md. What code CAN enforce is the two ways an
+   * anchor is overruled — see {@link placeNotices}.
+   */
+  anchor?: NoticeAnchor;
   icon: LucideIcon;
   /**
    * Colour for the GLYPH only. The label, the verb and the ✕ stay plain body
@@ -116,4 +149,55 @@ export function capNotices(
   }
   const visible = notices.slice(0, Math.max(0, max - 1));
   return { visible, overflow: notices.length - visible.length };
+}
+
+/**
+ * Where each notice actually renders: the dock's one line, or its own object.
+ *
+ * E's tradeoff is that a notice you never scroll to is a notice you never see,
+ * and E's own answer is that deciding which is which is a judgement per notice.
+ * That judgement is the `anchor` field and it is argued in
+ * memory/plans/notices-in-place.md. Two parts of it are NOT judgement, and this
+ * function is where the code takes them back:
+ *
+ *  1. **`blocked` never renders in place.** A notice that says the app cannot
+ *     proceed is the one thing that must never be off-screen, whatever anchor it
+ *     grows later. This is the rule E's tradeoff is actually about, and it is the
+ *     one rule a rule can be.
+ *  2. **A notice with a tray never renders in place.** A tray is a body that
+ *     opens upward out of the dock (a Popover) or as a Drawer; an in-place row
+ *     draws no tray at all, so anchoring one would silently drop its contents.
+ *     Placement must not be able to lose a notice's body.
+ *
+ * And one that is neither judgement nor policy but simple honesty: an anchor
+ * whose slot is not mounted is not an anchor (lib/notice-anchors.ts). The caller
+ * passes the live set; anything unplaceable falls back to the dock, so a notice
+ * is never routed to a surface nobody is looking at.
+ *
+ * Pure, and it ranks its own output, so a caller cannot place notices in one
+ * order and draw them in another.
+ */
+export function placeNotices(
+  notices: readonly DockNotice[],
+  liveAnchors: ReadonlySet<NoticeAnchor> = new Set()
+): { dock: DockNotice[]; anchored: Map<NoticeAnchor, DockNotice[]> } {
+  const dock: DockNotice[] = [];
+  const anchored = new Map<NoticeAnchor, DockNotice[]>();
+
+  for (const notice of rankNotices(notices)) {
+    const placeable =
+      notice.anchor !== undefined &&
+      notice.rank < NOTICE_RANK.blocked &&
+      !notice.tray &&
+      liveAnchors.has(notice.anchor);
+    if (placeable) {
+      const list = anchored.get(notice.anchor!);
+      if (list) list.push(notice);
+      else anchored.set(notice.anchor!, [notice]);
+    } else {
+      dock.push(notice);
+    }
+  }
+
+  return { dock, anchored };
 }
