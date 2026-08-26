@@ -1,5 +1,7 @@
 import type { TimeBucket } from '../planner-types';
 import { toDateStr } from '../recurrence';
+import { isDropTargetOffered } from './drop-targets';
+import type { DragInput } from './sensors';
 
 /**
  * Pure resolution of a dnd-kit drop into a planner command.
@@ -23,6 +25,17 @@ export type DropCommand =
 export interface DropContext {
   /** What kind of item is being dragged (null → drop is ignored). */
   itemType: 'task' | 'habit' | null;
+  /**
+   * What is driving the gesture — `dragInputOf(event.activatorEvent)`, i.e. the
+   * sensor that actually claimed THIS drag, never a viewport or capability
+   * query. Required rather than defaulted so a new caller has to answer it:
+   * defaulting to `'pointer'` would hand any future call site the desktop
+   * grammar by omission, which is how a touch rule half-reverts.
+   *
+   * Not every target is offered to every input (lib/dnd/drop-targets.ts) — a
+   * drop on one that is withheld resolves to nothing.
+   */
+  input: DragInput;
   /** Project of the dragged task, for the projectblock guard. */
   draggedTaskProject?: string;
   /**
@@ -48,6 +61,21 @@ export function resolveDrop(
 ): DropCommand | null {
   const { itemType } = ctx;
   if (!itemType) return null;
+  /**
+   * The input gate, before the grammar — a target this input is not offered
+   * resolves to no command at all.
+   *
+   * This is the BACKSTOP half of the rule, not its primary enforcement: the
+   * view already declines to mount a withheld target (`ScheduledDropZone` in
+   * day-buckets.tsx), so in a healthy app `over` can never be one and this line
+   * never fires. It earns its place the day something re-mounts one — a new
+   * view copying the id grammar, a revert of the mount gate — because then the
+   * drop stops writing a time instead of quietly resuming.
+   *
+   * An id the grammar does not classify passes, so this can only ever subtract
+   * the targets lib/dnd/drop-targets.ts names.
+   */
+  if (!isDropTargetOffered(targetId, ctx.input)) return null;
   const selectedDateStr = toDateStr(ctx.selectedDate, ctx.userTimezone);
 
   // scheduled:{bucket}:{before|after}:{refType}:{refId} | scheduled:{bucket}:empty

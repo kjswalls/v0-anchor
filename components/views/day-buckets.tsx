@@ -9,6 +9,8 @@ import { ProjectBlock } from '@/components/views/project-block';
 import { useCurrentBucket } from '@/hooks/use-current-bucket';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDragStore } from '@/lib/drag-store';
+import { isDropTargetOffered } from '@/lib/dnd/drop-targets';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
@@ -30,7 +32,23 @@ import { cn } from '@/lib/utils';
 
 function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boolean }) {
   const { isOver, setNodeRef } = useDroppable({ id: dropId });
-  if (!isActive) return null;
+  /**
+   * Offered to a cursor, withheld from a finger — the rule itself lives in
+   * lib/dnd/drop-targets.ts, this is the mount site asking it.
+   *
+   * Withholding it here rather than refusing the drop later is what keeps the
+   * touch outcome USEFUL: with no node attached the sliver has no rect, so
+   * `closestCenter` never picks it, and the finger's drop resolves on the
+   * bucket's own droppable instead — the row still lands in the bucket, untimed,
+   * which is the move that replaces this one on a phone. (`resolveDrop` refuses
+   * it too, as a backstop for a target that comes back by accident.)
+   *
+   * The input comes from the drag store, i.e. from the activator event of the
+   * gesture actually in progress — not from a media query. A touchscreen
+   * laptop's mouse keeps the sliver; the same machine's finger does not.
+   */
+  const offered = useDragStore((s) => s.input !== null && isDropTargetOffered(dropId, s.input));
+  if (!isActive || !offered) return null;
   return (
     <div
       ref={setNodeRef}

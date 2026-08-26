@@ -76,6 +76,51 @@ export function isTouchPointer(event: { pointerType?: string }): boolean {
 }
 
 /**
+ * Which input type a gesture belongs to, as one word.
+ *
+ * `'pointer'` is the set `NonTouchPointerSensor` claims — mouse, pen, and any
+ * pointer the browser left unlabelled. `'touch'` is a finger. It is the same
+ * split the sensors above make, named once so code that has to ask "is this a
+ * finger?" *after* activation does not re-invent it (or, worse, re-invent it as
+ * a viewport query).
+ */
+export type DragInput = 'touch' | 'pointer';
+
+/**
+ * Classify a drag from the event that STARTED it.
+ *
+ * dnd-kit keeps the activator's native event on the drag — `DragStartEvent` and
+ * `DragEndEvent` both carry `activatorEvent`, set from `event.nativeEvent` when
+ * a sensor claims the gesture — so this is per-GESTURE and honest, for the same
+ * reason `pointerType` beats a media query in the sensor split above. A
+ * touchscreen laptop gets `'pointer'` for its trackpad and `'touch'` for its
+ * screen, in the same session, with no capability sniffing anywhere.
+ *
+ * Two event shapes reach here, one per sensor:
+ * - `NonTouchPointerSensor` → a `PointerEvent`, which carries `pointerType`.
+ * - `TouchSensor` → a `touchstart` `TouchEvent`, which carries no `pointerType`
+ *   at all; `touches` is the field that says finger.
+ *
+ * Deliberately not "whatever the pointer sensor declined": reading `touches`
+ * directly means this keeps answering correctly even if the sensor policy above
+ * is ever reverted, so the two touch rules cannot half-revert each other.
+ *
+ * Anything else — a keyboard sensor's event, a null activator, a shape neither
+ * branch recognises — reads as `'pointer'`, the same direction `isTouchPointer`
+ * errs in and for the same reason: an unrecognised input must never silently
+ * lose a capability that mouse and pen have.
+ */
+export function dragInputOf(activatorEvent: Event | null | undefined): DragInput {
+  const event = activatorEvent as Partial<PointerEvent & TouchEvent> | null | undefined;
+  if (!event) return 'pointer';
+  if (typeof event.pointerType === 'string') {
+    return isTouchPointer(event) ? 'touch' : 'pointer';
+  }
+  if (event.touches) return 'touch';
+  return 'pointer';
+}
+
+/**
  * 5px: low enough that the ghost appears near-instantly, high enough that a
  * jittery click doesn't register as a drag (rows open the edit dialog on click).
  * Unchanged from the original PointerSensor config on purpose.

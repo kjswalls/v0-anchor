@@ -66,6 +66,14 @@ function ctx(overrides: Partial<DropContext> = {}): DropContext {
     itemType: 'task',
     selectedDate: new Date('2026-07-04T12:00:00Z'),
     userTimezone: 'UTC',
+    // Pointer, so EVERY target below still resolves and the sweep below stays a
+    // sweep: touch is offered a strict SUBSET of this grammar (the 8px
+    // `scheduled:*:before|after` sliver is withheld — lib/dnd/drop-targets.ts),
+    // and running the whole list as touch would turn the "resolves to a move"
+    // assertion into "resolves to nothing" for that row. What touch loses, and
+    // what it keeps, is pinned in dnd-touch-drop-targets.test.ts. Nothing about
+    // move-vs-reorder differs by input type.
+    input: 'pointer',
     draggedTaskProject: 'Work',
     getRefTime: () => '10:00',
     inferDropTime: () => '10:30',

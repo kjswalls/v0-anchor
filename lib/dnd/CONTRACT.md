@@ -36,7 +36,7 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 
 | Pattern | Meaning | Action on drop (task / habit) |
 |---|---|---|
-| `scheduled:{bucket}:{pos}:{refType}:{refId}` | Timed slot relative to a reference item. `pos` = `before` \| `after`; `refType` = `task` \| `habit` | `scheduleTask(id, bucket, inferDropTime(bucket, pos, refTime), selectedDateStr)` / `scheduleHabit(id, bucket, time)` |
+| `scheduled:{bucket}:{pos}:{refType}:{refId}` | Timed slot relative to a reference item. `pos` = `before` \| `after`; `refType` = `task` \| `habit`. **Mouse/pen only — not offered to touch** (see below) | `scheduleTask(id, bucket, inferDropTime(bucket, pos, refTime), selectedDateStr)` / `scheduleHabit(id, bucket, time)` |
 | `scheduled:{bucket}:empty` | Empty timed section of a bucket | same, with `inferDropTime(bucket, 'empty')` |
 | `unscheduled:{bucket}` | Untimed section of a bucket | `scheduleTask(id, bucket, undefined, selectedDateStr)` / `assignHabitToBucket(id, bucket)` |
 | `anytime` \| `morning` \| `afternoon` \| `evening` | Bare outer bucket (fallback) | same as `unscheduled:{bucket}` |
@@ -48,6 +48,58 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 | `sidebar` | Braindump | `unscheduleTask(id)`; **no-ops for habits** (they are not braindump-eligible) |
 
 `{bucket}` ∈ `anytime | morning | afternoon | evening` (`TimeBucket`).
+
+### Not every target is offered to every input
+
+The grammar above is the grammar for a **cursor**. Touch is offered a strict subset of
+it: exactly one pattern is withheld, `scheduled:{bucket}:{before|after}:{ref}` — the 8px
+sliver between two timed rows (`h-2 -my-0.5`, `day-buckets.tsx`).
+
+It is a *move*, not a reorder: `inferDropTime` resolves it as ±30 min from the reference
+row's own time, so it survived the sweep in "Every drop is a MOVE" below. It went for a
+different reason. It is unaimable with a thumb, and it is the target that sits **in the
+scroll path between rows**, so it is the one most likely to take a gesture that meant to
+scroll — the same failure the sensor split further down exists to end. Kirby's call, with
+the cost stated and accepted: **on a phone there is no "put this just before that one"**;
+you drop the row in the bucket and set its time in the item dialog. Mouse and pen are
+unchanged in every respect.
+
+The rule lives in **one** place, `lib/dnd/drop-targets.ts`:
+
+- `DropTargetKind` names each pattern above (`relative-time`, `bucket-timed`,
+  `bucket-untimed`, `week-cell`, `hour-slot`, `project-block`, `braindump`), and
+  `OFFERED_TO` is a `Record` keyed by that union — so a new kind of drop target fails
+  `tsc` until someone answers "can a thumb hit this?".
+- `dropTargetKind(id)` parses a droppable id into its kind; an id it does not recognise
+  is offered to everything (permissive, so a droppable nobody classified keeps working).
+  `dnd-touch-drop-targets.test.tsx` asserts every id in the table above classifies, which
+  is what makes that default safe.
+
+Two sites ask it, and both are needed:
+
+1. **The view does not mount it** (`ScheduledDropZone`, `day-buckets.tsx`). No node → no
+   rect → `closestCenter` cannot pick it, and nothing paints a hover a finger cannot
+   land on. This is also what keeps the touch outcome *useful*: the finger's drop
+   resolves on the bucket's own droppable instead, so the row still moves — untimed.
+2. **`resolveDrop` refuses it** (`DropContext.input`). Unreachable while (1) holds; it is
+   the backstop for the day a new view copies the id grammar or the mount gate is
+   reverted, so the sliver comes back as *nothing* rather than as a silent time write.
+
+**How "is this a touch drag" is known: from the gesture, never from the device.**
+`dragInputOf(event.activatorEvent)` (`lib/dnd/sensors.ts`) reads the event the sensor
+activated on — a `PointerEvent`'s `pointerType` for `NonTouchPointerSensor`, `touches`
+for the `TouchSensor`'s `touchstart`, which carries no `pointerType` at all. `beginDrag`
+in `app-shell.tsx` records it in `lib/drag-store.ts` alongside `activeId`, in the same
+`set`, so a view can never read one from this drag and the other from the last. A
+`(pointer: coarse)` media query would answer for the *device* and take the sliver away
+from a touchscreen laptop's mouse; this answers per drag, so that machine keeps it for
+the mouse and loses it for the finger, in the same session. Anything unlabelled reads as
+`pointer` — the same direction `isTouchPointer` errs in, so an unknown input never
+silently loses a capability.
+
+`tests/unit/dnd-touch-drop-targets.test.tsx` pins all of it, including the wiring: it
+imports `beginDrag` from the shell rather than rebuilding it, because a shell that
+hard-coded `'pointer'` would otherwise leave every other assertion green.
 
 ### The bare bucket and `unscheduled:{bucket}` are not separable by pointer
 
@@ -155,6 +207,11 @@ Covered by `tests/unit/schedule-resize-pointer.test.tsx`, which presses a handle
 input type — every other resize test in the suite sends a blank `pointerType`, which reads
 as non-touch and so exercises the mouse path.
 
+The sliver between two timed rows is the same shape of problem in the drop grammar rather
+than in a handle, and is withheld from touch the same way — see "Not every target is
+offered to every input" above. Those two, plus the sensor split, are the whole of what
+touch does differently. Every other drag is identical for a finger and a cursor.
+
 ### Every drop is a MOVE. No drop reorders.
 
 Read the action column above as a set: it assigns a bucket, a day, a time, a project
@@ -189,6 +246,11 @@ single-pointer alternative WCAG 2.5.7 asks for.
   for a drop relative to a reference item's `startTime`, or a bucket default for `empty`.
 - `autoCorrectBucket(time, bucket)` — re-derives the bucket from an explicit time, so a
   drop that sets a time cannot leave the row in a contradictory bucket.
+- `dropTargetKind(id)` / `isDropTargetOffered(id, input)` — `lib/dnd/drop-targets.ts`.
+  Which input types a target is offered to; see "Not every target is offered to every
+  input".
+- `dragInputOf(activatorEvent)` — `lib/dnd/sensors.ts`. `'touch' | 'pointer'` for the
+  gesture in progress, from the event that activated it.
 
 ## Store actions consumed
 
@@ -199,7 +261,8 @@ single-pointer alternative WCAG 2.5.7 asks for.
 ## Definition sites
 
 `useDroppable`: `components/views/day-buckets.tsx` (bucket, unscheduled, scheduled:*:empty,
-scheduled:*:before/after), `components/views/week-buckets.tsx` (`week:*`),
+scheduled:*:before/after — the last of those mounts only for a non-touch drag),
+`components/views/week-buckets.tsx` (`week:*`),
 `components/views/day-schedule.tsx` (`hour:*`, `unscheduled:anytime`),
 `components/views/week-schedule.tsx` (`weekhour:*`, `week:*:anytime`),
 `components/views/project-block.tsx` (`projectblock:*`), `components/sidebar/braindump.tsx`
