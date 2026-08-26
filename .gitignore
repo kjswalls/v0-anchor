@@ -27,5 +27,7 @@ docs/test-implementation-plan.md
 
 # Claude Code local settings
 .claude/settings.local.json
+# Claude Code worktrees (git worktrees checked out under .claude/)
+.claude/worktrees/
 .vercel
 .env*
