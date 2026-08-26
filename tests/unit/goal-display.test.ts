@@ -4,7 +4,8 @@ import { EMPTY_VIEW_FILTERS, passesFilters, passesGoalFilter, type ViewFilters }
 import { displayGoals, goalFilterItemIds, goalItemIds } from '@/lib/goals';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
-import type { Goal, Habit, Item, Task } from '@/lib/planner-types';
+import { containerRef } from '@/lib/container-registry';
+import type { Goal, Habit, Item, Project, Task } from '@/lib/planner-types';
 
 /**
  * Filtering and grouping by GOAL — the aspire axis on a display surface.
@@ -245,6 +246,58 @@ describe('a goal clause on the canvas day derivation', () => {
     });
 
     expect(out.tasksByBucket.morning.map((x) => x.id)).toEqual(['t1', 't2']);
+  });
+
+  /* ── the fourth row kind ──────────────────────────────────────────────── */
+
+  const block = (name: string): Project => ({
+    id: `p-${name}`,
+    name,
+    emoji: '📁',
+    startTime: '09:00',
+    timeBucket: 'morning',
+    repeatFrequency: 'daily',
+  });
+
+  it('drops EVERY project block under a resolvable goal clause', () => {
+    // A block is a `projects` row, never an item, so it holds no id
+    // `goal_items` could name — the membership question has one answer for all
+    // of them and it is no. Leaving them behind reproduces the artefact the
+    // container axis was fixed for: a narrowed grid under a full set of empty
+    // blocks. Renders on Day × Buckets, Week × Buckets and Day × Schedule.
+    const out = day({
+      projects: [block('Work'), block('Side')],
+      filters: filters({ goals: ['g1'] }),
+      goalMemberIds: goalFilterItemIds([g], ['g1']),
+    });
+
+    expect(out.tasksByBucket.morning.map((x) => x.id)).toEqual(['t1']);
+    expect(out.recurringProjects.map((p) => p.name)).toEqual([]);
+  });
+
+  it('leaves every block alone under an UNRESOLVABLE one, because nothing narrowed', () => {
+    // The inert clause narrows no rows, so it must not narrow the blocks
+    // either — an achieved goal blanking the grid's time structure while every
+    // task stays put is the same lie in the other direction.
+    const achieved = { ...g, state: 'achieved' as const };
+    const out = day({
+      projects: [block('Work'), block('Side')],
+      filters: filters({ goals: ['g1'] }),
+      goalMemberIds: goalFilterItemIds([achieved], ['g1']),
+    });
+
+    expect(out.recurringProjects.map((p) => p.name)).toEqual(['Work', 'Side']);
+  });
+
+  it('still narrows blocks by the container axis when no goal is selected', () => {
+    // The guard on the guard: the goal clause must not have taken the container
+    // rule's place, only stacked in front of it.
+    const out = day({
+      projects: [block('Work'), block('Side')],
+      filters: filters({ containers: [containerRef('project', 'Work')] }),
+    });
+
+    expect(out.recurringProjects.map((p) => p.name)).toEqual(['Work']);
   });
 });
 

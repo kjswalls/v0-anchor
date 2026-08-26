@@ -49,12 +49,20 @@ import type { ItemTypeConfig } from './item-registry';
  *
  * A GOAL is now visible to filters.ts and grouping.ts, and that is a narrowing
  * of the original claim, not an exception to the seam — the type unions are
- * untouched. What reaches those modules is a goal ID and a set of item ids
- * resolved from `goal_items`, never an `AspireKind` and never a ref:
+ * untouched. What crosses is never an `AspireKind` and never a ref; the seam is
+ * about the KIND, not about how much of a goal a view module may hold:
  *
- *   - `ViewFilters.goals` holds ids. `containerRef`/`containerKindOf` still
- *     answer only for CLASSIFY kinds, so a goal cannot enter `containers` and
- *     `containerRefOf` cannot return one. The two clauses never mix.
+ *   - `ViewFilters.goals` holds ids, and `lib/filters.ts` sees only those ids
+ *     plus a `ReadonlySet` of item ids resolved from `goal_items` — it is
+ *     store-free by contract, so it is handed the answer rather than the goals.
+ *     `containerRef`/`containerKindOf` still answer only for CLASSIFY kinds, so
+ *     a goal cannot enter `containers` and `containerRefOf` cannot return one.
+ *     The two clauses never mix.
+ *   - `lib/grouping.ts` takes whole `readonly Goal[]` records, exactly as it
+ *     already takes `Routine[]` and `Program[]`: a section needs the name for
+ *     its heading and the role arrays to claim its rows. That is more than an
+ *     id and it is still inside the seam — nothing in a `Goal` resolves
+ *     activation, and the kind never appears.
  *   - Grouping by goal is `lib/grouping.ts`'s first-claim-wins rule — the one
  *     the gates already needed, because a many-to-many is not a partition. A
  *     goal section carries no `gate`, so its heading has no switch: the gates'

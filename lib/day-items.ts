@@ -228,11 +228,23 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
   // A block is a fourth row kind that no filter used to touch, and the artefact
   // was visible: filter to one project and the OTHER projects' blocks stayed on
   // the grid, now empty. It is a project, so the container axis applies to it —
-  // and only that axis. It has no priority and no completion, and its position
-  // is its time, so priority and hideFinished leave it alone.
+  // and the goal axis reaches it too, for the opposite reason. It has no
+  // priority and no completion, and its position is its time, so priority and
+  // hideFinished leave it alone.
+  //
+  // A GOAL clause drops EVERY block, and that is not the container rule with a
+  // different list. A block is a `projects` row, never an item, so it holds no
+  // id `goal_items` could ever name — asking "is this block in the goal" has
+  // one answer for all of them, and it is no. Keeping them reproduces the exact
+  // artefact the paragraph above says was fixed: a narrowed grid under a full
+  // set of empty blocks. Only a RESOLVABLE clause does this — `goalMembers` is
+  // absent when the selection names no live goal, which is the documented
+  // "inert, never empty" state, and an inert clause must narrow nothing at all.
   const containerFilter = filters.containers;
+  const goalFilterBites = filters.goals.length > 0 && !!goalMembers;
   const { weekday, dateOfMonth, lastDayOfMonth } = calendarParts(dateStr);
   const recurringProjects = projects.filter((p) => {
+    if (goalFilterBites) return false;
     if (containerFilter.length && !containerFilter.includes(containerRef('project', p.name)))
       return false;
     if (!p.startTime || !p.timeBucket || !p.repeatFrequency) return false;
