@@ -1160,3 +1160,79 @@ away-count and hover-ghost the minimal switch does not show — and no longer ta
 new-scope button. Discoverability moves to the grouping options, the braindump's folder
 button, and the palette's "Organize routines & programs". **Reversibility rule preserved:**
 "off never leaves the list" now means the Paused-scopes menu, not a rail row.
+
+## Addendum (2026-08-26): decision 11 reaches the CREATE path
+
+Phase 3 recorded that decision 11's receipt "covers the store's move verbs, which is
+every reachable path today — a future verb that writes `startDate` without going
+through them would need its own call." A verb turned up that writes no date at all
+and still lands work out of sight: **creating an item straight into a gate**, through
+the item dialog's Routine and Program chips in add mode.
+
+`addTask` / `addItem` / `addHabit` take a `Memberships` payload so the item row and its
+join rows land in one `set()`. When that payload names a routine or a program that is
+switched off on the item's landing date, the new item is suppressed the moment the
+dialog closes — the same consequence `setItemsCollected` already announces for a bulk
+"Add to …", arriving by a different door. So the add actions now attach the same
+receipt, via `newMemberReceipt` in [lib/planner-store.ts](../../lib/planner-store.ts):
+
+- **Both sides prospective.** The item is not in `items` yet and the join rows are not
+  written yet, so the receipt is resolved against `[...items, item]` and the containers
+  as they will be. Asked against live state the answer is always "visible" — the one
+  answer that is never useful here. `setItemsCollected` already had to move the
+  containers; a create has to move both.
+- **Gates only.** Goals are an ASPIRE kind and suppress nothing, so a goal-only add can
+  never need one (lib/container-registry.ts, the three roles).
+- **Resolved at the item's own start date**, falling back to today for undated and for
+  date-blind habits — the rule `scheduleTask` and `assignHabitToBucket` already follow.
+
+The toast rule moved with it, in [hooks/use-undo-toast.ts](../../hooks/use-undo-toast.ts):
+**a receipt on an `Add ` verb is announced**, even though `Add task:` is far too ordinary
+to earn a place in `SIGNIFICANT_ACTIONS` — a receipt is already the store's statement that
+this particular write is not visible where it was made.
+
+It is prefix-scoped rather than "any receipt at all" on purpose. The general rule was
+tried first and it lit up three paths that are not ready to speak: `updateTask` attaches
+its receipt on `'startDate' in updates` (key PRESENCE, not change) while the mobile modal
+commits the whole `DRAFT_KEYS` payload on every Save, so a priority-only edit inside a
+paused program would toast; EOD's "Move all to tomorrow" pushes N suppressed rows through
+that same action and React batches them into ONE toast naming one arbitrary row, whose
+Undo reverses only that row; and the morning-triage and EOD undo paths write the saved
+scheduling fields back through it too, so a REVERSAL would announce "hidden where it
+landed". Widening the rule is the last step of fixing those, not the first.
+
+**Not changed:** activation itself. A gate membership is still exactly what
+`lib/active.ts` says it is — the receipt is a readout of `isItemActiveOn`, computed from
+the same resolver every surface uses, and adding one to the create path gives no
+container a new way to hide anything.
+
+### Correction: the create path is not equivalent to the collect path
+
+An earlier draft of this addendum (and the commit that introduced it) claimed the create
+receipt is the same write as collecting the item afterwards. **It is not, and the create
+path is the correct one.** `newMemberReceipt` resolves at the item's own `startDate`;
+`setItemsCollected` calls `landingReceipt` with no date at all, i.e. at today. Program
+`auto` Apr 1–30 with a task dated Apr 5: creating it into the program is correctly
+silent, collecting the identical item into the identical program says *"Hidden with your
+Summer program — back Apr 1"* — a false receipt about an item that is live on its own
+date. The test that reads as if it pinned the equivalence only ever compared
+`isItemActiveOn`, and is now named for that.
+
+### Follow-ups this addendum leaves open
+
+1. **`setItemsCollected` should resolve at each item's own date**, the way the create path
+   does, instead of at today (`lib/planner-store.ts`, the `landingReceipt` call in the
+   `member` branch). Today's answer is the wrong day for every dated item in the selection.
+2. **`updateTask` tests key presence, not change** — `'startDate' in updates` fires on any
+   payload that merely carries the key. It should compare `updates.startDate` against the
+   task's current `startDate`. Until it does, `Edit task:` cannot be let into the toast
+   rule.
+3. **The edit-mode chip is silent where add mode speaks.** `toggleProgram` in edit mode
+   writes through `updateProgram` (label `Edit program:`, no receipt), and the dialog's
+   activation note resolves at today rather than at the item's date — so a program whose
+   window excludes an item's future date says nothing while today is inside it. The note
+   taking the item's date is the fix.
+4. **`landingReceipt` asks `suppressionReason`, not `isOpenLoopSuppressedOn`.** A
+   completed or cancelled task moved into a suppressed window is told it is hidden when
+   decision 4 guarantees it is not. Pre-existing for the move verbs; `Edit task:` made it
+   newly *visible* for a moment, and the prefix-scoped toast rule closed that off again.

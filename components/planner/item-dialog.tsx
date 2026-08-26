@@ -1400,7 +1400,25 @@ export function ItemDialog({
         {/* Programs get their own chip rather than sharing the routine one.
             They are different questions — "which routine is this part of" vs
             "which stretch of life does this belong to" — and a merged picker
-            would have to invent a grouping the user never asked for. */}
+            would have to invent a grouping the user never asked for.
+
+            Both chips name GATES, so ticking either can switch the item off on
+            the very date it belongs to. Nothing here announces that, and only
+            ADD mode has an answer elsewhere: the store's landing receipt on the
+            undo toast — `newMemberReceipt` in lib/planner-store.ts, resolved at
+            the item's own start date, in the same words the bulk "Add to …"
+            verb uses for the identical write. That is the mode that behaves
+            correctly.
+
+            EDIT mode does not, and it is an open follow-up rather than
+            something this chip should paper over. Its write goes through
+            `updateProgram`, whose label is `Edit program:` with no receipt and
+            no SIGNIFICANT_ACTIONS match, so the toast never fires; and the
+            activation note above resolves at TODAY (decision 3 — pausing is
+            dateless), not at the item's date. So ticking a program whose window
+            excludes an item's future date, while today sits inside that window,
+            is silent here and spoken in add mode. The fix is the note taking the
+            item's date, not a warning in this popover. */}
         {collectionsAvailable && programs.length > 0 && collectible && (
           <PropertyChip
             icon={CalendarRange}
