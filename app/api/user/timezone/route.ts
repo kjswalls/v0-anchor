@@ -27,6 +27,24 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid timezone' }, { status: 400 })
   }
 
+  // Skip the write when nothing changed. The client PATCHes this on every app
+  // load, but a user's timezone almost never differs from the stored one — an
+  // unconditional upsert per load made this endpoint one of the database's
+  // largest write sources (WAL + a dead tuple + later autovacuum) for a value
+  // that changes maybe twice a year. A read here is a cache hit (effectively
+  // free); the upsert it avoids is not. `maybeSingle` returns null for a
+  // brand-new account with no row yet, which correctly falls through to the
+  // upsert so the row still gets created.
+  const { data: existing } = await supabase
+    .from('user_settings')
+    .select('timezone')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (existing && existing.timezone === timezone) {
+    return NextResponse.json({ ok: true, unchanged: true })
+  }
+
   const { error } = await supabase
     .from('user_settings')
     .upsert({ user_id: user.id, timezone }, { onConflict: 'user_id' })
