@@ -8,10 +8,20 @@ import type { LucideIcon } from 'lucide-react';
  * some component mounts a slot for it (lib/notice-anchors.ts), and a typo in a
  * free-text anchor is a notice that silently never renders anywhere.
  *
- *  - `braindump` — pinned under the braindump header, above the rows.
- *  - `day-foot`  — the foot of TODAY's column, in all three day layouts.
+ *  - `braindump`  — pinned under the braindump header, above the rows.
+ *  - `day-header` — beside the date, in the canvas header row.
+ *
+ * `day-foot` (the foot of today's column) was built and removed before this
+ * shipped, and the reason is worth keeping: lib/use-fit-hour-px.ts sizes the
+ * schedule grid's hours to `viewport - anchorTop - BOTTOM_RESERVE` with
+ * BOTTOM_RESERVE at 24px, and it counts only chrome ABOVE the grid — so a 34px
+ * row below the grid inside the same scroller cannot be seen by it and makes a
+ * compressed day scroll that previously fit. The header row has the opposite
+ * property: its height is max(children), which the capsule already sets at 96,
+ * so a line beside the date costs nothing at all. That is the same argument
+ * ProgramNotice makes for the same address.
  */
-export type NoticeAnchor = 'braindump' | 'day-foot';
+export type NoticeAnchor = 'braindump' | 'day-header';
 
 /**
  * The shape of a thing the app says first.
@@ -147,7 +157,24 @@ export function capNotices(
   if (expanded || notices.length <= max) {
     return { visible: [...notices], overflow: 0 };
   }
-  const visible = notices.slice(0, Math.max(0, max - 1));
+  /**
+   * ...with one exception, and it is the same exception `placeNotices` makes.
+   *
+   * A `blocked` notice is the one thing that must never be somewhere you have to
+   * GO to. Pinning it to the dock and then folding it behind "2 to answer" moves
+   * it from a place you have to scroll to, to a place you have to click to,
+   * which is the same failure wearing a different verb. At `max` 1 that is
+   * exactly what the fold did: two notices produced zero notice rows, and
+   * "Couldn't load your data" was not on screen at all.
+   *
+   * So the top row survives the fold when it is blocked, and the summary takes
+   * the slot after it: one row plus "1 more", which is `max + 1` rows. That is a
+   * deliberate overrun of the cap, and the only one — the cap exists to stop a
+   * message surface from growing without asking, not to hide the message that
+   * says the app is broken.
+   */
+  const pinned = notices[0] && notices[0].rank >= NOTICE_RANK.blocked ? 1 : 0;
+  const visible = notices.slice(0, Math.max(pinned, max - 1));
   return { visible, overflow: notices.length - visible.length };
 }
 

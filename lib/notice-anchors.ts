@@ -11,12 +11,20 @@
  * back to the dock's one line by itself, so nothing is ever placed somewhere
  * nobody is looking.
  *
- * A module-level registry rather than a store slice, for two reasons. It is
- * read during render by the dock and written in a LAYOUT effect by the slot —
- * so the dock never paints a frame holding a notice that is about to move, which
- * is the flicker this whole change exists to remove — and it is refcounted, so
- * a shell swap that mounts the new slot before unmounting the old one cannot
- * blink the anchor dark for one commit in between.
+ * A module-level registry rather than a store slice: it is read during render by
+ * the dock and written in a LAYOUT effect by the slot, so the dock never paints a
+ * frame holding a notice that is about to move.
+ *
+ * THE REFCOUNT IS INSURANCE, NOT A FIX. It is tempting to justify it with the
+ * desktop⇄mobile shell swap, and that justification is wrong: React runs the
+ * outgoing subtree's cleanup BEFORE the incoming subtree's effects, so the count
+ * really does cross zero. What keeps that from flickering is that both happen in
+ * one commit with no render in between — not the counter. As the app stands
+ * nothing takes an anchor above 1. The counter is here so that a future second
+ * slot for one anchor cannot silently unregister the first, and it carries a
+ * hazard worth naming: two slots live for the same anchor would BOTH draw the
+ * notice. If that ever becomes possible, the placement needs to pick one, not
+ * just to stay registered.
  */
 import { useLayoutEffect, useSyncExternalStore } from 'react';
 import type { NoticeAnchor } from '@/lib/dock-notices';

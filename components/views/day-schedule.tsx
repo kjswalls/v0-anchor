@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { DayFootNotice } from '@/components/notices/notice-slot';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
@@ -1615,11 +1614,6 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             )}
           </div>
         </div>
-
-        {/* The foot of the day, under the last hour of the grid — see
-            DayFootNotice. Outside the absolutely-positioned events layer, in
-            ordinary flow, so it cannot land on a block. */}
-        <DayFootNotice dateStr={toDateStr(selectedDate, timezone)} />
       </div>
     </ScrollArea>
   );

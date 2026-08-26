@@ -7,6 +7,7 @@ import { useAnchorableNotices } from '@/components/notices/notice-sources';
 import { placeNotices, type DockNotice, type NoticeAnchor } from '@/lib/dock-notices';
 import { useLiveNoticeAnchors, useNoticeAnchor } from '@/lib/notice-anchors';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useViewStore } from '@/lib/view-store';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -80,9 +81,9 @@ function InPlaceNotice({ notice }: { notice: DockNotice }) {
  * frame where it is still on the dock line.
  *
  * `active` is how a slot says "my object is the one this notice is about" — the
- * day-foot slots pass `dateStr === today`, so arrowing to another day takes the
- * anchor down and the notice goes back to the dock rather than sitting under a
- * day it has nothing to do with.
+ * day-header slot is live only on today, so arrowing to another day takes the
+ * anchor down and the notice goes back to the dock rather than sitting beside a
+ * date it has nothing to do with.
  *
  * Renders nothing at all when there is nothing placed here, so a slot costs an
  * empty fragment and no layout on every surface that mounts one.
@@ -122,23 +123,44 @@ export function NoticeSlot({
 }
 
 /**
- * The foot of the day, in all three day layouts.
+ * Beside the date, in the canvas header row.
  *
- * `active` is `this column is TODAY`, resolved through the user's SAVED timezone
- * — the app-wide `toDateStr` convention, shared with the notices themselves, so
- * the slot and the notice can never disagree about which day it is. Arrow to
- * Thursday and the anchor goes dark: the end-of-day line returns to the dock
- * rather than sitting under a day it is not about.
+ * The end-of-day line's object is the DAY, and the day's canonical handle is its
+ * date — not the geometric foot of a grid. This is the address ProgramNotice
+ * already argued its way to ("it is bound to a date… so it belongs beside the
+ * date"), and E generalises that precedent rather than inventing a second one.
  *
- * The week layouts do not mount this at all. `selectedDate` there is one column
- * of seven, and a line about "today" under a seven-day grid is the same mistake
- * ProgramNotice refuses to make.
+ * It costs the row nothing: the row's height is max(children) and the header
+ * capsule already sets that at 96, so an h-8 line beside it is free. The foot of
+ * the day column, which this replaced, was not free — lib/use-fit-hour-px.ts
+ * reserves 24px below the schedule grid and counts only the chrome above it, so
+ * a 34px row down there made a compressed day scroll.
+ *
+ * `scope` overrides the view store, for the mobile shell: MobileViewRouter is
+ * day-only and hardcodes it, while a stale `scope: 'week'` can persist in that
+ * shell's blob with nothing able to correct it (see the same note on
+ * DisplayMenu in components/mobile/mobile-header.tsx).
+ *
+ * Live only on today. On any other date the anchor goes dark and the line falls
+ * back to the dock, which is the honest place for a question about a day that is
+ * not the one on screen.
  */
-export function DayFootNotice({ dateStr }: { dateStr: string }) {
+export function DayHeaderNotice({
+  scope: scopeOverride,
+  className,
+}: {
+  scope?: 'day' | 'week';
+  className?: string;
+}) {
+  const selectedDate = usePlannerStore((s) => s.selectedDate);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const todayStr = toDateStr(
-    new Date(),
-    userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const storeScope = useViewStore((s) => s.scope);
+  const scope = scopeOverride ?? storeScope;
+
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const isToday = toDateStr(selectedDate, tz) === toDateStr(new Date(), tz);
+
+  return (
+    <NoticeSlot anchor="day-header" active={scope === 'day' && isToday} className={className} />
   );
-  return <NoticeSlot anchor="day-foot" active={dateStr === todayStr} className="pt-2" />;
 }

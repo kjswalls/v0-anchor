@@ -21,11 +21,13 @@ import { cn } from '@/lib/utils';
  * user row and the capsule grows upward, shrinking the Braindump.
  *
  * It is also where the app SPEAKS — but from a STRIP above the capsule, not
- * from inside it. The notice stack used to be a capsule row, and that is what
- * made the omnibar move: the capsule's height was a function of how much the app
- * happened to have to say. The strip hangs off the wrapper instead, the
- * braindump's flex-1 absorbs it, and the capsule's height is now a function of
- * chat expansion alone.
+ * from inside it. That is a placement decision (notices are not part of the
+ * dock), and it is worth being precise about what it did and did not fix: at the
+ * resting state the omnibar never moved for a notice, on either structure, at
+ * any viewport height down to 360px — the capsule's bottom is pinned by the
+ * column, so a row grows it upward into the braindump. What DID jump was the
+ * undo toast, measured off this capsule's top edge; it is a strip row now and
+ * measures nothing.
  *
  * The conversation still shares an edge — you type into the pill, the app
  * answers one row above it — and a notice tray still grows upward out of its row
@@ -35,7 +37,6 @@ import { cn } from '@/lib/utils';
  */
 export function SidebarDock() {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
-  const dockRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
   // own focus (via onFocusChange) rather than the dock's focus-within: the
@@ -57,20 +58,30 @@ export function SidebarDock() {
   useToastAnchor(wrapperRef);
 
   return (
-    <div ref={wrapperRef} className={cn('flex min-h-0 flex-col', chatExpanded && 'flex-1')}>
-      {/* THE STRIP. Outside the capsule and above it, which is the entire
-          geometry fix: the braindump above is flex-1, so a row arriving here is
-          paid for by the braindump and the capsule's top edge — and therefore
-          the omnibar — does not move. Both children render null when they have
-          nothing to say, so the resting column is unchanged.
+    <div
+      ref={wrapperRef}
+      className={cn('relative flex min-h-0 flex-col', chatExpanded && 'flex-1')}
+    >
+      {/* THE STRIP: the app's notices, above the capsule instead of inside it.
+          Both children render null when they have nothing to say, so the resting
+          column is unchanged.
 
-          Notices first, the transient row nearest the capsule: what leaves on
-          its own sits closest to where it came from. */}
+          The notice rows are in FLOW, and at the resting state (chat closed)
+          that costs nothing measurable — the capsule's bottom is pinned by the
+          column and the braindump's flex-1 absorbs the row, at every viewport
+          height down to 360px.
+
+          The undo row is NOT in flow, and that difference is measured rather
+          than reasoned. It appears and vanishes on a 5s timer the instant after
+          the user acts, so it is the one row whose arrival lands under a moving
+          cursor; and with chat expanded in a short window the column has no
+          slack left to absorb it. `absolute bottom-full` takes it out of the
+          squeeze budget entirely, at the cost of needing an opaque ground since
+          it now overlays the braindump's last row. */}
       <DockNotices />
-      <UndoStrip />
+      <UndoStrip className="absolute inset-x-0 bottom-full z-20 mb-1.5 bg-surface-0" />
 
       <div
-        ref={dockRef}
         data-tour="right-sidebar"
         // The focus handoff target when a notice dismisses itself out from under
         // the keyboard: the capsule outlives every row in it and closes over the

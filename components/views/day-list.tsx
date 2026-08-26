@@ -12,7 +12,6 @@ import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { ProgramNotice } from '@/components/views/program-notice';
-import { DayFootNotice } from '@/components/notices/notice-slot';
 import type { Task, Habit } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -106,10 +105,6 @@ export function DayList() {
             </GroupSection>
           ))
         )}
-
-        {/* The foot of the day — see DayFootNotice. Below the empty state too:
-            a day with nothing planned still ends. */}
-        <DayFootNotice dateStr={dateStr} />
       </div>
     </ScrollArea>
   );

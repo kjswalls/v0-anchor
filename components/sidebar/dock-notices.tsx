@@ -26,12 +26,19 @@ import { cn } from '@/lib/utils';
  * The dock's ONE line: the highest-ranked question with nowhere else to live.
  *
  * It used to be the app's only voice, a stack of up to two rows INSIDE the dock
- * capsule. That is what broke: every notice arriving or leaving changed the
- * capsule's height, so the omnibar — the one control in this app you aim at
- * without looking — moved under the cursor. The stack is a strip ABOVE the
- * capsule now, absorbed by the braindump's flex-1 (desktop) and by the content
- * area's (mobile), so the capsule's height is a function of chat expansion
- * alone, which is the only thing it was ever supposed to be.
+ * capsule. It is a strip ABOVE the capsule now, absorbed by the braindump's
+ * flex-1 (desktop) and by the content area's (mobile).
+ *
+ * BE CAREFUL WHAT YOU CLAIM FOR THAT MOVE. The story this change was first
+ * written under — "a notice arriving moved the omnibar" — was measured and is
+ * false: the capsule's bottom is pinned by the column and this stack sat ABOVE
+ * the UserCard, so a row grew the capsule upward into the braindump and the
+ * omnibar held still at every viewport height down to 360px. What actually
+ * jumped was the undo TOAST, which was position-fixed at `--toast-bottom`,
+ * measured off the capsule's top edge — so it moved by exactly the row's height.
+ * That is now a strip row of its own and no longer measures anything.
+ * The move itself is a placement decision (notices are not part of the dock);
+ * see memory/plans/notices-in-place.md for the numbers.
  *
  * WHY NOT THE CANVAS, which is where the waiting bar lived. lib/use-fit-hour-px.ts
  * derives the schedule grid's hour height from (viewport bottom − whatever sits
@@ -282,9 +289,9 @@ function OverflowRow({
 
 /**
  * Desktop mount: components/sidebar/sidebar-dock.tsx, on the strip ABOVE the
- * capsule — not inside it. That is the whole of the geometry fix: the braindump
- * above is flex-1, so it gives up the row's height and the capsule does not
- * move.
+ * capsule — not inside it. The braindump above is flex-1 and gives up the row's
+ * height, so the capsule's top edge moves and its bottom edge does not, exactly
+ * as it did when the row was inside.
  *
  * Renders nothing while the sidebar is away. This is the accepted cost of the
  * placement and it is deliberately NOT patched with a force-open: a rule where
@@ -335,8 +342,9 @@ export function DockNotices() {
 
 /**
  * Mobile mount: components/mobile/mobile-bottom-dock.tsx, above the well rather
- * than inside it — same reason as the desktop, with the tab content playing the
- * braindump's part as the flex-1 that absorbs the row.
+ * than inside it. A placement change, not a geometry one — this dock is the last
+ * child of a fixed-height flex column, so it grows upward and the well's bottom
+ * edge measured 0px of movement in every configuration either way.
  *
  * Trays are Drawers rather than Popovers — a 420px tray does not exist here.
  */

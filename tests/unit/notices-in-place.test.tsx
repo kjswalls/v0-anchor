@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { CloudOff, Sun } from 'lucide-react';
 
 /**
@@ -59,14 +60,23 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { toDateStr } from '@/lib/recurrence';
 import { DockNotices } from '@/components/sidebar/dock-notices';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
-import { DayFootNotice } from '@/components/notices/notice-slot';
+import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
+import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { useEODStore } from '@/lib/eod-store';
+import { useViewStore } from '@/lib/view-store';
 import { NoticeSlot } from '@/components/notices/notice-slot';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { TypewriterText } from '@/components/primitives/typewriter-text';
 
 // The dock measures itself for the toast anchor, and jsdom ships no observer.
 beforeAll(() => {
+  if (!('PointerEvent' in globalThis)) {
+    (globalThis as unknown as { PointerEvent: unknown }).PointerEvent = MouseEvent;
+  }
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+  Element.prototype.scrollIntoView = () => {};
   if (!('ResizeObserver' in globalThis)) {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
       observe() {}
@@ -127,10 +137,10 @@ describe('placeNotices', () => {
     const waiting = notice({
       id: 'waiting',
       rank: NOTICE_RANK.decision,
-      anchor: 'day-foot',
+      anchor: 'day-header',
       tray: () => null,
     });
-    const { dock, anchored } = placeNotices([waiting], new Set(['day-foot']));
+    const { dock, anchored } = placeNotices([waiting], new Set(['day-header']));
 
     expect(dock.map((n) => n.id)).toEqual(['waiting']);
     expect(anchored.size).toBe(0);
@@ -159,22 +169,24 @@ describe('the anchor registry', () => {
   beforeEach(() => resetNoticeAnchors());
 
   it('keeps an anchor live while ANY slot for it is mounted', () => {
-    // A shell swap mounts the incoming slot before unmounting the outgoing one.
-    // Without the refcount the anchor blinks dark in between and the notice
-    // jumps to the dock and back for one commit — the exact flicker this change
-    // exists to remove.
-    const first = registerNoticeAnchor('day-foot');
-    const second = registerNoticeAnchor('day-foot');
+    // Insurance, not a fix, and the difference matters. A shell swap does NOT
+    // exercise this — React runs the outgoing subtree's cleanup before the
+    // incoming subtree's effects, so the count genuinely crosses zero, and what
+    // stops that flickering is that both happen in one commit with no render in
+    // between. Nothing in the app takes an anchor above 1 today. This is here so
+    // a future second slot cannot silently unregister the first.
+    const first = registerNoticeAnchor('day-header');
+    const second = registerNoticeAnchor('day-header');
     first();
 
     const { anchored } = placeNotices(
-      [notice({ id: 'eod-review', anchor: 'day-foot' })],
+      [notice({ id: 'eod-review', anchor: 'day-header' })],
       liveNoticeAnchors()
     );
-    expect(anchored.get('day-foot')).toHaveLength(1);
+    expect(anchored.get('day-header')).toHaveLength(1);
 
     second();
-    expect(placeNotices([notice({ id: 'eod-review', anchor: 'day-foot' })], liveNoticeAnchors()).dock)
+    expect(placeNotices([notice({ id: 'eod-review', anchor: 'day-header' })], liveNoticeAnchors()).dock)
       .toHaveLength(1);
   });
 
@@ -189,6 +201,46 @@ describe('the anchor registry', () => {
       liveNoticeAnchors()
     );
     expect(anchored.get('braindump')).toHaveLength(1);
+  });
+});
+
+/* ── when a slot claims its anchor ───────────────────────────────────── */
+
+describe('a slot registers before anything can paint without it', () => {
+  beforeEach(() => {
+    resetNoticeAnchors();
+    usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC', error: null });
+  });
+  afterEach(cleanup);
+
+  it('is claimed in a LAYOUT effect, not a passive one', () => {
+    /**
+     * React runs every layout effect in a commit before any passive effect in
+     * it, so a passive registration is one commit late and the dock paints a
+     * frame holding a line that is about to move — the flicker this whole change
+     * exists to remove, reintroduced by the fix for it.
+     *
+     * jsdom cannot see a paint, but it CAN see the ordering: a later sibling's
+     * own layout effect runs after the slot's and before any passive effect, so
+     * it observes exactly the difference. useLayoutEffect → [true];
+     * useEffect → [false].
+     */
+    const seen: boolean[] = [];
+    function Reader() {
+      useLayoutEffect(() => {
+        seen.push(liveNoticeAnchors().has('braindump'));
+      });
+      return null;
+    }
+
+    render(
+      <>
+        <NoticeSlot anchor="braindump" />
+        <Reader />
+      </>
+    );
+
+    expect(seen[0]).toBe(true);
   });
 });
 
@@ -341,9 +393,30 @@ describe('the undo strip', () => {
     // and it is its own element so no parent can fade it.
     const expiry = screen.getByTestId('undo-expiry');
     expect(expiry.className).toContain('notice-expiry');
-    expect(expiry.className).toContain('bg-success-text');
     expect(expiry.style.animationDuration).toBe('5000ms');
+
+    // The token, at FULL strength. A bare `toContain('bg-success-text')` also
+    // matches `bg-success-text/40`, which is the accent taking alpha — the exact
+    // thing the palette rule forbids — so the boundary is spelled out.
+    expect(expiry.className).toMatch(/bg-success-text(?![/-])/);
     expect(expiry.className).not.toMatch(/opacity-/);
+  });
+
+  it('has no ancestor that could fade the lime through it', () => {
+    useUndoStripStore.getState().show({ id: 'a1', label: 'Delete task: Swim', durationMs: 5000 });
+    const { container } = render(<UndoStrip />);
+
+    // CLAUDE.md: the lime accent must never be faded through a parent's opacity
+    // — which is why the hairline is its own element. An `opacity-*` anywhere on
+    // the chain from the hairline up to the strip's root re-creates exactly that.
+    let node = screen.getByTestId('undo-expiry').parentElement;
+    let checked = 0;
+    while (node && node !== container) {
+      expect(node.className).not.toMatch(/(^|\s)opacity-/);
+      node = node.parentElement;
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it('carries no title attribute, so it cannot shadow the history control', () => {
@@ -395,12 +468,18 @@ describe('the undo strip', () => {
 });
 
 
-/* ── the day's foot ──────────────────────────────────────────────────── */
+/* ── the day's date ───────────────────────────────────── */
 
 describe('the end-of-day line', () => {
   beforeEach(() => {
     resetNoticeAnchors();
-    usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC', error: null });
+    usePlannerStore.setState({
+      userId: 'u1',
+      userTimezone: 'UTC',
+      error: null,
+      selectedDate: new Date(),
+    });
+    useViewStore.setState({ scope: 'day' });
     useSidebarStore.setState({ leftSidebarOpen: true });
     useEODStore.setState({
       _hasHydrated: true,
@@ -415,27 +494,53 @@ describe('the end-of-day line', () => {
     useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
   });
 
-  it('stands at the foot of TODAY’s column', () => {
-    render(<DayFootNotice dateStr={TODAY} />);
+  it('stands beside today’s date, in the canvas header row', () => {
+    render(<DayHeaderNotice />);
 
     const placed = screen.getByTestId('in-place-notice');
     expect(placed).toHaveAttribute('data-notice-id', 'eod-review');
-    expect(placed).toHaveAttribute('data-notice-anchor', 'day-foot');
+    expect(placed).toHaveAttribute('data-notice-anchor', 'day-header');
   });
 
   it('goes back to the dock when you arrow to another day', () => {
-    // The anchor is "the foot of the day this is about". Under a Thursday it
-    // would be a line about a day that is not on screen, which is the failure
-    // ProgramNotice refuses for the same reason.
+    // The anchor is "the date this is about". Beside a Thursday it would be a
+    // line about a day that is not on screen, which is the failure ProgramNotice
+    // refuses for the same reason.
+    usePlannerStore.setState({ selectedDate: new Date('2026-09-17T12:00:00Z') });
     render(
       <>
-        <DayFootNotice dateStr="2026-09-17" />
+        <DayHeaderNotice />
         <DockNotices />
       </>
     );
 
     expect(screen.queryByTestId('in-place-notice')).toBeNull();
     expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
+  });
+
+  it('goes back to the dock in a week scope, where there is no one date', () => {
+    useViewStore.setState({ scope: 'week' });
+    render(
+      <>
+        <DayHeaderNotice />
+        <DockNotices />
+      </>
+    );
+
+    expect(screen.queryByTestId('in-place-notice')).toBeNull();
+    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
+  });
+
+  it('takes a scope override, for the day-only mobile shell', () => {
+    // MobileViewRouter hardcodes day; a stale `scope: 'week'` can sit in that
+    // shell's persisted blob with no writer able to correct it.
+    useViewStore.setState({ scope: 'week' });
+    render(<DayHeaderNotice scope="day" />);
+
+    expect(screen.getByTestId('in-place-notice')).toHaveAttribute(
+      'data-notice-id',
+      'eod-review'
+    );
   });
 });
 
@@ -454,17 +559,40 @@ describe('the dock', () => {
     useMorningStore.setState({ morningAutoAgeReceiptByUser: {} });
   });
 
-  it('draws ONE row: past that, the fold speaks for the pile', () => {
-    // Two homeless notices — a blocked one, which is pinned here whatever it
-    // claims, and a receipt whose braindump is not mounted. MAX_ROWS is 1 on
-    // both platforms now, so neither gets to stand in for the other: the single
-    // row is the summary.
+  it('never folds a blocked notice away — it shows the row and says “1 more”', () => {
+    // Two homeless notices: a blocked one, pinned here whatever it claims, and a
+    // receipt whose braindump is not mounted. MAX_ROWS is 1, and the naive fold
+    // drew ZERO notice rows and one "2 to answer" — which moves "Couldn't load
+    // your data" from somewhere you have to scroll to, to somewhere you have to
+    // CLICK to. Same failure, different verb.
+    render(<DockNotices />);
+
+    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'sync-error');
+    expect(screen.getByText('Couldn’t load your data')).toBeInTheDocument();
+    const fold = screen.getByTestId('dock-notice-overflow');
+    expect(fold).toHaveAttribute('data-overflow-count', '1');
+    expect(fold).toHaveTextContent('1 more');
+  });
+
+  it('still folds everything when nothing is blocked', () => {
+    // The overrun is for `blocked` alone. Two ordinary notices get the one row
+    // the cap allows, spent on the summary rather than on one of them.
+    usePlannerStore.setState({ error: null });
+    useEODStore.setState({
+      _hasHydrated: true,
+      eodReviewEnabled: true,
+      eodReviewTime: '00:00',
+      lastEodReviewDate: null,
+      eodDeferredDate: null,
+    });
+    useViewStore.setState({ scope: 'week' }); // no day-header anchor to take it
     render(<DockNotices />);
 
     expect(screen.queryAllByTestId('dock-notice')).toHaveLength(0);
     const fold = screen.getByTestId('dock-notice-overflow');
     expect(fold).toHaveAttribute('data-overflow-count', '2');
     expect(fold).toHaveTextContent('2 to answer');
+    useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
   });
 
   it('hangs the strip OUTSIDE the capsule, which is the whole geometry fix', () => {
@@ -488,5 +616,56 @@ describe('the dock', () => {
     const capsule = document.querySelector('[data-dock-surface]');
     expect(capsule!.contains(screen.getByTestId('undo-strip'))).toBe(false);
     useUndoStripStore.setState({ entry: null });
+  });
+
+  it('takes the undo row out of FLOW as well, not just out of the capsule', () => {
+    useUndoStripStore.getState().show({ id: 'u1', label: 'Delete task: Swim', durationMs: 5000 });
+    render(<SidebarDock />);
+    const row = screen.getByTestId('undo-strip');
+
+    /**
+     * Measured, not reasoned. In flow, this row displaced the omnibar by up to
+     * 41px with the chat panel open in a short window — a row that appears and
+     * vanishes on a 5s timer the instant after the user acts, which is the
+     * original complaint being caused by the fix for it. Out of flow it costs
+     * the column 0px at every viewport height. The numbers are in
+     * memory/plans/notices-in-place.md; jsdom lays nothing out, so what is
+     * pinned here is the positioning that produces them.
+     */
+    expect(row.className).toMatch(/(^|\s)absolute(\s|$)/);
+    expect(row.className).toMatch(/(^|\s)bottom-full(\s|$)/);
+    // Out of flow means it overlays the braindump's last row, so it must bring
+    // an opaque ground of its own or it draws on top of text.
+    expect(row.className).toMatch(/(^|\s)bg-\S+/);
+    useUndoStripStore.setState({ entry: null });
+  });
+});
+
+
+/* ── the mobile dock ─────────────────────────────────────────────────── */
+
+describe('the mobile dock', () => {
+  beforeEach(() => {
+    resetNoticeAnchors();
+    seedSweepReceipt();
+    useUndoStripStore.getState().show({ id: 'u1', label: 'Delete task: Swim', durationMs: 5000 });
+  });
+  afterEach(() => {
+    cleanup();
+    useUndoStripStore.setState({ entry: null });
+    useMorningStore.setState({ morningAutoAgeReceiptByUser: {} });
+  });
+
+  it('hangs both strip rows outside the well, as the desktop does', () => {
+    // The phone never had the desktop's squeeze — its dock is the last child of
+    // a fixed-height column, so it grows upward and the well does not move. The
+    // claim being pinned here is the PLACEMENT one the plan makes: the rows are
+    // on the dock, not in it, so the two shells read the same way.
+    render(<MobileBottomDock />);
+
+    const well = document.querySelector('[data-dock-surface]');
+    expect(well).not.toBeNull();
+    expect(well!.contains(screen.getByTestId('dock-notices'))).toBe(false);
+    expect(well!.contains(screen.getByTestId('undo-strip'))).toBe(false);
   });
 });

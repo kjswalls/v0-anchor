@@ -81,17 +81,21 @@ export function MobileBottomDock() {
       // clipped off, while still showing its 10px gap left and right.
       className="px-[10px] pt-2 pb-[max(12px,env(safe-area-inset-bottom,0px))]"
     >
-      {/* THE STRIP, above the well rather than inside it. Same geometry fix as
-          the desktop: the tab content above is flex-1 and absorbs the row, so the
-          well — and therefore the omnibar in it — does not move when the app has
-          something to say. Both children render null when they don't.
+      {/* THE STRIP, above the well rather than inside it.
+          This is a placement change here, not a geometry fix — the phone never
+          had the problem. This dock is the last child of a fixed-height flex
+          column, so it grows upward and the well's bottom edge (and the omnibar
+          in it) measured 0px of movement in every configuration, notices inside
+          the well or above it. What the move buys is one shape across both
+          shells: the app's rows read as the app's rows, on the dock rather than
+          in it.
 
           Mounted on every tab, Beacon included. The point of one voice with one
           address is that going quiet on the tab where the user is talking to
           Beacon would put the two halves of the same conversation on different
           screens. */}
       <DockNoticesMobile />
-      <UndoStrip />
+      <UndoStrip className="mb-1.5" />
 
       <div
         className="rounded-[10px] bg-surface-3 p-[10px] shadow-[var(--shadow-elev-bar)]"

@@ -143,10 +143,15 @@ export function useSweepNotice(): DockNotice | null {
  * interruption, and the case for the line is precisely that it can wait there
  * instead of ambushing whatever the user was doing at 21:00.
  *
- * ANCHORED TO THE FOOT OF TODAY'S COLUMN. The review is about the day ending and
- * the foot of the day is where the day ends. The slot registers only on today,
- * so arrowing to Thursday puts the line back on the dock rather than under a day
- * it is not about.
+ * ANCHORED BESIDE THE DATE, in the canvas header row. The review's object is the
+ * day, and a day's handle is its date — the same argument ProgramNotice makes
+ * from the same address. The slot is live only on today, so arrowing to Thursday
+ * puts the line back on the dock rather than beside a date it is not about.
+ *
+ * It was briefly at the FOOT of the day column, which is where direction E drew
+ * it. That is wrong for a reason the drawing could not know: lib/use-fit-hour-px.ts
+ * keeps 24px below the schedule grid and counts only the chrome above it, so a
+ * row down there is invisible to the fit and makes a compressed day scroll.
  */
 export function useEodNotice(): DockNotice | null {
   const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
@@ -200,7 +205,7 @@ export function useEodNotice(): DockNotice | null {
   return {
     id: 'eod-review',
     rank: NOTICE_RANK.decision,
-    anchor: 'day-foot',
+    anchor: 'day-header',
     icon: Sunset,
     iconClassName: 'text-sunrise-glyph',
     label: <span className="font-semibold">Today’s review is waiting</span>,

@@ -29,8 +29,21 @@ import { cn } from '@/lib/utils';
  *
  * The hairline is the expiry, and it animates WIDTH. Lime never takes alpha in
  * this palette, and it is its own element so no parent can fade it (CLAUDE.md).
+ *
+ * WHY THE CALLER OWNS POSITIONING. On the desktop this row is taken OUT of flow
+ * (`absolute bottom-full`) and overlays the braindump instead of displacing it.
+ * That is not tidiness — it is measured. With the chat panel expanded in a short
+ * window, the sidebar column is already over-constrained, and a 26px row that
+ * appears and vanishes on a 5s timer the instant after the user acts is the
+ * "moves under your cursor" complaint being caused by the fix for it. Out of
+ * flow, it costs the column nothing at any viewport height. The phone keeps it in
+ * flow: its dock is bottom-anchored in a fixed-height column and measured 0px of
+ * movement in every configuration, so there is nothing to take it out of.
+ *
+ * The overlay therefore needs an opaque ground from the caller (it covers a
+ * braindump row) — the surface it would otherwise be sitting on.
  */
-export function UndoStrip() {
+export function UndoStrip({ className }: { className?: string }) {
   const entry = useUndoStripStore((s) => s.entry);
   const dismiss = useUndoStripStore((s) => s.dismiss);
 
@@ -40,7 +53,7 @@ export function UndoStrip() {
     <div
       data-testid="undo-strip"
       data-undo-id={entry.id}
-      className="relative mb-1.5 flex items-center overflow-hidden rounded-[6px]"
+      className={cn('relative flex items-center overflow-hidden rounded-[6px]', className)}
     >
       <div className="flex h-[26px] min-w-0 flex-1 items-center gap-2 px-2">
         <Undo2 className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />

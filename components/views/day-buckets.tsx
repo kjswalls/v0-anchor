@@ -7,7 +7,6 @@ import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
 import { useCurrentBucket } from '@/hooks/use-current-bucket';
-import { DayFootNotice } from '@/components/notices/notice-slot';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
@@ -339,11 +338,6 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
             dateStr={dateStr}
           />
         ))}
-
-        {/* The foot of the day, under the evening bucket: where the day ends is
-            where "today's review is waiting" belongs. Registers the `day-foot`
-            anchor only on today — see DayFootNotice. */}
-        <DayFootNotice dateStr={dateStr} />
       </div>
     </ScrollArea>
   );
