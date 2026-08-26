@@ -46,6 +46,27 @@ const SIGNIFICANT_ACTIONS = [
   'Bulk add:',
 ];
 
+/**
+ * Does this action get said out loud?
+ *
+ * Two ways in, and the second is not a widening of the first. A prefix in the
+ * list above says "this VERB is consequential enough to offer an undo for". A
+ * receipt says something narrower and stronger: the store attached one only
+ * because the result of the action is not visible where the user just put it
+ * (plan decision 11), which is the exact condition this toast exists for — and
+ * it rides verbs far too ordinary to list, `Add task:` first among them. An
+ * item created straight into a program that is currently off is gone from the
+ * grid the moment the dialog closes, and the list alone would let that happen
+ * in silence while the bulk "Add to …" path announced the identical write.
+ *
+ * Exported for the unit test, which is the only place the rule can be checked:
+ * the hook itself needs a store, a subscription and sonner to say anything.
+ */
+export function isToastWorthy(action: { label: string; receipt?: string }): boolean {
+  if (action.receipt) return true;
+  return SIGNIFICANT_ACTIONS.some((prefix) => action.label.startsWith(prefix));
+}
+
 export function useUndoToast() {
   const actionLog = usePlannerStore((state) => state.actionLog);
   const lastActionIdRef = useRef<string | null>(null);
@@ -65,12 +86,7 @@ export function useUndoToast() {
     // Update our reference to the latest action
     lastActionIdRef.current = latestAction.id;
     
-    // Check if this is a significant action that warrants a toast
-    const isSignificant = SIGNIFICANT_ACTIONS.some(prefix => 
-      latestAction.label.startsWith(prefix)
-    );
-
-    if (isSignificant) {
+    if (isToastWorthy(latestAction)) {
       // Dismiss previous toast if exists
       if (toastIdRef.current) {
         toast.dismiss(toastIdRef.current);

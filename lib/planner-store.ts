@@ -642,6 +642,50 @@ function landingReceipt(
 }
 
 /**
+ * The same receipt, for an item CREATED straight into a gate — the item
+ * dialog's Routine and Program chips in add mode.
+ *
+ * setItemsCollected already says this out loud when a selection is collected
+ * into a container that is currently off, and creating an item into one is the
+ * same act arriving by a different door: the row is written, it is a legal
+ * write, and it is not on the surface the user was looking at when they made
+ * it. In EDIT mode the dialog answers this itself — its activation note reads
+ * the live containers and appears the instant the chip is ticked — but in ADD
+ * mode there is no item yet and the dialog closes on save, so this receipt is
+ * the only thing that can speak.
+ *
+ * Both sides are handed in PROSPECTIVELY, and that is the whole difficulty: the
+ * item is not in `state.items` yet and its join rows are not written yet, so
+ * asked against live state the answer is always "visible" — the one answer that
+ * is never useful here. Same reasoning setItemsCollected records, one step
+ * further along: there it is the containers that move, here it is both.
+ *
+ * Only GATE membership is consulted. Goals are an ASPIRE kind and suppress
+ * nothing (lib/container-registry.ts, the three roles), so a goal-only add can
+ * never hide anything and must not be charged for a lookup that says so.
+ */
+function newMemberReceipt(
+  state: { items: Item[]; routines: Routine[]; programs: Program[]; userTimezone: string | null },
+  item: Item,
+  memberships: Memberships | undefined,
+  dateStr?: string,
+): string | undefined {
+  const routineIds = memberships?.routineIds ?? [];
+  const programIds = memberships?.programIds ?? [];
+  if (routineIds.length === 0 && programIds.length === 0) return undefined;
+  return landingReceipt(
+    {
+      items: [...state.items, item],
+      routines: withMembership(state.routines, item.id, routineIds),
+      programs: withMembership(state.programs, item.id, programIds),
+      userTimezone: state.userTimezone,
+    },
+    [item.id],
+    dateStr,
+  );
+}
+
+/**
  * Suppressed open loops right now, for the release-grace diff below.
  *
  * `inactiveItemIdsOn` and not `isItemActiveOn`, deliberately: only open loops
@@ -2018,7 +2062,6 @@ export const usePlannerStore = create<PlannerStore>()(
           return;
         }
         const config = getItemTypeConfig(customType);
-        setNextActionLabel(`Add ${config.label.toLowerCase()}: ${itemData.title}`);
         const timeBucket = autoCorrectBucket(itemData.startTime, itemData.timeBucket);
 
         const item: Item = {
@@ -2032,6 +2075,14 @@ export const usePlannerStore = create<PlannerStore>()(
           order: 0, // custom types aren't manually orderable (created_at sorts)
           projectId: projectIdFor(itemData.project, get().projects),
         };
+        // Labelled AFTER the row is minted, not before: the receipt is a
+        // question about THIS item's id and landing date, and neither exists
+        // until it is built. The label is consumed by the next set() either
+        // way, so the move costs nothing.
+        setNextActionLabel(
+          `Add ${config.label.toLowerCase()}: ${itemData.title}`,
+          newMemberReceipt(get(), item, memberships, startDateOf(item)),
+        );
         set((state) => ({
           ...projectItems([...state.items, item]),
           routines: withMembership(state.routines, item.id, memberships?.routineIds),
@@ -2044,7 +2095,6 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addTask: (taskData, memberships) => {
-        setNextActionLabel(`Add task: ${taskData.title}`);
         const timeBucket = autoCorrectBucket(taskData.startTime, taskData.timeBucket);
 
         const task: TaskItem = {
@@ -2057,6 +2107,16 @@ export const usePlannerStore = create<PlannerStore>()(
           order: get().tasks.length,
           projectId: projectIdFor(taskData.project, get().projects),
         };
+        // Resolved at the item's OWN start date, not today — a task created
+        // for a Monday inside a program that ends on Sunday is exactly the case
+        // decision 11's receipt exists for, and today would answer about the
+        // wrong day. Undated (braindump) items have no landing date but they do
+        // have a landing surface, so they fall back to today like every other
+        // dateless caller.
+        setNextActionLabel(
+          `Add task: ${taskData.title}`,
+          newMemberReceipt(get(), task, memberships, startDateOf(task)),
+        );
         set((state) => ({
           ...projectItems([...state.items, task]),
           routines: withMembership(state.routines, task.id, memberships?.routineIds),
@@ -2899,7 +2959,6 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       addHabit: (habitData, memberships) => {
-        setNextActionLabel(`Add habit: ${habitData.title}`);
         const timeBucket = autoCorrectBucket(habitData.startTime, habitData.timeBucket);
 
         const habit: HabitItem = {
@@ -2915,6 +2974,13 @@ export const usePlannerStore = create<PlannerStore>()(
           currentDayCount: 0,
           groupId: groupIdFor(habitData.group, get().habitGroups),
         };
+        // No date argument: habits are date-blind, so the receipt resolves at
+        // today — the same answer assignHabitToBucket takes, for the same
+        // reason (decision 3).
+        setNextActionLabel(
+          `Add habit: ${habitData.title}`,
+          newMemberReceipt(get(), habit, memberships),
+        );
         set((state) => ({
           ...projectItems([...state.items, habit]),
           routines: withMembership(state.routines, habit.id, memberships?.routineIds),

@@ -1400,7 +1400,16 @@ export function ItemDialog({
         {/* Programs get their own chip rather than sharing the routine one.
             They are different questions — "which routine is this part of" vs
             "which stretch of life does this belong to" — and a merged picker
-            would have to invent a grouping the user never asked for. */}
+            would have to invent a grouping the user never asked for.
+
+            Both chips name GATES, so ticking either can switch the item off on
+            the very date it was created for. Nothing here announces that, on
+            purpose, because the two modes already have their own answer and
+            neither belongs in a popover: EDIT mode has the activation note
+            above (it reads the live containers, so it appears the instant the
+            chip is ticked), and ADD mode gets the store's landing receipt on
+            the undo toast — `newMemberReceipt` in lib/planner-store.ts, the
+            same words the bulk "Add to …" verb uses for the identical write. */}
         {collectionsAvailable && programs.length > 0 && collectible && (
           <PropertyChip
             icon={CalendarRange}

@@ -1160,3 +1160,43 @@ away-count and hover-ghost the minimal switch does not show — and no longer ta
 new-scope button. Discoverability moves to the grouping options, the braindump's folder
 button, and the palette's "Organize routines & programs". **Reversibility rule preserved:**
 "off never leaves the list" now means the Paused-scopes menu, not a rail row.
+
+## Addendum (2026-08-26): decision 11 reaches the CREATE path
+
+Phase 3 recorded that decision 11's receipt "covers the store's move verbs, which is
+every reachable path today — a future verb that writes `startDate` without going
+through them would need its own call." A verb turned up that writes no date at all
+and still lands work out of sight: **creating an item straight into a gate**, through
+the item dialog's Routine and Program chips in add mode.
+
+`addTask` / `addItem` / `addHabit` take a `Memberships` payload so the item row and its
+join rows land in one `set()`. When that payload names a routine or a program that is
+switched off on the item's landing date, the new item is suppressed the moment the
+dialog closes — the same consequence `setItemsCollected` already announces for a bulk
+"Add to …", arriving by a different door. So the add actions now attach the same
+receipt, via `newMemberReceipt` in [lib/planner-store.ts](../../lib/planner-store.ts):
+
+- **Both sides prospective.** The item is not in `items` yet and the join rows are not
+  written yet, so the receipt is resolved against `[...items, item]` and the containers
+  as they will be. Asked against live state the answer is always "visible" — the one
+  answer that is never useful here. `setItemsCollected` already had to move the
+  containers; a create has to move both.
+- **Gates only.** Goals are an ASPIRE kind and suppress nothing, so a goal-only add can
+  never need one (lib/container-registry.ts, the three roles).
+- **Resolved at the item's own start date**, falling back to today for undated and for
+  date-blind habits — the rule `scheduleTask` and `assignHabitToBucket` already follow.
+
+The toast rule moved with it, in [hooks/use-undo-toast.ts](../../hooks/use-undo-toast.ts):
+**an action carrying a receipt is announced whatever its verb.** `Add task:` is far too
+ordinary to earn a place in `SIGNIFICANT_ACTIONS`, and a list of consequential verbs is
+the wrong instrument anyway — a receipt is already the store's statement that this
+particular write is not visible where it was made. One consequence beyond the create
+path, and it is a fix rather than a side effect: `updateTask` has attached a landing
+receipt to `Edit task:` since Phase 3 (the dialog's date chip and EOD's picker arrive
+there rather than at `moveTaskToDate`) and that receipt could never be shown, because
+`Edit task:` is not in the list either.
+
+**Not changed:** activation itself. A gate membership is still exactly what
+`lib/active.ts` says it is — the receipt is a readout of `isItemActiveOn`, computed from
+the same resolver every surface uses, and adding one to the create path gives no
+container a new way to hide anything.
