@@ -210,15 +210,26 @@ describe('validateProposalOperations — updates', () => {
     expect(accepted[0]).toMatchObject({ timeBucket: 'evening' });
   });
 
-  it('drops null field-clears — v1 proposals never clear a field', () => {
+  it('carries field-clears through, alongside ordinary changes', () => {
+    // Was "v1 proposals never clear a field". Clearing is locked decision 3's
+    // first step and is now implemented — see the Braindump block at the foot
+    // of this file for the rules that make it safe. The bucket stays the one
+    // field that may not be cleared alone.
     const { accepted } = validate({
+      kind: 'update',
+      itemId: 'task-1',
+      startDate: null,
+      priority: null,
+      timeBucket: null,
+      title: 'Email Dana back',
+    });
+    expect(accepted[0]).toEqual({
       kind: 'update',
       itemId: 'task-1',
       startDate: null,
       priority: null,
       title: 'Email Dana back',
     });
-    expect(accepted[0]).toEqual({ kind: 'update', itemId: 'task-1', title: 'Email Dana back' });
   });
 
   it('keeps the good operations when one is bad', () => {
@@ -398,5 +409,107 @@ describe('describeOperation', () => {
     expect(
       describeOperation({ kind: 'update', itemId: 'task-1', startDate: 'someday' }, ctx),
     ).toBe('Email Dana — move to someday');
+  });
+});
+
+describe('clearing a field — "put it back in the Braindump"', () => {
+  /**
+   * Locked decision 3's first step, and the reason it waited: clearing a date
+   * is not a null write, it is the UNSCHEDULE verb. `unscheduleTask` drops
+   * startTime, timeBucket and isScheduled with it, and a generic patch that
+   * wrote only the date would leave an item scheduled, bucketed, and on no day
+   * — placeable on no surface and reachable from nowhere.
+   */
+  const scheduled: Item = {
+    type: 'task',
+    id: 'sched-1',
+    title: 'Email Dana',
+    status: 'pending',
+    isScheduled: true,
+    order: 0,
+    completedDates: [],
+    startDate: '2026-08-20',
+    startTime: '09:00',
+    timeBucket: 'morning',
+    priority: 'high',
+  } as Item;
+
+  const repeating: Item = {
+    ...(scheduled as Record<string, unknown>),
+    id: 'repeat-1',
+    repeatFrequency: 'daily',
+  } as Item;
+
+  const localCtx: ProposalContext = {
+    items: [...items, scheduled, repeating],
+    customTypeNames: ['goal'],
+  };
+  const check = (op: ProposalOperation) => validateProposalOperations([op], localCtx);
+
+  it('accepts a cleared date on an item that can live undated', () => {
+    const { accepted, rejected } = check({
+      kind: 'update',
+      itemId: 'sched-1',
+      startDate: null,
+    } as ProposalOperation);
+    expect(rejected).toHaveLength(0);
+    expect(accepted[0]).toMatchObject({ startDate: null });
+  });
+
+  it('refuses it for a repeating item, which would then land on no day at all', () => {
+    // Every day-scoped surface requires `startDate <= today` before recurrence
+    // is consulted. The row's own control does not guard this, but a suggestion
+    // accepted sight-unseen should not be how the user finds out.
+    const { accepted, rejected } = check({
+      kind: 'update',
+      itemId: 'repeat-1',
+      startDate: null,
+    } as ProposalOperation);
+    expect(accepted).toHaveLength(0);
+    expect(rejected[0].reason).toMatch(/repeating/i);
+  });
+
+  it('refuses it for a type that cannot go to the Braindump', () => {
+    // Registry-derived: `braindumpEligible` IS the question "can this item
+    // exist with no date".
+    const { accepted, rejected } = check({
+      kind: 'update',
+      itemId: 'habit-1',
+      startDate: null,
+    } as ProposalOperation);
+    expect(accepted).toHaveLength(0);
+    expect(rejected.length + accepted.length).toBe(1);
+  });
+
+  it('accepts the simple clears, which have no companions', () => {
+    expect(
+      check({ kind: 'update', itemId: 'sched-1', startTime: null } as ProposalOperation)
+        .accepted[0]
+    ).toMatchObject({ startTime: null });
+    expect(
+      check({ kind: 'update', itemId: 'sched-1', priority: null } as ProposalOperation)
+        .accepted[0]
+    ).toMatchObject({ priority: null });
+  });
+
+  it('drops a bucket clear rather than producing an unplaceable row', () => {
+    // An item with a date and no bucket is exactly the row nothing can draw.
+    // "Clear the bucket" is also not a request anyone makes — unscheduling is.
+    const { accepted, rejected } = check({
+      kind: 'update',
+      itemId: 'sched-1',
+      timeBucket: null,
+    } as ProposalOperation);
+    expect(rejected).toHaveLength(0);
+    expect(accepted[0]).not.toHaveProperty('timeBucket');
+  });
+
+  it('reads as Braindump on the card, not as a null', () => {
+    expect(
+      describeOperation(
+        { kind: 'update', itemId: 'sched-1', startDate: null } as ProposalOperation,
+        localCtx
+      )
+    ).toContain('Braindump');
   });
 });

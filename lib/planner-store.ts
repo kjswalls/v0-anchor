@@ -2471,12 +2471,37 @@ export const usePlannerStore = create<PlannerStore>()(
           if (!target) continue;
 
           const updates = { ...rest } as Partial<Task>;
+
+          // A cleared date is the UNSCHEDULE verb, not a null write.
+          //
+          // `unscheduleTask` clears startTime, timeBucket and isScheduled with
+          // it, and this has to match: writing only the date would leave an
+          // item that is `isScheduled` with a bucket and no day — placeable on
+          // no surface, and reachable from nowhere but the Braindump it was
+          // never put in. Validation has already refused this for a recurring
+          // item and for any type that cannot live undated.
+          //
+          // `undefined` rather than `null` because that is how a clear is
+          // spelled everywhere else in the store: `updatesToRow` is
+          // presence-keyed, so a key present-and-undefined writes NULL while an
+          // absent key is left alone.
+          if (rest.startDate === null) {
+            updates.startDate = undefined;
+            updates.startTime = undefined;
+            updates.timeBucket = undefined;
+            updates.isScheduled = false;
+          }
+          // The simple clears: no companions, nothing derived from them.
+          if (rest.startTime === null) updates.startTime = undefined;
+          if (rest.priority === null) updates.priority = undefined;
+
           // Same reason as the create path: the id has to move with the name.
           if (updates.project !== undefined) {
             updates.projectId = projectIdFor(updates.project, state.projects);
           }
           // Same auto-correct the manual edit path applies: a concrete start
-          // time overrides a mismatched bucket.
+          // time overrides a mismatched bucket. Guarded on a REAL time, so
+          // clearing one never reaches it.
           if (updates.startTime) {
             updates.timeBucket = autoCorrectBucket(
               updates.startTime,

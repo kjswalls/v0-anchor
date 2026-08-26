@@ -66,6 +66,7 @@ The shape, exactly:
   "rationale": "one warm sentence explaining the thinking",
   "operations": [
     { "kind": "update", "itemId": "<id from the list>", "startDate": "yyyy-MM-dd", "timeBucket": "morning|afternoon|evening|anytime", "startTime": "HH:mm", "priority": "low|medium|high", "title": "new title", "status": "<a status this item's type allows>" },
+    { "kind": "update", "itemId": "<id from the list>", "startDate": null },
     { "kind": "create", "itemType": "task", "title": "...", "startDate": "yyyy-MM-dd", "timeBucket": "...", "priority": "...", "notes": "..." }
   ]
 }
@@ -73,6 +74,8 @@ The shape, exactly:
 Rules:
 - Only include the fields you actually want to change. Omit everything else.
 - "itemId" MUST be an id from the provided list, copied exactly.
+- "startDate": null moves an item to the Braindump — off the calendar, still on the list, no date attached. Reach for it when something genuinely should not have a day yet: the user has said it is not happening this week, or the day is crowded and this is the piece with no real deadline. It is a kinder answer than shuffling something to a date nobody believes in, and it is often what "I can't face this right now" actually asks for. Not available for repeating items.
+- "startTime": null keeps the day and drops the clock time. "priority": null stops flagging it.
 - Create "task" items unless the user names a different type from the list.
 - Never create habits.
 - Task statuses are pending, completed or cancelled. Habit statuses are pending, done or skipped. Never mix them.

@@ -357,3 +357,95 @@ describe('the agent clock through the store', () => {
     expect(item.aiStatusAt).toBe(original);
   });
 });
+
+describe('applyProposal — moving something back to the Braindump', () => {
+  /**
+   * The reason clearing waited for its own implementation: it is the UNSCHEDULE
+   * verb, not a null write. Writing only the date would leave an item that is
+   * `isScheduled` with a bucket and no day — placeable on no surface, and
+   * reachable from nowhere but the Braindump it was never actually put in.
+   */
+  const clearDate = (itemId: string) =>
+    proposalOf({ kind: 'update', itemId, startDate: null } as ProposalOperation);
+
+  beforeEach(() => {
+    store().updateTask('task-1', {
+      startDate: '2026-07-20',
+      startTime: '09:00',
+      timeBucket: 'morning',
+      isScheduled: true,
+      priority: 'high',
+    });
+    vi.mocked(db.updateItem).mockClear();
+  });
+
+  const live = () => store().items.find((i) => i.id === 'task-1') as Record<string, unknown>;
+
+  it('clears the whole scheduling set, exactly like unscheduleTask', () => {
+    expect(store().applyProposal(clearDate('task-1'))).toBe(1);
+    const item = live();
+    expect(item.startDate).toBeUndefined();
+    expect(item.startTime).toBeUndefined();
+    expect(item.timeBucket).toBeUndefined();
+    expect(item.isScheduled).toBe(false);
+  });
+
+  it('leaves everything it was not asked about alone', () => {
+    store().applyProposal(clearDate('task-1'));
+    expect(live().priority).toBe('high');
+    expect(live().title).toBe('Email Dana');
+  });
+
+  it('persists the clears as present-and-undefined, which writes NULL', () => {
+    // An ABSENT key means "leave alone" to updatesToRow; only a present one
+    // clears. Dropping them would leave the database scheduled while the store
+    // showed it in the Braindump.
+    store().applyProposal(clearDate('task-1'));
+    const written = vi.mocked(db.updateItem).mock.calls.at(-1)?.[2] as Record<string, unknown>;
+    for (const key of ['startDate', 'startTime', 'timeBucket']) {
+      expect(Object.keys(written)).toContain(key);
+      expect(written[key]).toBeUndefined();
+    }
+    expect(written.isScheduled).toBe(false);
+  });
+
+  it('puts it back in one undo', () => {
+    store().applyProposal(clearDate('task-1'));
+    store().undo();
+    const item = live();
+    expect(item.startDate).toBe('2026-07-20');
+    expect(item.timeBucket).toBe('morning');
+    expect(item.isScheduled).toBe(true);
+  });
+
+  it('clears a time without touching the day it belongs to', () => {
+    store().applyProposal(
+      proposalOf({ kind: 'update', itemId: 'task-1', startTime: null } as ProposalOperation)
+    );
+    expect(live().startTime).toBeUndefined();
+    expect(live().startDate).toBe('2026-07-20');
+    // The auto-correct must not fire on a CLEARED time and invent a bucket.
+    expect(live().timeBucket).toBe('morning');
+  });
+
+  it('clears a priority on its own', () => {
+    store().applyProposal(
+      proposalOf({ kind: 'update', itemId: 'task-1', priority: null } as ProposalOperation)
+    );
+    expect(live().priority).toBeUndefined();
+    expect(live().startDate).toBe('2026-07-20');
+  });
+
+  it('applies a clear and a move in the same plan without them fighting', () => {
+    store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: null } as ProposalOperation,
+        { kind: 'update', itemId: 'task-2', startDate: '2026-08-06' } as ProposalOperation
+      )
+    );
+    expect(live().startDate).toBeUndefined();
+    expect(
+      (store().items.find((i) => i.id === 'task-2') as Record<string, unknown>).startDate
+    ).toBe('2026-08-06');
+  });
+});

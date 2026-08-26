@@ -162,14 +162,36 @@ export function validateProposalOperations(
     }
     if (!config.dateAnchored && next.startDate != null) delete next.startDate
 
-    // v1 proposals never CLEAR a field. The schema keeps these nullable so
-    // clearing can be enabled without a wire change, but "move it back to the
-    // Braindump" has real semantics beyond writing NULL (see unscheduleTasks,
-    // which also clears startTime and isScheduled), and half-implementing it
-    // through a generic patch would produce items the grid can't place.
-    for (const key of ['startDate', 'startTime', 'timeBucket', 'priority'] as const) {
-      if (next[key] === null) delete next[key]
+    // CLEARING a field — locked decision 3's first step, and the reason it was
+    // held back: "move it back to the Braindump" has real semantics beyond
+    // writing NULL. `unscheduleTask` clears startTime, timeBucket and
+    // isScheduled along with the date, and a generic patch that wrote only the
+    // date would leave an item the grid cannot place — scheduled, bucketed, and
+    // on no day. `applyProposal` now expands it the same way the store's own
+    // verb does; this decides only WHETHER it is allowed.
+    if (next.startDate === null) {
+      // Registry-derived, not a type check. `braindumpEligible` is exactly the
+      // question "can this item exist with no date", which is what the
+      // Braindump is.
+      if (!config.braindumpEligible) {
+        reject(operation, `${itemTypeName(target)} items cannot go to the Braindump`)
+        continue
+      }
+      if (isRecurring(target)) {
+        // A recurring series with no start date lands on no day at all — every
+        // day-scoped surface requires `startDate <= today` before recurrence is
+        // even consulted. The row's own unschedule control does not guard this,
+        // but a suggestion the user accepts sight-unseen should not be the way
+        // they discover it.
+        reject(operation, 'a repeating item cannot be moved to the Braindump')
+        continue
+      }
     }
+
+    // The bucket is the one field that may NOT be cleared on its own: an item
+    // with a date and no bucket is exactly the unplaceable row above, and
+    // "clear the bucket" is not a request anyone makes — unscheduling is.
+    if (next.timeBucket === null) delete next.timeBucket
 
     accepted.push(next)
   }

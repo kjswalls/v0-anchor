@@ -215,10 +215,14 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
 2. **Proposals stay ephemeral** until item threads are server-persisted. Then the *thread*
    becomes the durable record and proposals stay transient. A resurrected card that
    proposes moving things to a date that has passed is worse than no card.
-3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Today a proposal
-   may create task-shaped items and change title/date/time/bucket/priority/status (status on
-   non-recurring items only). Field-clearing is deliberately next because "put it back in the
-   Braindump" is the most-wanted verb and has real semantics beyond writing NULL.
+3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Subtasks shipped
+   in phase 2e, unschedule in 2h; habits remain out (decision 5 and `containerRequired`).
+
+   *Both halves of the original note held up.* "Put it back in the Braindump" DOES have real
+   semantics beyond writing NULL — it is the `unscheduleTask` verb, clearing startTime,
+   timeBucket and isScheduled with the date, and a generic patch writing only the date leaves
+   an item that is `isScheduled` with a bucket and no day: placeable on no surface, reachable
+   from nowhere but the Braindump it was never actually put in.
 4. **Delegation autonomy stays tight**: propose everywhere; act autonomously only on items
    explicitly delegated, always with a trail and undo. Trust is easier to extend than to
    rebuild, and nothing is built yet, so this is free to loosen later.
@@ -607,6 +611,27 @@ now.
   re-render nothing. The comment and the paragraph above both claimed otherwise; splitting
   the decision (`hasAgentState`, clockless) from the clock (`AgentClock`) is what makes the
   claim true.
+
+**Phase 2h — "put it back in the Braindump". SHIPPED.** Locked decision 3's first step, held
+back until its semantics could be implemented properly rather than as a null write.
+
+- **`applyProposal` expands a cleared date into the whole unschedule set**, exactly as the
+  store's own verb does. `undefined`, not `null`: `updatesToRow` is presence-keyed, so a key
+  present-and-undefined writes NULL while an absent key is left alone — dropping them would
+  leave the database scheduled while the store showed the item in the Braindump.
+- **Two refusals, both registry- or recurrence-derived.** A type that is not
+  `braindumpEligible` cannot go there (that flag IS the question "can this item exist with no
+  date"), and a RECURRING item cannot either — every day-scoped surface requires
+  `startDate <= today` before recurrence is consulted, so a repeating series with no date
+  lands on no day at all. The row's own unschedule control does not guard that; a suggestion
+  the user accepts sight-unseen should not be how they discover it.
+- **`timeBucket: null` stays stripped.** An item with a date and no bucket is precisely the
+  unplaceable row above, and "clear the bucket" is not a request anyone makes — unscheduling
+  is. `startTime: null` (keep the day, drop the clock) and `priority: null` are simple clears
+  and are allowed.
+- **The planner prompt now teaches the verb**, framed as what it is for: the kinder answer
+  when something should not have a day yet, rather than shuffling it to a date nobody
+  believes in. A capability the model is not told about is a capability nobody has.
 
 ### Wiring it up (gateway side)
 
