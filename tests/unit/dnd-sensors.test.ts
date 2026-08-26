@@ -17,9 +17,18 @@ import {
  * claims the finger leaves the TouchSensor's press-and-hold unreachable and the
  * list unscrollable, which is the bug this file guards.
  *
- * The activator is exercised directly rather than through a mounted DndContext:
- * jsdom has no real pointer pipeline, and the thing under test is a pure
- * predicate over the native event.
+ * The activator is exercised directly here because the thing under test is a
+ * pure predicate over the native event, and this is the cheapest way to pin its
+ * edges — the unlabelled `pointerType`, the secondary-pointer gate.
+ *
+ * It is NOT the whole story, and an earlier version of this comment claimed it
+ * was ("jsdom has no real pointer pipeline"). jsdom has one: it implements
+ * PointerEvent and TouchEvent, and a review demonstrated that reverting the
+ * shell to a plain `PointerSensor` — the original bug, exactly — left this file
+ * 9/9 green, because a predicate nobody mounts is still a correct predicate.
+ * `dnd-sensor-pipeline.test.tsx` mounts the shell's own sensor set in a real
+ * DndContext and is the file that goes red on that revert. Both are needed:
+ * this one says the rule is right, that one says the rule is in force.
  */
 
 const activator = NonTouchPointerSensor.activators[0];

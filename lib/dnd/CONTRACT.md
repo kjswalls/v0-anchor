@@ -135,6 +135,15 @@ Two consequences for tests and helpers:
 - A drag driven by *touch* must press and hold ≥250ms, moving <5px, before it
   moves. There is no e2e touch drag today; one would need that hold.
 
+`closestCenter` compares the **dragged element's rect centre**, not the cursor. A helper
+that aims the pointer at the target's centre is aiming at the wrong thing whenever the grab
+point is off-centre on the row.
+
+Both halves of the split are pinned, and it takes both files: `tests/unit/dnd-sensors.test.ts`
+exercises the activator predicate, and `tests/unit/dnd-sensor-pipeline.test.tsx` mounts the
+shell's own `useShellSensors` in a real `DndContext` and drives pointerdown/touchstart
+through it. Only the second goes red if the shell is wired back to a plain `PointerSensor`.
+
 ### The schedule grid's resize handles are mouse/pen only
 
 `components/views/day-schedule.tsx` declines `onResizeDown` for touch pointers.
@@ -142,10 +151,9 @@ The hit zone is 12px tall — unaimable with a fingertip, yet crossed constantly
 a scrolling thumb, and every crossing captured the pointer and wrote a new
 duration on release. It is not a drop target and no ID above changes; the touch
 path to the same edit is the duration field in the item dialog.
-
-`closestCenter` compares the **dragged element's rect centre**, not the cursor. A helper
-that aims the pointer at the target's centre is aiming at the wrong thing whenever the grab
-point is off-centre on the row.
+Covered by `tests/unit/schedule-resize-pointer.test.tsx`, which presses a handle as each
+input type — every other resize test in the suite sends a blank `pointerType`, which reads
+as non-touch and so exercises the mouse path.
 
 ## Helpers
 
