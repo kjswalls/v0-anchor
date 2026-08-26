@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+  <style>
+    :root{
+      --paper-0:oklch(0.986 0.0012 90);--paper-2:oklch(0.996 0 0);--paper-3:oklch(1 0 0);
+      --well:oklch(0.945 0.0015 90);
+      --ink-0:oklch(0.24 0.01 272);--ink-1:oklch(0.5 0.02 272);--ink-2:oklch(0.66 0.03 272);
+      --lime:oklch(0.86 0.17 125);--lime-ink:oklch(0.32 0.07 130);--lime-tint:oklch(0.95 0.05 125);
+      --honey:oklch(0.84 0.11 85);--honey-ink:oklch(0.38 0.08 75);--honey-tint:oklch(0.96 0.035 85);
+      --coral:oklch(0.72 0.14 30);--coral-ink:oklch(0.34 0.09 30);--coral-tint:oklch(0.95 0.03 30);
+      --border:oklch(0.9 0.008 272);--input:oklch(0.86 0.012 272);
+      --accent:oklch(0.22 0.012 272 / 4%);
+      --soft-md:0 2px 4px oklch(0.3 0.02 80 / 5%), 0 8px 24px oklch(0.3 0.02 80 / 7%);
+      --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--paper-0);color:var(--ink-0);
+      font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+    a{color:var(--lime-ink);} a:hover{color:var(--ink-0);}
+    .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);}
+    .note-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);margin:0 0 6px;}
+    .note-p{font-size:13px;line-height:1.55;color:var(--ink-1);margin:0;text-wrap:pretty;}
+    .note-p b{color:var(--ink-0);font-weight:600;}
+    .kbrow{display:flex;gap:6px;}
+    .k{width:44px;height:44px;border-radius:8px;border:1px solid var(--border);background:var(--paper-3);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+      font-size:12px;color:var(--ink-2);flex-shrink:0;}
+    .k .g{font-family:var(--mono);font-size:12px;line-height:1;}
+    .k .c{font-size:7.5px;line-height:1.1;text-align:center;font-weight:500;max-width:40px;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .bound{background:var(--lime-tint);border-color:var(--lime);color:var(--lime-ink);}
+    .mod{background:var(--well);border-color:var(--border);color:var(--ink-2);font-size:11px;}
+    .sel{outline:2px solid var(--lime);outline-offset:2px;}
+    .verdict{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.5;}
+  </style>
+</helmet>
+
+<div style="width:1240px;height:1060px;padding:44px;display:flex;flex-direction:column;gap:26px;background:var(--paper-0);">
+
+  <div style="display:flex;align-items:flex-end;gap:24px;border-bottom:1px solid var(--border);padding-bottom:18px;">
+    <div style="flex-grow:1;display:flex;flex-direction:column;gap:7px;">
+      <span class="eyebrow">Direction E</span>
+      <h1 style="margin:0;font-size:27px;font-weight:600;letter-spacing:-0.02em;">The keymap, not the list</h1>
+      <p style="margin:0;font-size:14px;line-height:1.5;color:var(--ink-1);max-width:700px;text-wrap:pretty;">
+        Nineteen bindings fit on one keyboard. Draw it. A key with a job is filled, a free key is empty, a key whose
+        command is switched off is hollow — and the question a list can never answer, <i>is this key taken</i>, is the
+        one you can see from across the room.
+      </p>
+    </div>
+    <div style="flex-shrink:0;text-align:right;">
+      <span class="eyebrow">Frozen ids</span>
+      <p style="margin:4px 0 0;font-size:12.5px;color:var(--lime-ink);font-weight:600;">Safe</p>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 356px;gap:40px;flex-grow:1;min-height:0;">
+
+    <div style="min-width:0;display:flex;flex-direction:column;gap:18px;">
+
+      <!-- layer switch -->
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;
+                     background:var(--well);font-size:12.5px;font-weight:500;">Plain keys</span>
+        <span style="display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;
+                     font-size:12.5px;color:var(--ink-1);font-family:var(--mono);">&#8984; &middot; 12</span>
+        <span style="display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:8px;
+                     font-size:12.5px;color:var(--ink-1);font-family:var(--mono);">&#8984;&#8679; &middot; 1</span>
+        <span style="margin-left:auto;font-size:11.5px;color:var(--ink-2);">5 of 19 bindings on this layer</span>
+      </div>
+
+      <!-- the board -->
+      <div style="border:1px solid var(--border);border-radius:18px;background:var(--paper-2);
+                  padding:20px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--soft-md);">
+        <div class="kbrow">
+          <div class="k"><span class="g">`</span></div>
+          <div class="k"><span class="g">1</span></div><div class="k"><span class="g">2</span></div>
+          <div class="k"><span class="g">3</span></div><div class="k"><span class="g">4</span></div>
+          <div class="k"><span class="g">5</span></div><div class="k"><span class="g">6</span></div>
+          <div class="k"><span class="g">7</span></div><div class="k"><span class="g">8</span></div>
+          <div class="k"><span class="g">9</span></div><div class="k"><span class="g">0</span></div>
+          <div class="k"><span class="g">-</span></div><div class="k"><span class="g">=</span></div>
+          <div class="k bound" style="width:66px;"><span class="g">&#9003;</span><span class="c">Delete hovered</span></div>
+        </div>
+        <div class="kbrow">
+          <div class="k mod" style="width:66px;"><span class="g">&#8677;</span></div>
+          <div class="k"><span class="g">Q</span></div><div class="k"><span class="g">W</span></div>
+          <div class="k bound"><span class="g">E</span><span class="c">Edit hovered</span></div>
+          <div class="k"><span class="g">R</span></div><div class="k"><span class="g">T</span></div>
+          <div class="k"><span class="g">Y</span></div><div class="k"><span class="g">U</span></div>
+          <div class="k"><span class="g">I</span></div><div class="k"><span class="g">O</span></div>
+          <div class="k"><span class="g">P</span></div><div class="k"><span class="g">[</span></div>
+          <div class="k"><span class="g">]</span></div><div class="k"><span class="g">\</span></div>
+        </div>
+        <div class="kbrow">
+          <div class="k mod" style="width:78px;"><span class="g">&#8682;</span></div>
+          <div class="k"><span class="g">A</span></div><div class="k"><span class="g">S</span></div>
+          <div class="k"><span class="g">D</span></div><div class="k"><span class="g">F</span></div>
+          <div class="k"><span class="g">G</span></div><div class="k"><span class="g">H</span></div>
+          <div class="k"><span class="g">J</span></div><div class="k"><span class="g">K</span></div>
+          <div class="k"><span class="g">L</span></div><div class="k"><span class="g">;</span></div>
+          <div class="k"><span class="g">'</span></div>
+          <div class="k mod" style="width:82px;"><span class="g">&#9166;</span></div>
+        </div>
+        <div class="kbrow">
+          <div class="k mod" style="width:108px;"><span class="g">&#8679;</span></div>
+          <div class="k"><span class="g">Z</span></div><div class="k"><span class="g">X</span></div>
+          <div class="k"><span class="g">C</span></div>
+          <div class="k bound sel"><span class="g">V</span><span class="c">Day/Week</span></div>
+          <div class="k"><span class="g">B</span></div>
+          <div class="k bound"><span class="g">N</span><span class="c">Add task</span></div>
+          <div class="k"><span class="g">M</span></div><div class="k"><span class="g">,</span></div>
+          <div class="k"><span class="g">.</span></div>
+          <div class="k bound" style="position:relative;"><span class="g">/</span><span class="c">Commands</span>
+            <span style="position:absolute;top:3px;right:4px;font-size:8px;font-weight:600;color:var(--lime-ink);
+                         background:var(--paper-3);border-radius:4px;padding:0 3px;">2</span>
+          </div>
+          <div class="k mod" style="width:102px;"><span class="g">&#8679;</span></div>
+        </div>
+        <div class="kbrow">
+          <div class="k mod" style="width:56px;"><span class="g">&#8963;</span></div>
+          <div class="k mod" style="width:56px;"><span class="g">&#8997;</span></div>
+          <div class="k mod" style="width:70px;"><span class="g">&#8984;</span></div>
+          <div class="k mod" style="width:314px;"></div>
+          <div class="k mod" style="width:70px;"><span class="g">&#8984;</span></div>
+          <div class="k mod" style="width:56px;"><span class="g">&#8997;</span></div>
+          <div class="k mod" style="width:58px;"><span class="g">&#8963;</span></div>
+        </div>
+      </div>
+
+      <!-- inspector + the mod layer strip -->
+      <div style="display:flex;gap:16px;align-items:stretch;">
+        <div style="flex-grow:1;border:1px solid var(--border);border-radius:14px;background:var(--paper-3);
+                    padding:13px 16px;display:flex;align-items:center;gap:14px;">
+          <span class="k bound" style="width:38px;height:38px;"><span class="g">V</span></span>
+          <div style="flex-grow:1;min-width:0;">
+            <p style="margin:0;font-size:14px;font-weight:500;">Toggle Day/Week view</p>
+            <p style="margin:2px 0 0;font-size:11.5px;color:var(--ink-2);">View &middot; live now &middot; default binding</p>
+          </div>
+          <span style="font-size:12px;font-weight:500;border:1px solid var(--input);border-radius:8px;padding:5px 12px;">Rebind</span>
+        </div>
+        <div style="width:290px;flex-shrink:0;border:1px solid var(--border);border-radius:14px;
+                    background:var(--paper-2);padding:11px 13px;">
+          <p class="note-h" style="margin-bottom:8px;">On the &#8984; layer</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;K</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;Z</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;I</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;[</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;]</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;\</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;A</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;,</span>
+            <span class="k bound" style="width:auto;height:26px;flex-direction:row;gap:5px;padding:0 8px;font-size:11px;">&#8984;/</span>
+            <span style="height:26px;display:inline-flex;align-items:center;gap:5px;padding:0 8px;font-size:11px;
+                         border:1px dashed var(--honey);border-radius:8px;color:var(--honey-ink);
+                         background:transparent;font-family:var(--mono);">&#8984;0</span>
+            <span style="height:26px;display:inline-flex;align-items:center;font-size:10.5px;color:var(--honey-ink);">hollow = bound, not live</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:18px;min-width:0;">
+      <div>
+        <p class="note-h">Why</p>
+        <p class="note-p">Every other direction answers "what does this command do". None of them answers the question
+          you actually have when you are rebinding: <b>is this key free?</b> Today you find out by recording a key and
+          being refused — the conflict check fires <i>after</i> the attempt. A board shows the answer before you press
+          anything, and nineteen bindings on a hundred keys is a picture with a lot of white in it, which is itself
+          honest information about how sparse this app's keyboard really is.</p>
+      </div>
+      <div>
+        <p class="note-h">Tradeoff</p>
+        <p class="note-p">It is by far the most work, and it does not scale: at forty bindings the board is unreadable
+          and you have built a thing you must then throw away. It is also <b>wrong for the bindings that matter most</b> —
+          &#8984;=, &#8984;- and &#8984;0 sit on a number row nobody looks at, and the layer switch means the twelve
+          &#8984; bindings are never on screen with the five plain ones. <span style="font-family:var(--mono);">?</span>
+          and <span style="font-family:var(--mono);">/</span> are one physical key with two jobs, which the metaphor has
+          to apologise for. And on an iPad there is no keyboard to draw.</p>
+      </div>
+      <div style="background:var(--well);border-radius:12px;padding:13px 15px;">
+        <p class="note-h" style="margin-bottom:7px;">The dead key</p>
+        <p class="note-p" style="font-size:12.5px;">The best reading of the three: a hollow key is <i>visibly</i> holding
+          a binding while doing nothing, and it stays in the same place on the board, so a switched-off extension
+          reads as a gap in your own map rather than a row that vanished.</p>
+      </div>
+      <div style="margin-top:auto;padding-top:14px;border-top:1px solid var(--border);">
+        <p class="verdict"><span style="color:var(--coral-ink);font-weight:600;">Buildable, but earn it.</span>
+          <span style="color:var(--ink-2);">Worth drawing so it can be argued with — and worth stealing one idea from
+          even if it loses: show what is free, not only what is taken.</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
