@@ -308,6 +308,19 @@ export interface SettingRecord {
   desktopOnly?: boolean;
   /** Present but not actionable, with the reason shown inline. */
   unavailable?: (ctx: SettingCtx) => string | null;
+  /**
+   * The store behind this row cannot answer for it YET — a fetch is still in
+   * flight for the signed-in account.
+   *
+   * Distinct from `unavailable`, and the difference is the whole point.
+   * Unavailable is a fact about the deployment and reads as "you can't have
+   * this"; pending is a fact about this second, and a row that renders its
+   * `read()` during it is not showing a value — it is showing a DEFAULT while
+   * claiming to show the user's setting. SettingRow answers a pending row with
+   * a placeholder in the control slot and disables the write path, so the row
+   * reads as loading instead of as off.
+   */
+  pending?: (ctx: SettingCtx) => boolean;
   read: (ctx: SettingCtx) => string | boolean;
   write: (value: string | boolean, ctx: SettingCtx) => void;
   defaultValue: string | boolean;
@@ -331,6 +344,32 @@ const palette = () => usePaletteStore.getState();
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
 const extUnavailable = () =>
   ext().available ? null : 'Needs a database update that has not landed here yet.';
+
+/**
+ * The extensions store has not answered for this account yet.
+ *
+ * `available` is not this question — it is false only once a fetch PROVED the
+ * table isn't deployed, and starts true. In the window before the store's two
+ * queries resolve, `isEnabled()` falls through to `resolveEnabled`'s manifest
+ * default and `configs` is empty, so every row here would render a value no
+ * account ever chose: a Beeminder toggle the server has ON draws as OFF, and a
+ * click on it writes that OFF into the user's row and silently takes a live
+ * stakes integration down. The config fields fail the other way — the store's
+ * own `configsLoaded` guard drops the keystroke with nothing but a console
+ * line, because the write is whole-object and would replace a four-key server
+ * row with the one key in memory.
+ *
+ * This used to be unreachable by accident: the settings page gated its entire
+ * render on planner-store's `isLoading`, the seven-table item load, which the
+ * extensions fetch always won. That gate is now the single-row settings read
+ * (lib/settings/hydration.ts) and the extensions fetch races it, so the window
+ * is real and each row states its own readiness.
+ *
+ * `available &&` so a missing table stays UNAVAILABLE rather than becoming a
+ * spinner that never resolves — hydrate leaves `configsLoaded` false in that
+ * case too, and "needs a database update" is the truer of the two answers.
+ */
+const extPending = () => ext().available && !ext().configsLoaded;
 
 /**
  * The master switch a delivery channel or stake adapter actually rides on.
@@ -411,6 +450,7 @@ function channelRecords(): SettingRecord[] {
       control: 'switch',
       keywords: usable(manifest.name, [...spec.keywords, 'remind', 'nudge', 'notification']),
       unavailable: gated,
+      pending: extPending,
       read: () => ext().isEnabled(spec.slug),
       write: (v, ctx) => {
         if (ctx.userId) ext().setEnabled(ctx.userId, spec.slug, Boolean(v));
@@ -433,6 +473,7 @@ function channelRecords(): SettingRecord[] {
         // that merely restates one is what the manifest's own rule forbids.
         keywords: usable(field.label, [...spec.keywords, ...(field.keywords ?? [])]),
         unavailable: gated,
+        pending: extPending,
         read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
         write: (v, ctx) => {
           if (ctx.userId) ext().setConfigValue(ctx.userId, spec.slug, field.key, String(v).trim());
@@ -1031,6 +1072,7 @@ export const SETTINGS: SettingRecord[] = [
     control: 'switch',
     keywords: ['heatmap', 'history', 'streak', 'grid', 'completion', 'habits'],
     unavailable: extUnavailable,
+    pending: extPending,
     read: () => ext().isEnabled(EXT_HABIT_HEATMAP),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_HABIT_HEATMAP, Boolean(v));
@@ -1045,6 +1087,7 @@ export const SETTINGS: SettingRecord[] = [
     control: 'switch',
     keywords: ['celebrate', 'party', 'fun', 'burst', 'reward', 'dopamine'],
     unavailable: extUnavailable,
+    pending: extPending,
     read: () => ext().isEnabled(EXT_COMPLETION_CONFETTI),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_COMPLETION_CONFETTI, Boolean(v));
