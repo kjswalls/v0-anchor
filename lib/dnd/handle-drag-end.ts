@@ -1,5 +1,7 @@
 import type { TimeBucket } from '../planner-types';
 import { toDateStr } from '../recurrence';
+import { isDropTargetOffered } from './drop-targets';
+import type { DragInput } from './sensors';
 
 /**
  * Pure resolution of a dnd-kit drop into a planner command.
@@ -23,6 +25,17 @@ export type DropCommand =
 export interface DropContext {
   /** What kind of item is being dragged (null → drop is ignored). */
   itemType: 'task' | 'habit' | null;
+  /**
+   * What is driving the gesture — `dragInputOf(event.activatorEvent)`, i.e. the
+   * sensor that actually claimed THIS drag, never a viewport or capability
+   * query. Required rather than defaulted so a new caller has to answer it:
+   * defaulting to `'pointer'` would hand any future call site the desktop
+   * grammar by omission, which is how a touch rule half-reverts.
+   *
+   * Not every target is offered to every input (lib/dnd/drop-targets.ts) — a
+   * drop on one that is withheld resolves to nothing.
+   */
+  input: DragInput;
   /** Project of the dragged task, for the projectblock guard. */
   draggedTaskProject?: string;
   /**
@@ -48,6 +61,21 @@ export function resolveDrop(
 ): DropCommand | null {
   const { itemType } = ctx;
   if (!itemType) return null;
+  /**
+   * The GRAMMAR-LEVEL input rule: what does this id mean for this input?
+   *
+   * Not a backstop for the view's mount gate — a different question, asked at a
+   * different level. The view decides what to OFFER, which is per-view and about
+   * geometry (day-buckets.tsx swaps the sliver for a `spine:` box on touch, so
+   * the finger still gets a target in that gap). This is a total function over
+   * every id shape in lib/dnd/CONTRACT.md and every view that will ever emit
+   * one: an id a view should not have offered resolves to nothing here, rather
+   * than to a time the user cannot see themselves having asked for.
+   *
+   * An id the grammar does not classify passes, so this can only ever subtract
+   * the targets lib/dnd/drop-targets.ts names.
+   */
+  if (!isDropTargetOffered(targetId, ctx.input)) return null;
   const selectedDateStr = toDateStr(ctx.selectedDate, ctx.userTimezone);
 
   // scheduled:{bucket}:{before|after}:{refType}:{refId} | scheduled:{bucket}:empty
@@ -72,6 +100,20 @@ export function resolveDrop(
   // Bare bucket id (outer bucket droppable) — assign without a time
   if ((BUCKET_IDS as readonly string[]).includes(targetId)) {
     const bucket = targetId as TimeBucket;
+    return itemType === 'task'
+      ? { kind: 'schedule-task', taskId: itemId, bucket, dateStr: selectedDateStr }
+      : { kind: 'assign-habit-bucket', habitId: itemId, bucket };
+  }
+
+  // spine:{bucket}:{above|below}:{itemId} — the touch-only stand-in for the
+  // sliver above. Same box, same centre; the COMMAND is the difference. It
+  // assigns the bucket with no time, which is exactly the untimed section's
+  // action — the `{above|below}:{itemId}` tail is there to keep the ids unique
+  // per gap (dnd-kit keys its registry by id) and is deliberately not read.
+  // See lib/dnd/drop-targets.ts for why deleting the sliver instead of
+  // substituting for it re-routes the bottom of a tall card to the next bucket.
+  if (targetId.startsWith('spine:')) {
+    const bucket = targetId.split(':')[1] as TimeBucket;
     return itemType === 'task'
       ? { kind: 'schedule-task', taskId: itemId, bucket, dateStr: selectedDateStr }
       : { kind: 'assign-habit-bucket', habitId: itemId, bucket };

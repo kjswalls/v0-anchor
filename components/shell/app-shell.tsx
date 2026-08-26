@@ -20,6 +20,7 @@ import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
 import {
+  dragInputOf,
   NonTouchPointerSensor,
   POINTER_ACTIVATION_DISTANCE_PX,
   TOUCH_ACTIVATION_DELAY_MS,
@@ -132,6 +133,27 @@ export function useShellSensors() {
       },
     })
   );
+}
+
+/**
+ * Drag start: the two facts the rest of the app reads off a live drag.
+ *
+ * Drag state lives in lib/drag-store (NOT useState here): a shell-level
+ * setState re-rendered the whole app tree before the ghost could paint.
+ *
+ * The second fact is the INPUT TYPE, read from this gesture's activator event
+ * (`dragInputOf`, lib/dnd/sensors.ts) and held for the drag's lifetime. Views
+ * decide which drop targets to mount off it (lib/dnd/drop-targets.ts), so it
+ * has to be known before the first collision pass — which is the render this
+ * `set` schedules.
+ *
+ * At module scope, closing over nothing, and exported for the same reason
+ * `useShellSensors` is: a test that rebuilt this two-liner would pass against a
+ * shell that had gone back to recording the id alone, or to hard-coding
+ * `'pointer'`. `tests/unit/dnd-touch-drop-targets.test.tsx` drives THIS.
+ */
+export function beginDrag(event: DragStartEvent) {
+  useDragStore.getState().startDrag(event.active.id as string, dragInputOf(event.activatorEvent));
 }
 
 /**
@@ -262,15 +284,9 @@ export function AppShell() {
 
   const sensors = useShellSensors();
 
-  // Drag state lives in lib/drag-store (NOT useState here): a shell-level
-  // setState re-rendered the whole app tree before the ghost could paint.
-  const handleDragStart = (event: DragStartEvent) => {
-    useDragStore.getState().setActiveId(event.active.id as string);
-  };
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    useDragStore.getState().setActiveId(null);
+    useDragStore.getState().endDrag();
     if (!over) return;
 
     const itemId = active.id as string;
@@ -283,6 +299,10 @@ export function AppShell() {
 
     const command = resolveDrop(itemId, over.id as string, {
       itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
+      // Re-derived from the same activator event the store was seeded with, not
+      // read back from the store: one source, so the gate that mounted the
+      // targets and the gate that resolves the drop cannot disagree.
+      input: dragInputOf(event.activatorEvent),
       draggedTaskProject: draggedTask?.project,
       selectedDate,
       userTimezone: userTz,
@@ -518,8 +538,16 @@ export function AppShell() {
       id="planner-dnd"
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
+      onDragStart={beginDrag}
       onDragEnd={handleDragEnd}
+      // dnd-kit dispatches CANCEL, not end, on Escape / `touchcancel` /
+      // `cancelDrop` — so without this the store kept `activeId` (and now
+      // `input`) set after an abandoned drag, leaving every drop slot in the
+      // canvas open until the next one. Pre-existing: `setActiveId(null)` only
+      // ever lived in the end handler. Both fields clear together, here as
+      // there, so a cancelled drag can never leave one gesture's input beside
+      // another's id.
+      onDragCancel={() => useDragStore.getState().endDrag()}
       measuring={{
         droppable: {
           strategy: MeasuringStrategy.Always,
