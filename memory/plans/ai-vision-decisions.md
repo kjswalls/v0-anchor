@@ -37,18 +37,26 @@ surfaces that can drift.
 webhook receiver, the setup CLI — and let its *tools* be superseded by MCP once you have
 confirmed a gateway can reach `/api/mcp`. That is a plugin release, so it wants your say-so.
 
-## 3. Webhooks die on serverless — fix now or when it bites?
+## 3. Webhooks die on serverless — ~~fix now or when it bites?~~ DONE
 
-`lib/openclaw-registry.ts` keeps plugin registrations in an **in-process `Map`**. On Vercel
-that dies on cold start and is absent on every other instance, so change notifications are
-unreliable today. It matters more with MCP, because resource subscriptions would be built on
-it.
+`lib/openclaw-registry.ts` kept plugin registrations in an **in-process `Map`** under a
+comment saying "in production this would live in Supabase". Production arrived: on Vercel
+that Map dies with the instance and is absent on every other one, so a plugin registered
+against instance A never heard about a mutation served by instance B. The plugin
+re-registering on startup did not save it — the next cold start lost it again.
 
-**Current state:** untouched; out of scope for tonight.
-**What it would take:** the swap `plugins-themes-store.md` Project B already specifies — a
-Supabase table modelled on `021_item_types.sql` (per-user rows, RLS, jsonb config).
-**My lean:** worth doing before delegation, since "the agent finished" is exactly the event
-you would want pushed rather than polled.
+**Resolved 2026-08-26.** Migration 039 adds `plugin_registrations`, modelled on
+`021_item_types` and **service-role only** like `user_secrets`, because the row carries the
+HMAC signing secret: a browser-readable copy would let any script forge a change event.
+
+Three things about the shape, all in the file's header: the table is the truth and the old
+Map is now a 60-second CACHE (this is called on every mutation, and a query per write to find
+usually-zero rows is a real cost for a rare payoff — and bounded staleness beats "invisible to
+other instances forever"); it degrades to the Map when the table is absent, so a build
+deployed ahead of `db:push` keeps working; and it gates on holding a SERVICE KEY rather than
+on `typeof window`, because `lib/db.ts` reaches this from the browser too and Next inlines
+only `NEXT_PUBLIC_*` — which also stopped the test suite silently skipping every server path
+under jsdom.
 
 ## 4. Delegation kickoff — hooks token, or let the agent spawn it?
 

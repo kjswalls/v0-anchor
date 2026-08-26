@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveUserIdFromApiKey, createServiceClient } from '@/lib/supabase-service'
-import { registeredPlugins, PluginRegistration } from '@/lib/openclaw-registry'
+import { registerPlugin, deregisterPlugin, PluginRegistration } from '@/lib/openclaw-registry'
 
 /**
  * POST /api/agent/register
@@ -76,7 +76,10 @@ export async function POST(req: NextRequest) {
       registeredAt: new Date().toISOString(),
     }
 
-    registeredPlugins.set(`${pluginId}:${userId}`, registration)
+    // Awaited: the response saying "registered" should not beat the row that
+    // makes it true, or a plugin that immediately expects events on another
+    // instance gets none and has no way to tell.
+    await registerPlugin(registration)
     console.log(`[agent/register] "${pluginId}" registered for user ${userId} → ${webhookUrl}`)
   }
 
@@ -92,7 +95,10 @@ export async function DELETE(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { pluginId } = await req.json()
-  registeredPlugins.delete(`${pluginId}:${userId}`)
+  if (typeof pluginId !== 'string' || !pluginId) {
+    return NextResponse.json({ error: 'Missing required field: pluginId' }, { status: 400 })
+  }
+  await deregisterPlugin(userId, pluginId)
 
   return NextResponse.json({ ok: true })
 }
