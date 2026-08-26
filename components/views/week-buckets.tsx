@@ -24,10 +24,11 @@ import { cn } from '@/lib/utils';
 /**
  * Week × Buckets (P5b): seven columns of mini bucket cards. Drops use
  * `week:{yyyy-MM-dd}:{bucket}` per lib/dnd/CONTRACT.md. The selected day is
- * highlighted by its lime header pill; no day is dimmed at rest, and the
- * neighbours recede only while another column is hovered (app/globals.css).
- * Columns keep a min width and snap-scroll so 13" screens see ~4 comfortable
- * columns (per the mockup) instead of 7 crushed ones.
+ * highlighted by its lime header pill; no day is ever dimmed — the day under
+ * the pointer takes a hover wash instead, and nothing here carries an opacity
+ * that could composite the accent marks inside a bucket card. Columns keep a
+ * min width and snap-scroll so 13" screens see ~4 comfortable columns (per the
+ * mockup) instead of 7 crushed ones.
  */
 
 function WeekBucketCell({
@@ -172,20 +173,6 @@ function WeekColumn({
       data-date={format(date, 'yyyy-MM-dd')}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      // Unselected columns used to carry `opacity-75`, then per-element muting
-      // off a `data-dim` flag, because today's column renders the lime
-      // current-bucket segment and fading lime through a parent's opacity is
-      // the one thing the accent rule forbids. Neither survives: BOTH keyed the
-      // recede to selection, so six days out of seven sat muted with the
-      // pointer nowhere near the grid.
-      //
-      // The recede is a hover answer now, and a plain column opacity is enough
-      // for it — because the shared rule in app/globals.css excludes
-      // `[data-today]`, which is the only column that can hold the bead
-      // (WeekBuckets passes `currentBucket` only for today), and `[data-selected]`,
-      // which holds the lime header pill. No lime is ever composited through
-      // this element, so Buckets and Schedule can share one mechanism.
-      data-week-col=""
       // Flex gap for the same reason day-buckets uses it: the cell wrapper is
       // the week:{date}:{bucket} droppable, so spacing must live between the
       // boxes rather than inside one. Also spaces the day header off the stack.
@@ -198,33 +185,60 @@ function WeekColumn({
       // still roughly where the DEFAULT lands, but the stops either side of it
       // are distinct.
       style={{ width: colPx, gap: bucketGap(variant, 'mini') }}
-      // `transition-opacity` for the hover recede above — same as Schedule's
-      // column, so the two views fade at the same rate.
-      className="group/col flex flex-none snap-start flex-col transition-opacity"
+      // The same hover wash Schedule's column takes, so the two views emphasise
+      // identically — see that column for the whole argument.
+      //
+      // Unselected columns here used to carry `opacity-75`, then per-element
+      // muting off a `data-dim` flag; the flag existed because today's column
+      // renders the lime current-bucket segment and fading lime through a
+      // parent's opacity is the one thing the accent rule forbids. Neither
+      // survives, but for the OTHER half of the reason: both keyed the recede
+      // to selection, so six days out of seven sat muted with the pointer
+      // nowhere near the grid.
+      //
+      // What replaces them is emphasis, not recession. That matters most in
+      // THIS view, which already knew a column opacity was not available to it:
+      // a mini bucket card holds completion checkboxes, project rails and
+      // drop-target beads, all lime or accent-ramp, and every one of them would
+      // composite. So no opacity, at rest or on hover, and `data-dim` is gone
+      // with nothing muted left to drive.
+      className="group/col flex flex-none snap-start flex-col rounded-[10px] transition-colors hover:bg-accent"
     >
       <button
         onClick={() => setSelectedDate(date)}
         data-testid="week-column-header"
         className={cn(
-          'flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
+          'group/dayhdr relative flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
           // Ink role on the lime fill — see week-schedule's day header.
-          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2',
-          // An unselected header sits at FULL surface strength: its old
-          // `bg-surface-2/60` was the resting recede, and the recede is the
-          // column's hover job now (see data-week-col above). `hover-wash`
-          // keeps the press affordance the un-muting used to double as — it
-          // layers over the fill instead of replacing it, which is exactly the
-          // case that utility exists for.
-          !selected && 'hover-wash'
+          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
+        {/* An unselected header sits at FULL surface strength — its old
+            `bg-surface-2/60` was half the resting recede — so it needs a hover
+            affordance of its own, and this is it, on its own element.
+            It cannot be `hover:bg-accent`: --accent is translucent and would
+            REPLACE the card's fill rather than sit on it. It cannot be
+            `hover-wash` either, which is the layering answer to exactly that —
+            hover-wash paints a `background-image`, and background-image is not
+            an interpolable property, so under the button's `transition-colors`
+            it snapped on where the old `bg-surface-2/60 → bg-surface-2` faded.
+            A wash element fading its OWN opacity does fade, and it sits behind
+            the two labels (which take `relative` for it), so today's lime date
+            is never composited through it. */}
+        {!selected && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-[10px] bg-accent opacity-0 transition-opacity group-hover/dayhdr:opacity-100"
+          />
+        )}
         <span
           className={cn(
-            'text-sm font-normal uppercase',
+            'relative text-sm font-normal uppercase',
             // Full-strength muted ink, matching Schedule's day header. The old
-            // `/70` was the other half of the resting recede that moved to
-            // hover.
+            // `/70` was the other half of the resting recede, which is gone —
+            // nothing in this view is muted at rest, and now nothing is muted
+            // on hover either.
             selected ? 'text-primary-foreground' : 'text-muted-foreground'
           )}
         >
@@ -232,14 +246,12 @@ function WeekColumn({
         </span>
         <span
           className={cn(
-            'text-sm',
+            'relative text-sm',
             selected
               ? 'font-semibold text-primary-foreground'
               : today
                 ? // `today` stays full-strength lime even on an unselected
-                  // column — it is the same mark the current-bucket bead is,
-                  // and its column is excluded from the hover recede for that
-                  // reason.
+                  // column — it is the same mark the current-bucket bead is.
                   'font-bold text-success-text'
                 : 'font-semibold text-foreground'
           )}
@@ -284,9 +296,6 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
         ref={weekColsRef}
         key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
         data-wide="true"
-        // The row the hover-emphasis rule scopes its `:has()` to; every
-        // `data-week-col` below is a child of it. See app/globals.css.
-        data-week-cols=""
         className={cn(
           'canvas-container flex snap-x snap-mandatory gap-7 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`

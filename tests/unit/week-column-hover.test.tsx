@@ -5,27 +5,25 @@ import { join } from 'node:path';
 import { DndContext } from '@dnd-kit/core';
 
 /**
- * Week day-column emphasis: nothing dimmed at rest, siblings recede on hover.
+ * Week day-column emphasis: nothing is dimmed, the day under the pointer is
+ * washed.
  *
  * Week × Schedule used to render `!selected && 'opacity-60 hover:opacity-100'`,
  * so six days out of seven were faded whether or not the pointer was anywhere
  * near the grid; Week × Buckets did the same thing per-element on its header.
- * The recede is a hover answer now, and it lives in ONE rule in app/globals.css
- * keyed on `[data-week-cols]` / `[data-week-col]`.
+ * The first attempt at fixing that moved the opacity onto the SIBLINGS of a
+ * hovered column, excluding the selected and today columns — which is the bug
+ * this suite mostly exists to keep from coming back. A column opacity composites
+ * everything inside it, and an ordinary Tuesday is full of lime: the accent rail
+ * and start bead of every project-less scheduled block, the completion checkbox
+ * of every done row, the multi-select marks, and any project whose name hashes
+ * to --accent-8. CLAUDE.md: the accent never fades through a parent's opacity.
  *
- * That rule cannot be executed here — jsdom applies no stylesheet and resolves
- * no `:has()` — so this suite splits the contract in two, which is also how it
- * catches the failure mode a single-sided test would miss:
- *
- *   - the MOUNTS supply the hooks the rule selects on, and carry no resting
- *     dim of their own (a stray `opacity-60` would defeat the rule by simply
- *     being there);
- *   - the STYLESHEET still contains the rule, still behind the hover-capable
- *     pointer guard, and still excluding the two columns that hold lime.
- *
- * The exclusions are the accent rule (CLAUDE.md): a column opacity composites
- * everything inside it, and the selected day's header pill, the now-marker and
- * today's current-bucket segment are lime, which never fades through a parent.
+ * So the emphasis is additive — `hover:bg-accent` on the column, a background
+ * that paints BEHIND its own content — and the invariant below is checked the
+ * only way that survives a rewrite of the mechanism: mount the real views with
+ * real lime in an ordinary column, find the accent marks, and walk up from each
+ * one asserting no ancestor fades.
  */
 
 beforeAll(() => {
@@ -75,21 +73,53 @@ import { WeekSchedule } from '@/components/views/week-schedule';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
+import { toDateStr } from '@/lib/recurrence';
+import type { Task } from '@/lib/planner-types';
 
 const TZ = 'UTC';
 /** A Thursday in a week that holds no "today", so every column is an ordinary one. */
-const DATE = new Date('2026-08-13T12:00:00Z');
+const DATE_STR = '2026-08-13';
+const DATE = new Date(`${DATE_STR}T12:00:00Z`);
+/** Tuesday of the same week — neither the selected column nor today. */
+const PLAIN_STR = '2026-08-11';
 
-function seed(selectedDate: Date) {
+const task = (over: Partial<Task>): Task =>
+  ({
+    status: 'pending',
+    isScheduled: true,
+    order: 0,
+    startDate: PLAIN_STR,
+    timeBucket: 'morning',
+    duration: 60,
+    ...over,
+  }) as Task;
+
+/**
+ * Everything lime an ordinary column can hold, all of it filed on PLAIN_STR:
+ *   - a project-LESS timed task, whose block rail and start bead are
+ *     `var(--primary)` (day-schedule's `accent` fallback);
+ *   - a completed untimed task, whose checkbox is `border-primary bg-primary`
+ *     with a `text-primary-foreground` tick inside it.
+ * Neither needs a setting turned on beyond showCompletedTasks, which is on by
+ * default.
+ */
+const limeTasks: Task[] = [
+  task({ id: 'timed', title: 'Unfiled block', startTime: '09:00' }),
+  task({ id: 'done', title: 'Finished thing', status: 'completed', isScheduled: false }),
+];
+
+type PlannerState = Parameters<typeof usePlannerStore.setState>[0];
+
+function seed(over: Partial<PlannerState> = {}) {
   usePlannerStore.setState({
     userId: 'user-1',
     userTimezone: TZ,
-    selectedDate,
+    selectedDate: DATE,
     weekStartDay: 'sunday',
     navDirection: null,
-    tasks: [],
+    tasks: limeTasks,
     habits: [],
-    items: [],
+    items: limeTasks as never,
     projects: [],
     habitGroups: [],
     routines: [],
@@ -97,6 +127,7 @@ function seed(selectedDate: Date) {
     showCompletedTasks: true,
     showPausedOnGrid: true,
     showCurrentTimeIndicator: false,
+    ...over,
   });
   useViewStore.setState({
     canvasGroupBy: 'none',
@@ -115,143 +146,248 @@ const columnViews = () => [
   ['Week × Buckets', <WeekBuckets key="wb" activeId={null} />] as const,
 ];
 
+const columns = (root: ParentNode) =>
+  [...root.querySelectorAll('[data-testid="week-column"]')] as HTMLElement[];
+
+/**
+ * Does this element paint an accent — lime (--primary / --success-text) or a
+ * colour off the user-content ramp, one rung of which (--accent-8) IS lime?
+ * Matches both the utility spelling and the `var()` spelling, in class names and
+ * in inline styles, because the views use all four.
+ */
+const ACCENT =
+  /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|--blk-mk/;
+
+const paintsAccent = (el: HTMLElement) =>
+  ACCENT.test(el.className || '') || ACCENT.test(el.getAttribute('style') ?? '');
+
+/**
+ * The opacity this element applies to itself AND to everything under it.
+ * `null` when it applies none. Covers the utility (`opacity-60`, and any variant
+ * that can latch, e.g. `hover:opacity-60`), the arbitrary form
+ * (`opacity-[0.6]`), and an inline style.
+ */
+function selfOpacity(el: HTMLElement): number | null {
+  const cls = el.className || '';
+  for (const m of cls.matchAll(/(?:^|[\s:])opacity-(?:\[([\d.]+)\]|(\d{1,3}))\b/g)) {
+    const v = m[1] !== undefined ? Number(m[1]) : Number(m[2]) / 100;
+    if (v < 1) return v;
+  }
+  const inline = el.style?.opacity;
+  if (inline && Number(inline) < 1) return Number(inline);
+  return null;
+}
+
+/**
+ * Every STRICT ancestor of `el`, up to and including `root`.
+ *
+ * Strict because the rule is about a parent's opacity: an accent mark fading
+ * ITSELF is how several of them are drawn — a block's multi-select registration
+ * marks rest at `opacity-0` and are revealed by `group-hover/blk:opacity-100`,
+ * which is a reveal, not a dim, and there is nothing above them to composite.
+ */
+function ancestors(el: HTMLElement, root: ParentNode): HTMLElement[] {
+  const chain: HTMLElement[] = [];
+  let cur = el.parentElement;
+  while (cur) {
+    chain.push(cur);
+    if ((cur as ParentNode) === root) break;
+    cur = cur.parentElement;
+  }
+  return chain;
+}
+
 afterEach(cleanup);
-beforeEach(() => seed(DATE));
+beforeEach(() => seed());
 
-describe('the hover-emphasis hooks are on both column views', () => {
-  it('puts every column inside the row the rule scopes its :has() to', () => {
-    // The rule reads `[data-week-cols]:has([data-week-col]:hover) [data-week-col]`.
-    // If a column ever stopped being a DESCENDANT of the marked row — a wrapper
-    // slipped in above the map, say — the selector would quietly match nothing
-    // and the week would simply never emphasise anything.
-    for (const [name, ui] of columnViews()) {
-      const { container } = mount(ui);
-      const rows = container.querySelectorAll('[data-week-cols]');
-      const cols = container.querySelectorAll('[data-week-col]');
+describe('no accent is ever composited through a parent opacity', () => {
+  /**
+   * THE constraint (CLAUDE.md), and the one the first fix broke. It is asserted
+   * against the mounted views rather than against a stylesheet on purpose: a
+   * substring test passes just as happily when the selector has been moved onto
+   * the wrong compound.
+   */
+  it.each([
+    ['Week × Schedule', () => <WeekSchedule activeId={null} />],
+    ['Week × Buckets', () => <WeekBuckets activeId={null} />],
+  ])('%s: nothing above a lime mark fades', (name, ui) => {
+    const { container } = mount(ui());
 
-      expect(rows, name).toHaveLength(1);
-      expect(cols, name).toHaveLength(7);
-      for (const col of cols) expect(rows[0].contains(col), name).toBe(true);
-      cleanup();
-    }
+    const marks = ([...container.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent);
+    // Guard the guard: if the fixture stopped rendering lime this would pass
+    // vacuously, which is exactly how the branch it replaces went green.
+    expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(3);
+
+    const offenders = marks.flatMap((mark) =>
+      ancestors(mark, container)
+        .filter((a) => selfOpacity(a) !== null)
+        .map((a) => `${a.tagName}.${a.className} @${selfOpacity(a)} over ${mark.className}`)
+    );
+    expect(offenders, name).toEqual([]);
   });
 
-  it('marks the same element that carries the selected/today opt-outs', () => {
-    // The exclusions are `:not([data-selected='true']):not([data-today='true'])`
-    // on the SAME compound as `[data-week-col]`. Split across two elements they
-    // would stop excluding anything, and the lime would fade.
-    for (const [name, ui] of columnViews()) {
-      const { container } = mount(ui);
-      for (const col of container.querySelectorAll('[data-week-col]')) {
-        expect(col.getAttribute('data-selected'), name).toMatch(/^(true|false)$/);
-        expect(col.getAttribute('data-today'), name).toMatch(/^(true|false)$/);
-      }
-      // Exactly one selected column — the opt-out is a single day, not a range.
-      expect(container.querySelectorAll('[data-week-col][data-selected="true"]'), name).toHaveLength(1);
-      cleanup();
-    }
-  });
-
-  it('flags today, so the lime opt-out has something to match', () => {
-    // Seeded on the real clock: whichever week that lands in, one of its seven
-    // columns is today, and that is the column holding the now-marker and the
-    // current-bucket bead.
-    seed(new Date());
-    for (const [name, ui] of columnViews()) {
-      const { container } = mount(ui);
-      expect(container.querySelectorAll('[data-week-col][data-today="true"]'), name).toHaveLength(1);
-      cleanup();
-    }
+  it('the lime is in an ORDINARY column — not the selected one, not today', () => {
+    // The exclusions the reverted rule leaned on (`:not([data-selected])`,
+    // `:not([data-today])`) would not have saved any of these.
+    const { container } = mount(<WeekSchedule activeId={null} />);
+    const plain = columns(container).find((c) => c.getAttribute('data-date') === PLAIN_STR)!;
+    expect(plain.getAttribute('data-selected')).toBe('false');
+    expect(plain.getAttribute('data-today')).toBe('false');
+    expect(
+      ([...plain.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent).length
+    ).toBeGreaterThan(0);
   });
 });
 
-describe('nothing is dimmed at rest', () => {
-  it('leaves no resting opacity on any column', () => {
-    // The regression this whole change is about. A resting `opacity-60` would
-    // also beat the stylesheet rule on nothing at all — it is a plain utility,
-    // and the hovered column would have no way back to full.
+describe('the emphasis is a wash on the hovered column', () => {
+  it('gives every column the hover wash, and no column any opacity', () => {
     for (const [name, ui] of columnViews()) {
       const { container } = mount(ui);
-      for (const col of container.querySelectorAll('[data-week-col]')) {
-        expect(col.className, name).not.toMatch(/(^|[\s:])opacity-\d/);
+      const cols = columns(container);
+      expect(cols, name).toHaveLength(7);
+      for (const col of cols) {
+        expect(col.className, name).toContain('hover:bg-accent');
+        // Without this the wash snaps on. `transition-opacity` here would be
+        // the tell that the dim came back.
+        expect(col.className, name).toContain('transition-colors');
+        expect(selfOpacity(col), `${name}: ${col.className}`).toBeNull();
       }
       cleanup();
     }
   });
 
-  it('keeps the unselected Buckets header at full surface and ink strength', () => {
-    // Week × Buckets receded per-element rather than by opacity, because of the
-    // lime bead. Those mutes (`bg-surface-2/60`, `text-muted-foreground/70`,
-    // `text-foreground/70`) were the same resting dim wearing a different hat.
+  it('washes the column itself, not the row that holds them', () => {
+    // On the row, a pointer anywhere — including in the flex gaps between
+    // columns — would light all seven and emphasise nothing.
+    for (const [name, ui] of columnViews()) {
+      const { container } = mount(ui);
+      const rows = new Set(columns(container).map((c) => c.parentElement!));
+      expect(rows.size, name).toBe(1);
+      for (const row of rows) expect(row.className, name).not.toContain('hover:bg-accent');
+      cleanup();
+    }
+  });
+
+  it('washes the selected and today columns too — there is nothing to opt out of', () => {
+    // The reverted mechanism had to exempt these two. This one does not, and a
+    // day that stops responding to the pointer because it happens to be today
+    // is the tell that a recede has crept back in.
+    seed({ selectedDate: new Date() });
+    for (const [name, ui] of columnViews()) {
+      const { container } = mount(ui);
+      const special = columns(container).filter(
+        (c) => c.getAttribute('data-selected') === 'true' || c.getAttribute('data-today') === 'true'
+      );
+      expect(special.length, name).toBeGreaterThan(0);
+      for (const col of special) expect(col.className, name).toContain('hover:bg-accent');
+      cleanup();
+    }
+  });
+
+  it('is not a stylesheet rule keyed on the old column hooks', () => {
+    // The mechanism lives in the components now. `data-week-col`/`data-week-cols`
+    // were the hooks the sibling-dim rule selected on; nothing should re-key a
+    // CSS opacity to them behind the components' back.
+    const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+    expect(css).not.toContain('data-week-col');
+  });
+});
+
+describe('the Buckets day header', () => {
+  it('rests at full surface and ink strength', () => {
+    // Its `bg-surface-2/60`, `text-muted-foreground/70` and `text-foreground/70`
+    // were the resting dim wearing a different hat.
     const { container } = mount(<WeekBuckets activeId={null} />);
     const headers = [...container.querySelectorAll('[data-testid="week-column-header"]')];
     expect(headers).toHaveLength(7);
 
     const unselected = headers.filter(
-      (h) => h.closest('[data-week-col]')?.getAttribute('data-selected') === 'false'
+      (h) => h.closest('[data-testid="week-column"]')?.getAttribute('data-selected') === 'false'
     );
     expect(unselected).toHaveLength(6);
     for (const h of unselected) {
       expect(h.className).toContain('bg-surface-2');
-      // No alpha-fraction utilities anywhere in the header subtree.
       for (const el of [h, ...h.querySelectorAll('*')]) {
         expect(el.className).not.toMatch(/(bg|text)-[a-z-]+\/\d/);
       }
     }
   });
 
-  it('still gives that header a hover affordance, which the un-muting used to be', () => {
+  it('keeps a hover affordance, and one that can actually animate', () => {
+    // `hover-wash` paints a background-image, which is not an interpolable
+    // property — under `transition-colors` it popped where the old
+    // `bg-surface-2/60 → bg-surface-2` faded. The wash is its own element
+    // fading its own opacity instead.
     const { container } = mount(<WeekBuckets activeId={null} />);
-    const unselected = [...container.querySelectorAll('[data-testid="week-column-header"]')].filter(
-      (h) => h.closest('[data-week-col]')?.getAttribute('data-selected') === 'false'
-    );
-    for (const h of unselected) expect(h.className).toContain('hover-wash');
+    const unselected = [
+      ...container.querySelectorAll('[data-testid="week-column-header"]'),
+    ].filter(
+      (h) => h.closest('[data-testid="week-column"]')?.getAttribute('data-selected') === 'false'
+    ) as HTMLElement[];
+    expect(unselected).toHaveLength(6);
+    for (const h of unselected) {
+      expect(h.className).not.toContain('hover-wash');
+      expect(h.className).toContain('group/dayhdr');
+      const wash = h.querySelector('[aria-hidden]');
+      expect(wash, 'the header lost its hover wash element').not.toBeNull();
+      expect(wash!.className).toContain('bg-accent');
+      expect(wash!.className).toContain('transition-opacity');
+      expect(wash!.className).toContain('group-hover/dayhdr:opacity-100');
+      // The wash is absolutely positioned and comes first, so the labels have
+      // to be positioned too or it would paint over today's lime date.
+      for (const label of h.querySelectorAll('span:not([aria-hidden])')) {
+        expect(label.className).toMatch(/(^|\s)relative(\s|$)/);
+      }
+    }
+  });
+});
+
+describe('the now-marker and data-today agree', () => {
+  afterEach(() => vi.useRealTimers());
+
+  /**
+   * `today` was date-fns `isToday`, which reads the MACHINE's calendar day,
+   * while `nowY` is gated on `toDateStr(new Date(), userTimezone)`. One instant
+   * spans 26 hours of offsets, so some timezone always disagrees with the
+   * runner's — pick it rather than assuming the runner is UTC.
+   */
+  it('puts the marker in the column flagged data-today', () => {
+    const instant = new Date('2026-08-26T21:00:00Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(instant);
+
+    const machineDay = toDateStr(instant, Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const tz = ['Pacific/Kiritimati', 'Pacific/Midway', 'UTC'].find(
+      (z) => toDateStr(instant, z) !== machineDay
+    )!;
+    const userDay = toDateStr(instant, tz);
+
+    seed({
+      userTimezone: tz,
+      selectedDate: instant,
+      showCurrentTimeIndicator: true,
+      tasks: [],
+      items: [] as never,
+    });
+
+    const { container } = mount(<WeekSchedule activeId={null} />);
+    const cols = columns(container);
+    const marked = cols.filter((c) => c.querySelector('[class*="now-z"]'));
+    const flagged = cols.filter((c) => c.getAttribute('data-today') === 'true');
+
+    expect(marked, `no now-marker rendered for ${tz}`).toHaveLength(1);
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0].getAttribute('data-date')).toBe(userDay);
+    expect(marked[0]).toBe(flagged[0]);
   });
 });
 
 describe('Week × List is out of scope, and stays out', () => {
-  it('carries no column hooks — it is a stack of day sections, not columns', () => {
+  it('has no day columns to emphasise', () => {
     // Same line lib/week-columns.ts draws with isScalableLayout: schedule and
-    // buckets have day columns, list does not. There are no siblings to recede
-    // against in a vertical agenda, and it dims nothing at rest already.
+    // buckets have day columns, list does not. There are no siblings in a
+    // vertical agenda, and it dims nothing already.
     const { container } = mount(<WeekList />);
-    expect(container.querySelectorAll('[data-week-cols]')).toHaveLength(0);
-    expect(container.querySelectorAll('[data-week-col]')).toHaveLength(0);
-  });
-});
-
-describe('the stylesheet still holds up its half', () => {
-  const globalsCss = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
-
-  /** The rule body, from its media guard to the closing brace of the block. */
-  const block = (() => {
-    const at = globalsCss.indexOf('@media (hover: hover) and (pointer: fine)');
-    expect(at, 'the hover-emphasis rule is gone from app/globals.css').toBeGreaterThan(-1);
-    return globalsCss.slice(at, globalsCss.indexOf('\n}\n', globalsCss.indexOf('opacity', at)));
-  })();
-
-  it('is gated on a hover-capable, fine pointer', () => {
-    // A touch tablet is wide enough for the desktop shell, and there `:hover`
-    // sticks after a tap — six columns would stay dimmed with no way back.
-    expect(block).toContain('@media (hover: hover) and (pointer: fine)');
-  });
-
-  it('engages off a COLUMN hover, not the row itself', () => {
-    // The row's flex gaps belong to the row. Hanging this off `[data-week-cols]:hover`
-    // would recede all seven whenever the pointer crossed a gap.
-    expect(block).toContain('[data-week-cols]:has([data-week-col]:hover)');
-    expect(block).toMatch(/\[data-week-col\]:not\(:hover\)/);
-  });
-
-  it('never composites the lime columns', () => {
-    // CLAUDE.md: the accent must not fade through a parent's opacity. These two
-    // exclusions are the whole reason Week × Buckets can share the mechanism it
-    // once had to refuse.
-    expect(block).toContain(":not([data-selected='true'])");
-    expect(block).toContain(":not([data-today='true'])");
-  });
-
-  it('recedes rather than hides', () => {
-    expect(block).toMatch(/opacity:\s*0\.6;/);
+    expect(container.querySelectorAll('[data-testid="week-column"]')).toHaveLength(0);
   });
 });
