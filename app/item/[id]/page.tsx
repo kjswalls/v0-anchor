@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ChevronLeft, Moon, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
+import type { ItemDialogState } from '@/components/planner/item-dialog';
 import {
   ItemDetailSections,
   ItemThread,
@@ -28,6 +29,37 @@ import { cn } from '@/lib/utils';
  * SupabaseProvider hydrates the store when a session exists; without one this
  * page simply has no items and shows the not-found state with a sign-in link.
  */
+
+/* ── The editor, deferred until Edit is pressed ────────────────────────────
+   ItemDialog is the app's largest single component and it drags react-day-picker
+   in behind it (the start-date field). Deferring it takes 90.3 kB gzip off this
+   route's first load (396,875 → 306,564 bytes: clean production builds of both
+   commits, the route's own script tags, shared chunks deduped, gzip -9) — for a
+   panel that opens on a button press and is closed on arrival every time. What
+   is left is 7.8 kB above /ledger, the lightest route in the app and so the
+   nearest thing to the baseline every route pays. /ledger itself moved +210
+   bytes across the same pair of builds, which is the noise floor these deltas
+   sit on.
+
+   `ssr: false` because the panel renders nothing while closed, and the page it
+   sits on has no session server-side to render an item from anyway.
+
+   MOUNTED ON FIRST OPEN AND KEPT, never unmounted on close: next/dynamic
+   fetches the chunk when the component first RENDERS, so leaving it mounted at
+   `state={null}` would download it on page load and split nothing. `everOpened`
+   below is that latch, and the DOWNLOAD is its whole justification — there is
+   no exit animation here to protect: `presentation="panel"` hard-returns null
+   while closed (see SurfaceContent, whose own note says the e2e suite asserts
+   the surface reaches count 0 after a close). Unmounting on close would defer
+   the download just as well — `{editState && …}` needs no latch at all — and is
+   not chosen only because the app's other two ItemDialogs live mounted for the
+   whole session (see the trashed-names fetch inside it, gated on `state` for
+   exactly that reason), so this one matches them rather than inventing a third
+   lifecycle. */
+const ItemDialog = dynamic(
+  () => import('@/components/planner/item-dialog').then((m) => m.ItemDialog),
+  { ssr: false }
+);
 
 function Square({ color, className }: { color: string; className?: string }) {
   return (
@@ -53,19 +85,32 @@ function StaticChip({ children, testId }: { children: React.ReactNode; testId?: 
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
-  const {
-    items,
-    userId,
-    isLoading,
-    getProjectColor,
-    getHabitGroupColor,
-    userTimezone,
-    routines,
-    programs,
-  } = usePlannerStore();
+  /* Field selectors, not the whole store. `usePlannerStore()` bare subscribes
+     to the store OBJECT, which zustand replaces on EVERY set(), so this page
+     re-rendered its whole thread on any planner mutation anywhere in the app.
+     Said honestly: no such tick was found reaching this route while it sits
+     idle. The obvious candidate is not one — hover writes go to a module ref
+     (lib/hovered-item.ts), planner-store's `setHoveredItem` has no caller left
+     in the repo, and SubtasksSection renders its own rows rather than TaskRow.
+     So this is not a fix for an observed stall; it is a narrowing that is
+     correct and free, on a page whose only live input is one item. Selecting
+     the item itself rather than `items` narrows it further: `find` returns the
+     same object identity until that one row actually changes. */
+  const item = usePlannerStore((s) => s.items.find((i) => i.id === id));
+  const userId = usePlannerStore((s) => s.userId);
+  const isLoading = usePlannerStore((s) => s.isLoading);
+  const getProjectColor = usePlannerStore((s) => s.getProjectColor);
+  const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
-
-  const item = items.find((i) => i.id === id);
+  // Latched on the first Edit press — see the note on the dynamic import.
+  const [everOpened, setEverOpened] = useState(false);
+  const openEditor = useCallback((next: ItemDialogState) => {
+    setEverOpened(true);
+    setEditState(next);
+  }, []);
 
   if (!item) {
     // initializeStore stamps userId BEFORE the items fetch resolves, so
@@ -152,7 +197,7 @@ export default function ItemPage() {
             variant="outline"
             size="sm"
             data-testid="item-page-edit"
-            onClick={() => setEditState({ mode: 'edit', item })}
+            onClick={() => openEditor({ mode: 'edit', item })}
           >
             <Pencil className="size-3.5" />
             Edit
@@ -211,14 +256,16 @@ export default function ItemPage() {
           overlay (edit mode drops the scrim, so nothing would explain why).
           withDetailSections={false} because those sections are already on the
           page — the panel beside them must not mount a second live copy. */}
-      <div className="fixed inset-y-3 right-3 z-30">
-        <ItemDialog
-          presentation="panel"
-          state={editState}
-          withDetailSections={false}
-          onOpenChange={(open) => !open && setEditState(null)}
-        />
-      </div>
+      {everOpened && (
+        <div className="fixed inset-y-3 right-3 z-30">
+          <ItemDialog
+            presentation="panel"
+            state={editState}
+            withDetailSections={false}
+            onOpenChange={(open) => !open && setEditState(null)}
+          />
+        </div>
+      )}
     </main>
   );
 }
