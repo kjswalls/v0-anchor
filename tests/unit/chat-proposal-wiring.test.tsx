@@ -12,18 +12,21 @@ import { render, screen, fireEvent } from '@testing-library/react';
  */
 
 const send = vi.fn();
+const stop = vi.fn();
 const requestProposal = vi.fn();
 
 let messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 let provider = 'openai';
 let proposalStatus = 'idle';
+let isLoading = false;
 
 vi.mock('@/lib/chat-store', () => ({
   useChatStore: () => ({
     messages,
-    isLoading: false,
+    isLoading,
     isTyping: false,
     send,
+    stop,
     hydrate: vi.fn(),
     syncOpenclawInfo: vi.fn(),
     openclawAgentIdDisplay: null,
@@ -64,7 +67,9 @@ const PLAN_BUTTON = 'chat-make-plan';
 
 beforeEach(() => {
   send.mockClear();
+  stop.mockClear();
   requestProposal.mockClear();
+  isLoading = false;
   messages = [];
   provider = 'openai';
   proposalStatus = 'idle';
@@ -220,6 +225,41 @@ describe('turning a conversation into a plan', () => {
     messages = [
       { role: 'user', content: 'a' },
       { role: 'assistant', content: '' },
+    ];
+    renderChat();
+    expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
+  });
+});
+
+describe('interrupting a reply', () => {
+  /**
+   * The store could always abort (`abortController.abort()`), and `send`'s
+   * finally clears isLoading either way — there was simply no way to ask. The
+   * send button is disabled while streaming, so this occupies a dead slot.
+   */
+  it('offers a stop button while a reply is streaming', () => {
+    isLoading = true;
+    messages = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'partial' },
+    ];
+    renderChat();
+    fireEvent.click(screen.getByTestId('chat-stop'));
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('is absent when nothing is streaming', () => {
+    messages = [{ role: 'user', content: 'a' }];
+    renderChat();
+    expect(screen.queryByTestId('chat-stop')).toBeNull();
+  });
+
+  it('does not offer a plan while the reply is still arriving', () => {
+    // Half an answer is not something to turn into planner changes.
+    isLoading = true;
+    messages = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'half an ans' },
     ];
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();

@@ -374,6 +374,28 @@ Untested against a real gateway, like everything else in the transport — the p
 shares `assertAllowedGatewayUrl` and the wire shape with chat, so the same first probe
 exercises both.
 
+**Phase 2d — three ways out of a card that is nearly right. SHIPPED.**
+
+The card had exactly two exits, and both were all-or-nothing: take the whole plan, or close
+it and be where you started. That is the wrong shape for a trust-building primitive — the
+common failure is not a wrong plan, it is a plan with one wrong line in it.
+
+- **Drop a line before accepting.** Every line is a toggle, all ticked by default (opting
+  into each of six would turn one tap into six). `accept(operations?)` narrows to the ticked
+  subset and still makes exactly ONE `applyProposal` call, so partial acceptance is still
+  one `set()` and still one Cmd+Z. The button counts what will actually happen, so it can
+  never promise more than what is ticked. Selection is tagged with the proposal id and
+  derived during render — indices are positional, and an effect would reset a render late,
+  after a paint showing the previous card's ticks on the new card.
+- **"Something else"** re-asks with what was already turned down (`retry`, capped at three
+  carried summaries). The original ask is stored verbatim and the rejections re-composed
+  onto it each time, so retries do not decorate each other's decoration. Hidden on
+  `catch-up`, which is a pure function of the planner and would return the same items — a
+  retry that cannot differ is a button that lies.
+- **A stop button for chat.** `chat-store.stop()` has always been able to abort, and
+  `send`'s `finally` clears `isLoading` on either transport; there was simply no way to ask.
+  It takes the slot the send button occupies while disabled during a stream.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

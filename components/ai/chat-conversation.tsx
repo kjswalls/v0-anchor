@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User, Wand2 } from 'lucide-react';
+import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User, Wand2, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { OnboardingChat } from '@/components/ai/onboarding-chat';
@@ -41,7 +41,7 @@ interface ChatConversationProps {
  * replaces the duplicated bodies of chat-sidebar and mobile-chat-panel.
  */
 export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHeader }: ChatConversationProps) {
-  const { messages, isLoading, isTyping, send, hydrate, syncOpenclawInfo, openclawAgentIdDisplay } =
+  const { messages, isLoading, isTyping, send, stop, hydrate, syncOpenclawInfo, openclawAgentIdDisplay } =
     useChatStore();
   const aiProvider = useAISettingsStore((s) => s.provider);
   const aiApiKey = useAISettingsStore((s) => s.apiKey);
@@ -399,7 +399,21 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
             >
               <Plus className={cn(isMobile ? 'h-5 w-5' : 'h-4 w-4')} />
             </Button>
-            {input.trim() ? (
+            {isLoading ? (
+              /* A reply that has started going wrong is worth interrupting, and
+                 the store has always been able to (`abortController.abort()`)
+                 — there was simply no way to ask. The send button is disabled
+                 while streaming anyway, so this occupies a slot that was dead. */
+              <Button
+                size="icon"
+                className={cn('rounded-full', isMobile ? 'h-9 w-9' : 'h-8 w-8')}
+                onClick={stop}
+                aria-label="Stop generating"
+                data-testid="chat-stop"
+              >
+                <Square className={cn('fill-current', isMobile ? 'h-3.5 w-3.5' : 'h-3 w-3')} />
+              </Button>
+            ) : input.trim() ? (
               <Button
                 size="icon"
                 className={cn('rounded-full', isMobile ? 'h-9 w-9' : 'h-8 w-8')}

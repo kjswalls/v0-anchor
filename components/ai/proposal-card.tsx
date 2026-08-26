@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Sparkles, Loader2, Check } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProposalStore } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -17,16 +17,50 @@ import { cn } from '@/lib/utils';
  * do. Lines say where things land, the dismiss verb is "Not now" (a deferral,
  * not a refusal), and the empty state is good news rather than an absence.
  */
+/** Shared empty selection — every card starts here, so it need not be rebuilt. */
+const NONE_DROPPED: ReadonlySet<number> = new Set();
+
 export function ProposalCard({ className }: { className?: string }) {
   const proposal = useProposalStore((s) => s.proposal);
   const status = useProposalStore((s) => s.status);
   const error = useProposalStore((s) => s.error);
   const emptyMessage = useProposalStore((s) => s.emptyMessage);
   const accept = useProposalStore((s) => s.accept);
+  const retry = useProposalStore((s) => s.retry);
   const dismiss = useProposalStore((s) => s.dismiss);
+  // Only a model-backed ask has a different answer in it; catch-up is a pure
+  // function of the planner and would return the same five items.
+  const canRetry = useProposalStore((s) => s.lastRequest?.intent === 'ask');
 
   const items = usePlannerStore((s) => s.items);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
+
+  /**
+   * Lines the user has ticked off, by index, tagged with the proposal they
+   * belong to.
+   *
+   * All-in by default: the card is an offer, and making someone opt into each
+   * line one at a time would turn one tap into six. Dropping the one line that
+   * is wrong is the common case, and it should not cost the whole plan.
+   *
+   * The id travels WITH the selection so a new card's state is derived during
+   * render rather than synchronised by an effect. Indices are positional, so a
+   * selection carried across cards would silently drop whichever line landed
+   * where a dropped one used to be — and an effect would reset it a render
+   * late, after a paint showing the previous card's ticks on the new one.
+   */
+  const [selection, setSelection] = useState<{
+    proposalId: string | null;
+    dropped: ReadonlySet<number>;
+  }>(() => ({ proposalId: null, dropped: NONE_DROPPED }));
+
+  const dropped = selection.proposalId === (proposal?.id ?? null) ? selection.dropped : NONE_DROPPED;
+
+  const toggle = (index: number) => {
+    const next = new Set(dropped);
+    if (!next.delete(index)) next.add(index);
+    setSelection({ proposalId: proposal?.id ?? null, dropped: next });
+  };
 
   const lines = useMemo(() => {
     if (!proposal) return [];
@@ -84,6 +118,24 @@ export function ProposalCard({ className }: { className?: string }) {
 
   if (!proposal) return null;
 
+  const keeping = proposal.operations.filter((_, index) => !dropped.has(index));
+
+  /**
+   * The label counts what will actually happen, so the button never promises
+   * more than the ticked lines. "Do all of it" survives only while all of it is
+   * still on the table.
+   */
+  const acceptLabel =
+    keeping.length === 0
+      ? 'Nothing selected'
+      : keeping.length === proposal.operations.length
+        ? keeping.length === 1
+          ? 'Do it'
+          : 'Do all of it'
+        : keeping.length === 1
+          ? 'Do just that one'
+          : `Do these ${keeping.length}`;
+
   return (
     <div className={shell} data-testid="proposal-card">
       <div className="flex items-start gap-2">
@@ -100,21 +152,54 @@ export function ProposalCard({ className }: { className?: string }) {
 
       {/* Plain overflow container, not <ScrollArea> — the Radix wrapper silently
           drops max-h, and this list has to stay capped. */}
-      <ul className="mt-2.5 max-h-48 space-y-1 overflow-y-auto pl-6">
-        {lines.map((line) => (
-          <li key={line.key} className="flex gap-1.5 text-xs text-foreground/90">
-            <span aria-hidden className="select-none text-muted-foreground">
-              •
-            </span>
-            <span className="min-w-0 flex-1">{line.text}</span>
-          </li>
-        ))}
+      <ul className="mt-2.5 max-h-48 space-y-0.5 overflow-y-auto pl-6">
+        {lines.map((line, index) => {
+          const isDropped = dropped.has(index);
+          return (
+            <li key={line.key}>
+              <button
+                type="button"
+                onClick={() => toggle(index)}
+                aria-pressed={!isDropped}
+                data-testid="proposal-line"
+                data-dropped={isDropped || undefined}
+                className={cn(
+                  'flex w-full gap-1.5 rounded px-1 py-0.5 text-left text-xs transition-colors hover:bg-muted/60',
+                  isDropped ? 'text-muted-foreground/60 line-through' : 'text-foreground/90'
+                )}
+              >
+                <span aria-hidden className="select-none text-muted-foreground">
+                  {isDropped ? '×' : '•'}
+                </span>
+                <span className="min-w-0 flex-1">{line.text}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
 
-      <div className="mt-3 flex items-center gap-2 pl-6">
-        <Button size="sm" className="h-7 px-3 text-xs" onClick={() => accept()}>
-          {proposal.operations.length === 1 ? 'Do it' : 'Do all of it'}
+      <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
+        <Button
+          size="sm"
+          className="h-7 px-3 text-xs"
+          disabled={keeping.length === 0}
+          onClick={() => accept(keeping)}
+          data-testid="proposal-accept"
+        >
+          {acceptLabel}
         </Button>
+        {canRetry && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            onClick={() => retry()}
+            data-testid="proposal-retry"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Something else
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
