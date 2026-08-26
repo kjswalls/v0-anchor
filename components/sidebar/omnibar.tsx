@@ -1023,10 +1023,38 @@ export function Omnibar({
                   ? (activeCommand.argument?.placeholder ?? '')
                   : isLauncher
                     ? 'Search, add a task, run a command, or ask Beacon…'
-                    : // Dock leans capture: lead with the everyday action. Search
-                      // and commands still work here (and live under ⌘K); the
-                      // hint row below still advertises the + / command / ? prefixes.
-                      'Add a task…'
+                    : // Dock leans capture: LEAD with the everyday action, then
+                      // name enough of the rest that the bar does not read as a
+                      // single-purpose add field. It used to say only "Add a
+                      // task…", which undersold three of the four modes at the
+                      // one moment the bar is being looked at and not used.
+                      //
+                      // Deliberately NOT the launcher's line above. The split is
+                      // the point: the launcher opens as a command surface and so
+                      // leads with search and spells out "run a command"; the dock
+                      // rests as a capture bar and only widens from there. Commands
+                      // are the omission that pays for the width — they are the
+                      // launcher's headline, they live under ⌘K, and the hint row
+                      // below still advertises the + / command / ? prefixes the
+                      // moment this bar is focused.
+                      //
+                      // Width is the other constraint. Measure with the app's OWN
+                      // ramp, not Tailwind's: this input is `text-sm`, and
+                      // app/globals.css redefines --text-sm to 12px (not 16, not
+                      // 14). At 12px Inter this string is ~162px.
+                      //
+                      // Desktop: SIDEBAR_MIN_WIDTH is 280px, less the dock's
+                      // px-[10px] well and the pill's px-[22px] = 216px of text
+                      // column. Phone: the row pays px-[10px] outside, p-[10px]
+                      // inside, the 44px mode card and its gap-2, then the pill's
+                      // own px-[22px] — viewport − 136, so 254px on a 390pt phone
+                      // and 184px at 320pt. 320pt is the tightest case and still
+                      // leaves ~22px. Fits everywhere without a fallback. A
+                      // longer line does not break the layout (a placeholder clips
+                      // rather than overflows) but it does get truncated mid-word,
+                      // which is worse copy than a shorter honest one. Measure
+                      // before lengthening.
+                      'Add a task, search, or chat…'
               }
               aria-label="Omnibar"
               // cmdk gives this input role="combobox", and Playwright's
