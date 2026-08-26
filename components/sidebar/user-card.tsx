@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { RELAY } from '@/lib/relay-config';
 import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
@@ -45,6 +46,7 @@ export function UserCard() {
   const router = useRouter();
   const { habits, actionLog, historyIndex, undo, redo, canUndo, canRedo } = usePlannerStore();
   const openDialog = useUIStore((s) => s.openDialog);
+  const organizeOn = useOrganizeEnabled();
 
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -212,10 +214,22 @@ export function UserCard() {
               thing from the log it sits under: the log is this session, this is
               the last thirty days.
             */}
+            {/* The one door to the trash, and it rides the Organize console —
+                so with the console off it is INERT rather than absent, and says
+                which switch brings it back. Hiding it would make deleted work
+                look unrecoverable, which is worse than a shut door: the rows are
+                still in the table, still inside their thirty days, and still
+                restorable the moment the console comes back. */}
             <div className="mt-2 border-t border-border pt-1.5">
               <button
                 type="button"
                 onClick={() => openDialog({ type: 'organize', section: 'trash' })}
+                disabled={!organizeOn}
+                title={
+                  organizeOn
+                    ? undefined
+                    : 'Organize is off — switch it on in Settings → Extensions'
+                }
                 data-testid="history-trash-door"
                 className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >

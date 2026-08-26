@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { X } from 'lucide-react';
 import {
@@ -11,12 +11,13 @@ import {
   ResponsiveModalDescription,
 } from '@/components/ui/responsive-modal';
 import {
-  CONSOLE_SECTIONS,
   ConsoleRail,
+  consoleSectionsFor,
   isConsoleSection,
   sectionMeta,
   type ConsoleSection,
 } from './console-rail';
+import { useExtensionPredicate } from '@/lib/extension-gates';
 import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
@@ -79,7 +80,26 @@ export function OrganizeConsole({
   focusId,
   focusNew,
 }: OrganizeConsoleProps) {
-  const initial: ConsoleSection = isConsoleSection(section) ? section : 'routines';
+  /**
+   * The sections this account actually has, and the console's own gate.
+   *
+   * Each row names the extension it rides (console-rail.tsx), so with the
+   * Organize console off and Goals on this is exactly one section — the place a
+   * goal is made — and with both off it is empty, which is not a console at all.
+   *
+   * `initial` therefore falls back to the first AVAILABLE section rather than
+   * to the hard-coded 'routines': a deep link to a gated section (the settings
+   * destination rows, the palette, an old bookmark) must land somewhere real
+   * instead of on a tab with no trigger in the rail, which Radix renders as an
+   * empty plate.
+   */
+  const isOn = useExtensionPredicate();
+  const sections = useMemo(() => consoleSectionsFor(isOn), [isOn]);
+  const unavailable = sections.length === 0;
+  const requested: ConsoleSection | null = isConsoleSection(section) ? section : null;
+  const initial: ConsoleSection =
+    (requested && sections.some((s) => s.id === requested) ? requested : sections[0]?.id) ??
+    'routines';
   const [active, setActive] = useState<ConsoleSection>(initial);
   const [selectedId, setSelectedId] = useState<string | null>(focusId ?? null);
 
@@ -151,6 +171,27 @@ export function OrganizeConsole({
     setPendingNew(false);
   }, []);
 
+  /**
+   * A console with no sections is not a console — so hand the dialog slot back
+   * rather than rendering nothing into it.
+   *
+   * ui-store holds ONE activeDialog. Returning null while `open` is true would
+   * leave that slot armed at a dialog nobody can see or Escape out of, and the
+   * next ⌘K would be the only way to clear it. This is the guard of last
+   * resort: every door to the console is already inert (the braindump button,
+   * the item dialog's rows, the palette's commands), so reaching it means a
+   * deep link or a stale ui-store request.
+   */
+  useEffect(() => {
+    if (open && unavailable) onOpenChange(false);
+  }, [open, unavailable, onOpenChange]);
+  if (unavailable) return null;
+
+  // A toggle can flip while the console is open, which would leave `active`
+  // naming a section whose rail trigger has just gone — Radix renders that as a
+  // blank plate. Resolved on read, so nothing has to be reset.
+  const activeSection = sections.some((s) => s.id === active) ? active : initial;
+
   return (
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent
@@ -208,14 +249,14 @@ export function OrganizeConsole({
         <Ladder value={register}>
         <TabsPrimitive.Root
           key={initial}
-          value={active}
+          value={activeSection}
           onValueChange={onSectionChange}
           orientation="vertical"
           className="flex min-h-0 flex-1"
         >
-          <ConsoleRail />
+          <ConsoleRail sections={sections} />
 
-          {CONSOLE_SECTIONS.map((s) => (
+          {sections.map((s) => (
             <TabsPrimitive.Content
               key={s.id}
               value={s.id}
@@ -235,7 +276,7 @@ export function OrganizeConsole({
         </TabsPrimitive.Root>
         </Ladder>
 
-        <FooterBar section={active} selectedId={selectedId} />
+        <FooterBar section={activeSection} selectedId={selectedId} />
       </ResponsiveModalContent>
     </ResponsiveModal>
   );

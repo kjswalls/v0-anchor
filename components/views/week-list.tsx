@@ -12,6 +12,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { groupRows } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { useViewStore } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { cn } from '@/lib/utils';
 
 /**
@@ -23,7 +24,7 @@ function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
   const { selectedDate, setSelectedDate, routines, programs, goals, userTimezone } =
     usePlannerStore();
-  const groupBy = useViewStore((s) => s.canvasGroupBy);
+  const groupBy = useCanvasGroupBy();
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
 

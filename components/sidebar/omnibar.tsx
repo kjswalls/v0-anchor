@@ -21,6 +21,7 @@ import { isBulkPaste } from '@/lib/bulk-add';
 import { useChatStore } from '@/lib/chat-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
+import { useGoalsEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { suppressionReason } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -300,7 +301,13 @@ export function Omnibar({
    * is not an Item, needs a navigate action rather than an edit, and the key
    * `goal` would collide with a custom item type of that name. See searchGoals.
    */
+  const goalsOn = useGoalsEnabled();
   const goalHits = useMemo(() => {
+    // The extension gate comes first. A hit here navigates to /goal/[id], which
+    // is an inert page while Goals is off — so a channel that still answered
+    // would be offering a door to a room the same switch has shut. The
+    // extension stays findable in Settings, which is where "off" belongs.
+    if (!goalsOn) return [];
     // Same four-mode gate the item results carry. Without it a `/`, `+` or `?`
     // prefix still ran a substring search — and since a goal's `why` is
     // paragraph-shaped, prose containing a slash meant pressing `/` could
@@ -312,7 +319,7 @@ export function Omnibar({
     // name is how you reach a record — but four achieved goals must not push
     // the one you are running off the list.
     return sortGoalsForDisplay(searchGoals(trimmed, goals)).slice(0, 4);
-  }, [query, goals, activeCommand, isCommandMode, isAddMode, isChatMode]);
+  }, [goalsOn, query, goals, activeCommand, isCommandMode, isAddMode, isChatMode]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
   const results = useMemo<SearchGroup[]>(() => {

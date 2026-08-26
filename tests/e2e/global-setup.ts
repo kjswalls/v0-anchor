@@ -79,6 +79,32 @@ export default async function globalSetup() {
     );
   }
 
+  // 2b. Switch on the extensions the specs drive.
+  //
+  // Goals and the Organize console are EXTENSIONS and they ship OFF
+  // (lib/extension-registry.ts). goals.spec.ts and organize.spec.ts drive both,
+  // and half a dozen other specs reach the console through a door, so without
+  // these two rows the suite tests a correctly-gated app and reads as a
+  // regression in every feature at once.
+  //
+  // Seeded here rather than per spec for the same reason the settings above are:
+  // it is shared-account setup, and a spec that flipped a toggle would race
+  // every spec running beside it. Upserted on (user_id, slug), so re-running is
+  // free and an account that already has the rows is left alone.
+  const extRes = await rest('user_extensions', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify([
+      { user_id: userId, slug: 'goals', enabled: true },
+      { user_id: userId, slug: 'organize', enabled: true },
+    ]),
+  });
+  if (!extRes.ok) {
+    throw new Error(
+      `Failed to seed user_extensions (${extRes.status}): ${await extRes.text()}`
+    );
+  }
+
   // 3. Sweep litter left by earlier runs.
   //
   // Tests that create through the UI cannot always clean up (a timed-out test is

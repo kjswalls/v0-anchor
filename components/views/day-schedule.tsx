@@ -36,6 +36,7 @@ import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
 import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -1380,7 +1381,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
 
   // The Anytime strip sections like any other row list. `'none'` comes back as a
   // single unlabelled group, which renders as today's flat strip.
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const goals = usePlannerStore((s) => s.goals);

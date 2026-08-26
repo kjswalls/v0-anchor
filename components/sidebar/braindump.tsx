@@ -15,7 +15,11 @@ import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
-import { goalFilterItemIds } from '@/lib/goals';
+import {
+  useBraindumpGroupBy,
+  useGoalFilterIds,
+  useOrganizeEnabled,
+} from '@/lib/extension-gates';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
@@ -251,7 +255,12 @@ interface BraindumpProps {
 export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
   const { tasks, habits, items, routines, programs, goals, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
-  const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
+  const { braindumpFilters, braindumpSortBy } = useViewStore();
+  // Resolved against what is switched on: 'goal' falls back to 'none' while
+  // the Goals extension is off, rather than sectioning the whole list under
+  // one "No goal" heading. See lib/extension-gates.ts.
+  const braindumpGroupBy = useBraindumpGroupBy();
+  const organizeOn = useOrganizeEnabled();
   const isMobile = variant === 'mobile';
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
@@ -285,12 +294,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * row for it — the surface resolves it once and hands it down, the same
    * bargain `inactiveItemIdsOn` above makes. `null` is INERT, not empty: a
    * selection that names no live goal narrows nothing rather than emptying the
-   * list (see lib/goals.ts).
+   * list (see lib/goals.ts) — and the same is true with the Goals extension
+   * switched off, which is what makes that switch safe here (lib/extension-gates.ts).
    */
-  const goalMemberIds = useMemo(
-    () => goalFilterItemIds(goals, braindumpFilters.goals),
-    [goals, braindumpFilters.goals]
-  );
+  const goalMemberIds = useGoalFilterIds(goals, braindumpFilters.goals);
 
   const rows: RowItem[] = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
@@ -475,6 +482,15 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             isMobile && 'size-7'
           )}
           onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+          // INERT, not absent, while the Organize console is off. A door that
+          // vanishes teaches nothing; a door that is visibly shut and says why
+          // is the "extension store" posture (lib/extension-gates.ts). The
+          // console's own gate is the guard of last resort — this one is here so
+          // the click never opens an empty room in the first place.
+          disabled={!organizeOn}
+          title={
+            organizeOn ? undefined : 'Organize is off — switch it on in Settings → Extensions'
+          }
           aria-label="Organize projects & groups"
         >
           <FolderOpen className="h-4 w-4" />

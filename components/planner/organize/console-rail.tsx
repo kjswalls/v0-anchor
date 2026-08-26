@@ -2,6 +2,7 @@
 
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { Eyebrow } from './primitives';
+import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { cn } from '@/lib/utils';
 
 /**
@@ -33,28 +34,69 @@ export type ConsoleSection =
   | 'groups'
   | 'trash';
 
+/**
+ * EVERY SECTION NAMES THE EXTENSION IT RIDES, and six of the seven name the
+ * console itself.
+ *
+ * Goals is the odd one out, and deliberately: this is where a goal is CREATED,
+ * so if it rode EXT_ORGANIZE then switching Goals on with the console off would
+ * buy a filter, a grouping and a page for goals you have no way to make. The
+ * one section that is somebody else's feature says so here, and the console
+ * opens whenever at least one of its sections does.
+ *
+ * Declaring it per-section rather than branching in the rail is the registry
+ * bargain the rest of the app makes (lib/item-registry.ts, lib/container-
+ * registry.ts): the next gated section is a field, not a code path.
+ */
 export const CONSOLE_SECTIONS = [
-  { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES' },
-  { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS' },
+  { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES', extension: EXT_ORGANIZE },
+  { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS', extension: EXT_ORGANIZE },
   // Third in CONTAINERS, and last of the three on purpose: routines and
   // programs answer "is this on today", goals answer "why is any of it here".
   // The daily questions sit above the long one.
-  { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS' },
-  { id: 'projects', label: 'Projects', group: 'LABELS', eyebrow: 'PROJECTS' },
+  { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS', extension: EXT_GOALS },
+  { id: 'projects', label: 'Projects', group: 'LABELS', eyebrow: 'PROJECTS', extension: EXT_ORGANIZE },
   // Item types sits ABOVE Habit groups (Kirby, 2026-08-11 decision 7). Folding
   // habit groups into routines is a recorded deferral; putting types between
   // them now is free and makes that fold cheap later.
-  { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES' },
-  { id: 'groups', label: 'Habit groups', group: null, eyebrow: 'HABIT GROUPS' },
+  { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES', extension: EXT_ORGANIZE },
+  { id: 'groups', label: 'Habit groups', group: null, eyebrow: 'HABIT GROUPS', extension: EXT_ORGANIZE },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
   // dock. Trash is a lifecycle surface, not a peer of either group.
-  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH' },
+  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH', extension: EXT_ORGANIZE },
 ] as const satisfies readonly {
   id: ConsoleSection;
   label: string;
   group: string | null;
   eyebrow: string;
+  extension: string;
 }[];
+
+export type ConsoleSectionSpec = (typeof CONSOLE_SECTIONS)[number];
+
+/**
+ * The sections an account may actually see, given a per-slug predicate.
+ *
+ * Pure and store-free so the four on/off combinations are one table in a unit
+ * test rather than four renders. Order is CONSOLE_SECTIONS' order, so a gated
+ * console reads as the full one with rows removed — the rail never reshuffles.
+ */
+export function consoleSectionsFor(
+  isOn: (slug: string) => boolean
+): readonly ConsoleSectionSpec[] {
+  return CONSOLE_SECTIONS.filter((section) => isOn(section.extension));
+}
+
+/**
+ * Which extension one section rides — for the callers that hold a section id
+ * and need the SLUG rather than the row (the settings destinations, which
+ * redirect to an extension's own pane rather than opening a console that will
+ * immediately close). Unknown ids answer EXT_ORGANIZE, which is the console's
+ * own switch and the right default for anything the rail can show.
+ */
+export function consoleSectionExtension(id: string | undefined): string {
+  return CONSOLE_SECTIONS.find((section) => section.id === id)?.extension ?? EXT_ORGANIZE;
+}
 
 export function sectionMeta(id: ConsoleSection) {
   return CONSOLE_SECTIONS.find((s) => s.id === id) ?? CONSOLE_SECTIONS[0];
@@ -69,21 +111,21 @@ export function isConsoleSection(value: string | undefined): value is ConsoleSec
  * group eyebrows and the Trash rule are wrapped in `role="presentation"` so the
  * tablist's children are all tabs and RovingFocusGroup steps over them.
  */
-export function ConsoleRail() {
+export function ConsoleRail({ sections }: { sections: readonly ConsoleSectionSpec[] }) {
   return (
     <TabsPrimitive.List
       aria-label="Sections"
       data-testid="console-rail"
       className="border-border flex w-[180px] shrink-0 flex-col overflow-y-auto border-r p-2"
     >
-      {CONSOLE_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <RailEntry key={section.id} section={section} />
       ))}
     </TabsPrimitive.List>
   );
 }
 
-function RailEntry({ section }: { section: (typeof CONSOLE_SECTIONS)[number] }) {
+function RailEntry({ section }: { section: ConsoleSectionSpec }) {
   return (
     <>
       {section.group === 'RULE' ? (
