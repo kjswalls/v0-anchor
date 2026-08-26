@@ -15,6 +15,13 @@ import { persist } from 'zustand/middleware';
  * Local-only (localStorage). Ranking is a per-device habit, and syncing it
  * would mean a settings column and a migration for something with no value
  * across devices.
+ *
+ * Local-only is not the same as account-agnostic, though, and this store is the
+ * clearest case of the difference: "Recent" renders command labels straight out
+ * of this map, so on a shared browser the palette would open showing the
+ * PREVIOUS person's last few actions to whoever signed in next. It is in the
+ * clear registry (lib/local-state.ts) for that reason as much as for the
+ * tie-break being wrong.
  */
 
 export interface CommandUsageEntry {
@@ -25,7 +32,8 @@ export interface CommandUsageEntry {
 interface CommandUsageStore {
   usage: Record<string, CommandUsageEntry>;
   record: (commandId: string) => void;
-  reset: () => void;
+  /** Drop this account's ranking — see lib/local-state.ts. */
+  clearUserScopedState: () => void;
 }
 
 export const useCommandUsageStore = create<CommandUsageStore>()(
@@ -47,7 +55,7 @@ export const useCommandUsageStore = create<CommandUsageStore>()(
           };
         }),
 
-      reset: () => set({ usage: {} }),
+      clearUserScopedState: () => set({ usage: {} }),
     }),
     { name: 'anchor-command-usage', version: 1 }
   )

@@ -33,7 +33,29 @@ interface EODStore {
   setEodReviewEnabled: (enabled: boolean) => void;
   setEodReviewTime: (time: string) => void;
   saveLastReviewDate: (userId: string | null, date: string) => Promise<void>;
+  /** Drop this account's review settings and records — see lib/local-state.ts. */
+  clearUserScopedState: () => void;
 }
+
+/**
+ * The account-owned slice, at its defaults.
+ *
+ * The first two are `user_settings` columns and come back on the next sign-in.
+ * The last two are records ABOUT an account — "this person finished their
+ * review on the 14th", "this person waved tonight's line away" — and although
+ * they are deliberately local-only (see partialize), local-only never meant
+ * account-agnostic: inherited, they suppress the next user's review line for a
+ * night they were never asked about.
+ *
+ * `_hasHydrated` stays out. It is a fact about this page load, not about anyone.
+ */
+const USER_SCOPED_DEFAULTS = {
+  isOpen: false,
+  eodReviewEnabled: false,
+  eodReviewTime: '21:00',
+  lastEodReviewDate: null as string | null,
+  eodDeferredDate: null as string | null,
+};
 
 export const useEODStore = create<EODStore>()(
   persist(
@@ -41,11 +63,9 @@ export const useEODStore = create<EODStore>()(
       _hasHydrated: false,
       setHasHydrated: (v) => set({ _hasHydrated: v }),
 
-      isOpen: false,
-      eodReviewEnabled: false,
-      eodReviewTime: '21:00',
-      lastEodReviewDate: null,
-      eodDeferredDate: null,
+      ...USER_SCOPED_DEFAULTS,
+
+      clearUserScopedState: () => set({ ...USER_SCOPED_DEFAULTS }),
 
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),

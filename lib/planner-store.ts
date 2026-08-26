@@ -92,6 +92,9 @@ import {
 } from './active';
 import { programStateForSwitch } from './scope-rail';
 import { recordReleased } from './sweep-grace';
+// Type-only, so it is erased at compile time and lib/local-state.ts importing
+// this store back does not make a runtime cycle.
+import type { ClearScope } from './local-state';
 import {
   PROJECT_FIELDS,
   HABIT_GROUP_FIELDS,
@@ -165,6 +168,26 @@ interface PlannerStore {
   // Store lifecycle
   initializeStore: (userId: string) => Promise<void>;
   clearStore: () => void;
+  /**
+   * Drop the persisted PREFERENCES slice — see lib/local-state.ts.
+   *
+   * Its sibling `clearStore` above drops the DATA (items, containers, goals,
+   * history) and is called on sign-out. It has never touched the thirteen
+   * fields `planner-storage` writes to localStorage, and three of them —
+   * `groupBy`, `timelineItemFilter`, `showPausedOnGrid` — have no
+   * `user_settings` column, so `hydrateSettings` never overwrites them either.
+   * Those three survived every sign-out and every account switch this app has
+   * ever done.
+   *
+   * Every one of the thirteen is INERT in lib/local-state.ts' sense — density,
+   * which slice of time is on screen, the grouping axis, four visibility
+   * toggles, which day a week starts on, 12h/24h. Booleans and closed enums
+   * throughout; no free text, nothing derived from the account's own rows. So
+   * they say what the screen looks like and nothing about who was sitting at
+   * it, and this only fires under scope 'all' — a known change of user, not the
+   * unstamped browser every existing install presents on its first load.
+   */
+  clearUserScopedState: (scope: ClearScope) => void;
 
   // Task actions ('task' actions operate on any task-LIKE item — custom types
   // are task-shaped and ride this pipeline; only habits are excluded)
@@ -1130,6 +1153,37 @@ const diffItem = (from: Item, to: Item): Record<string, unknown> => {
   return patch;
 };
 
+/**
+ * The `planner-storage` slice, at its defaults — every field the persist
+ * `partialize` at the bottom of this file writes to localStorage, and nothing
+ * else.
+ *
+ * THE TWO LISTS MUST MATCH, and they are far enough apart in this file to drift
+ * silently, so tests/unit/local-state.test.ts pins them: it dirties the store,
+ * reads what actually reached localStorage, and fails if any persisted key is
+ * missing from the clear. Add a field to `partialize` without adding it here
+ * and that test goes red rather than the field quietly outliving a sign-out.
+ *
+ * Values are duplicated from the store body above rather than extracted from it
+ * because the body deliberately keeps each field beside its own setter; a test
+ * pins these against a freshly created store instead.
+ */
+const PERSISTED_SETTINGS_DEFAULTS = {
+  compactMode: false,
+  viewMode: 'day',
+  chillMode: false,
+  groupBy: 'none',
+  showCurrentTimeIndicator: true,
+  timelineItemFilter: 'all',
+  showCompletedTasks: true,
+  showPausedOnGrid: false,
+  defaultView: 'day',
+  defaultTimeBucket: 'anytime',
+  animationsEnabled: true,
+  weekStartDay: 'sunday',
+  timeFormat: '12h',
+} satisfies Partial<PlannerStore>;
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => {
@@ -2052,6 +2106,11 @@ export const usePlannerStore = create<PlannerStore>()(
           userTimezone: null,
         });
         isUpdatingUndoRedo = false;
+      },
+
+      clearUserScopedState: (scope) => {
+        if (scope !== 'all') return;
+        set({ ...PERSISTED_SETTINGS_DEFAULTS });
       },
 
       addItem: (customType, itemData, memberships) => {

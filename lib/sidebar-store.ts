@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { saveSettings } from './settings-service';
 import { usePlannerStore } from './planner-store';
+// Type-only, so it is erased at compile time and lib/local-state.ts importing
+// this store back does not make a runtime cycle.
+import type { ClearScope } from './local-state';
 
 /**
  * Sidebar column width, in px.
@@ -69,6 +72,29 @@ interface SidebarState {
   setLeftSidebarHovered: (hovered: boolean) => void
   setLeftSidebarHoverEnabled: (enabled: boolean) => void
   setLeftSidebarWidth: (px: number) => void
+  /** Drop this account's sidebar setting — see lib/local-state.ts. */
+  clearUserScopedState: (scope: ClearScope) => void
+}
+
+/**
+ * The account-owned slice, at its default — one field.
+ *
+ * `leftSidebarHoverEnabled` round-trips through saveSettings, so it is an
+ * account preference and comes back on the next sign-in. It is INERT in
+ * lib/local-state.ts' sense — a boolean about whether a column peeks open on
+ * hover, which describes the screen and not the person — so it only clears
+ * under scope 'all', a known change of user.
+ *
+ * The other three persisted fields are NOT cleared under any scope, and that is
+ * the whole reason this list is explicit rather than "reset the store".
+ * `leftSidebarWidth` is a property of the monitor you are sitting at (see its
+ * own note above) — clearing it would hand a new user a reset column on their
+ * own laptop for no gain, since a width tells nobody anything about the account
+ * that set it. `leftSidebarOpen` and `chatExpanded` are the same shape: window
+ * chrome for this browser, never synced, and disclosing nothing.
+ */
+const USER_SCOPED_DEFAULTS = {
+  leftSidebarHoverEnabled: false,
 }
 
 export const useSidebarStore = create<SidebarState>()(
@@ -77,8 +103,12 @@ export const useSidebarStore = create<SidebarState>()(
       leftSidebarOpen: true,
       chatExpanded: false,
       leftSidebarHovered: false,
-      leftSidebarHoverEnabled: false,
+      ...USER_SCOPED_DEFAULTS,
       leftSidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+      clearUserScopedState: (scope) => {
+        if (scope !== 'all') return
+        set({ ...USER_SCOPED_DEFAULTS })
+      },
       setLeftSidebarOpen: (open) => set({ leftSidebarOpen: open }),
       toggleLeftSidebar: () => set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
       setChatExpanded: (expanded) => set({ chatExpanded: expanded }),
